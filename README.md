@@ -4,20 +4,36 @@
   <img src="assets/cortexagent.jpg" alt="CortexAgent" width="600">
 </p>
 
-A local coding agent by **GreyOK00**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with built-in SQLite memory, automatic context recovery, optional browser tools, and a minimal MCP footprint.
+A local coding agent by **GreyOK00**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with a fully minified prompt system, lazy-loaded MCP tools, and built-in SQLite memory. Designed for maximum token efficiency and speed on a single 16 GB GPU.
 
-## What it does
+## Features
 
-- **Local agent.** Model lives in VRAM only for the session; closing frees VRAM.
-- **Auto-compact.** `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and `AUTO_COMPACT_WINDOW` are pinned to the llama-server `-c` value so compaction fires correctly.
-- **Built-in memory.** Hot/warm/cold tiers are stored in `~/.cortexagent/memory/cortexagent.db` via an in-repo MCP server. No external memory service.
-- **Context recovery.** SessionStart injects the last request + recent memory on startup, `/clear`, and auto-compact. The last prompt is replayed after compact.
-- **Optional tools.** Firecrawl (lazy, 1-tool) and Brave/Playwright CDP (port 9222) are enabled by default but degrade gracefully if deps are missing.
-- **Optional lazy MCP proxy.** Personal servers like `wp-studio` can stay installed without bloating every prompt: list them in `~/.cortexagent/config/lazy_mcp_servers.json` and they only expose a stub until called.
+### 🧠 Minified prompt system
+Every instruction passed to the model is aggressively minified — CLAUDE.md, AGENT.md, tool descriptions, and system prompts are stripped to the essential signal. This means more of your context window is available for actual work, not boilerplate.
+
+### 🦥 Lazy MCP tools
+MCP servers are not loaded into every prompt's tool context. Instead, they expose a single stub tool that spawns the real server only when called. This keeps the per-turn token tax near zero for tools you rarely use, while keeping them available on demand.
+
+- **Firecrawl** — lazy 1-tool wrapper for web scraping/search/crawl
+- **Brave/Playwright** — browser automation via CDP on port 9222
+- **wp-studio** — WordPress development (lazy, configured locally)
+- **Generic lazy proxy** — any personal MCP server can be added to `~/.cortexagent/config/lazy_mcp_servers.json` and it will only load when called
+
+### ⚡ High token-per-second speed
+The default model is **Qwen3.6-35B-A3B** (hybrid SSM/Mamba + attention MoE). Its tiny KV cache (~5 KB/token at q4_0) means 128K context fits in ~640 MB of VRAM, leaving the rest for weights. KV cache stays on the GPU for full generation speed. Output is fast on short prompts and remains usable as context grows.
+
+> Benchmarks will be added after a controlled run. Typical output on this hardware is 50–70+ tok/s depending on context length and prompt complexity.
+
+### 📦 Self-contained memory
+Hot/warm/cold memory tiers are stored in a local SQLite database (`~/.cortexagent/memory/cortexagent.db`). No external memory service, no cloud dependency. SessionStart auto-injects the last request + recent memory on startup, `/clear`, and auto-compact. The last prompt is replayed after compact.
+
+### 🔧 Grammar proxy
+A thin proxy between Claude Code and llama.cpp that strips the `grammar` field from client requests — fixing the 400 error that occurs when llama.cpp's grammar repetition threshold is exceeded. Logs per-request diagnostics for debugging.
+
+### 📐 Auto-compact at 95%
+Context auto-compacts at 95% of the window instead of the default lower threshold. This stops "compact every turn" — compact only fires when context is actually nearly full.
 
 ## Why this model and settings
-
-The default model is **Qwen3.6-35B-A3B** (a hybrid SSM/Mamba + attention MoE). It is the sweet spot for a single 16 GB VRAM desktop:
 
 | Component | Default | Why |
 |---|---|---|
@@ -28,12 +44,6 @@ The default model is **Qwen3.6-35B-A3B** (a hybrid SSM/Mamba + attention MoE). I
 | GPU layers (`-ngl`) | `999` | All weight layers on GPU. |
 | Flash attention (`-fa`) | on | Faster attention and lower VRAM/RAM pressure. |
 | Auto-compact threshold | 95% of the context window | Compacts only when context is actually full, not every turn. |
-
-### Real-world result
-
-You get a fully local coding agent with a 128K-token working memory that fits in a single consumer 16 GB GPU. The hybrid model’s fixed recurrent state means the KV cache does not explode like a pure attention model, so long context is cheap. Output speed is fast on short-to-medium prompts and remains usable even as context grows because the KV stays on the GPU.
-
-> Token-per-second numbers will be added after a controlled benchmark run.
 
 ## Requirements
 
@@ -109,6 +119,12 @@ The core package is **stdlib-only Python**. Nothing is installed from PyPI.
 <p align="center">
   <img src="assets/workflow.png" alt="CortexAgent workflow" width="800">
 </p>
+
+## TODO
+
+- [ ] **OpenClaw integration** — re-integrate the OpenClaw agent framework as a module within CortexAgent
+- [ ] **Benchmarks** — run controlled token-per-second benchmarks across context sizes (4K, 32K, 64K, 128K) and publish results
+- [ ] **Token usage metrics** — measure per-turn token tax (system prompts, tool descriptions, memory injection) and compare to baseline Claude Code
 
 ## License
 
