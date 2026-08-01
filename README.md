@@ -1,5 +1,9 @@
 # CortexAgent
 
+<p align="center">
+  <img src="assets/cortexagent.jpg" alt="CortexAgent" width="600">
+</p>
+
 A local coding agent by **GreyOK00**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with built-in SQLite memory, automatic context recovery, optional browser tools, and a minimal MCP footprint.
 
 ## What it does
@@ -99,6 +103,12 @@ The core package is **stdlib-only Python**. Nothing is installed from PyPI.
 
 - **Required externally:** `llama-server` (llama.cpp build), `claude` CLI.
 - **Optional:** Brave/Chrome browser, `npx` + Firecrawl API key, Rust toolchain for Tauri.
+
+## Workflow
+
+<p align="center">
+  <img src="assets/workflow.png" alt="CortexAgent workflow" width="800">
+</p>
 
 ## License
 
