@@ -1,0 +1,202 @@
+# OPERATOR Configuration — v1.0
+# This file is read at startup to initialize the system.
+# All paths are relative to /home/grey/cortexagent/
+
+system:
+  name: OPERATOR
+  version: "1.0.0"
+  role: autonomous_control_center
+  operator: sole_proprietor
+
+  # System prompt injection — full content, never truncated
+  system_prompt: prompts/system.md
+
+  # Agent role definitions
+  agents: prompts/agents.md
+
+  # Guardrail checker — injected before every action
+  guardrail_checker: prompts/guardrail_checker.md
+
+  # Operational framework — complete reference
+  framework: docs/operational_framework.md
+
+  # Execution flow — pipeline definitions
+  execution_flow: docs/execution_flow.md
+
+# Agent orchestration
+orchestrator:
+  coordinator_agent: COORDINATOR
+  max_parallel_agents: 5
+  max_task_duration_seconds: 300  # 5 minutes — hard timeout
+  escalation_policy: immediate  # T3 issues escalated immediately
+
+  # Task board configuration
+  task_board:
+    status_transitions:
+      - pending → running
+      - running → complete
+      - running → needs_approval
+      - running → blocked
+      - blocked → resolved
+      - needs_approval → complete
+    max_tasks_per_project: 50
+    auto_cleanup_completed_after_days: 7
+
+# Agent constraints — HARD LIMITS per agent
+agent_constraints:
+  SCRAPER:
+    max_concurrent_requests: 10
+    rate_limit_per_source: 1
+    respects_robots_txt: true
+    cannot_access:
+      - login_protected_content
+      - personal_data
+      - rate_limited_endpoints_beyond_limit
+
+  ANALYST:
+    mode: read_only
+    cannot_modify_data: true
+    cannot_send_external: true
+
+  RESEARCHER:
+    minimum_sources: 3
+    cannot_take_action: true
+    cannot_publish: true
+
+  WRITER:
+    output_requires_review: true
+    cannot_send_external: true
+    cannot_publish: true
+
+  DEVOPS:
+    production_deploy_requires_approval: true
+    production_config_change_requires_approval: true
+    auto_rollback_on_failure: true
+    max_deployment_retries: 3
+
+  MONITOR:
+    mode: alert_only
+    cannot_remediate: true
+    max_polling_interval_seconds: 300  # 5 minutes
+    cannot_modify: true
+
+  COORDINATOR:
+    cannot_execute_tasks: true
+    cannot_modify_data: true
+    cannot_send_external: true
+
+# Memory configuration
+memory:
+  hot:
+    tier: hot
+    retention: per_session
+    scope: per_platform
+    loaded_on: task_start
+
+  warm:
+    tier: warm
+    retention: medium_term
+    scope: cross_platform
+    loaded_on: task_relevance_match
+
+  cold:
+    tier: cold
+    retention: permanent
+    scope: structured
+    loaded_on: explicit_request_only
+
+  # Persistence rules
+  persistence:
+    append_only: true
+    timestamp_every_write: true
+    never_overwrite: true
+
+# Guardrail configuration
+guardrails:
+  forbidden_actions:
+    - send_emails
+    - send_messages
+    - post_content
+    - process_payments
+    - change_pricing
+    - send_invoices
+    - delete_data
+    - delete_databases
+    - delete_servers
+    - terminate_services
+    - change_production_configs
+    - revoke_access
+    - sign_contracts
+    - agree_to_terms
+    - modify_legal_documents
+    - purge_caches
+    - destroy_records
+
+  conditional_actions:
+    require_approval:
+      - production_deploy
+      - architecture_change
+      - new_api_integration
+      - full_reindex
+      - large_download
+      - task_duration_over_5min
+
+  autonomous_actions:
+    permitted_without_approval:
+      - web_scraping
+      - api_query
+      - document_analysis
+      - pattern_detection
+      - data_validation
+      - cross_referencing
+      - confidence_scoring
+      - report_generation
+      - dashboard_creation
+      - data_export
+      - status_check
+      - monitoring
+      - alerting
+      - metric_tracking
+      - code_analysis
+      - bug_detection
+      - file_organization
+      - categorization
+      - tagging
+
+# Alert configuration
+alerts:
+  proactive:
+    alert_on:
+      - competitor_movements
+      - critical_blockers
+      - data_anomalies
+      - time_sensitive_items
+      - cost_implications
+
+    suppress:
+      - routine_progress
+      - low_confidence_findings
+      - minor_anomalies_with_clear_explanation
+
+  batching:
+    batch_non_urgent: true
+    batch_interval: "15min"
+
+# Emergency configuration
+emergency:
+  override_command: "/emergency_reset"
+  on_trigger:
+    - clear_agent_state
+    - reload_framework
+    - present_clean_status
+    - wait_for_operator_confirmation
+
+# Logging configuration
+logging:
+  log_level: info
+  log_guardrail_checks: true
+  log_agent_assignments: true
+  log_task_transitions: true
+  log_operator_interactions: true
+  log_learning_patterns: true
+  retention_days: 90
