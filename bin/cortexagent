@@ -343,6 +343,8 @@ export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=95
 # Breaks out of the alt-screen TUI so output scrolls with the terminal.
 unset CLAUDE_CODE_NO_FLICKER 2>/dev/null || true
 export CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1
+# Suppress the Claude Code startup banner so only our custom banner shows.
+export CLAUDE_CODE_DISABLE_BANNER=1
 
 # ── Show custom welcome banner ──────────────────────────────────────────────
 ICE="\033[38;2;150;220;255m"

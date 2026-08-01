@@ -1,5 +1,9 @@
 {
   "quiet": true,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "permissions": {
     "defaultMode": "acceptEdits"
   },
