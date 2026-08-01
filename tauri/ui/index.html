@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CortexAgent</title>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --surface: #1a1a1e;
+    --surface2: #1f1f23;
+    --border: #2a2a2e;
+    --text: #e6e6e6;
+    --text2: #888;
+    --accent: #3a7bd5;
+    --accent2: #2a5da5;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --radius: 8px;
+    --radius-sm: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
+         color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar { width: 280px; background: var(--surface); border-right: 1px solid var(--border);
+             display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-header h1 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .disconnected { background: var(--red); }
+  .reconnecting { background: var(--yellow); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 8px; flex: 1; }
+  .nav-btn { background: none; border: none; color: var(--text2); padding: 10px 12px;
+             border-radius: var(--radius-sm); cursor: pointer; text-align: left;
+             font-size: 13px; display: flex; align-items: center; gap: 10px; }
+  .nav-btn:hover { background: var(--surface2); color: var(--text); }
+  .nav-btn.active { background: var(--surface2); color: var(--accent); }
+  .nav-btn .icon { font-size: 16px; width: 20px; text-align: center; }
+  .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border);
+                    font-size: 11px; color: var(--text2); }
+  .stats-row { display: flex; justify-content: space-between; margin-top: 4px; }
+
+  /* ── Main panel ── */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chat-header { padding: 12px 20px; border-bottom: 1px solid var(--border);
+                 display: flex; align-items: center; gap: 12px; background: var(--surface); }
+  .chat-header h2 { font-size: 14px; font-weight: 600; flex: 1; }
+  .header-btn { background: none; border: 1px solid var(--border); color: var(--text2);
+                padding: 6px 10px; border-radius: var(--radius-sm); cursor: pointer;
+                font-size: 12px; }
+  .header-btn:hover { background: var(--surface2); color: var(--text); }
+  .header-btn.active { background: var(--accent2); border-color: var(--accent); color: var(--text); }
+
+  /* ── Messages ── */
+  .messages { flex: 1; overflow-y: auto; padding: 20px; }
+  .msg { margin: 12px 0; max-width: 85%; }
+  .msg.user { margin-left: auto; }
+  .msg.assistant { margin-right: auto; }
+  .msg .bubble { padding: 10px 16px; border-radius: var(--radius); white-space: pre-wrap;
+                 word-break: break-word; font-size: 14px; line-height: 1.6; }
+  .msg.user .bubble { background: var(--accent2); border-bottom-right-radius: 2px; }
+  .msg.assistant .bubble { background: var(--surface2); border: 1px solid var(--border);
+                           border-bottom-left-radius: 2px; }
+  .msg .meta { font-size: 11px; color: var(--text2); margin-top: 4px;
+               display: flex; gap: 12px; }
+  .msg.user .meta { justify-content: flex-end; }
+  .msg .thinking { font-size: 12px; color: var(--yellow); padding: 6px 0;
+                   font-style: italic; }
+  .msg .tool-call { font-size: 12px; color: var(--accent); padding: 4px 0;
+                    font-family: monospace; }
+  .msg .error { color: var(--red); }
+
+  /* ── Input area ── */
+  .input-area { padding: 12px 20px 16px; background: var(--surface);
+                border-top: 1px solid var(--border); }
+  .input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .input-wrap { flex: 1; display: flex; background: var(--bg); border: 1px solid var(--border);
+                border-radius: var(--radius); padding: 4px; }
+  .input-wrap:focus-within { border-color: var(--accent); }
+  textarea { flex: 1; background: none; border: none; color: var(--text); padding: 8px 10px;
+             resize: none; font-family: inherit; font-size: 14px; min-height: 44px;
+             max-height: 120px; outline: none; }
+  .input-actions { display: flex; align-items: center; gap: 4px; padding: 4px; }
+  .input-btn { background: none; border: none; color: var(--text2); padding: 6px 8px;
+               border-radius: var(--radius-sm); cursor: pointer; font-size: 16px; }
+  .input-btn:hover { background: var(--surface2); color: var(--text); }
+  .input-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .input-btn.recording { color: var(--red); animation: pulse 1s infinite; }
+  .send-btn { background: var(--accent); color: white; border: none; padding: 10px 20px;
+              border-radius: var(--radius); cursor: pointer; font-weight: 600; font-size: 14px; }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .send-btn:hover:not(:disabled) { background: var(--accent2); }
+
+  /* ── Image preview ── */
+  .image-preview { display: flex; gap: 8px; padding: 8px 0; flex-wrap: wrap; }
+  .image-preview img { max-height: 80px; border-radius: var(--radius-sm);
+                       border: 1px solid var(--border); }
+  .image-preview .remove-img { background: var(--red); color: white; border: none;
+                               border-radius: 50%; width: 20px; height: 20px;
+                               cursor: pointer; font-size: 12px; display: flex;
+                               align-items: center; justify-content: center; }
+
+  /* ── Panels (tasks, calendar) ── */
+  .panel { display: none; flex-direction: column; height: 100%; }
+  .panel.active { display: flex; }
+  .panel-header { padding: 16px; border-bottom: 1px solid var(--border);
+                  font-size: 13px; font-weight: 600; }
+  .panel-content { flex: 1; overflow-y: auto; padding: 12px; }
+  .task-item { padding: 8px 10px; margin: 4px 0; border-radius: var(--radius-sm);
+               background: var(--surface2); font-size: 13px; display: flex;
+               align-items: center; gap: 8px; cursor: pointer; }
+  .task-item:hover { background: var(--border); }
+  .task-item .checkbox { width: 16px; height: 16px; border: 2px solid var(--text2);
+                         border-radius: 3px; flex-shrink: 0; cursor: pointer; }
+  .task-item .checkbox.done { background: var(--green); border-color: var(--green); }
+  .task-item .text { flex: 1; }
+  .task-item .text.done { text-decoration: line-through; color: var(--text2); }
+  .task-input { display: flex; gap: 6px; padding: 8px 0; }
+  .task-input input { flex: 1; background: var(--bg); border: 1px solid var(--border);
+                      color: var(--text); padding: 6px 10px; border-radius: var(--radius-sm);
+                      font-size: 13px; }
+  .task-input input:focus { outline: none; border-color: var(--accent); }
+  .task-input button { background: var(--accent); color: white; border: none;
+                       padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer; }
+
+  /* ── Calendar ── */
+  .cal-header { display: flex; align-items: center; justify-content: space-between;
+                padding: 8px 0; }
+  .cal-header button { background: none; border: 1px solid var(--border); color: var(--text);
+                       padding: 4px 8px; border-radius: var(--radius-sm); cursor: pointer; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-day { padding: 6px; text-align: center; font-size: 12px; border-radius: var(--radius-sm); }
+  .cal-day.today { background: var(--accent2); color: white; font-weight: 600; }
+  .cal-day.other { color: var(--text2); }
+  .cal-day:hover { background: var(--surface2); cursor: pointer; }
+  .cal-dow { font-size: 11px; color: var(--text2); padding: 4px; text-align: center; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .sidebar { width: 60px; }
+    .sidebar-header h1 span, .nav-btn span, .sidebar-footer { display: none; }
+    .nav-btn { justify-content: center; padding: 10px; }
+    .msg { max-width: 95%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>
+      <span class="status-dot disconnected" id="statusDot"></span>
+      <span>CortexAgent</span>
+    </h1>
+  </div>
+  <div class="sidebar-nav">
+    <button class="nav-btn active" data-panel="chat"><span class="icon">💬</span><span>Chat</span></button>
+    <button class="nav-btn" data-panel="tasks"><span class="icon">✅</span><span>Tasks</span></button>
+    <button class="nav-btn" data-panel="calendar"><span class="icon">📅</span><span>Calendar</span></button>
+  </div>
+  <div class="sidebar-footer">
+    <div class="stats-row"><span>Tokens</span><span id="tokenCount">—</span></div>
+    <div class="stats-row"><span>Speed</span><span id="speedDisplay">—</span></div>
+  </div>
+</div>
+
+<!-- ── Main panel ── -->
+<div class="main">
+  <div class="chat-header">
+    <h2>💬 Chat</h2>
+    <button class="header-btn" id="clearBtn">Clear</button>
+  </div>
+
+  <!-- Chat panel -->
+  <div class="panel active" id="panel-chat">
+    <div class="messages" id="messages"></div>
+    <div class="input-area">
+      <div class="image-preview" id="imagePreview"></div>
+      <div class="input-row">
+        <div class="input-wrap">
+          <textarea id="input" placeholder="Ask CortexAgent..." rows="1"></textarea>
+          <div class="input-actions">
+            <button class="input-btn" id="micBtn" title="Speech to text — click and speak">🎤</button>
+            <button class="input-btn" id="ttsBtn" title="Text to speech — read responses aloud">🔊</button>
+            <button class="input-btn" id="imgBtn" title="Attach image">📷</button>
+            <input type="file" id="fileInput" accept="image/*" style="display:none">
+          </div>
+        </div>
+        <button class="send-btn" id="sendBtn" disabled>Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tasks panel -->
+  <div class="panel" id="panel-tasks">
+    <div class="panel-header">✅ Tasks</div>
+    <div class="panel-content">
+      <div class="task-input">
+        <input type="text" id="taskInput" placeholder="Add a task...">
+        <button id="addTaskBtn">Add</button>
+      </div>
+      <div id="taskList"></div>
+    </div>
+  </div>
+
+  <!-- Calendar panel -->
+  <div class="panel" id="panel-calendar">
+    <div class="panel-header">📅 Calendar</div>
+    <div class="panel-content">
+      <div class="cal-header">
+        <button id="calPrev">←</button>
+        <span id="calTitle"></span>
+        <button id="calNext">→</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let msgId = 1;
+let ttsEnabled = false;
+let recognition = null;
+let isRecording = false;
+let attachedImage = null;
+let currentPanel = 'chat';
+let calDate = new Date();
+let tasks = [];
+
+// ── DOM refs ──
+const messages = document.getElementById('messages');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const statusDot = document.getElementById('statusDot');
+const micBtn = document.getElementById('micBtn');
+const imgBtn = document.getElementById('imgBtn');
+const fileInput = document.getElementById('fileInput');
+const imagePreview = document.getElementById('imagePreview');
+const ttsBtn = document.getElementById('ttsBtn');
+const clearBtn = document.getElementById('clearBtn');
+const taskInput = document.getElementById('taskInput');
+const addTaskBtn = document.getElementById('addTaskBtn');
+const taskList = document.getElementById('taskList');
+const calGrid = document.getElementById('calGrid');
+const calTitle = document.getElementById('calTitle');
+const calPrev = document.getElementById('calPrev');
+const calNext = document.getElementById('calNext');
+const tokenCount = document.getElementById('tokenCount');
+const speedDisplay = document.getElementById('speedDisplay');
+
+// ── Connection ──
+async function checkConnection() {
+  try {
+    const resp = await fetch('/health', { signal: AbortSignal.timeout(3000) });
+    if (resp.ok) {
+      statusDot.className = 'status-dot connected';
+      return true;
+    }
+  } catch (e) {}
+  statusDot.className = 'status-dot disconnected';
+  return false;
+}
+
+// ── Panel switching ──
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + btn.dataset.panel).classList.add('active');
+    currentPanel = btn.dataset.panel;
+  });
+});
+
+// ── Chat ──
+function appendMessage(role, content, extra = {}) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+
+  if (extra.thinking) {
+    const t = document.createElement('div');
+    t.className = 'thinking';
+    t.textContent = '🤔 ' + extra.thinking;
+    div.appendChild(t);
+  }
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;
+  div.appendChild(bubble);
+
+  if (extra.tokens || extra.speed) {
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    if (extra.tokens) meta.innerHTML += `<span>${extra.tokens} tokens</span>`;
+    if (extra.speed) meta.innerHTML += `<span>${extra.speed}</span>`;
+    div.appendChild(meta);
+  }
+
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function appendError(msg) {
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble error';
+  bubble.textContent = '⚠️ ' + msg;
+  div.appendChild(bubble);
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text && !attachedImage) return;
+
+  appendMessage('user', text || '(image attached)');
+  input.value = '';
+  sendBtn.disabled = true;
+
+  // Show thinking indicator
+  const thinkingDiv = document.createElement('div');
+  thinkingDiv.className = 'msg assistant';
+  const thinkingBubble = document.createElement('div');
+  thinkingBubble.className = 'bubble';
+  thinkingBubble.textContent = '⏳ Thinking...';
+  thinkingDiv.appendChild(thinkingBubble);
+  messages.appendChild(thinkingDiv);
+  messages.scrollTop = messages.scrollHeight;
+
+  const startTime = Date.now();
+  let totalTokens = 0;
+
+  try {
+    const payload = {
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { name: 'chat', arguments: { message: text } },
+      id: msgId++,
+    };
+
+    const resp = await fetch('/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(180000),
+    });
+    const data = await resp.json();
+
+    // Remove thinking indicator
+    thinkingDiv.remove();
+
+    if (data.result) {
+      const content = data.result?.content?.[0]?.text || JSON.stringify(data.result, null, 2);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const tokens = data.result?.usage?.output_tokens || content.split(' ').length;
+      totalTokens = tokens;
+      const speed = (tokens / (Date.now() - startTime) * 1000).toFixed(0);
+
+      appendMessage('assistant', content, {
+        tokens: totalTokens,
+        speed: `${speed} tok/s · ${elapsed}s`,
+      });
+
+      tokenCount.textContent = totalTokens;
+      speedDisplay.textContent = `${speed} tok/s`;
+
+      if (ttsEnabled) speakText(content);
+    } else if (data.error) {
+      appendError(data.error.message || 'Request failed');
+    }
+  } catch (e) {
+    thinkingDiv.remove();
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      appendError('Request timed out after 3 minutes');
+    } else {
+      appendError('Connection error: ' + e.message);
+    }
+  }
+  sendBtn.disabled = false;
+  attachedImage = null;
+  imagePreview.innerHTML = '';
+}
+
+// ── Input handling ──
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+sendBtn.addEventListener('click', sendMessage);
+
+// ── Image upload ──
+imgBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  attachedImage = file;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    imagePreview.innerHTML = `
+      <div style="position:relative;display:inline-block">
+        <img src="${ev.target.result}">
+        <button class="remove-img" onclick="attachedImage=null;imagePreview.innerHTML=''">×</button>
+      </div>`;
+  };
+  reader.readAsDataURL(file);
+});
+
+// ── Speech-to-Text ──
+function initSTT() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    micBtn.style.display = 'none';
+    console.log('[STT] Web Speech API not available');
+    return;
+  }
+  recognition = new SR();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (e) => {
+    let finalTranscript = '';
+    let interimTranscript = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const transcript = e.results[i][0].transcript;
+      if (e.results[i].isFinal) {
+        finalTranscript += transcript;
+      } else {
+        interimTranscript += transcript;
+      }
+    }
+    if (finalTranscript) {
+      input.value += (input.value ? ' ' : '') + finalTranscript;
+      input.dispatchEvent(new Event('input'));
+    }
+    if (interimTranscript) {
+      input.placeholder = 'Listening: ' + interimTranscript;
+    }
+  };
+
+  recognition.onerror = (e) => {
+    console.log('[STT] Error:', e.error);
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    micBtn.textContent = '🎤';
+    input.placeholder = 'Ask CortexAgent...';
+    if (e.error === 'not-allowed') {
+      appendError('Microphone access denied. Check browser permissions (🔒 in URL bar).');
+    } else if (e.error === 'no-speech') {
+      // Silent restart
+      if (isRecording) {
+        setTimeout(() => { try { recognition.start(); } catch(e) {} }, 500);
+      }
+    }
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    micBtn.textContent = '🎤';
+    input.placeholder = 'Ask CortexAgent...';
+  };
+}
+
+micBtn.addEventListener('click', () => {
+  if (!recognition) {
+    appendError('Speech recognition not available in this browser. Try Chrome.');
+    return;
+  }
+  if (isRecording) {
+    isRecording = false;
+    recognition.stop();
+    micBtn.classList.remove('recording');
+    micBtn.textContent = '🎤';
+    input.placeholder = 'Ask CortexAgent...';
+    return;
+  }
+  // Try to get mic permission
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        stream.getTracks().forEach(t => t.stop()); // Release mic after permission granted
+        isRecording = true;
+        micBtn.classList.add('recording');
+        micBtn.textContent = '🔴';
+        input.placeholder = 'Listening...';
+        recognition.start();
+      })
+      .catch((e) => {
+        appendError('Microphone access denied. Click 🔒 in the URL bar and allow microphone.');
+      });
+  } else {
+    // Fallback: try to start without explicit permission
+    isRecording = true;
+    micBtn.classList.add('recording');
+    micBtn.textContent = '🔴';
+    input.placeholder = 'Listening...';
+    recognition.start();
+  }
+});
+
+// ── Text-to-Speech ──
+let ttsRate = 1.0;
+let ttsPitch = 1.0;
+let ttsVoice = null;
+let ttsVoices = [];
+
+// Load available voices
+function loadTTSVoices() {
+  if (!('speechSynthesis' in window)) return;
+  ttsVoices = window.speechSynthesis.getVoices();
+}
+
+// Try to load voices (they might load async)
+loadTTSVoices();
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = loadTTSVoices;
+}
+
+ttsBtn.addEventListener('click', () => {
+  ttsEnabled = !ttsEnabled;
+  ttsBtn.classList.toggle('active');
+  ttsBtn.textContent = ttsEnabled ? '🔊' : '🔇';
+  if (ttsEnabled) {
+    // Show TTS settings
+    const voices = ttsVoices.map((v, i) =>
+      `<option value="${i}" ${i === 0 ? 'selected' : ''}>${v.name} (${v.lang})</option>`
+    ).join('');
+    appendMessage('system', `TTS enabled — 🔊 to toggle\n` +
+      `Voice: <select id="ttsVoiceSelect" style="background:#1f1f23;color:#e6e6e6;border:1px solid #333;border-radius:4px;padding:2px 4px;">${voices}</select> ` +
+      `Rate: <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1.0" style="width:60px;vertical-align:middle"> ` +
+      `Pitch: <input type="range" id="ttsPitch" min="0.5" max="2" step="0.1" value="1.0" style="width:60px;vertical-align:middle">`
+    );
+    // Bind settings after DOM update
+    setTimeout(() => {
+      const vs = document.getElementById('ttsVoiceSelect');
+      const rs = document.getElementById('ttsRate');
+      const ps = document.getElementById('ttsPitch');
+      if (vs) vs.onchange = () => ttsVoice = ttsVoices[parseInt(vs.value)] || null;
+      if (rs) rs.oninput = () => ttsRate = parseFloat(rs.value);
+      if (ps) ps.oninput = () => ttsPitch = parseFloat(ps.value);
+    }, 100);
+  }
+});
+
+function speakText(text) {
+  if (!ttsEnabled) return;
+  const clean = text.replace(/```[\s\S]*?```/g, '(code block)').substring(0, 2000);
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(clean);
+    utter.rate = ttsRate;
+    utter.pitch = ttsPitch;
+    if (ttsVoice) utter.voice = ttsVoice;
+    utter.onerror = (e) => {
+      console.log('[TTS] Error:', e.error);
+      if (e.error === 'not-allowed') {
+        appendError('TTS blocked by browser. Allow audio playback.');
+      }
+    };
+    window.speechSynthesis.speak(utter);
+  }
+}
+
+// ── Clear ──
+clearBtn.addEventListener('click', () => {
+  messages.innerHTML = '';
+  tokenCount.textContent = '—';
+  speedDisplay.textContent = '—';
+});
+
+// ── Tasks ──
+async function loadTasks() {
+  try {
+    const resp = await fetch('/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', method: 'tools/call',
+        params: { name: 'TodoList', arguments: {} },
+        id: msgId++,
+      }),
+    });
+    const data = await resp.json();
+    const text = data?.result?.content?.[0]?.text || '[]';
+    tasks = JSON.parse(text)?.tasks || JSON.parse(text) || [];
+  } catch (e) { tasks = []; }
+  renderTasks();
+}
+
+function renderTasks() {
+  taskList.innerHTML = tasks.map((t, i) => `
+    <div class="task-item" onclick="toggleTask(${i})">
+      <div class="checkbox ${t.status === 'completed' ? 'done' : ''}"></div>
+      <div class="text ${t.status === 'completed' ? 'done' : ''}">${t.content}</div>
+    </div>
+  `).join('');
+}
+
+async function toggleTask(i) {
+  const t = tasks[i];
+  t.status = t.status === 'completed' ? 'pending' : 'completed';
+  await fetch('/mcp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', method: 'tools/call',
+      params: { name: 'TodoWrite', arguments: { content: t.content, status: t.status } },
+      id: msgId++,
+    }),
+  });
+  renderTasks();
+}
+
+addTaskBtn.addEventListener('click', async () => {
+  const text = taskInput.value.trim();
+  if (!text) return;
+  taskInput.value = '';
+  await fetch('/mcp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', method: 'tools/call',
+      params: { name: 'TodoWrite', arguments: { content: text, status: 'pending' } },
+      id: msgId++,
+    }),
+  });
+  loadTasks();
+});
+
+taskInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addTaskBtn.click();
+});
+
+// ── Calendar ──
+function renderCalendar() {
+  const year = calDate.getFullYear();
+  const month = calDate.getMonth();
+  calTitle.textContent = new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+
+  let html = '<div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div>';
+
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="cal-day other"></div>';
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday = d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+    html += `<div class="cal-day ${isToday ? 'today' : ''}">${d}</div>`;
+  }
+  calGrid.innerHTML = html;
+}
+
+calPrev.addEventListener('click', () => { calDate.setMonth(calDate.getMonth() - 1); renderCalendar(); });
+calNext.addEventListener('click', () => { calDate.setMonth(calDate.getMonth() + 1); renderCalendar(); });
+
+// ── Init ──
+async function init() {
+  await checkConnection();
+  setInterval(checkConnection, 15000);
+  initSTT();
+  loadTasks();
+  renderCalendar();
+}
+
+init();
+</script>
+</body>
+</html>

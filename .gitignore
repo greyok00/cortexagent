@@ -1,0 +1,14 @@
+# Local install artifacts (templated from *.template with machine-specific paths)
+config/mcp.json
+config/settings.json
+
+# Build artifacts / runtime state
+tauri/src-tauri/target/
+.cortexagent-config/
+
+# Editor / OS noise
+*.swp
+*.swo
+.DS_Store
+__pycache__/
+*.pyc

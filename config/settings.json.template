@@ -1,0 +1,45 @@
+{
+  "quiet": true,
+  "permissions": {
+    "defaultMode": "acceptEdits"
+  },
+  "claudeMdExcludes": ["{{HOME}}/.claude/CLAUDE.md"],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CORTEXAGENT_REPO/hooks/session-start.sh\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CORTEXAGENT_REPO/hooks/user-prompt-submit.sh\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CORTEXAGENT_REPO/hooks/stop.sh\""
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"$CORTEXAGENT_REPO/lib/statusline.py\"",
+    "padding": 0
+  }
+}

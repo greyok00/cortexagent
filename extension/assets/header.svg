@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40">
+  <!-- WOLF_HEAD_SLOT: placeholder for wolf head ASCII art -->
+  <rect width="200" height="40" fill="#1f1f23"/>
+  <text x="100" y="26" text-anchor="middle" font-family="monospace" font-size="14" fill="#3a7bd5">CORTEXAGENT</text>
+</svg>
