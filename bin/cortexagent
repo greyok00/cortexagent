@@ -377,6 +377,6 @@ for arg in "$@"; do
     *) FILTERED_ARGS+=("$arg") ;;
   esac
 done
-claude "${FILTERED_ARGS[@]}" --mcp-config "${CORTEXAGENT_MCP_CONFIG}" --strict-mcp-config
+claude "${FILTERED_ARGS[@]}" --quiet --mcp-config "${CORTEXAGENT_MCP_CONFIG}" --strict-mcp-config
 echo "Claude session ended — cleaning up..."
 cleanup
