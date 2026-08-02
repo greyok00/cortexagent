@@ -138,6 +138,67 @@ def _check_health(stats: Dict) -> List[str]:
     return alerts
 
 
+def _check_memory_writes() -> List[str]:
+    """Verify prompts are being stored to memory. Alert if no recent activity."""
+    alerts = []
+    try:
+        reader = db.reader()
+        row = reader.execute(
+            "SELECT timestamp FROM Memory_Hot ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            ts = row["timestamp"]
+            age = (datetime.now() - datetime.fromisoformat(ts)).total_seconds()
+            if age > 300:  # 5 minutes
+                alerts.append(f"No memory writes in {int(age)}s — session may be stalled")
+        else:
+            alerts.append("Memory is empty — no prompts stored yet")
+    except Exception as e:
+        alerts.append(f"Memory read error: {e}")
+    return alerts
+
+
+def _check_session_health() -> List[str]:
+    """Ping the main model's proxy port to check if it's responding."""
+    alerts = []
+    proxy_port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
+    try:
+        import urllib.request
+        req = urllib.request.Request(f"http://127.0.0.1:{proxy_port}/health",
+                                     method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status != 200:
+                alerts.append(f"Proxy health check failed (HTTP {resp.status})")
+    except Exception:
+        alerts.append(f"Proxy not reachable on port {proxy_port} — main model may be down")
+    return alerts
+
+
+def _check_db_integrity() -> List[str]:
+    """Quick SQLite integrity check."""
+    alerts = []
+    try:
+        reader = db.reader()
+        row = reader.execute("PRAGMA integrity_check").fetchone()
+        if row and row[0] != "ok":
+            alerts.append(f"DB integrity: {row[0]}")
+    except Exception as e:
+        alerts.append(f"DB integrity check failed: {e}")
+    return alerts
+
+
+def _estimate_tokens(stats: Dict) -> str:
+    """Rough token estimate: 4 chars per token, average 200 chars per entry."""
+    total_entries = stats["hot"] + stats["warm"] + stats["cold"]
+    est_chars = total_entries * 200
+    est_tokens = est_chars // 4
+    if est_tokens > 1_000_000:
+        return f"{est_tokens/1_000_000:.1f}M"
+    if est_tokens > 1_000:
+        return f"{est_tokens/1_000:.0f}K"
+    return str(est_tokens)
+
+
 def _auto_compact() -> bool:
     """Trigger warm memory compaction via the memory manager."""
     try:
@@ -187,6 +248,15 @@ def _heartbeat_loop(interval: int) -> None:
             stats = _get_memory_stats()
             alerts = _check_health(stats)
 
+            # Always check memory writes and session health
+            alerts += _check_memory_writes()
+            alerts += _check_session_health()
+
+            # DB integrity check every 10th tick
+            tick = int(time.time() / interval)
+            if tick % 10 == 0:
+                alerts += _check_db_integrity()
+
             if alerts:
                 for alert in alerts:
                     log(f"ALERT: {alert}")
@@ -211,8 +281,13 @@ def _heartbeat_loop(interval: int) -> None:
                     _cold_distill()
                     state["last_distill"] = datetime.now().isoformat()
 
+            # Log token estimate every 5th tick
+            if tick % 5 == 0:
+                est = _estimate_tokens(stats)
+                log(f"Memory: {stats['hot']}H/{stats['warm']}W/{stats['cold']}C (~{est} tokens)")
+
             # Periodic LLM health summary (every 10th tick)
-            if has_llm and int(time.time()) % (interval * 10) < interval:
+            if has_llm and tick % 10 == 0:
                 summary = _llm_summarize()
                 if summary:
                     log(f"LLM health: {summary}")
@@ -298,7 +373,19 @@ def _smoke() -> int:
         print(f"LLM health summary: {summary}")
 
     alerts = _check_health(stats)
-    print(f"Alerts: {alerts}")
+    print(f"Capacity alerts: {alerts}")
+
+    write_alerts = _check_memory_writes()
+    print(f"Memory write alerts: {write_alerts}")
+
+    session_alerts = _check_session_health()
+    print(f"Session health alerts: {session_alerts}")
+
+    db_alerts = _check_db_integrity()
+    print(f"DB integrity alerts: {db_alerts}")
+
+    est = _estimate_tokens(stats)
+    print(f"Estimated tokens in memory: ~{est}")
 
     print("heartbeat_daemon: OK")
     return 0
