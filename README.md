@@ -19,6 +19,16 @@ MCP servers are not loaded into every prompt's tool context. Instead, they expos
 - **wp-studio** — WordPress development (lazy, configured locally)
 - **Generic lazy proxy** — any personal MCP server can be added to `~/.cortexagent/config/lazy_mcp_servers.json` and it will only load when called
 
+### 💓 Heartbeat daemon
+A background monitor using a tiny LLM (`qwen2.5:0.5b` via Ollama, ~350 MB) that runs in spare VRAM alongside the main model. It automatically:
+- **Monitors** memory pressure (hot/warm/cold counts) every 30 seconds
+- **Auto-compacts** warm memory when it hits 85% capacity
+- **Cold distills** warm entries into distilled facts periodically
+- **Queries the tiny LLM** for periodic health summaries
+- **Logs alerts** to `~/.cortexagent/heartbeat.log`
+
+Start it with `python3 lib/heartbeat_daemon.py start` after your session is running.
+
 ### ⚡ High token-per-second speed
 The default model is **Qwen3.6-35B-A3B** (hybrid SSM/Mamba + attention MoE). Its tiny KV cache (~5 KB/token at q4_0) means 128K context fits in ~640 MB of VRAM, leaving the rest for weights. KV cache stays on the GPU for full generation speed. Output is fast on short prompts and remains usable as context grows.
 
