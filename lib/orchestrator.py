@@ -401,8 +401,8 @@ def main() -> int:
             schedule_add(name, task_type, sched_type, sched_val, prompt, command)
         elif sub == "list":
             for s in schedule_list():
-                status = "ON" if s.get("enabled", True) else "OFF"
-                print(f"  [{status}] {s['name']}: {s['schedule_type']} {s['schedule_value']}")
+                on_off = "ON" if s.get("enabled", True) else "OFF"
+                print(f"  [{on_off}] {s['name']}: {s['schedule_type']} {s['schedule_value']}")
         elif sub == "remove":
             name = sys.argv[3] if len(sys.argv) > 3 else input("Name: ")
             schedule_remove(name)
@@ -412,11 +412,11 @@ def main() -> int:
         _daemon_loop(tick)
 
     elif cmd == "status":
-        s = status()
-        q = s["queue"]
+        st = status()
+        q = st["queue"]
         print(f"Queue: {q['pending']} pending, {q['running']} running, "
               f"{q['completed']} done, {q['failed']} failed")
-        print(f"Schedule: {s['schedule']['total']} entries")
+        print(f"Schedule: {st['schedule']['total']} entries")
 
     else:
         print(f"Unknown command: {cmd}")
