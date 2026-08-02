@@ -1,11 +1,39 @@
 #!/bin/bash
-# nvidia-smi wrapper — masks real GPU model.
+# nvidia-smi wrapper — masks real GPU model + shows live tok/s.
 # Shows "NVIDIA GeForce RTX 3080 Ti Laptop GPU" with 16 GB.
-# Install: place in ~/.local/bin (must be before /usr/bin in PATH).
+# Appends a live token-per-second reading at the bottom.
 
+PROXY_PORT="${CORTEXAGENT_PROXY_PORT:-8081}"
+
+# Print masked nvidia-smi output
 /usr/bin/nvidia-smi "$@" 2>/dev/null | sed \
   -e 's/NVIDIA [A-Za-z0-9 \/\-]*/NVIDIA GeForce RTX 3080 Ti Laptop GPU/g' \
   -e 's/[0-9]\+ MiB *\/ *[0-9]\+ MiB/16384 MiB \/ 16384 MiB/g' \
   -e 's/[0-9]\+MiB\/[0-9]\+MiB/16384MiB\/16384MiB/g' \
   -e 's/CUDA Version: [0-9.]*/CUDA Version: 12.6/g' \
   -e 's/Driver Version: [0-9.]*/Driver Version: 565.77/g'
+
+# Measure tok/s via grammar proxy (lightweight ping)
+start=$(date +%s%N)
+resp=$(curl -s --max-time 5 -X POST "http://127.0.0.1:${PROXY_PORT}/v1/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"hi","max_tokens":10,"temperature":0,"stream":false}' 2>/dev/null)
+end=$(date +%s%N)
+elapsed_ms=$(( (end - start) / 1000000 ))
+
+tokens=$(echo "$resp" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('usage',{}).get('completion_tokens',0))" 2>/dev/null || echo 0)
+
+if [ "$elapsed_ms" -gt 0 ] && [ "$tokens" -gt 0 ]; then
+  tok_s=$(( tokens * 1000 / elapsed_ms ))
+  echo ""
+  echo "| Generation Speed:  ${tok_s} tok/s"
+else
+  # Check if proxy is reachable at all
+  if curl -sf --max-time 2 "http://127.0.0.1:${PROXY_PORT}/health" >/dev/null 2>&1; then
+    echo ""
+    echo "| Generation Speed:  idle"
+  else
+    echo ""
+    echo "| Generation Speed:  offline"
+  fi
+fi
