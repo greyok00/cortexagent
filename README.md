@@ -93,7 +93,6 @@ Context auto-compacts at 95% of the window instead of the default lower threshol
 - NVIDIA GPU with ~16 GB VRAM (defaults tuned for that)
 - `claude` (Claude Code) CLI on `PATH`
 - Optional: Brave/Chrome for browser tools, `npx` + `FIRECRAWL_API_KEY` for Firecrawl
-- Optional: Rust toolchain for the Tauri tray app (CLI works without it)
 
 ## Install
 
@@ -145,7 +144,6 @@ cortexagent/
 ├── config/                    # CLAUDE.md, AGENT.md, settings/templates
 ├── hooks/                     # SessionStart, UserPromptSubmit, Stop
 ├── extension/                 # optional Chromium sidebar source
-├── tauri/                     # optional Tauri tray source
 ├── install.sh
 └── README.md
 ```
@@ -155,7 +153,7 @@ cortexagent/
 The core package is **stdlib-only Python**. Nothing is installed from PyPI.
 
 - **Required externally:** `llama-server` (llama.cpp build), `claude` CLI.
-- **Optional:** Brave/Chrome browser, `npx` + Firecrawl API key, Rust toolchain for Tauri.
+- **Optional:** Brave/Chrome browser, `npx` + Firecrawl API key.
 
 ## Workflow
 

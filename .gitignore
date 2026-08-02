@@ -3,7 +3,6 @@ config/mcp.json
 config/settings.json
 
 # Build artifacts / runtime state
-tauri/src-tauri/target/
 .cortexagent-config/
 
 # Editor / OS noise

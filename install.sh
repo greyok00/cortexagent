@@ -84,25 +84,6 @@ echo "    profiles dir: ${PROFILES_DIR}/default/{state,memory,workspace,sandboxe
 # ── Webui log dir ───────────────────────────────────────────────────────────
 mkdir -p "${HOME}/.cortexagent/logs"
 
-# ── Build Tauri tray app ────────────────────────────────────────────────────
-if command -v cargo &>/dev/null; then
-  echo "==> Building Tauri tray app..."
-  (cd "${REPO_ROOT}/tauri/src-tauri" && cargo build --release 2>&1 | tail -5)
-  TRAY_BINARY="${REPO_ROOT}/tauri/src-tauri/target/release/cortexagent-tray"
-  if [ -f "$TRAY_BINARY" ]; then
-    mkdir -p "$BIN_DIR"
-    tray_target="${BIN_DIR}/cortexagent-tray"
-    [ -e "$tray_target" ] && rm -f "$tray_target"
-    cp "$TRAY_BINARY" "$tray_target"
-    echo "    tray binary: ${tray_target}"
-  else
-    echo "    WARN: Tauri build did not produce a binary — check build output above" >&2
-  fi
-else
-  echo "    WARN: cargo not found — skipping Tauri tray build" >&2
-  echo "    Install Rust from https://rustup.rs and re-run install.sh" >&2
-fi
-
 # ── Copy extension for sideloading ───────────────────────────────────────────
 EXTENSION_DIR="${HOME}/.local/share/cortexagent/extension"
 mkdir -p "${EXTENSION_DIR}"
