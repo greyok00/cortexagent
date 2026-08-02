@@ -210,6 +210,13 @@ def _swap_and_generate(model: str, alias: str, endpoint: str,
                 import base64
                 Path(output).write_bytes(base64.b64decode(img_data))
                 _log(f"Output saved to {output}", "💾", GREEN)
+                # Open in default browser
+                try:
+                    import webbrowser
+                    webbrowser.open(f"file://{Path(output).resolve()}")
+                    _log(f"Opened in browser", "🖼️", GREEN)
+                except Exception:
+                    pass
             else:
                 _log("No data in response", "⚠️", YELLOW)
                 return False
