@@ -52,15 +52,21 @@ python3 lib/model_switcher.py gen-video "a dog running on a beach" --output dog.
 python3 lib/model_switcher.py status
 ```
 
-The generated file opens automatically in your default browser when complete.
+The generated file is saved to disk for you to open.
 
 ### ⚡ High token-per-second speed
 The default model is **Qwen3.6-35B-A3B** (hybrid SSM/Mamba + attention MoE). Its tiny KV cache (~5 KB/token at q4_0) means 128K context fits in ~640 MB of VRAM, leaving the rest for weights. KV cache stays on the GPU for full generation speed. Output is fast on short prompts and remains usable as context grows.
 
 > Benchmarks will be added after a controlled run. Typical output on this hardware is 50–70+ tok/s depending on context length and prompt complexity.
 
-### 📦 Self-contained memory
-Hot/warm/cold memory tiers are stored in a local SQLite database (`~/.cortexagent/memory/cortexagent.db`). No external memory service, no cloud dependency. SessionStart auto-injects the last request + recent memory on startup, `/clear`, and auto-compact. The last prompt is replayed after compact.
+### 📦 Self-contained memory (CortexLLM)
+Three-tier memory backed by a local SQLite database (`~/.cortexagent/memory/cortexagent.db`). No external service, no cloud.
+
+- **Hot** — FIFO buffer of the last 300 prompts/responses. Fast read/write for immediate session context.
+- **Warm** — 2000-entry curated buffer (70% recent hot + 30% preserved). Auto-deduplicated and pruned on every write.
+- **Cold** — Distilled facts extracted from warm memory. Long-term knowledge organized by category.
+
+SessionStart auto-injects the last request + recent memory on startup, `/clear`, and auto-compact. The last prompt is replayed after compact. The heartbeat daemon periodically cold-distills warm entries into cold facts automatically.
 
 ### 🔧 Grammar proxy
 A thin proxy between Claude Code and llama.cpp that strips the `grammar` field from client requests — fixing the 400 error that occurs when llama.cpp's grammar repetition threshold is exceeded. Logs per-request diagnostics for debugging.
