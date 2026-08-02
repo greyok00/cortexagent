@@ -84,7 +84,7 @@ PORT="${CORTEXAGENT_PORT:-8080}"
 # It fits in VRAM alongside the ~13 GB model, so KV stays on the GPU
 # (KV_OFFLOAD=1 below) for full generation speed. Going higher than the
 # native 262144 limit degrades output quality.
-CTX="${CORTEXAGENT_CTX:-131072}"
+CTX="${CORTEXAGENT_CTX:-262144}"
 NGL="${CORTEXAGENT_NGL:-999}"       # all model weights on GPU
 FA="${CORTEXAGENT_FA:-on}"          # flash attention (speed + lower VRAM/RAM)
 CTK="${CORTEXAGENT_CTK:-q4_0}"      # KV cache K type
@@ -377,6 +377,6 @@ for arg in "$@"; do
     *) FILTERED_ARGS+=("$arg") ;;
   esac
 done
-claude "${FILTERED_ARGS[@]}" --quiet --mcp-config "${CORTEXAGENT_MCP_CONFIG}" --strict-mcp-config
+claude "${FILTERED_ARGS[@]}" --mcp-config "${CORTEXAGENT_MCP_CONFIG}" --strict-mcp-config
 echo "Claude session ended — cleaning up..."
 cleanup

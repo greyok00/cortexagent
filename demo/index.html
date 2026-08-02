@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPERATOR — Spatial UI</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { overflow: hidden; background: #050510; font-family: 'Inter', system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.7); }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(ellipse 30% 30% at 25% 35%, rgba(59,130,246,0.10), transparent),
+      radial-gradient(ellipse 25% 25% at 75% 65%, rgba(139,92,246,0.08), transparent),
+      radial-gradient(ellipse 20% 20% at 55% 80%, rgba(6,182,212,0.06), transparent);
+    animation: nebula-drift 30s ease-in-out infinite alternate;
+  }
+  @keyframes nebula-drift {
+    0% { opacity:0.5; transform:scale(1); }
+    50% { opacity:1; transform:scale(1.1); }
+    100% { opacity:0.6; transform:scale(1.05); }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes bar-grow { from { width: 0%; } }
+
+  #loading {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #05050a; z-index: 1000; transition: opacity 0.6s ease;
+  }
+  #loading.fade { opacity: 0; pointer-events: none; }
+  #loading .spinner {
+    width: 40px; height: 40px; border: 2px solid rgba(100,200,255,0.1);
+    border-top-color: rgba(100,200,255,0.6); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  #loading .label {
+    color: rgba(255,255,255,0.4); font-size: 11px; letter-spacing: 0.1em;
+    margin-top: 16px; text-transform: uppercase;
+  }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 32px; pointer-events: none;
+  }
+  #hud > * { pointer-events: auto; }
+  #logo {
+    font-size: 14px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+  }
+  #logo span { color: rgba(100,200,255,0.8); }
+
+  #nav {
+    display: flex; gap: 4px;
+    background: rgba(10,10,26,0.6); backdrop-filter: blur(24px) saturate(150%);
+    border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 4px;
+  }
+  .nav-btn {
+    background: transparent; border: none; color: rgba(255,255,255,0.4);
+    padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 500;
+    letter-spacing: 0.05em; cursor: pointer; transition: all 0.2s ease;
+    font-family: inherit;
+  }
+  .nav-btn:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.04); }
+  .nav-btn.active {
+    color: rgba(255,255,255,0.9);
+    background: rgba(59,130,246,0.15);
+    box-shadow: 0 0 20px rgba(59,130,246,0.1);
+  }
+
+  #hint {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 100; font-size: 11px; letter-spacing: 0.08em; color: rgba(255,255,255,0.25);
+    pointer-events: none; transition: opacity 0.5s ease;
+  }
+  #hint.hidden { opacity: 0; }
+
+  #status {
+    position: fixed; bottom: 24px; right: 32px; z-index: 100;
+    font-size: 10px; letter-spacing: 0.08em; color: rgba(255,255,255,0.2);
+    pointer-events: none;
+  }
+
+  #errbox {
+    display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    color:#fff; background:#1a0a0a; padding:24px; border-radius:12px; z-index:9999;
+    max-width:500px; text-align:center;
+  }
+  #errbox pre { text-align:left; max-height:300px; overflow:auto; font-size:10px; margin-top:12px; }
+  /* Subtle vignette + depth layers via CSS */
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div style="text-align:center;">
+    <div class="spinner"></div>
+    <div class="label">Initializing OPERATOR...</div>
+  </div>
+</div>
+<div id="errbox">⚠️ <span id="errtxt"></span><pre id="errdbg"></pre></div>
+
+<div id="hud">
+  <div id="logo">OPER<span>.</span>ATOR</div>
+  <div id="nav">
+    <button class="nav-btn active" data-space="overview">Overview</button>
+    <button class="nav-btn" data-space="seeds">Seeds</button>
+    <button class="nav-btn" data-space="agents">Agents</button>
+    <button class="nav-btn" data-space="metrics">Metrics</button>
+  </div>
+</div>
+
+<div id="hint">Click panels to interact · Drag to orbit · Scroll to zoom</div>
+<div id="status">-- FPS</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+let THREE;
+let errCount = 0;
+
+// Try loading with fallback
+try {
+  THREE = await import('three');
+  console.log('three.js version:', THREE.default?.version);
+  console.log('Core modules loaded successfully');
+} catch(e) {
+  console.error('Module load error:', e);
+  document.getElementById('loading').classList.add('fade');
+  const b = document.getElementById('errbox');
+  b.style.display = 'block';
+  document.getElementById('errtxt').textContent = 'Failed to load modules: ' + e.message;
+  document.getElementById('errdbg').textContent = JSON.stringify({
+    msg: e.message, url: location.href, ua: navigator.userAgent.substring(0, 200),
+    webgl2: !!document.createElement('canvas').getContext('webgl2'),
+    webgl: !!document.createElement('canvas').getContext('webgl'),
+    protocol: location.protocol,
+  }, null, 2);
+  throw e;
+}
+
+const { Vector3, Euler, Scene, PerspectiveCamera, Color, Fog,
+        WebGLRenderer, GridHelper, Points, PointsMaterial, BufferGeometry,
+        AdditiveBlending, DirectionalLight, AmbientLight, ACESFilmicToneMapping,
+        Vector2, Float32BufferAttribute, Matrix4, Vector4, Ray, Sphere,
+        Raycaster, MathUtils, BoxGeometry, EdgesGeometry, LineBasicMaterial,
+        LineSegments, Mesh, MeshBasicMaterial, Group, RingGeometry } = THREE;
+
+/* ── Spring Physics ── */
+class Spring {
+  constructor(target=0, pos=0, vel=0, stiff=120, damp=15, mass=1) {
+    this.target=target; this.position=pos; this.velocity=vel;
+    this.stiffness=stiff; this.damping=damp; this.mass=mass;
+  }
+  setTarget(t) { this.target=t; }
+  update(dt) {
+    const f = (-this.stiffness*(this.position-this.target)) - (this.damping*this.velocity);
+    this.velocity += (f/this.mass)*dt;
+    this.position += this.velocity*dt;
+    return Math.abs(this.position-this.target) < 0.001;
+  }
+}
+
+class Spring3D {
+  constructor() {
+    this.position = new Vector3();
+    this.rotation = new Euler();
+    this.scale = new Vector3();
+    this.ps = [new Spring(0),new Spring(0),new Spring(0)];
+    this.rs = [new Spring(0),new Spring(0),new Spring(0)];
+    this.ss = [new Spring(1),new Spring(1),new Spring(1)];
+  }
+  animateTo(pos, rot, scl) {
+    this.ps[0].setTarget(pos[0]); this.ps[1].setTarget(pos[1]); this.ps[2].setTarget(pos[2]);
+    this.rs[0].setTarget(rot[0]); this.rs[1].setTarget(rot[1]); this.rs[2].setTarget(rot[2]);
+    this.ss[0].setTarget(scl[0]); this.ss[1].setTarget(scl[1]); this.ss[2].setTarget(scl[2]);
+  }
+  update(dt) {
+    for (let i=0;i<3;i++){this.ps[i].update(dt);this.rs[i].update(dt);this.ss[i].update(dt);}
+    this.position.set(this.ps[0].position,this.ps[1].position,this.ps[2].position);
+    this.rotation.set(this.rs[0].position,this.rs[1].position,this.rs[2].position);
+    this.scale.set(this.ss[0].position,this.ss[1].position,this.ss[2].position);
+  }
+}
+
+/* ── CSS Panel Builder ── */
+function createCSSPanel(cfg) {
+  const el = document.createElement('div');
+  el.style.cssText = `
+    width:${cfg.w}px;height:${cfg.h}px;
+    background:rgba(10,10,26,${cfg.bg??0.75});
+    backdrop-filter:blur(${cfg.blur??20}px) saturate(${cfg.sat??150}%);
+    border:1px solid rgba(255,255,255,${cfg.ba??0.08});
+    border-radius:${cfg.r??16}px;
+    padding:${cfg.p??20}px;
+    font-family:'Inter',system-ui,sans-serif;
+    font-size:${cfg.fs??13}px;line-height:1.5;
+    pointer-events:auto;will-change:transform;overflow:hidden;position:relative;
+    box-shadow:0 8px 32px rgba(0,0,0,0.35);
+    transition:border-color 0.3s ease,box-shadow 0.3s ease,background 0.3s ease,transform 0.15s ease;
+  `;
+  el.classList.add('css-panel');
+  el.addEventListener('mouseenter',()=>{
+    el.style.borderColor='rgba(255,255,255,0.18)';
+    el.style.boxShadow='0 0 30px rgba(100,200,255,0.08),0 16px 48px rgba(0,0,0,0.35)';
+    el._hoverZ = 4;
+  });
+  el.addEventListener('mouseleave',()=>{
+    el.style.borderColor=`rgba(255,255,255,${cfg.ba??0.08})`;
+    el.style.boxShadow='0 8px 32px rgba(0,0,0,0.35)';
+    el._hoverZ = 0;
+  });
+  el.addEventListener('click',()=>{
+    el.style.borderColor='rgba(99,102,241,0.5)';
+    el.style.boxShadow='0 0 32px rgba(99,102,241,0.2),0 16px 48px rgba(99,102,241,0.15)';
+    el.style.background='rgba(99,102,241,0.06)';
+  });
+  const glow = document.createElement('div');
+  glow.style.cssText='position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(100,200,255,0.3),transparent);pointer-events:none;';
+  el.appendChild(glow);
+  return el;
+}
+
+/* ── Scene Setup ── */
+const scene = new Scene();
+scene.background = new Color('#050510');
+scene.fog = new Fog('#050510', 12, 30);
+
+const camera = new PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0, 2, 10);
+
+const renderer = new WebGLRenderer({antialias:true, alpha:true, transparent:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.domElement.style.cssText = 'position:fixed;top:0;left:0;z-index:1;pointer-events:auto;';
+document.body.appendChild(renderer.domElement);
+
+// CSS 3D container — replaces CSS3DRenderer entirely
+const cssContainer = document.createElement('div');
+cssContainer.style.cssText = `
+  position:fixed;top:0;left:0;width:100%;height:100%;z-index:10;
+  perspective:1200px;perspective-origin:50% 50%;
+  pointer-events:none;overflow:hidden;
+`;
+document.body.appendChild(cssContainer);
+const cssWorld = document.createElement('div');
+cssWorld.style.cssText = `
+  width:100%;height:100%;
+  transform-style:preserve-3d;
+  transform:translate3d(0,0,-200px);
+`;
+cssContainer.appendChild(cssWorld);
+
+/* ── Camera + Controls ── */
+const WORLD_SCALE = 120; // 1 world unit = 120px
+let camDist = 12; // camera distance (zoom)
+let camPanX = 0, camPanY = 0; // pan offsets
+
+function applyCamera() {
+  // Three.js camera: positioned at (panX, panY, camDist) looking at origin
+  camera.position.set(camPanX * WORLD_SCALE, camPanY * WORLD_SCALE, camDist * WORLD_SCALE);
+  camera.lookAt(camPanX * WORLD_SCALE, camPanY * WORLD_SCALE, 0);
+  camera.updateMatrixWorld();
+  // CSS world: rotate opposite to orbit (simulates camera orbit)
+  const ry = -rot.theta * 57.2958;
+  const rx = rot.phi * 57.2958;
+  cssWorld.style.transform = `translate3d(0,0,-200px) rotateY(${ry}deg) rotateX(${-rx}deg)`;
+  cssContainer.style.perspective = `${camDist * WORLD_SCALE * 2}px`;
+  cssContainer.style.perspectiveOrigin = '50% 50%';
+}
+
+/* ── Mouse/Touch Controls (manual orbit) ── */
+let isDragging = false, dragStart = {x:0,y:0}, rot = {theta:0, phi:0};
+let isPinching = false;
+let dragThresh = false;
+
+function updateCameraFromOrbit() {
+  applyCamera();
+}
+
+function isPanel(el) {
+  while (el && el !== document.body) {
+    if (el.classList && el.classList.contains('css-panel')) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+document.addEventListener('pointerdown', e => {
+  if (e.button === 0 && !isPanel(e.target)) {
+    isDragging = true;
+    dragThresh = false;
+    dragStart.x = e.clientX;
+    dragStart.y = e.clientY;
+  }
+});
+document.addEventListener('pointermove', e => {
+  if (!isDragging) return;
+  const dx = e.clientX - dragStart.x;
+  const dy = e.clientY - dragStart.y;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragThresh = true;
+  if (!dragThresh) return;
+  const dx2 = (e.clientX - dragStart.x) * 0.005;
+  const dy2 = (e.clientY - dragStart.y) * 0.005;
+  rot.theta -= dx2;
+  rot.phi = Math.max(-Math.PI*0.25, Math.min(Math.PI*0.25, rot.phi + dy2));
+  dragStart.x = e.clientX;
+  dragStart.y = e.clientY;
+  updateCameraFromOrbit();
+});
+document.addEventListener('pointerup', e => {
+  isDragging = false;
+  dragThresh = false;
+});
+
+// Wheel zoom on window
+window.addEventListener('wheel', e => {
+  camDist = Math.max(3, Math.min(20, camDist + e.deltaY * 0.01));
+  updateCameraFromOrbit();
+  e.preventDefault();
+}, {passive:false});
+
+// Pinch zoom for touch
+document.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    isDragging = true;
+    dragThresh = false;
+    dragStart.x = e.touches[0].clientX;
+    dragStart.y = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    isPinching = true;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    dragStart.dist = Math.sqrt(dx*dx + dy*dy);
+  }
+}, {passive:true});
+document.addEventListener('touchmove', e => {
+  if (isPinching && e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    camDist = Math.max(3, Math.min(20, camDist + (dragStart.dist - dist) * 0.03));
+    dragStart.dist = dist;
+    updateCameraFromOrbit();
+    e.preventDefault();
+  } else if (!isDragging || !dragThresh || e.touches.length !== 1) return;
+  const dx = (e.touches[0].clientX - dragStart.x) * 0.005;
+  const dy = (e.touches[0].clientY - dragStart.y) * 0.005;
+  rot.theta -= dx;
+  rot.phi = Math.max(-Math.PI*0.25, Math.min(Math.PI*0.25, rot.phi + dy));
+  dragStart.x = e.touches[0].clientX;
+  dragStart.y = e.touches[0].clientY;
+  updateCameraFromOrbit();
+}, {passive:false});
+document.addEventListener('touchend', e => {
+  if (e.touches.length < 2) isPinching = false;
+  if (e.touches.length === 0) { isDragging = false; dragThresh = false; }
+});
+
+// Double-click to reset view
+document.addEventListener('dblclick', () => {
+  rot.theta = 0; rot.phi = 0; camDist = 10;
+  updateCameraFromOrbit();
+});
+
+/* ── Post-processing via CSS filter (simpler than three.js PP for this use case) ── */
+renderer.domElement.style.filter = 'brightness(1.1) contrast(1.05)';
+
+scene.add(new AmbientLight(0x0a0a1a, 0.15));
+const dl = new DirectionalLight(0x1a2a4a, 0.3);
+dl.position.set(-5, 8, 5);
+scene.add(dl);
+
+/* ═══════════════════════════════════════════════════════════
+   3D SPACE EFFECTS — bright, visible, animated
+   ═══════════════════════════════════════════════════════════ */
+
+// ── Particle field — 2000 points drifting with depth ──
+const pCount = 2000;
+const pGeom = new BufferGeometry();
+const pPos = new Float32Array(pCount*3);
+const pCol = new Float32Array(pCount*3);
+const pSizes = new Float32Array(pCount);
+const pVel = [];
+for (let i=0;i<pCount;i++){
+  const i3=i*3;
+  pPos[i3]=(Math.random()-0.5)*40;
+  pPos[i3+1]=(Math.random()-0.5)*30;
+  pPos[i3+2]=(Math.random()-0.5)*30-5;
+  // Random cool color — blue, cyan, purple, white
+  const hue = 0.55 + Math.random()*0.2; // 0.55-0.75 = blue to cyan
+  const c = new Color().setHSL(hue, 0.7+Math.random()*0.3, 0.5+Math.random()*0.4);
+  pCol[i3]=c.r; pCol[i3+1]=c.g; pCol[i3+2]=c.b;
+  pSizes[i]=0.02+Math.random()*0.06;
+  pVel[i]={x:(Math.random()-0.5)*0.002, y:(Math.random()-0.5)*0.002, z:(Math.random()-0.5)*0.001};
+}
+pGeom.setAttribute('position', new Float32BufferAttribute(pPos, 3));
+pGeom.setAttribute('color', new Float32BufferAttribute(pCol, 3));
+pGeom.setAttribute('size', new Float32BufferAttribute(pSizes, 1));
+const pMat = new PointsMaterial({
+  size:0.05, vertexColors:true, transparent:true, opacity:0.7,
+  blending:AdditiveBlending, sizeAttenuation:true
+});
+const particles = new Points(pGeom, pMat);
+scene.add(particles);
+
+// ── Glowing orbs — large bright energy nodes ──
+const orbPositions = [
+  [-5, 4, -8], [6, -2, -10], [-3, 6, -12], [4, 5, -6],
+  [0, -3, -14], [-6, 1, -7], [3, 7, -9],
+];
+const orbColorsArr = [
+  0x3b82f6, 0x8b5cf6, 0x06b6d4, 0xec4899,
+  0x6366f1, 0x3b82f6, 0x8b5cf6,
+];
+const orbGeom = new BufferGeometry();
+const orbPos = new Float32Array(orbPositions.length*3);
+const orbCol = new Float32Array(orbPositions.length*3);
+orbPositions.forEach((p,i)=>{
+  const idx=i*3;
+  orbPos[idx]=p[0]; orbPos[idx+1]=p[1]; orbPos[idx+2]=p[2];
+  const c=new Color(orbColorsArr[i]);
+  orbCol[idx]=c.r; orbCol[idx+1]=c.g; orbCol[idx+2]=c.b;
+});
+orbGeom.setAttribute('position', new Float32BufferAttribute(orbPos, 3));
+orbGeom.setAttribute('color', new Float32BufferAttribute(orbCol, 3));
+const orbMat = new PointsMaterial({
+  size:1.2, vertexColors:true, transparent:true, opacity:0.6,
+  blending:AdditiveBlending, sizeAttenuation:true
+});
+const orbs = new Points(orbGeom, orbMat);
+scene.add(orbs);
+
+// ── Concentric rings — floating rings rotating in the center ──
+const ringGroup = new Group();
+for (let r=0;r<3;r++){
+  const radius=4+r*4;
+  const ringGeom=new THREE.RingGeometry(radius,radius+0.05,64);
+  const ringMat=new THREE.MeshBasicMaterial({
+    color:new Color().setHSL(0.58+r*0.05,0.8,0.5),
+    transparent:true, opacity:0.12+r*0.04,
+    side:THREE.DoubleSide,
+  });
+  const ring=new THREE.Mesh(ringGeom,ringMat);
+  ring.rotation.x=Math.PI*0.5; // horizontal rings
+  ring.position.set(0,0,-2);
+  ring.userData.rotSpeed=0.05*(r%2?1:-1);
+  ring.userData.r=r;
+  ringGroup.add(ring);
+}
+scene.add(ringGroup);
+
+// ── Wireframe 3D box — prominent framing cube ──
+const wireBoxGeom=new BoxGeometry(16,16,10,6,6,6);
+const wireBoxEdges=new EdgesGeometry(wireBoxGeom);
+const wireBoxMat=new LineBasicMaterial({color:0x2a5a9a,transparent:true,opacity:0.3});
+const wireBox=new LineSegments(wireBoxEdges,wireBoxMat);
+wireBox.position.set(0,0,-2);
+scene.add(wireBox);
+
+// Inner wireframe — brighter
+const innerBoxGeom=new BoxGeometry(10,10,8,4,4,4);
+const innerBoxEdges=new EdgesGeometry(innerBoxGeom);
+const innerBoxMat=new LineBasicMaterial({color:0x3b82f6,transparent:true,opacity:0.2});
+const innerBox=new LineSegments(innerBoxEdges,innerBoxMat);
+innerBox.position.set(0,0,-2);
+scene.add(innerBox);
+
+// ── Grid floor — perspective grid ──
+const gridFloorGeom=new BoxGeometry(30,0.1,16,15,1,8);
+const gridFloorEdges=new EdgesGeometry(gridFloorGeom);
+const gridFloorMat=new LineBasicMaterial({color:0x1a3a6a,transparent:true,opacity:0.2});
+const gridFloor=new LineSegments(gridFloorEdges,gridFloorMat);
+gridFloor.position.set(0,-8,-2);
+scene.add(gridFloor);
+
+// Grid ceiling
+const gridCeil=gridFloor.clone();
+gridCeil.position.y=8;
+scene.add(gridCeil);
+
+/* ── Space Data ── */
+const spaces = {
+  overview: {
+    camera:{pos:[0,1,10],target:[0,0,0],fov:50,dist:10},
+    panels:[
+      {id:'ov-main',w:1600,h:900,pos:[0,0,-1],rot:[0,0,0],scl:1,spring:[120,15,1],stagger:0,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">◈ Operator Chat</span>
+            <span style="font-size:9px;color:rgba(16,182,133,0.7);">● CortexAgent</span>
+          </div>
+          <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;">
+            <div style="display:flex;gap:6px;align-items:flex-start;">
+              <span style="font-size:8px;padding:2px 4px;border-radius:3px;background:rgba(59,130,246,0.15);color:rgba(100,200,255,0.7);margin-top:3px;flex-shrink:0;">AI</span>
+              <div style="font-size:10px;color:rgba(255,255,255,0.6);line-height:1.4;">Hello. I'm ready. What would you like to build?</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
+            <div style="flex:1;display:flex;align-items:center;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:0 10px;">
+              <input style="flex:1;background:transparent;border:none;outline:none;color:rgba(255,255,255,0.6);font-size:10px;font-family:inherit;padding:8px 0;" placeholder="Ask CortexAgent..." />
+            </div>
+            <button style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.25);border-radius:8px;padding:8px 12px;font-size:10px;color:rgba(100,200,255,0.7);cursor:pointer;font-family:inherit;">Send</button>
+          </div></div>`},
+      {id:'ov-metrics',w:340,h:900,pos:[-8,0,-1],rot:[0,0.15,0],scl:0.85,spring:[100,12,1.2],stagger:0,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">System</span>
+            <span style="font-size:9px;color:rgba(16,182,133,0.8);">● Online</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:10px;">
+            ${[['CPU','67%'], ['RAM','4.2 / 8 GB'], ['Budget','$247 / $267'], ['Agents','12 active']].map(([l,v])=>`
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:10px;color:rgba(255,255,255,0.4);">${l}</span>
+                  <span style="font-size:10px;color:rgba(255,255,255,0.7);">${v}</span>
+                </div>
+                <div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;overflow:hidden;">
+                  <div style="height:100%;width:${l==='Budget'?92:l==='RAM'?52:70}%;background:linear-gradient(90deg,#3b82f6,#06b6d4);border-radius:2px;animation:bar-grow 1.5s ease-out;"></div>
+                </div>
+              </div>`).join('')}
+          </div></div>`},
+      {id:'ov-alerts',w:340,h:900,pos:[5,0,-1],rot:[0,-0.15,0],scl:0.85,spring:[100,12,1.2],stagger:0,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(139,92,246,0.7);">⚡ Alerts</span>
+            <span style="font-size:9px;color:rgba(236,72,153,0.8);">2 new</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+            <div style="padding:8px 10px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.15);border-radius:8px;">
+              <div style="font-size:10px;color:rgba(255,255,255,0.7);">Budget ceiling approaching</div>
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:4px;">$247 / $267 per month</div>
+            </div>
+            <div style="padding:8px 10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.15);border-radius:8px;">
+              <div style="font-size:10px;color:rgba(255,255,255,0.7);">Agent timeout on "AI Research"</div>
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:4px;">34s timeout exceeded</div>
+            </div>
+          </div></div>`}
+    ]
+  },
+  seeds: {
+    camera:{pos:[0,3,8],target:[0,0,-2],fov:35,dist:9},
+    panels:[
+      {id:'sd-main',w:440,h:320,pos:[0,0.8,-1],rot:[0,0,0],scl:1,spring:[120,15,1],stagger:0,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">Active Seeds</span>
+            <div style="display:flex;gap:4px;">
+              <button style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:4px 8px;font-size:9px;color:rgba(255,255,255,0.7);cursor:pointer;font-family:inherit;">All</button>
+              <button style="background:transparent;border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:4px 8px;font-size:9px;color:rgba(255,255,255,0.3);cursor:pointer;font-family:inherit;">Active</button>
+            </div>
+          </div>
+          <div style="flex:1;overflow:hidden;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              ${[
+                ['AI Book Project','creation','sprout'],
+                ['SaaS Dashboard','product','plant'],
+                ['Climate Model','research','tree'],
+                ['Community Forum','community','seed']
+              ].map(([n,d,stage])=>`
+                <div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;cursor:pointer;">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                    <span style="width:6px;height:6px;border-radius:50%;background:#${stage==='seed'?'ec4899':stage==='sprout'?'3b82f6':stage==='plant'?'8b5cf6':'10b685'};"></span>
+                    <span style="font-size:10px;font-weight:500;color:rgba(255,255,255,0.7);">${n}</span>
+                  </div>
+                  <div style="font-size:9px;color:rgba(255,255,255,0.3);">${d} · ${stage}</div>
+                </div>`).join('')}
+            </div></div></div>`},
+      {id:'sd-lifecycle',w:340,h:320,pos:[-3.8,-0.5,-2],rot:[0,0.15,0],scl:0.8,spring:[100,12,1.2],stagger:0.1,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">Lifecycle</span>
+            <span style="font-size:10px;color:rgba(16,182,133,0.7);">Phase 2/7</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+            ${['Research','Analysis','Outline','Writing','Review','Publish','Grow'].map((phase,i)=>{
+              const colors=['#3b82f6','#8b5cf6','#10b685','#f59e0b','#ef4444','#ec4899','#6366f1'];
+              const done=i<2, active=i===2;
+              const bg=done?'rgba(255,255,255,0.06)':active?'rgba(255,255,255,0.06)':'rgba(255,255,255,0.02)';
+              const border=active?`1px solid ${colors[i]}40`:'1px solid rgba(255,255,255,0.04)';
+              const check=done?'✓':'○';
+              const tc=done?'rgba(255,255,255,0.7)':active?'rgba(255,255,255,0.7)':'rgba(255,255,255,0.2)';
+              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:${bg};border:${border};border-radius:6px;">
+                <span style="font-size:10px;color:${colors[i]};">${check}</span>
+                <span style="font-size:10px;color:${tc};flex:1;">${phase}</span>
+                ${active?'<span style="font-size:8px;color:rgba(255,255,255,0.3);letter-spacing:0.05em;">● NOW</span>':''}
+              </div>`;
+            }).join('')}
+          </div></div>`},
+      {id:'sd-stats',w:340,h:320,pos:[3.8,-0.5,-2],rot:[0,-0.15,0],scl:0.8,spring:[100,12,1.2],stagger:0.2,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">Resources</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+            <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;">
+              <div style="font-size:24px;font-weight:600;color:rgba(255,255,255,0.8);margin-bottom:4px;">24</div>
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:0.08em;">TOTAL STEPS</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <div style="flex:1;text-align:center;padding:10px;background:rgba(16,182,133,0.08);border:1px solid rgba(16,182,133,0.15);border-radius:10px;">
+                <div style="font-size:16px;font-weight:600;color:rgba(16,182,133,0.8);">18</div>
+                <div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:4px;">AUTO</div>
+              </div>
+              <div style="flex:1;text-align:center;padding:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.15);border-radius:10px;">
+                <div style="font-size:16px;font-weight:600;color:rgba(245,158,11,0.8);">4</div>
+                <div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:4px;">CHECKPOINTS</div>
+              </div>
+            </div>
+          </div></div>`}
+    ]
+  },
+  agents: {
+    camera:{pos:[0,2,7],target:[0,0,0],fov:40,dist:8},
+    panels:[
+      {id:'ag-main',w:440,h:380,pos:[0,0.5,-1],rot:[0,0,0],scl:1,spring:[120,15,1],stagger:0,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">Agent Fleet</span>
+            <span style="font-size:9px;color:rgba(255,255,255,0.25);">12 online</span>
+          </div>
+          <div style="flex:1;overflow:hidden;">
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              ${[
+                {n:'COORDINATOR',r:'Orchestrates all tasks',s:'active',c:'#3b82f6'},
+                {n:'PCA',r:'Goal → Seed → Plan → Execute',s:'active',c:'#8b5cf6'},
+                {n:'SCRAPER',r:'Data collection',s:'idle',c:'#10b685'},
+                {n:'ANALYST',r:'Cross-reference & validate',s:'working',c:'#f59e0b'},
+                {n:'RESEARCHER',r:'Deep investigation',s:'active',c:'#06b6d4'},
+                {n:'WRITER',r:'Report generation',s:'idle',c:'#6366f1'},
+                {n:'DEVOPS',r:'Infrastructure ops',s:'active',c:'#ec4899'},
+                {n:'MONITOR',r:'System health',s:'active',c:'#14b8a6'},
+              ].map(a=>`
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);border-radius:8px;cursor:pointer;">
+                  <span style="width:6px;height:6px;border-radius:50%;background:${a.c};box-shadow:0 0 6px ${a.c}80;"></span>
+                  <span style="font-size:10px;font-weight:500;color:rgba(255,255,255,0.8);width:80px;">${a.n}</span>
+                  <span style="font-size:9px;color:rgba(255,255,255,0.25);flex:1;">${a.r}</span>
+                  <span style="font-size:8px;color:${a.s==='active'?'rgba(16,182,133,0.7)':a.s==='working'?'rgba(245,158,11,0.7)':'rgba(255,255,255,0.2)'};letter-spacing:0.05em;text-transform:uppercase;">${a.s}</span>
+                </div>`).join('')}
+            </div></div></div>`}
+    ]
+  },
+  metrics: {
+    camera:{pos:[0,1.5,8],target:[0,0,0],fov:40,dist:9},
+    panels:[
+      {id:'mt-main',w:440,h:320,pos:[0,1,-1],rot:[0,0,0],scl:1,spring:[120,15,1],stagger:0,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">Performance</span>
+            <span style="font-size:9px;color:rgba(255,255,255,0.25);">Last 24h</span>
+          </div>
+          <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:8px;">
+            ${[
+              ['CPU','67%'], ['RAM','52%'], ['Budget','92%'], ['Agents','80%']
+            ].map(([label,val])=>`
+              <div style="padding:10px;background:rgba(255,255,255,0.03);border-radius:10px;display:flex;flex-direction:column;justify-content:center;align-items:center;">
+                <svg width="60" height="60" viewBox="0 0 60 60" style="transform:rotate(-90deg);">
+                  <circle cx="30" cy="30" r="24" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="4"/>
+                  <circle cx="30" cy="30" r="24" fill="none" stroke="${label==='CPU'?'#3b82f6':label==='RAM'?'#8b5cf6':label==='Budget'?'#f59e0b':'#10b685'}" stroke-width="4" stroke-dasharray="${2*Math.PI*24*parseFloat(val)/100} ${2*Math.PI*24*(1-parseFloat(val)/100)}" stroke-linecap="round"/>
+                </svg>
+                <div style="font-size:14px;font-weight:600;color:rgba(255,255,255,0.8);margin-top:4px;">${val}</div>
+                <div style="font-size:8px;color:rgba(255,255,255,0.3);letter-spacing:0.08em;">${label}</div>
+              </div>`).join('')}
+          </div></div>`},
+      {id:'mt-timeline',w:340,h:320,pos:[-3.8,-0.5,-2],rot:[0,0.15,0],scl:0.8,spring:[100,12,1.2],stagger:0.1,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">Timeline</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+            ${[
+              {e:'Seed "AI Book" advanced to Plant',t:'2m ago',c:'#10b685'},
+              {e:'Agent "Analyst" completed research',t:'15m ago',c:'#3b82f6'},
+              {e:'Budget alert: $247 threshold',t:'1h ago',c:'#f59e0b'},
+              {e:'Seed "Climate Model" spawned',t:'3h ago',c:'#8b5cf6'},
+              {e:'Portfolio review completed',t:'5h ago',c:'#6366f1'},
+            ].map(x=>`
+              <div style="display:flex;gap:8px;padding:6px 0;">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+                  <span style="width:6px;height:6px;border-radius:50%;background:${x.c};"></span>
+                  <div style="width:1px;height:16px;background:rgba(255,255,255,0.06);"></div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:rgba(255,255,255,0.6);margin-bottom:2px;">${x.e}</div>
+                  <div style="font-size:8px;color:rgba(255,255,255,0.2);">${x.t}</div>
+                </div>
+              </div>`).join('')}
+          </div></div>`},
+      {id:'mt-alloc',w:340,h:320,pos:[3.8,-0.5,-2],rot:[0,-0.15,0],scl:0.8,spring:[100,12,1.2],stagger:0.2,
+        html:`<div style="height:100%;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <span style="font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(100,200,255,0.6);">Allocation</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+            ${[
+              ['AI Book',35], ['SaaS Dashboard',25], ['Climate Model',20], ['Community Forum',12], ['Reserve',8]
+            ].map(([name,pct])=>`
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:9px;color:rgba(255,255,255,0.5);">${name}</span>
+                  <span style="font-size:9px;color:#3b82f6;">${pct}%</span>
+                </div>
+                <div style="height:3px;background:rgba(255,255,255,0.04);border-radius:2px;overflow:hidden;">
+                  <div style="height:100%;width:${pct}%;background:#3b82f6;border-radius:2px;opacity:0.6;"></div>
+                </div>
+              </div>`).join('')}
+          </div></div>`}
+    ]
+  }
+};
+
+/* ── State ── */
+let currentSpace = 'overview';
+const cssPanels = new Map();
+const springMap = new Map();
+
+function buildSpace(key) {
+  // Clear old panels
+  while (cssWorld.firstChild) cssWorld.removeChild(cssWorld.firstChild);
+  cssPanels.clear();
+  springMap.clear();
+
+  const space = spaces[key];
+  if (!space) return;
+
+  space.panels.forEach(pd => {
+    const el = createCSSPanel({w:pd.w, h:pd.h});
+    el.innerHTML = pd.html;
+    cssWorld.appendChild(el);
+    cssPanels.set(pd.id, el);
+
+    const sp = new Spring3D();
+    sp.ps[0].stiffness=pd.spring[0]; sp.ps[1].stiffness=pd.spring[0]; sp.ps[2].stiffness=pd.spring[0];
+    sp.ps[0].damping=pd.spring[1]; sp.ps[1].damping=pd.spring[1]; sp.ps[2].damping=pd.spring[1];
+    sp.ps[0].mass=pd.spring[2]; sp.ps[1].mass=pd.spring[2]; sp.ps[2].mass=pd.spring[2];
+
+    setTimeout(()=>{
+      sp.animateTo(pd.pos, pd.rot, [pd.scl,pd.scl,pd.scl]);
+    }, pd.stagger*1000);
+    springMap.set(pd.id, sp);
+  });
+}
+
+/* ── Transition ── */
+function goSpace(key) {
+  const space = spaces[key];
+  if (!space) return;
+  currentSpace = key;
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.space===key));
+
+  // Rebuild panels for the new space
+  buildSpace(key);
+
+  // Animate camera to new position
+  const sp = space.camera.pos;
+  const td = space.camera.dist ?? sp[2] ?? 10;
+  const cp = {x:camPanX, y:camPanY, z:camDist};
+  const tp = {x:sp[0], y:sp[1], z:td};
+
+  const startTime = performance.now();
+  const duration = 1200;
+
+  function anim(now) {
+    const t = Math.min((now-startTime)/duration, 1);
+    const ease = 1 - Math.pow(1-t, 3);
+    camPanX = cp.x + (tp.x - cp.x) * ease;
+    camPanY = cp.y + (tp.y - cp.y) * ease;
+    camDist = cp.z + (tp.z - cp.z) * ease;
+    updateCameraFromOrbit();
+    if (t < 1) requestAnimationFrame(anim);
+  }
+  requestAnimationFrame(anim);
+}
+
+/* ── Init ── */
+camDist = 10;
+camPanX = 0;
+camPanY = 0;
+updateCameraFromOrbit();
+buildSpace('overview');
+
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => goSpace(btn.dataset.space));
+});
+
+/* ── Animation Loop ── */
+let lastTime = performance.now();
+let fpsCount = 0, fpsTime = 0;
+const fpsEl = document.getElementById('status');
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+
+  fpsCount++;
+  fpsTime += dt;
+  if (fpsTime >= 0.5) {
+    fpsEl.textContent = Math.round(fpsCount / fpsTime) + ' FPS';
+    fpsCount = 0; fpsTime = 0;
+  }
+
+  // Update springs and apply CSS transforms to panels
+  springMap.forEach((sp, id) => {
+    sp.update(dt);
+    const el = cssPanels.get(id);
+    if (!el) return;
+    const sx = sp.ps[0].position;
+    const sy = sp.ps[1].position;
+    const sz = sp.ps[2].position;
+    const rx = sp.rs[0].position;
+    const ry = sp.rs[1].position;
+    const rz = sp.rs[2].position;
+    const sc = sp.ss[0].position;
+    const pw = el.offsetWidth || 440, ph = el.offsetHeight || 320;
+    const cx = sx * WORLD_SCALE + window.innerWidth / 2 - pw / 2;
+    const cy = sy * WORLD_SCALE + window.innerHeight / 2 - ph / 2;
+    el.style.transform = `translate3d(${cx}px,${cy}px,${sz*WORLD_SCALE + (el._hoverZ ?? 0)}px) rotateX(${rx*57.2958}deg) rotateY(${ry*57.2958}deg) rotateZ(${rz*57.2958}deg) scale3d(${sc},${sc},${sc})`;
+  });
+
+  // ── Animate particles — drift + shimmer ──
+  const pa = particles.geometry.attributes.position.array;
+  const pcol = particles.geometry.attributes.color.array;
+  for (let i = 0; i < pCount; i++) {
+    const i3 = i*3;
+    pa[i3]   += pVel[i].x + Math.sin(now*0.0003+i*0.05)*0.0005;
+    pa[i3+1] += pVel[i].y + Math.cos(now*0.0004+i*0.03)*0.0004;
+    pa[i3+2] += pVel[i].z;
+    // Brightness pulse
+    const pulse = 0.8 + Math.sin(now*0.001 + i*0.3)*0.2;
+    pcol[i3]   *= pulse;
+    pcol[i3+1] *= pulse;
+    pcol[i3+2] *= pulse;
+  }
+  particles.geometry.attributes.position.needsUpdate = true;
+  particles.geometry.attributes.color.needsUpdate = true;
+  particles.rotation.y += dt*0.02;
+
+  // ── Animate orbs — large floating movements ──
+  const oa = orbs.geometry.attributes.position.array;
+  const t3 = now * 0.0003;
+  for (let i = 0; i < orbPositions.length; i++) {
+    const idx = i*3;
+    const base = orbPositions[i];
+    oa[idx]   = base[0] + Math.sin(t3 + i*1.7)*2.0;
+    oa[idx+1] = base[1] + Math.cos(t3*0.8 + i*2.3)*1.5;
+    oa[idx+2] = base[2] + Math.sin(t3*0.4 + i*0.9)*1.0;
+  }
+  orbs.geometry.attributes.position.needsUpdate = true;
+  orbs.material.opacity = 0.5 + Math.sin(now*0.0008)*0.2;
+
+  // ── Animate rings — spinning ──
+  ringGroup.children.forEach((ring,i) => {
+    ring.rotation.z += ring.userData.rotSpeed * dt;
+    ring.material.opacity = 0.08 + Math.sin(now*0.0005 + i)*0.04;
+  });
+
+  // ── Animate wireframe boxes — rotation ──
+  const t = now * 0.00015;
+  wireBox.rotation.set(t*0.2, t*0.3, t*0.1);
+  innerBox.rotation.set(-t*0.3, t*0.5, -t*0.15);
+
+  // Render WebGL (particles + grid + floor)
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.render(scene, camera);
+}
+
+/* ── Resize ── */
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+
+/* ── Start ── */
+const loading = document.getElementById('loading');
+setTimeout(() => loading.classList.add('fade'), 300);
+setTimeout(() => { if(document.getElementById('hint')) document.getElementById('hint').classList.add('hidden'); }, 6000);
+
+animate(performance.now());
+</script>
+</body>
+</html>
