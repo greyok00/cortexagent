@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""model_switcher — swap between coding model and image generation model.
+"""model_switcher — swap between coding model and image/video generation models.
 
-Manages VRAM by killing the main llama-server, loading Flux for image gen,
+Manages VRAM by killing the main llama-server, loading Flux/LTX for gen,
 then restoring the coding model. The heartbeat LLM (qwen2.5:0.5b) stays in
 VRAM the entire time via Ollama.
 
 Usage:
   python3 model_switcher.py gen-image "prompt" --output output.png
+  python3 model_switcher.py gen-video "prompt" --output output.mp4
   python3 model_switcher.py status
 """
 from __future__ import annotations
@@ -23,10 +24,11 @@ from typing import Optional
 
 LLAMA_DIR = os.environ.get("CORTEXAGENT_LLAMA_DIR", str(Path.home() / "llama.cpp" / "build"))
 MODELS_DIR = os.environ.get("CORTEXAGENT_MODELS_DIR", str(Path.home() / "models"))
-FLUX_MODEL = os.environ.get("CORTEXAGENT_FLUX_MODEL", str(MODELS_DIR) + "/flux/flux1-dev-q4.gguf")
+FLUX_MODEL = os.environ.get("CORTEXAGENT_FLUX_MODEL", str(MODELS_DIR) + "/flux/flux1-schnell-q4.gguf")
+LTX_MODEL = os.environ.get("CORTEXAGENT_LTX_MODEL", str(MODELS_DIR) + "/ltx/ltx-video-q4.gguf")
 MAIN_MODEL = os.environ.get("CORTEXAGENT_MODEL", "")
 MAIN_PORT = int(os.environ.get("CORTEXAGENT_PORT", "8080"))
-FLUX_PORT = 8083
+GEN_PORT = 8083
 PROXY_PORT = int(os.environ.get("CORTEXAGENT_PROXY_PORT", "8081"))
 LOG_DIR = Path.home() / ".cortexagent" / "logs"
 
@@ -113,58 +115,73 @@ def _stop_process(pid: int) -> None:
         pass
 
 
-def gen_image(prompt: str, output: str = "output.png") -> bool:
-    """Generate an image using Flux. Swaps out the coding model temporarily."""
-    _log(f"Generating image: {prompt[:80]}...")
+def _swap_and_generate(model: str, alias: str, endpoint: str,
+                       payload: dict, output: str) -> bool:
+    """Kill main model, load gen model, generate, unload, restore."""
+    _log(f"Swapping to {alias}...")
 
     # 1. Kill main model and proxy
     _kill_port(MAIN_PORT)
     _kill_port(PROXY_PORT)
     time.sleep(2)
 
-    # 2. Start Flux
-    flux_pid = _start_llama(FLUX_MODEL, FLUX_PORT, alias="flux")
-    if flux_pid is None:
-        _log("Failed to start Flux")
+    # 2. Start gen model
+    gen_pid = _start_llama(model, GEN_PORT, alias=alias)
+    if gen_pid is None:
+        _log(f"Failed to start {alias}")
         return False
 
-    # 3. Generate image via llama.cpp's image endpoint
+    # 3. Generate
     try:
-        payload = json.dumps({
-            "prompt": prompt,
-            "n_predict": 256,
-            "size": "512x512",
-        }).encode()
-
+        data = json.dumps(payload).encode()
         req = urllib.request.Request(
-            f"http://127.0.0.1:{FLUX_PORT}/v1/image/generate",
-            data=payload,
-            method="POST",
+            f"http://127.0.0.1:{GEN_PORT}{endpoint}",
+            data=data, method="POST",
         )
         req.add_header("Content-Type", "application/json")
 
-        with urllib.request.urlopen(req, timeout=300) as resp:
+        with urllib.request.urlopen(req, timeout=600) as resp:
             result = json.loads(resp.read())
             img_data = result.get("data", [{}])[0].get("b64_json", "")
             if img_data:
                 import base64
                 Path(output).write_bytes(base64.b64decode(img_data))
-                _log(f"Image saved to {output}")
+                _log(f"Output saved to {output}")
             else:
-                _log("No image data in response")
+                _log("No data in response")
                 return False
     except Exception as e:
-        _log(f"Image generation failed: {e}")
+        _log(f"Generation failed: {e}")
         return False
     finally:
-        # 4. Kill Flux
-        _stop_process(flux_pid)
-        _kill_port(FLUX_PORT)
+        _stop_process(gen_pid)
+        _kill_port(GEN_PORT)
         time.sleep(1)
 
-    # 5. Restart main model (user needs to run cortexagent again)
-    _log("Flux unloaded. Restart cortexagent to resume coding session.")
+    _log(f"{alias} unloaded. Restart cortexagent to resume coding.")
     return True
+
+
+def gen_image(prompt: str, output: str = "output.png") -> bool:
+    """Generate an image using Flux Schnell (4-step)."""
+    return _swap_and_generate(
+        model=FLUX_MODEL,
+        alias="flux",
+        endpoint="/v1/image/generate",
+        payload={"prompt": prompt, "n_predict": 128, "size": "512x512"},
+        output=output,
+    )
+
+
+def gen_video(prompt: str, output: str = "output.mp4") -> bool:
+    """Generate a video using LTX-Video (fast, with audio)."""
+    return _swap_and_generate(
+        model=LTX_MODEL,
+        alias="ltx",
+        endpoint="/v1/video/generate",
+        payload={"prompt": prompt, "n_predict": 256, "size": "512x512", "audio": True},
+        output=output,
+    )
 
 
 def status() -> dict:
@@ -217,6 +234,19 @@ def main() -> int:
             if idx + 1 < len(sys.argv):
                 output = sys.argv[idx + 1]
         ok = gen_image(prompt, output)
+        return 0 if ok else 1
+
+    elif cmd == "gen-video":
+        if len(sys.argv) < 3:
+            print("Usage: model_switcher.py gen-video 'prompt' [--output file.mp4]")
+            return 1
+        prompt = sys.argv[2]
+        output = "output.mp4"
+        if "--output" in sys.argv:
+            idx = sys.argv.index("--output")
+            if idx + 1 < len(sys.argv):
+                output = sys.argv[idx + 1]
+        ok = gen_video(prompt, output)
         return 0 if ok else 1
 
     elif cmd == "status":
