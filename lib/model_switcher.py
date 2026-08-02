@@ -118,6 +118,12 @@ def _stop_process(pid: int) -> None:
 def _swap_and_generate(model: str, alias: str, endpoint: str,
                        payload: dict, output: str) -> bool:
     """Kill main model, load gen model, generate, unload, restore."""
+    # Safety check: model must exist
+    if not Path(model).exists():
+        _log(f"Model not found: {model}")
+        _log(f"Download it first, then try again.")
+        return False
+
     _log(f"Swapping to {alias}...")
 
     # 1. Kill main model and proxy
