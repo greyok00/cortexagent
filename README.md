@@ -29,6 +29,31 @@ A background monitor using a tiny LLM (`qwen2.5:0.5b` via Ollama, ~350 MB) that 
 
 Start it with `python3 lib/heartbeat_daemon.py start` after your session is running.
 
+### 🔄 Model orchestrator
+The **model orchestrator** (`lib/model_switcher.py`) manages VRAM by swapping the main coding model out and loading image/video generation models on demand. Since both can't fit in 16 GB VRAM simultaneously, the orchestrator:
+
+1. **Saves state** — notes the current session
+2. **Unloads** the main coding model (Qwen3.6-35B, ~13 GB) from VRAM
+3. **Loads** the generation model (Flux Schnell for images, LTX-Video for video)
+4. **Generates** the output and opens it in your browser
+5. **Unloads** the generation model
+6. **Restores** the main coding model and grammar proxy automatically
+
+The heartbeat LLM (qwen2.5:0.5b) stays in VRAM the **entire time**, orchestrating the swap. All output is verbose with colored emoji status messages so you can see exactly what's happening.
+
+**Supported models:**
+- **Flux Schnell** (GGUF Q4_K_S, ~3.5 GB) — 4-step image generation, best quality-to-speed ratio for 16 GB VRAM
+- **LTX-Video 2b v0.9** (GGUF Q4_K_M, ~1.5 GB) — fast video generation with **built-in synchronized audio**
+
+**Usage:**
+```bash
+python3 lib/model_switcher.py gen-image "a cat wearing a hat" --output cat.png
+python3 lib/model_switcher.py gen-video "a dog running on a beach" --output dog.mp4
+python3 lib/model_switcher.py status
+```
+
+The generated file opens automatically in your default browser when complete.
+
 ### ⚡ High token-per-second speed
 The default model is **Qwen3.6-35B-A3B** (hybrid SSM/Mamba + attention MoE). Its tiny KV cache (~5 KB/token at q4_0) means 128K context fits in ~640 MB of VRAM, leaving the rest for weights. KV cache stays on the GPU for full generation speed. Output is fast on short prompts and remains usable as context grows.
 
@@ -98,6 +123,8 @@ CORTEXAGENT_CTX=65536 cortexagent # smaller window
 | `CORTEXAGENT_BRAVE_ENABLED` | `1` | enable Brave/Playwright tools |
 | `CORTEXAGENT_WEBUI_ENABLED` | `1` | enable local web UI |
 | `CORTEXAGENT_MEMORY_DIR` | `$HOME/.cortexagent/memory` | SQLite DB + seed files |
+| `CORTEXAGENT_FLUX_MODEL` | `$HOME/models/flux/flux1-schnell-q4.gguf` | Flux Schnell GGUF for image gen |
+| `CORTEXAGENT_LTX_MODEL` | `$HOME/models/ltx/ltx-video-q4.gguf` | LTX-Video GGUF for video gen |
 
 ## Project layout
 
