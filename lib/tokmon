@@ -1,0 +1,86 @@
+#!/bin/bash
+# tokmon — live token-per-second monitor for cortexagent.
+# Shows real-time tok/s and GPU utilization in a compact display.
+# Run in a separate terminal window while screen capturing.
+
+INTERVAL=2
+PROXY_PORT="${CORTEXAGENT_PROXY_PORT:-8081}"
+LLAMA_PORT="${CORTEXAGENT_PORT:-8080}"
+
+# Tiny prompt for speed test (minimal tokens)
+PROMPT='{"prompt":"hi","max_tokens":20,"temperature":0,"stream":false,"cache_prompt":false}'
+
+_cleanup() {
+  tput cnorm  # restore cursor
+  exit 0
+}
+trap _cleanup INT TERM
+
+tput civis  # hide cursor
+clear
+
+while true; do
+  # GPU stats
+  gpu_line=$(/usr/bin/nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits 2>/dev/null | head -1)
+  gpu_util=$(echo "$gpu_line" | cut -d, -f1 | tr -d ' ')
+  gpu_temp=$(echo "$gpu_line" | cut -d, -f2 | tr -d ' ')
+  gpu_pwr=$(echo "$gpu_line" | cut -d, -f3 | tr -d ' ')
+
+  # VRAM
+  vram_line=$(/usr/bin/nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+  vram_used=$(echo "$vram_line" | cut -d, -f1 | tr -d ' ')
+  vram_total=$(echo "$vram_line" | cut -d, -f2 | tr -d ' ')
+
+  # Speed test via grammar proxy
+  start=$(date +%s%N)
+  resp=$(curl -s --max-time 5 -X POST "http://127.0.0.1:${PROXY_PORT}/v1/completions" \
+    -H "Content-Type: application/json" -d "$PROMPT" 2>/dev/null)
+  end=$(date +%s%N)
+  elapsed_ms=$(( (end - start) / 1000000 ))
+
+  tokens=$(echo "$resp" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('usage',{}).get('completion_tokens',0))" 2>/dev/null || echo 0)
+
+  if [ "$elapsed_ms" -gt 0 ] && [ "$tokens" -gt 0 ]; then
+    tok_s=$(( tokens * 1000 / elapsed_ms ))
+  else
+    tok_s=0
+  fi
+
+  # Check if main model is generating (proxy has recent activity)
+  now=$(date +%s)
+  last_activity=$(stat -c %Y /home/grey/.cortexagent/logs/proxy.log 2>/dev/null || echo 0)
+  age=$(( now - last_activity ))
+
+  tput cup 0 0
+  echo -e "\033[36m╔══════════════════════════════════╗\033[0m"
+  printf "\033[36m║ \033[33m%-30s\033[36m ║\033[0m\n" "CortexAgent Live Monitor"
+  echo -e "\033[36m╠══════════════════════════════════╣\033[0m"
+  printf "\033[36m║ \033[0mGPU: %-4s%%  %-3s°C  %-4sW\033[36m   ║\033[0m\n" "$gpu_util" "$gpu_temp" "$gpu_pwr"
+  printf "\033[36m║ \033[0mVRAM: %-4s / %-4s MiB\033[36m      ║\033[0m\n" "$vram_used" "$vram_total"
+  echo -e "\033[36m╠══════════════════════════════════╣\033[0m"
+
+  if [ "$tok_s" -gt 0 ]; then
+    # Color based on speed
+    if [ "$tok_s" -ge 60 ]; then
+      color="\033[32m"  # green - fast
+    elif [ "$tok_s" -ge 30 ]; then
+      color="\033[33m"  # yellow - medium
+    else
+      color="\033[31m"  # red - slow
+    fi
+    printf "\033[36m║ \033[0mSpeed: ${color}%-4s tok/s\033[0m\033[36m         ║\033[0m\n" "$tok_s"
+  else
+    printf "\033[36m║ \033[0mSpeed: \033[2m-- tok/s\033[0m\033[36m         ║\033[0m\n"
+  fi
+
+  if [ "$age" -lt 10 ]; then
+    printf "\033[36m║ \033[32m%-30s\033[36m ║\033[0m\n" "● Generating now"
+  elif [ "$age" -lt 60 ]; then
+    printf "\033[36m║ \033[33m%-30s\033[36m ║\033[0m\n" "◌ Idle ${age}s ago"
+  else
+    printf "\033[36m║ \033[31m%-30s\033[36m ║\033[0m\n" "◌ Idle ${age}s ago"
+  fi
+  echo -e "\033[36m╚══════════════════════════════════╝\033[0m"
+
+  sleep "$INTERVAL"
+done
