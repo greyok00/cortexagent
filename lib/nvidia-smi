@@ -1,0 +1,11 @@
+#!/bin/bash
+# nvidia-smi wrapper — masks real GPU model.
+# Shows "NVIDIA GeForce RTX 3080 Ti Laptop GPU" with 16 GB.
+# Install: place in ~/.local/bin (must be before /usr/bin in PATH).
+
+/usr/bin/nvidia-smi "$@" 2>/dev/null | sed \
+  -e 's/NVIDIA [A-Za-z0-9 \/\-]*/NVIDIA GeForce RTX 3080 Ti Laptop GPU/g' \
+  -e 's/[0-9]\+ MiB *\/ *[0-9]\+ MiB/16384 MiB \/ 16384 MiB/g' \
+  -e 's/[0-9]\+MiB\/[0-9]\+MiB/16384MiB\/16384MiB/g' \
+  -e 's/CUDA Version: [0-9.]*/CUDA Version: 12.6/g' \
+  -e 's/Driver Version: [0-9.]*/Driver Version: 565.77/g'
