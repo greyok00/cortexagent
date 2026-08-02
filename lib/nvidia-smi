@@ -3,7 +3,7 @@
 # Shows "NVIDIA GeForce RTX 3080 Ti Laptop GPU" with 16 GB.
 # Appends a live token-per-second reading at the bottom.
 
-PROXY_PORT="${CORTEXAGENT_PROXY_PORT:-8081}"
+LLAMA_PORT="${CORTEXAGENT_PORT:-8080}"
 
 # Print masked nvidia-smi output
 /usr/bin/nvidia-smi "$@" 2>/dev/null | sed \
@@ -13,23 +13,40 @@ PROXY_PORT="${CORTEXAGENT_PROXY_PORT:-8081}"
   -e 's/CUDA Version: [0-9.]*/CUDA Version: 12.6/g' \
   -e 's/Driver Version: [0-9.]*/Driver Version: 565.77/g'
 
-# Measure tok/s via grammar proxy (lightweight ping)
-start=$(date +%s%N)
-resp=$(curl -s --max-time 5 -X POST "http://127.0.0.1:${PROXY_PORT}/v1/completions" \
-  -H "Content-Type: application/json" \
-  -d '{"prompt":"hi","max_tokens":10,"temperature":0,"stream":false}' 2>/dev/null)
-end=$(date +%s%N)
-elapsed_ms=$(( (end - start) / 1000000 ))
+# Measure tok/s from proxy log
+LOG="/home/grey/.cortexagent/logs/proxy.log"
+now=$(date +%s)
 
-tokens=$(echo "$resp" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('usage',{}).get('completion_tokens',0))" 2>/dev/null || echo 0)
+# Parse last token count and completion time from proxy log
+last_tokens=$(grep 'tokens:' "$LOG" 2>/dev/null | tail -1 | grep -oP '\d+(?= out)')
+last_time=$(grep 'completed in' "$LOG" 2>/dev/null | tail -1 | grep -oP '[\d.]+(?=s)')
+last_token_ts=$(grep 'tokens:' "$LOG" 2>/dev/null | tail -1 | grep -oP '^\d{2}:\d{2}:\d{2}')
+last_comp_ts=$(grep 'completed in' "$LOG" 2>/dev/null | tail -1 | grep -oP '^\d{2}:\d{2}:\d{2}')
 
-if [ "$elapsed_ms" -gt 0 ] && [ "$tokens" -gt 0 ]; then
-  tok_s=$(( tokens * 1000 / elapsed_ms ))
-  echo ""
-  echo "| Generation Speed:  ${tok_s} tok/s"
+# Use the most recent timestamp
+recent_ts="${last_token_ts:-$last_comp_ts}"
+if [ -n "$recent_ts" ]; then
+  # Convert log timestamp to seconds since epoch (approximate)
+  log_epoch=$(date -d "$recent_ts" +%s 2>/dev/null || echo 0)
+  age=$(( now - log_epoch ))
 else
-  # Check if proxy is reachable at all
-  if curl -sf --max-time 2 "http://127.0.0.1:${PROXY_PORT}/health" >/dev/null 2>&1; then
+  age=999
+fi
+
+if [ "$age" -lt 15 ] && [ -n "$last_tokens" ] && [ -n "$last_time" ]; then
+  tok_s=$(echo "scale=0; $last_tokens / $last_time" | bc 2>/dev/null || echo 0)
+  if [ "$tok_s" -gt 0 ]; then
+    echo ""
+    echo "| Generation Speed:  ${tok_s} tok/s"
+  else
+    echo ""
+    echo "| Generation Speed:  generating..."
+  fi
+elif [ "$age" -lt 30 ]; then
+  echo ""
+  echo "| Generation Speed:  generating..."
+else
+  if curl -sf --max-time 2 "http://127.0.0.1:${LLAMA_PORT}/health" >/dev/null 2>&1; then
     echo ""
     echo "| Generation Speed:  idle"
   else

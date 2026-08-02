@@ -8,7 +8,7 @@ Usage:
   python3 lib/grammar_proxy.py [port] [target]
   # Default: port=8081, target=http://127.0.0.1:8080
 """
-import json, os, sys, socket, select, threading
+import json, os, sys, socket, select, threading, time
 
 # ── Diagnostics (DIAGNOSTIC — safe to remove once 400 root cause is fixed) ──
 # Logs per-request structure to stderr (→ proxy.log) and optionally dumps the
@@ -42,7 +42,7 @@ def _diag(method, path, cl, chunked, body_len, parsed, parse_err):
             print(f"[proxy] DIAG dump failed: {e}", file=sys.stderr)
 
 
-def pipe(src, dst, stop):
+def pipe(src, dst, stop, resp_buf=None):
     while not stop.is_set():
         r, _, _ = select.select([src], [], [], 0.3)
         if r:
@@ -50,6 +50,8 @@ def pipe(src, dst, stop):
             if not data:
                 break
             dst.sendall(data)
+            if resp_buf is not None:
+                resp_buf.append(data)
 
 
 class ProxyHandler:
@@ -158,7 +160,11 @@ class ProxyHandler:
             head_bytes = ("\r\n".join(new_lines)).encode()
 
         data = head_bytes + b"\r\n\r\n" + body
+        _t0 = time.time()
         self._send_and_pipe(data)
+        _elapsed = time.time() - _t0
+        if _elapsed > 0.1:
+            print(f"[proxy] completed in {_elapsed:.2f}s", file=sys.stderr)
 
     def _forward_raw(self, head_bytes, body):
         """Forward headers + body and stream any further client bytes, then pipe response."""
@@ -209,7 +215,8 @@ class ProxyHandler:
             dst.close()
             return
         stop = threading.Event()
-        t1 = threading.Thread(target=pipe, args=(dst, self.conn, stop), daemon=True)
+        resp_buf: list[bytes] = []
+        t1 = threading.Thread(target=pipe, args=(dst, self.conn, stop, resp_buf), daemon=True)
         t1.start()
         try:
             while True:
@@ -223,6 +230,23 @@ class ProxyHandler:
             pass
         finally:
             stop.set()
+            # Log token usage from response
+            if resp_buf:
+                full = b"".join(resp_buf).decode("utf-8", errors="replace")
+                # Try to extract usage from the last JSON chunk (streaming) or full body
+                for line in full.split("\n"):
+                    if "usage" in line.lower() or "completion_tokens" in line:
+                        try:
+                            # Streaming: data: {"usage": {...}}
+                            if line.startswith("data: "):
+                                line = line[6:]
+                            usage = json.loads(line).get("usage", {})
+                            pt = usage.get("prompt_tokens", 0)
+                            ct = usage.get("completion_tokens", 0)
+                            if ct:
+                                print(f"[proxy] tokens: {pt} in → {ct} out", file=sys.stderr)
+                        except Exception:
+                            pass
             t1.join(timeout=3)
             try:
                 dst.close()
