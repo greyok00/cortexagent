@@ -15,7 +15,13 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Optional
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from lib.config import CFG  # author tag is configurable (CORTEXAGENT_AUTHOR)
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -130,7 +136,17 @@ class ChatScreen(Screen):
         self._update_footer()
         self.set_interval(1, self._update_footer)
         log = self.query_one("#chat_log", RichLog)
-        log.write(f"[bold {ACCENT}]CORTEXAGENT[/] [dim]by GreyOK00[/dim]")
+        # CortexAgent logo — same source as lib/banner.py (single source of
+        # truth). The stdout boot animation isn't used inside the Textual app
+        # (it owns the screen); we render the final logo frame in the RichLog.
+        from lib import banner as _banner
+        for _ln in _banner.LOGO:
+            log.write(f"[#96DCFF]  {_ln}[/]")
+        log.write(f"[dim]  CORTEXAGENT by {CFG.author}[/]")
+        _model = os.environ.get("CLAUDE_MODEL_NAME") or os.environ.get("CORTEXAGENT_ALIAS") or ""
+        if _model:
+            log.write(f"[dim]  Model: {_model}[/]")
+        log.write("")
         log.write("[dim]Type a message to start.[/dim]")
 
     def _log(self, text: str, style: str = "dim") -> None:
@@ -153,9 +169,9 @@ class ChatScreen(Screen):
         rate = self.counter.rate
         total = self.counter.total
         if total > 0:
-            bar.update(f"⚡ {rate:.1f} tok/s  |  📊 {total} tokens")
+            bar.update(f"CortexAgent · {CFG.author} · {rate:.1f} tok/s · {total} tok")
         else:
-            bar.update("CORTEXAGENT by GreyOK00")
+            bar.update(f"CortexAgent · {CFG.author}")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self._send(event.value)

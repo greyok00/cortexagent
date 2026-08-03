@@ -1,0 +1,485 @@
+#!/usr/bin/env python3
+"""lib/daemon.py — the persistent CortexAgent backend daemon.
+
+Owns the model backends and the grammar proxy so the CLI can be a thin client:
+
+  - tiny 0.5b llama-server on :8082  (always up — cheap, used by overseer/etc.)
+  - big coding model on :8080        (loaded on demand, idle-unloaded to free VRAM)
+  - grammar proxy on :8081           (reload-aware: triggers big reload on request)
+  - AF_UNIX control socket           (status / load / unload / session / shutdown)
+
+Idle auto-unload: after ``CORTEXAGENT_IDLE_UNLOAD_SEC`` (default 600s) with no
+proxy traffic and no active CLI session, the big model is stopped → ~13 GB VRAM
+freed. The next request reloads it transparently (the proxy buffers + retries),
+so the CLI never relaunches and never sees a 502.
+
+Lifecycle:
+  python3 lib/daemon.py run       # foreground (systemd ExecStart)
+  python3 lib/daemon.py start     # fork to background (manual)
+  python3 lib/daemon.py stop      # graceful shutdown via control socket
+  python3 lib/daemon.py status    # report via control socket
+
+No Ollama. No hardcoded home paths (all via lib/config.py).
+"""
+from __future__ import annotations
+
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from lib.config import CFG  # noqa: E402
+from lib.model_backend import LlamaServer  # noqa: E402
+from lib import control  # noqa: E402
+
+# ── State ────────────────────────────────────────────────────────────────────
+STATE_DIR = CFG.state_dir
+LOG_FILE = CFG.logs_dir / "daemon.log"
+PID_FILE = STATE_DIR / "daemon.pid"
+IDLE_POLL = 5  # seconds between idle checks
+
+_lock = threading.Lock()       # brief: _last_request / _active_sessions counters
+_big_lock = threading.Lock()   # serializes big-model load/unload (long-held)
+_last_request = 0.0          # unix ts of last proxy activity / session event
+_active_sessions = 0         # CLI sessions currently active (refcount)
+_SHUTDOWN = False
+_proxy_proc: Optional[subprocess.Popen] = None
+
+# ── Colors ───────────────────────────────────────────────────────────────────
+CYAN, GREEN, YELLOW, RED, DIM, BOLD, RST = (
+    "\033[36m", "\033[32m", "\033[33m", "\033[31m", "\033[2m", "\033[1m", "\033[0m")
+
+
+def _log(msg: str, emoji: str = "", color: str = "") -> None:
+    ts = datetime.now().strftime("%H:%M:%S")
+    line = f"{color}{emoji} {BOLD}daemon{RST} {DIM}{color}[{ts}]{RST} {color}{msg}{RST}"
+    print(line, file=sys.stderr)
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOG_FILE, "a") as f:
+        f.write(f"[{ts}] {msg}\n")
+
+
+# ── Model backends ────────────────────────────────────────────────────────────
+def _big_extra_args() -> list:
+    args = [
+        "-fa", str(CFG.big_fa),
+        "-ctk", str(CFG.big_ctk),
+        "-ctv", str(CFG.big_ctv),
+        "-np", str(CFG.big_np),
+        "--kv-unified",
+    ]
+    if int(CFG.big_kv_offload) == 0:
+        args.append("--no-kv-offload")
+    return args
+
+
+_big = LlamaServer(
+    "big", str(CFG.big_model), port=int(CFG.big_model_port),
+    ctx=int(CFG.big_ctx), ngl=int(CFG.big_ngl), alias=str(CFG.big_alias),
+    extra_args=_big_extra_args(), log_file=str(CFG.big_log), startup_timeout=300,
+)
+_tiny = LlamaServer(
+    "tiny", str(CFG.tiny_model), port=int(CFG.tiny_model_port),
+    ctx=4096, ngl=999, alias="cortexagent-tiny",
+    log_file=str(CFG.logs_dir / "tiny-server.log"), startup_timeout=180,
+)
+
+
+def _start_tiny() -> bool:
+    if _tiny.is_healthy():
+        return True
+    _log(f"Starting tiny model on :{_tiny.port}...", "🔄", CYAN)
+    ok = _tiny.start()
+    _log(f"Tiny model {'ready' if ok else 'FAILED'} on :{_tiny.port}",
+         "✅" if ok else "❌", GREEN if ok else RED)
+    return ok
+
+
+def _start_big(timeout: Optional[int] = None) -> bool:
+    """Load the big model and wait for /health. Idempotent. Thread-safe.
+
+    Holds _big_lock for the (long) duration so only one load runs at a time,
+    but does NOT hold _lock — so activity/status/session commands stay responsive.
+    """
+    with _big_lock:
+        if _big.is_healthy():
+            return True
+        _log(f"Loading big model on :{_big.port} (this can take ~60s)...", "🔄", CYAN)
+        ok = _big.start(timeout=timeout)
+        _log(f"Big model {'ready' if ok else 'FAILED'} on :{_big.port} (pid {_big.pid})",
+             "✅" if ok else "❌", GREEN if ok else RED)
+        return ok
+
+
+def _stop_big() -> bool:
+    with _big_lock:
+        if not _big.running and not _big.is_healthy():
+            return True
+        # Don't kill a big model we didn't start (e.g. one already on :8080 that
+        # the daemon adopted via is_healthy()). proc is None in that case.
+        if _big.proc is None:
+            _log("Big not owned by daemon (adopted/external) — leaving it", "🛡️", DIM)
+            return True
+        _log("Stopping big model — freeing VRAM...", "💤", YELLOW)
+        ok = _big.stop()
+        _log("Big model stopped — VRAM freed", "💤", DIM)
+        return ok
+
+
+def _swap_big(model_path: str, ctx: int = 8192, ngl: int = 999,
+              alias: str = "cortexagent", extra_args: Optional[list] = None) -> bool:
+    """Hot-swap a different model into the main slot (:8080).
+
+    Stops the current big model and loads ``model_path`` in its place, keeping
+    the same port (so the grammar proxy's target stays valid). Used to switch
+    between coding / image / video / overseer models by type — one model at a
+    time. Holds _big_lock for the whole stop→start so status/session views stay
+    consistent. Returns True if the new model is healthy.
+    """
+    global _big
+    with _big_lock:
+        if _big.running or _big.is_healthy():
+            _log(f"Swapping — stopping current big ({Path(_big.model_path).name})",
+                 "💤", YELLOW)
+            _big.stop()
+        _big = LlamaServer(
+            "big", str(model_path), port=int(CFG.big_model_port),
+            ctx=int(ctx), ngl=int(ngl), alias=str(alias),
+            extra_args=list(extra_args or []),
+            log_file=str(CFG.big_log), startup_timeout=300,
+        )
+        _log(f"Loading big model: {Path(model_path).name} on :{_big.port}", "🔄", CYAN)
+        ok = _big.start()
+        _log(f"Big model {'ready' if ok else 'FAILED'} ({Path(model_path).name})",
+             "✅" if ok else "❌", GREEN if ok else RED)
+        return ok
+
+
+def _stop_tiny() -> bool:
+    # Don't kill a tiny we didn't start (e.g. the overseer's tiny already on
+    # :8082 that the daemon adopted via is_healthy()). proc is None then.
+    if _tiny.proc is None:
+        _log("Tiny not owned by daemon (adopted/external) — leaving it", "🛡️", DIM)
+        return True
+    return _tiny.stop()
+
+
+# ── Grammar proxy ─────────────────────────────────────────────────────────────
+def _start_proxy() -> bool:
+    """Start the reload-aware grammar proxy on :8081 (→ :8080)."""
+    global _proxy_proc
+    proxy_script = _REPO_ROOT / "lib" / "grammar_proxy.py"
+    if not proxy_script.exists():
+        _log("grammar_proxy.py not found — proxy disabled", "⚠️", YELLOW)
+        return False
+    port = int(os.environ.get("CORTEXAGENT_PROXY_PORT", "8081"))
+    log = CFG.logs_dir / "proxy.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env["CORTEXAGENT_PROXY_PORT"] = str(port)
+    env["CORTEXAGENT_PROXY_TARGET"] = f"http://127.0.0.1:{_big.port}"
+    try:
+        log_fh = open(log, "ab")
+        _proxy_proc = subprocess.Popen(
+            [sys.executable, str(proxy_script), str(port)],
+            env=env, stdout=log_fh, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, start_new_session=True,
+        )
+        time.sleep(1)
+        ok = _proxy_proc.poll() is None
+        _log(f"Grammar proxy {'ready' if ok else 'FAILED'} on :{port} (pid {_proxy_proc.pid if _proxy_proc else '?'})",
+             "✅" if ok else "❌", GREEN if ok else RED)
+        return ok
+    except Exception as e:
+        _log(f"Proxy start error: {e}", "❌", RED)
+        return False
+
+
+def _stop_proxy() -> None:
+    global _proxy_proc
+    if _proxy_proc and _proxy_proc.poll() is None:
+        try:
+            _proxy_proc.terminate()
+            _proxy_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _proxy_proc.kill()
+    _proxy_proc = None
+
+
+# ── Idle watcher ──────────────────────────────────────────────────────────────
+def _idle_watcher() -> None:
+    """Unload the big model when idle to free VRAM."""
+    while not _SHUTDOWN:
+        time.sleep(IDLE_POLL)
+        with _lock:
+            last = _last_request
+            sessions = _active_sessions
+        if _big.running and sessions == 0 and last:
+            idle = time.time() - last
+            if idle > CFG.idle_unload_sec:
+                _log(f"Idle {int(idle)}s > {CFG.idle_unload_sec}s — unloading big model",
+                     "💤", YELLOW)
+                _stop_big()
+
+
+# ── Control socket handler ────────────────────────────────────────────────────
+def _handle(req: Dict) -> Dict:
+    global _active_sessions, _last_request, _SHUTDOWN
+    cmd = req.get("cmd", "")
+
+    if cmd == "ping":
+        return {"ok": True}
+
+    if cmd == "status":
+        return {
+            "ok": True,
+            "big": {"port": _big.port, "healthy": _big.is_healthy(), "running": _big.running},
+            "tiny": {"port": _tiny.port, "healthy": _tiny.is_healthy(), "running": _tiny.running},
+            "proxy": {"running": bool(_proxy_proc and _proxy_proc.poll() is None)},
+            "active_sessions": _active_sessions,
+            "last_request": _last_request,
+            "idle_sec": int(time.time() - _last_request) if _last_request else None,
+            "idle_unload_sec": int(CFG.idle_unload_sec),
+        }
+
+    if cmd == "activity":
+        # proxy reports a forward — reset the idle timer
+        with _lock:
+            _last_request = time.time()
+        return {"ok": True, "big_healthy": _big.is_healthy()}
+
+    if cmd == "load":
+        which = req.get("which", "big")
+        # A manual load counts as activity — prime the idle timer so the model
+        # idles out after idle_unload_sec if no session claims it (rather than
+        # the idle watcher skipping it because _last_request was never set).
+        with _lock:
+            _last_request = time.time()
+        # Optional model swap: load an arbitrary model into the big slot (image
+        # / video / overseer / a different coding model). Only meaningful for
+        # the big slot — the tiny overseer is fixed.
+        model = req.get("model")
+        if model and which in ("big", None):
+            ok = _swap_big(model, ctx=int(req.get("ctx", 8192)),
+                           ngl=int(req.get("ngl", 999)),
+                           alias=req.get("alias", "cortexagent"),
+                           extra_args=req.get("extra_args"))
+            return {"ok": ok, "big_healthy": _big.is_healthy(),
+                    "model": str(_big.model_path)}
+        if which == "big":
+            ok = _start_big(timeout=int(req.get("timeout", 300)))
+            return {"ok": ok, "big_healthy": _big.is_healthy()}
+        if which == "tiny":
+            return {"ok": _start_tiny(), "tiny_healthy": _tiny.is_healthy()}
+        if which == "all":
+            return {"ok": _start_tiny() and _start_big(), }
+        return {"ok": False, "error": f"unknown which: {which}"}
+
+    if cmd == "swap":
+        # Explicit hot-swap of an arbitrary model into the main slot (:8080).
+        # {cmd:"swap", model:"/path/to/model.gguf", ctx?, ngl?, alias?, extra_args?}
+        model = req.get("model")
+        if not model:
+            return {"ok": False, "error": "swap requires 'model' path"}
+        with _lock:
+            _last_request = time.time()
+        ok = _swap_big(model, ctx=int(req.get("ctx", 8192)),
+                       ngl=int(req.get("ngl", 999)),
+                       alias=req.get("alias", "cortexagent"),
+                       extra_args=req.get("extra_args"))
+        return {"ok": ok, "big_healthy": _big.is_healthy(),
+                "model": str(_big.model_path)}
+
+    if cmd == "unload":
+        which = req.get("which", "big")
+        if which == "big":
+            return {"ok": _stop_big()}
+        if which == "tiny":
+            return {"ok": _stop_tiny()}
+        if which == "all":
+            return {"ok": _stop_big() and _stop_tiny()}
+        return {"ok": False, "error": f"unknown which: {which}"}
+
+    if cmd == "session-start":
+        with _lock:
+            _active_sessions += 1
+            _last_request = time.time()
+        _log(f"Session start (active={_active_sessions}) — loading big model", "▶️", CYAN)
+        # Synchronous: the FIRST session loads the main model before the CLI
+        # launches (so the first token isn't delayed by a cold load). Later
+        # sessions find it already up → _start_big is idempotent and instant.
+        # Thread-per-connection control socket means this long call does NOT
+        # block concurrent activity/status/ping commands.
+        ok = _start_big()
+        return {"ok": ok, "active_sessions": _active_sessions, "big_healthy": _big.is_healthy()}
+
+    if cmd == "session-end":
+        with _lock:
+            _active_sessions = max(0, _active_sessions - 1)
+            _last_request = time.time()  # restart idle timer; big stays for idle_sec
+        _log(f"Session end (active={_active_sessions}) — big idles in {CFG.idle_unload_sec}s",
+             "⏹️", DIM)
+        return {"ok": True, "active_sessions": _active_sessions}
+
+    if cmd == "shutdown":
+        _SHUTDOWN = True
+        _log("Shutdown requested", "🛑", YELLOW)
+        return {"ok": True}
+
+    return {"ok": False, "error": f"unknown cmd: {cmd}"}
+
+
+# ── Main loop ─────────────────────────────────────────────────────────────────
+def _run() -> None:
+    """Foreground daemon: tiny + proxy + control socket + idle watcher."""
+    signal.signal(signal.SIGTERM, lambda *_: _request_shutdown())
+    signal.signal(signal.SIGINT, lambda *_: _request_shutdown())
+
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    (CFG.logs_dir).mkdir(parents=True, exist_ok=True)
+    _log(f"CortexAgent daemon starting (idle_unload={CFG.idle_unload_sec}s)", "🚀", CYAN)
+
+    _start_tiny()
+    _start_proxy()
+
+    threading.Thread(target=_idle_watcher, daemon=True).start()
+    threading.Thread(target=control.serve, args=(_handle,), daemon=True).start()
+
+    _log("Daemon ready — control socket listening", "✅", GREEN)
+    while not _SHUTDOWN:
+        time.sleep(1)
+
+    # ── graceful shutdown ──
+    _log("Daemon shutting down — stopping proxy + models...", "🛑", YELLOW)
+    _stop_proxy()
+    _stop_big()
+    _stop_tiny()
+    try:
+        PID_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+    try:
+        os.unlink(control._socket_path())
+    except Exception:
+        pass
+    _log("Daemon stopped cleanly (exit 0)", "✅", GREEN)
+
+
+def _request_shutdown() -> None:
+    global _SHUTDOWN
+    _SHUTDOWN = True
+
+
+def _is_running() -> Optional[int]:
+    if not PID_FILE.exists():
+        return None
+    try:
+        pid = int(PID_FILE.read_text().strip())
+        os.kill(pid, 0)
+        return pid
+    except (ProcessLookupError, ValueError, OSError):
+        PID_FILE.unlink(missing_ok=True)
+        return None
+
+
+def _start_bg() -> int:
+    """Fork to background (manual start without systemd)."""
+    pid = _is_running()
+    if pid:
+        print(f"Daemon already running (pid {pid})")
+        return 0
+    pid = os.fork()
+    if pid > 0:
+        PID_FILE.write_text(str(pid))
+        print(f"Daemon started (pid {pid})")
+        return 0
+    os.setsid()
+    with open(os.devnull, "w") as null:
+        os.dup2(null.fileno(), 0)
+        os.dup2(null.fileno(), 1)
+        os.dup2(null.fileno(), 2)
+    _run()
+    return 0
+
+
+def _stop() -> int:
+    pid = _is_running()
+    if not pid:
+        # maybe running as systemd (no pid file) — try the socket
+        try:
+            r = control.send_request("shutdown", timeout=5)
+            print("Daemon shutdown via socket:", r)
+            return 0
+        except Exception:
+            print("Daemon not running")
+            return 0
+    try:
+        control.send_request("shutdown", timeout=5)
+    except Exception:
+        os.kill(pid, signal.SIGTERM)
+    # wait for exit
+    for _ in range(150):
+        try:
+            os.kill(pid, 0)
+            time.sleep(0.1)
+        except ProcessLookupError:
+            break
+    PID_FILE.unlink(missing_ok=True)
+    print("Daemon stopped")
+    return 0
+
+
+def _status() -> int:
+    try:
+        s = control.send_request("status", timeout=5)
+    except Exception as e:
+        print(f"Daemon not reachable: {e}")
+        return 1
+    if not s.get("ok"):
+        print("status error:", s)
+        return 1
+    big = s["big"]
+    tiny = s["tiny"]
+    print(f"CortexAgent daemon: 🟢 running")
+    print(f"  big  :{big['port']}  {'🟢 healthy' if big['healthy'] else '🔴 down'}  (running={big['running']})")
+    print(f"  tiny :{tiny['port']}  {'🟢 healthy' if tiny['healthy'] else '🔴 down'}  (running={tiny['running']})")
+    print(f"  proxy: {'🟢 up' if s['proxy']['running'] else '🔴 down'}")
+    print(f"  sessions: {s['active_sessions']}  idle: {s['idle_sec']}s / {s['idle_unload_sec']}s")
+    return 0
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print(__doc__)
+        return 1
+    cmd = sys.argv[1]
+    if cmd == "run":
+        PID_FILE.write_text(str(os.getpid()))
+        try:
+            _run()
+        finally:
+            PID_FILE.unlink(missing_ok=True)
+        return 0
+    if cmd == "start":
+        return _start_bg()
+    if cmd == "stop":
+        return _stop()
+    if cmd == "status":
+        return _status()
+    print(f"unknown command: {cmd}\n", file=sys.stderr)
+    print(__doc__)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

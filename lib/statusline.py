@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """cortexagent statusline — branded bottom bar for the agent TUI.
 
-Reads the agent's status JSON on stdin and prints a single branded line:
-    CortexAgent · GreyOK00 · <model> · <cwd> · <ctx tokens>
+Reads the agent's status JSON on stdin and fetches token metrics from the
+grammar proxy. Prints a single branded line:
+    CortexAgent · <author> · <model> · <cwd> · <ctx tokens> · <tok/s>
 
 The agent CLI calls this on every render. Output is plain text (one line).
 Fails soft: on any error, prints a minimal branded line so the TUI never
@@ -11,6 +12,42 @@ loses its status bar.
 import json
 import os
 import sys
+import urllib.request
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from lib.config import CFG  # author tag is configurable (CORTEXAGENT_AUTHOR)
+
+
+def _get_token_metrics() -> str:
+    """Fetch token metrics from the grammar proxy /metrics endpoint."""
+    proxy_port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{proxy_port}/metrics",
+                                     method="GET")
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            data = json.loads(resp.read())
+            parts = []
+            ct = data.get("completion_tokens", 0)
+            pt = data.get("prompt_tokens", 0)
+            reqs = data.get("requests", 0)
+            cur = data.get("current_tok_s", 0)
+            avg = data.get("avg_tok_s", 0)
+            if ct:
+                parts.append(f"{ct} tok")
+            if cur:
+                parts.append(f"{cur} t/s")
+            if reqs:
+                parts.append(f"{reqs} req")
+            vu = data.get("vram_used_mib")
+            vt = data.get("vram_total_mib")
+            if vu is not None and vt:
+                parts.append(f"{vu/1024:.1f}/{vt/1024:.0f} GB")
+            return " · ".join(parts) if parts else ""
+    except Exception:
+        return ""
 
 
 def main():
@@ -36,8 +73,7 @@ def main():
         elif cwd.startswith(home + os.sep):
             cwd = "~" + cwd[len(home):]
 
-    # Context usage — field name varies by CLI version. Prefer current-context
-    # fields; fall back to nothing rather than show a misleading number.
+    # Context usage
     ctx_str = ""
     cw = d.get("context_window") or {}
     if isinstance(cw, dict):
@@ -50,13 +86,18 @@ def main():
         if isinstance(ex, dict):
             ctx_str = f"{ex.get('token_count','?')} tok"
 
-    parts = ["CortexAgent", "GreyOK00"]
+    # Token metrics from proxy
+    tok_metrics = _get_token_metrics()
+
+    parts = ["CortexAgent", str(CFG.author)]
     if model:
         parts.append(model)
     if cwd:
         parts.append(cwd)
     if ctx_str:
         parts.append(ctx_str)
+    if tok_metrics:
+        parts.append(tok_metrics)
     print(" · ".join(str(p) for p in parts))
 
 
@@ -64,5 +105,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        # Never let the statusline break the TUI.
-        print("CortexAgent · GreyOK00")
+        print(f"CortexAgent · {CFG.author}")

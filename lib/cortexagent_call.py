@@ -100,8 +100,8 @@ def _fmt_recent(limit: int):
             role = m.get("role", "?")
             ts = (m.get("timestamp") or "")[:19]
             content = (m.get("content") or "").strip().replace("\n", " ")
-            if len(content) > 240:
-                content = content[:240] + "…"
+            if len(content) > 5000:
+                content = content[:5000] + "…"
             lines.append(f"  [{ts}] {role}: {content}")
     return "\n".join(lines)
 
@@ -128,7 +128,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.cmd == "search":
         for r in search(args.query, limit=args.limit):
-            content = (r.get("content") or "").strip().replace("\n", " ")[:200]
+            content = (r.get("content") or "").strip().replace("\n", " ")[:5000]
             ts = (r.get("timestamp") or "")[:19]
             print(f"[{ts}] {r.get('role', '?')}: {content}")
 

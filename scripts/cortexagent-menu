@@ -1,0 +1,57 @@
+#!/bin/bash
+# cortexagent-menu — emergency model menu (system-tray-style, no GUI daemon).
+#
+# Pops up a dmenu/rofi list of model actions and runs the chosen one against the
+# CortexAgent daemon via the unified CLI. Falls back to a plain numbered prompt
+# on stdout if no dmenu/rofi is installed, so it works headless over SSH too.
+#
+# Bind to a hotkey in your WM, e.g. (i3/sway):
+#   bindsym $mod+Shift+m exec /path/to/cortexagent/scripts/cortexagent-menu
+#
+# Requires the daemon: `cortexagent daemon start`.
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+CLI=(python3 "${REPO_ROOT}/engine/cli.py")
+
+ITEMS=(
+  "status      — show big/tiny/proxy state"
+  "reload big  — unload + load the main model"
+  "unload big  — free ~13 GB VRAM now"
+  "load big    — load the main model"
+  "unload tiny — free the 0.5b"
+  "load tiny   — load the 0.5b"
+  "reload all  — cycle both models"
+  "daemon stop — shut the backend down"
+)
+
+pick() {
+  if command -v rofi >/dev/null 2>&1; then
+    printf '%s\n' "${ITEMS[@]}" | rofi -dmenu -i -p cortexagent -no-custom
+  elif command -v dmenu >/dev/null 2>&1; then
+    printf '%s\n' "${ITEMS[@]}" | dmenu -i -p cortexagent -l "${#ITEMS[@]}"
+  else
+    # Headless fallback: numbered list on stderr, read choice on stdin/stdout.
+    echo "cortexagent model menu — pick a number:" >&2
+    for i in "${!ITEMS[@]}"; do echo "  $((i+1)). ${ITEMS[$i]}" >&2; done
+    printf "choice> " >&2
+    read -r n
+    echo "${ITEMS[$((n-1))]}"
+  fi
+}
+
+CHOICE="$(pick || true)"
+[ -z "${CHOICE}" ] && exit 0
+
+case "${CHOICE}" in
+  status*)       exec "${CLI[@]}" models status ;;
+  "reload big"*) exec "${CLI[@]}" models reload big ;;
+  "unload big"*) exec "${CLI[@]}" models unload big ;;
+  "load big"*)   exec "${CLI[@]}" models load big ;;
+  "unload tiny"*) exec "${CLI[@]}" models unload tiny ;;
+  "load tiny"*)  exec "${CLI[@]}" models load tiny ;;
+  "reload all"*) exec "${CLI[@]}" models reload all ;;
+  "daemon stop"*) exec "${CLI[@]}" daemon stop ;;
+  *) echo "unknown choice: ${CHOICE}" >&2; exit 1 ;;
+esac

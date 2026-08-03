@@ -1,5 +1,5 @@
 #!/bin/bash
-# cortexagent — a local coding agent by GreyOK00.
+# cortexagent — a local coding agent by CortexAgent.
 #
 # Runs the agent on a local llama.cpp model (no cloud, no API key). Loads the
 # model into VRAM only while the session runs, and frees VRAM on exit. Full
@@ -20,6 +20,46 @@
 
 set -euo pipefail
 
+# ── Locate self (symlink-safe) — must be early, used by everything below ──────
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
+
+# ── Daemon mode? If the persistent daemon is up, IT owns the models + proxy;
+#    this launcher just points claude at the daemon's proxy and notifies it of
+#    session start/end. Legacy mode (no daemon) starts/stops its own servers.
+DAEMON_MODE=0
+if python3 "$REPO_ROOT/lib/control.py" 2>/dev/null | grep -q "True"; then
+  DAEMON_MODE=1
+  echo "CortexAgent daemon detected — using managed models (daemon mode)."
+fi
+
+# ── Backend (llama.cpp) — defined early so kill_stale can use LLAMA_DIR ──────
+LLAMA_DIR="${CORTEXAGENT_LLAMA_DIR:-$HOME/llama.cpp/build}"
+MODELS_DIR="${CORTEXAGENT_MODELS_DIR:-$HOME/models}"
+
+# ── Kill stale cortexagent llama-server processes only (NOT Ollama's) ─────────
+# Ollama also runs llama-server — we must only kill our own instances.
+# Filter by --alias cortexagent to avoid killing Ollama's server (which we need
+# for cloud model access).
+_cortexagent_kill_stale() {
+  local pids
+  # Only match llama-server processes we own: either our own build path or --alias cortexagent
+  pids="$(ps aux | grep llama-server | grep -v grep | grep -E "(--alias|${LLAMA_DIR}/build)" | awk '{print $2}' || true)"
+  if [ -n "${pids}" ]; then
+    echo "Killing stale cortexagent llama-server process(es)..."
+    kill ${pids} 2>/dev/null || true
+    sleep 1
+    pids="$(ps aux | grep llama-server | grep -v grep | grep -E "(--alias|${LLAMA_DIR}/build)" | awk '{print $2}' || true)"
+    [ -n "${pids}" ] && kill -9 ${pids} 2>/dev/null || true
+    sleep 1
+  fi
+}
+
+if [ "$DAEMON_MODE" = "0" ]; then
+  _cortexagent_kill_stale
+fi
+
 # ── Check if tray is running ──────────────────────────────────────────────
 if ss -ltn 2>/dev/null | grep -q ":8090 "; then
   echo "CortexAgent tray is running (port 8090)."
@@ -27,15 +67,6 @@ if ss -ltn 2>/dev/null | grep -q ":8090 "; then
   echo "Starting standalone CLI session (independent from web UI)."
   echo ""
 fi
-
-# ── Locate self (symlink-safe) ──────────────────────────────────────────────
-SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
-REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
-export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
-
-# ── Backend (llama.cpp) ──────────────────────────────────────────────────────
-LLAMA_DIR="${CORTEXAGENT_LLAMA_DIR:-$HOME/llama.cpp/build}"
-MODELS_DIR="${CORTEXAGENT_MODELS_DIR:-$HOME/models}"
 
 # --list-models: show available models and exit
 for arg in "$@"; do
@@ -47,6 +78,28 @@ for arg in "$@"; do
     echo "       CORTEXAGENT_MODEL=$HOME/models/path/to/model.gguf cortexagent"
     exit 0
   fi
+done
+
+# ── Welcome screen mode ─────────────────────────────────────────────────────
+# GitHub issue #2254 proposes a `welcomeScreen` setting (hidden|condensed|full)
+# + `--welcome-screen` CLI flag. Claude Code 2.1.220 does NOT implement either —
+# there is no `welcomeScreen` settings key and no `CLAUDE_CODE_DISABLE_BANNER`
+# env var (the old guess here did nothing). The one mechanism that actually
+# suppresses the onboarding/welcome chrome is `IS_DEMO=1`: it zeroes the
+# onboarding steps (`zcn={show:!1,steps:[]}`) and also masks org/email, so only
+# our custom ASCII banner shows. We map the proposed flag onto it:
+#   --welcome-screen hidden   → IS_DEMO=1   (default: only our banner)
+#   --welcome-screen condensed→ IS_DEMO=1   (no separate condensed mode exists)
+#   --welcome-screen full     → leave Claude's welcome intact
+# Default is `hidden` (CORTEXAGENT_WELCOME_SCREEN overrides) to match the
+# pre-existing intent of suppressing the duplicate banner. Swap for a real
+# `welcomeScreen` settings key the day Claude Code ships one.
+WELCOME_SCREEN="${CORTEXAGENT_WELCOME_SCREEN:-hidden}"
+for arg in "$@"; do
+  case "$arg" in
+    --welcome-screen=*) WELCOME_SCREEN="${arg#--welcome-screen=}" ;;
+    --welcome-screen)   WELCOME_SCREEN="hidden" ;;   # bare flag → hidden
+  esac
 done
 
 # Pick model: CORTEXAGENT_MODEL env var, or --model flag, or default
@@ -109,6 +162,8 @@ CONFIG_DIR="${CORTEXAGENT_CONFIG_DIR:-$HOME/.cortexagent-config}"
 mkdir -p "${CONFIG_DIR}"
 # Always (re-)sync our minified CLAUDE.md into the isolated config dir.
 [ -f "${REPO_ROOT}/config/CLAUDE.md" ] && cp -f "${REPO_ROOT}/config/CLAUDE.md" "${CONFIG_DIR}/CLAUDE.md"
+# Lock it immutable so Claude Code updates can't overwrite it.
+chattr +i "${CONFIG_DIR}/CLAUDE.md" 2>/dev/null || chmod 444 "${CONFIG_DIR}/CLAUDE.md"
 # Render settings.json.template into the isolated config dir, replacing
 # {{HOME}} so claudeMdExcludes points at the real global CLAUDE.md path.
 if [ -f "${REPO_ROOT}/config/settings.json.template" ]; then
@@ -116,18 +171,24 @@ if [ -f "${REPO_ROOT}/config/settings.json.template" ]; then
 fi
 
 # ── Render the live MCP config in the isolated dir ─────────────────────────────
-# By default we expose only the in-repo CortexAgent memory server + a single
-# lazy firecrawl proxy tool. Set CORTEXAGENT_FIRECRAWL_ENABLED=0 to hide
-# firecrawl entirely; set CORTEXAGENT_BRAVE_ENABLED=0 to hide Brave tools.
+# Uses the shared CortexLLM MCP server so all platforms share one memory.
 FIRECRAWL_ENABLED="${CORTEXAGENT_FIRECRAWL_ENABLED:-1}"
 BRAVE_ENABLED="${CORTEXAGENT_BRAVE_ENABLED:-1}"
-MEMORY_CMD="python3 ${REPO_ROOT}/memory/mcp_server.py"
+MEMORY_CMD="python3 ${HOME}/cortexllm/repo/cortexllm_mcp_server.py"
 python3 - "${REPO_ROOT}" "${CONFIG_DIR}" "${MEMORY_CMD}" "${FIRECRAWL_ENABLED}" "${BRAVE_ENABLED}" <<'PY'
 import json, os, sys
 repo_root, config_dir, memory_cmd, fire_enabled, brave_enabled = sys.argv[1:6]
-servers = {
-    "cortexagent": {"command": memory_cmd}
-}
+servers = {}
+# CortexLLM shared-memory MCP server — only if its script actually exists.
+# A fresh install without ~/cortexllm/repo skips it so `claude
+# --strict-mcp-config` doesn't fail on a missing server (the agent still
+# runs, just without cross-platform shared memory).
+_mem_script = memory_cmd.split()[-1] if memory_cmd else ""
+if _mem_script and os.path.exists(_mem_script):
+    servers["cortexagent"] = {"command": memory_cmd}
+else:
+    sys.stderr.write("[cortexagent] CortexLLM MCP server not found (%s) — "
+                     "skipping (no shared memory).\n" % _mem_script)
 if fire_enabled == "1":
     servers["firecrawl"] = {
         "command": f"python3 {os.path.join(repo_root, 'lib', 'firecrawl_proxy.py')}",
@@ -164,11 +225,39 @@ PY
 export CLAUDE_CONFIG_DIR="${CONFIG_DIR}"
 export CORTEXAGENT_MCP_CONFIG="${CONFIG_DIR}/mcp.json"
 
+# ── Start the persistent memory daemon (if not already running) ────────────
+bash "${HOME}/.cortexllm/scripts/memory-daemon.sh" start 2>/dev/null || true
+
+# ── Kill any stale llama-server processes (from Ollama or previous sessions) ──
+# Daemon mode: the daemon owns the big+tiny llama-servers — DO NOT kill them.
+if [ "$DAEMON_MODE" = "0" ]; then
+  STALE_PIDS="$(ps aux | grep llama-server | grep -v grep | awk '{print $2}' || true)"
+  if [ -n "${STALE_PIDS}" ]; then
+    echo "Killing stale llama-server process(es) — loading our model..."
+    kill ${STALE_PIDS} 2>/dev/null || true
+    sleep 1
+    # Force kill if still running
+    STALE_PIDS="$(ps aux | grep llama-server | grep -v grep | awk '{print $2}' || true)"
+    if [ -n "${STALE_PIDS}" ]; then
+      kill -9 ${STALE_PIDS} 2>/dev/null || true
+      sleep 1
+    fi
+    echo "  VRAM freed."
+  fi
+fi
+
 # ── Start llama-server only if port is free ─────────────────────────────────
 SERVER_PID=""
-if ss -ltn 2>/dev/null | grep -q ":${PORT} "; then
+SERVER_STARTED=0
+if [ "$DAEMON_MODE" = "1" ]; then
+  # Daemon owns the big model — just notify it a session is starting so it
+  # loads (if idle-unloaded) and pins the model for the session lifetime.
+  echo "Daemon mode — requesting big model load via control socket..."
+  python3 -c "import sys; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
+r=control.send_request('session-start', timeout=300); print('  session-start:', r)" 2>&1 \
+    || echo "  (control socket request failed — the proxy will reload on demand)"
+elif ss -ltn 2>/dev/null | grep -q ":${PORT} "; then
   echo "Port ${PORT} in use — assuming a llama-server is already running; reusing it."
-  SERVER_STARTED=0
 else
   echo "Starting llama-server on 127.0.0.1:${PORT} (model: $(basename "${MODEL}"))..."
   echo "  ctx=${CTX} kv=${CTK}/${CTV} ngl=${NGL} fa=${FA} slots=${NP} kv_offload=${KV_OFFLOAD} kv_unified=on"
@@ -197,7 +286,13 @@ else
 fi
 
 # ── Cleanup: free VRAM on exit ───────────────────────────────────────────────
+_CLEANUP_DONE=0
 cleanup() {
+  # Run-once guard + ignore further signals so a double Ctrl-C can't interrupt
+  # cleanup and leave the 0.5b / llama-server pinned in memory.
+  [ "${_CLEANUP_DONE}" = 1 ] && return
+  _CLEANUP_DONE=1
+  trap '' INT TERM
   # Stop grammar proxy
   if [ -n "${PROXY_PID:-}" ] && kill -0 "${PROXY_PID}" 2>/dev/null; then
     kill "${PROXY_PID}" 2>/dev/null || true
@@ -214,12 +309,35 @@ cleanup() {
     kill "${WEBUI_PID}" 2>/dev/null || true
     wait "${WEBUI_PID}" 2>/dev/null || true
   fi
-  # Always kill llama-server on our port (whether we started it or not)
-  OLD_PID="$(ss -ltnp 2>/dev/null | grep ":${PORT} " | grep -oP 'pid=\K[0-9]+' || true)"
-  if [ -n "${OLD_PID}" ]; then
-    echo "Stopping llama-server (pid ${OLD_PID}) — freeing VRAM..."
-    kill "${OLD_PID}" 2>/dev/null || true
-    wait "${OLD_PID}" 2>/dev/null || true
+  # Stop overseer (SIGTERMs daemon → it exits 0 cleanly and stops the 0.5b
+  # llama-server on :8082; then a backup stop runs). Output is shown so the
+  # lifecycle is observable. In daemon mode the overseer still runs per-session
+  # but its tiny-unload is internally guarded (it won't stop the daemon's tiny).
+  echo "Stopping overseer..."
+  python3 "${REPO_ROOT}/lib/overseer.py" stop 2>&1 || true
+  if [ "$DAEMON_MODE" = "0" ]; then
+    # Belt-and-suspenders: directly stop the tiny llama-server on :8082 even if
+    # the overseer is broken/uninstalled. (Daemon mode: the daemon owns the tiny.)
+    python3 "${REPO_ROOT}/lib/model_backend.py" stop tiny >/dev/null 2>&1 || true
+  fi
+  # Stop memory daemon (flushes pending writes)
+  bash "${HOME}/.cortexllm/scripts/memory-daemon.sh" stop 2>/dev/null || true
+  if [ "$DAEMON_MODE" = "1" ]; then
+    # Daemon owns the big model — just release this session. The daemon will
+    # idle-unload the big model after CORTEXAGENT_IDLE_UNLOAD_SEC.
+    echo "Daemon mode — releasing session (big model idles then unloads)..."
+    python3 -c "import sys; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
+control.send_request('session-end', timeout=5)" 2>/dev/null || true
+  else
+    # Kill our own llama-server (NOT Ollama's — keep Ollama alive for cloud models)
+    OLD_PIDS="$(ps aux | grep llama-server | grep -v grep | grep -E "(--alias|${LLAMA_DIR}/build)" | awk '{print $2}' || true)"
+    if [ -n "${OLD_PIDS}" ]; then
+      echo "Stopping llama-server — freeing VRAM..."
+      kill ${OLD_PIDS} 2>/dev/null || true
+      sleep 1
+      STILL_ALIVE="$(ps aux | grep llama-server | grep -v grep | grep -E "(--alias|${LLAMA_DIR}/build)" | awk '{print $2}' || true)"
+      [ -n "${STILL_ALIVE}" ] && kill -9 ${STILL_ALIVE} 2>/dev/null || true
+    fi
   fi
 }
 trap cleanup EXIT INT TERM
@@ -283,9 +401,11 @@ if [ "${WEBUI_ENABLED}" = "1" ] && [ -f "${REPO_ROOT}/lib/webui.py" ]; then
 fi
 
 # ── Start grammar proxy (strips grammar field that llama-server can't parse) ─
+# Daemon mode: the daemon already runs the reload-aware proxy on this port —
+# reuse it (starting our own would fail to bind / double-strip).
 PROXY_PORT="${CORTEXAGENT_PROXY_PORT:-8081}"
 PROXY_PID=""
-if [ -f "${REPO_ROOT}/lib/grammar_proxy.py" ]; then
+if [ "$DAEMON_MODE" = "0" ] && [ -f "${REPO_ROOT}/lib/grammar_proxy.py" ]; then
   OLD_PID="$(ss -ltnp 2>/dev/null | grep ":${PROXY_PORT} " | grep -oP 'pid=\K[0-9]+' || true)"
   if [ -n "${OLD_PID}" ]; then
     kill "${OLD_PID}" 2>/dev/null || true
@@ -301,6 +421,8 @@ if [ -f "${REPO_ROOT}/lib/grammar_proxy.py" ]; then
     echo "Grammar proxy failed to start (non-fatal)" >&2
     PROXY_PID=""
   fi
+elif [ "$DAEMON_MODE" = "1" ]; then
+  echo "Daemon mode — reusing daemon grammar proxy on port ${PROXY_PORT}"
 fi
 
 # ── Route the agent at the LOCAL llama.cpp server via grammar proxy ─────────
@@ -329,39 +451,44 @@ unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
 # alt-screen TUI. We want the locked-screen experience, so explicitly unset
 # any inherited value.
 unset CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN 2>/dev/null || true
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CTX}"
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="192000"
 # AUTO_COMPACT_WINDOW is what auto-compact thresholds against. If inherited as
 # 524288, the local 256k never reaches it → no compact → lock at the limit.
-export CLAUDE_CODE_AUTO_COMPACT_WINDOW="${CTX}"
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW="192000"
 # Auto-compact fires at 95% of the window instead of the default (much lower).
 # Stops "compact every turn" — we want compact to fire ONLY when context is
 # actually nearly full, not when it's still mostly free.
 unset CLAUDE_AUTOCOMPACT_PCT_OVERRIDE 2>/dev/null || true
 export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=95
 
-# ── Inline/scrollback mode (no locked-screen TUI) ──────────────────────────
-# Breaks out of the alt-screen TUI so output scrolls with the terminal.
-unset CLAUDE_CODE_NO_FLICKER 2>/dev/null || true
-export CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1
-# Suppress the Claude Code startup banner so only our custom banner shows.
-export CLAUDE_CODE_DISABLE_BANNER=1
+# ── Screen mode (locked alt-screen = no terminal scroll) ───────────────────
+# Default: locked alt-screen TUI — the agent session does NOT scroll the
+# terminal (user directive: "prevent scrolling as much as possible"; roadmap:
+# "non-scroll default (locked-screen)"). The branded banner (lib/banner.py)
+# flashes at startup; the statusLine (lib/statusline.py) is the persistent
+# brand inside the TUI. Set CORTEXAGENT_ALT_SCREEN=0 to fall back to the
+# legacy inline/scrollback mode (output stays in terminal scrollback).
+if [ "${CORTEXAGENT_ALT_SCREEN:-1}" = "0" ]; then
+  export CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1   # inline/scrollback (legacy)
+else
+  unset CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN 2>/dev/null || true   # locked alt-screen
+fi
+# Suppress Claude Code's onboarding/welcome chrome so only our custom banner
+# shows. CLAUDE_CODE_DISABLE_BANNER is NOT a real var in 2.1.220 (does nothing);
+# IS_DEMO=1 is the actual mechanism — it zeroes the onboarding steps and masks
+# org/email. Driven by --welcome-screen (hidden/condensed → on, full → off).
+if [ "${WELCOME_SCREEN}" = "full" ]; then
+  unset IS_DEMO 2>/dev/null || true
+else
+  export IS_DEMO=1
+fi
+# Disable auto-update checks — we control the version.
+export CLAUDE_CODE_DISABLE_UPDATE=1
 
-# ── Show custom welcome banner ──────────────────────────────────────────────
-ICE="\033[38;2;150;220;255m"
-DIM="\033[2m"
-RST="\033[0m"
-echo ""
-echo -e "  ${ICE}█▄        ▄█${RST}"
-echo -e "  ${ICE}███▄▄▄▄▄▄███${RST}"
-echo -e "  ${ICE} ██ ▀██▀ ██${RST}"
-echo -e "  ${ICE} ███▀▀▀▀███${RST}"
-echo -e "  ${ICE}▄██████████▄${RST}"
-echo -e "  ${ICE}██▀██████▀██${RST}"
-echo -e "  ${ICE}   ██████${RST}"
-echo -e "  ${ICE}  ▄█▀  ▀█▄${RST}"
-echo -e "  ${DIM}CORTEXAGENT by GreyOK00${RST}"
-echo -e "  ${DIM}Model: $(basename "${MODEL}")${RST}"
-echo ""
+# ── Show custom welcome banner (replaces Claude's suppressed welcome) ──────
+# lib/banner.py: ANSI truecolor logo + in-place boot animation (\033[H, no
+# `clear`/flicker, hide cursor). Non-TTY / CORTEXAGENT_BOOT_ANIM=0 → static.
+python3 "${REPO_ROOT}/lib/banner.py" --model "$(basename "${MODEL}")" 2>/dev/null || true
 
 # ── Launch Claude Code (with all our fixes, hooks, and memory) ───────────────
 # The hooks in the isolated config dir (SessionStart + UserPromptSubmit)
@@ -373,7 +500,7 @@ cd "${REPO_ROOT}"
 FILTERED_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --model=*|--list-models) ;;
+    --model=*|--list-models|--welcome-screen|--welcome-screen=*) ;;
     *) FILTERED_ARGS+=("$arg") ;;
   esac
 done

@@ -1,13 +1,45 @@
-# Local install artifacts (templated from *.template with machine-specific paths)
+# ── Local install artifacts (templated from *.template with machine paths) ──
 config/mcp.json
 config/settings.json
 
-# Build artifacts / runtime state
-.cortexagent-config/
+# ── Memory / runtime data — NEVER commit personal memory ───────────────────
+# These are local-only. The repo ships fresh/empty seed files (memory/seed/),
+# never a user's real memory DBs/logs/sessions.
+*.db
+*.db-shm
+*.db-wal
+*.db-bak
+*.jsonl
+*.wal
+*.shm
+memory.db
+memory/**/*.db
+memory/**/*.jsonl
+logs/
+**/logs/
 
-# Editor / OS noise
+# ── CortexLLM vendored runtime artifacts (code is committed, data is not) ──
+cortexllm/*.db
+cortexllm/**/*.db
+cortexllm/**/*.jsonl
+cortexllm/**/*.log
+
+# ── Build / packaging artifacts ─────────────────────────────────────────────
+.cortexagent-config/
+dist/
+build/
+*.AppImage
+*.bin
+!bin/cortexagent
+
+# ── Local Claude Code settings (machine-specific permissions) ──────────────
+.claude/settings.local.json
+
+# ── Editor / OS noise ───────────────────────────────────────────────────────
 *.swp
+*.swo
 *.swo
 .DS_Store
 __pycache__/
 *.pyc
+*.pyo
