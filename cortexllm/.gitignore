@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.tmp
+.DS_Store
+
+# CortexLLM - never commit runtime memory data
+**/memory/hot/*.json
+**/memory/warm/*.json
+**/memory/cold/*.json
+**/memory/*.json
+**/state.json
+**/state_manager.py
+**/scheduler/logs/
+**/scheduler/*.db
+**/watcher/state.json
+**/job_registry.json
+**/memory_state.json
