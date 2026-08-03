@@ -11,10 +11,10 @@ Rules + memory live in `config/CLAUDE.md`. All modules stdlib-only; verify with 
 - `dom_pruner.py` — strips script/style/nav/footer/aria/data attrs from HTML.
 - `cold_distiller.py` — warm→cold fact extraction.
 - `heartbeat_service.py` — session health (msg count, size, status).
-- `scheduler.py` — stdlib cron/interval/at scheduler.
+- `overseer.py` — heartbeat + tiny keepalive + the **single** inlined task queue + scheduler (#32; `orchestrator.py`/`scheduler.py`/`dispatcher.py` were deleted as zero-importer dead code).
 - `webui.py` — HTTP UI on `127.0.0.1:8090`.
 - `firecrawl_proxy.py` — lazy 1-tool Firecrawl MCP wrapper.
 - `playwright_brave_mcp.py` — Brave CDP tools: `brave_status`, `brave_navigate`, `brave_fetch`, `brave_click`, `brave_type`, `brave_evaluate`, `brave_snapshot`.
-- `humanize.py`, `reliability.py`, `dispatcher.py` — timing, retry/circuit-breaker, async workers.
+- `humanize.py`, `reliability.py` — timing, retry/circuit-breaker.
 
 Mutating ops only when user asks.

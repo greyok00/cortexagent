@@ -16,15 +16,26 @@ Connection model:
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# ── Config-driven DB path ──────────────────────────────────────────────────
+# Was hardcoded to ~/.config/cortexllm/cortexllm.db. Now resolved via
+# lib/config.py (env CORTEXAGENT_DB_PATH → conf → default). The default is the
+# SAME standard CortexLLM location, so existing installs are unchanged.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-DB_DIR = Path.home() / ".cortexagent" / "memory"
-DB_PATH = DB_DIR / "cortexagent.db"
+from lib.config import CFG  # noqa: E402
+
+DB_PATH = CFG.db_path
+DB_DIR = DB_PATH.parent
 
 SCHEMA_SQL = """
 PRAGMA journal_mode = WAL;

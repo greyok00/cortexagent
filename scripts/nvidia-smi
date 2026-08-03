@@ -1,0 +1,96 @@
+#!/bin/bash
+# scripts/nvidia-smi — optional privacy wrapper + live tok/s for the real nvidia-smi.
+#
+# Two jobs:
+#   1. PRIVACY MASK (opt-in): hide the real GPU model / VRAM / driver / CUDA
+#      version so screenshots don't reveal your hardware. Off by default; set
+#      the CORTEXAGENT_GPU_MASK env vars below to enable.
+#   2. LIVE TOKEN SPEED: append a "| Generation Speed:  X tok/s" line by reading
+#      the grammar proxy /metrics endpoint (the single source of truth for real
+#      tok/s — current_tok_s / avg_tok_s / last_request_ts). Falls back to
+#      idle/offline based on the big model's /health.
+#
+# Install (opt-in): symlink this into ~/.local/bin/nvidia-smi so it shadows the
+# real binary. install.sh does this only when CORTEXAGENT_INSTALL_NVIDIA_WRAP=1.
+#
+# No hardcoded home paths. No PII. Talks to the proxy on
+# $CORTEXAGENT_PROXY_PORT (default 8081) and the big model on
+# $CORTEXAGENT_PORT (default 8080).
+
+REAL=/usr/bin/nvidia-smi
+PROXY_PORT="${CORTEXAGENT_PROXY_PORT:-8081}"
+BIG_PORT="${CORTEXAGENT_PORT:-8080}"
+
+# ── Privacy mask (only if the env vars are set) ─────────────────────────────
+MASK_NAME="${CORTEXAGENT_GPU_MASK:-}"          # e.g. "NVIDIA GeForce RTX 3080 Ti Laptop GPU"
+MASK_VRAM="${CORTEXAGENT_GPU_VRAM_MIB:-}"      # e.g. "16384"
+MASK_CUDA="${CORTEXAGENT_GPU_CUDA:-}"          # e.g. "12.6"
+MASK_DRIVER="${CORTEXAGENT_GPU_DRIVER:-}"      # e.g. "565.77"
+
+mask_args=()
+if [ -n "$MASK_NAME" ]; then
+  mask_args+=(-e "s/NVIDIA [A-Za-z0-9 ./-]*/${MASK_NAME}/g")
+fi
+if [ -n "$MASK_VRAM" ]; then
+  mask_args+=(
+    -e "s/[0-9]\+ MiB *\/ *[0-9]\+ MiB/${MASK_VRAM} MiB \/ ${MASK_VRAM} MiB/g"
+    -e "s/[0-9]\+MiB\/[0-9]\+MiB/${MASK_VRAM}MiB\/${MASK_VRAM}MiB/g"
+  )
+fi
+if [ -n "$MASK_CUDA" ]; then
+  mask_args+=(-e "s/CUDA Version: [0-9.]*/CUDA Version: ${MASK_CUDA}/g")
+fi
+if [ -n "$MASK_DRIVER" ]; then
+  mask_args+=(-e "s/Driver Version: [0-9.]*/Driver Version: ${MASK_DRIVER}/g")
+fi
+
+if [ ${#mask_args[@]} -gt 0 ]; then
+  "$REAL" "$@" 2>/dev/null | sed "${mask_args[@]}"
+else
+  "$REAL" "$@"
+fi
+
+# ── Live token speed from the grammar proxy /metrics ────────────────────────
+# /metrics returns JSON: current_tok_s, avg_tok_s, completion_tokens, requests,
+# last_request_ts (unix ts of the last completed inference; 0 = none yet).
+# NOTE: current_tok_s / avg_tok_s / last_request_ts are FLOATS, so the whole
+# decision runs in python3 (bash arithmetic can't compare floats). Bash only
+# handles the idle/offline fallback when the proxy has no data.
+metrics=$(curl -sf --max-time 2 "http://127.0.0.1:${PROXY_PORT}/metrics" 2>/dev/null)
+
+gen_line=""
+if [ -n "$metrics" ]; then
+  gen_line=$(printf '%s' "$metrics" | python3 -c '
+import sys, json, time
+try:
+    d = json.load(sys.stdin)
+    cur = float(d.get("current_tok_s", 0) or 0)
+    avg = float(d.get("avg_tok_s", 0) or 0)
+    ct = int(d.get("completion_tokens", 0) or 0)
+    last_ts = float(d.get("last_request_ts", 0) or 0)
+    age = (time.time() - last_ts) if last_ts > 0 else 999
+    if last_ts > 0 and age < 12 and cur > 0:
+        if avg > 0:
+            print(f"| Generation Speed:  {cur:g} tok/s (avg {avg:g})")
+        else:
+            print(f"| Generation Speed:  {cur:g} tok/s")
+    elif ct > 0:
+        # Generated before but idle now — show the last speed as "idle @ X".
+        print(f"| Generation Speed:  idle (last {cur:g} tok/s, avg {avg:g})")
+    # else: no data yet → empty → bash falls back to /health
+except Exception:
+    pass
+' 2>/dev/null)
+fi
+
+# Fallback: no proxy / no data yet → ask the big model's /health for idle/offline.
+if [ -z "$gen_line" ]; then
+  if curl -sf --max-time 2 "http://127.0.0.1:${BIG_PORT}/health" >/dev/null 2>&1; then
+    gen_line="| Generation Speed:  idle"
+  else
+    gen_line="| Generation Speed:  offline"
+  fi
+fi
+
+echo ""
+echo "$gen_line"

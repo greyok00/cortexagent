@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html><head><title>Test</title></head><body>
+<h1>Module test</h1>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+console.log('three.js loaded:', THREE.version);
+document.body.innerHTML = '<h1>Loaded three.js ' + THREE.version + '</h1>';
+</script>
+</body></html>

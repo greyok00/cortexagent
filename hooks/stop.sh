@@ -51,7 +51,7 @@ with open(path, errors="replace") as fh:
         last_uuid = d.get("uuid") or ""
         last_text = text
 # uuid cannot contain spaces; space-separate uuid and text for the bash read
-print(last_uuid.replace(" ", "_") + " " + last_text[:2000].replace("\n", " "))
+print(last_uuid.replace(" ", "_") + " " + last_text[:10000].replace("\n", " "))
 PY
 )"
 
@@ -66,6 +66,17 @@ fi
 
 # Save the assistant context through the memory pipeline + MCP-readable file.
 python3 "${REPO_ROOT}/lib/cortexagent_call.py" write --role assistant --content "${text}" >/dev/null 2>&1 || true
+# Save to shared CortexLLM memory via daemon (fast path) or direct.
+# Paths resolved via lib/config.py (env/conf overridable); fallbacks preserve
+# the original hardcoded paths so existing installs keep working identically.
+SOCKET="$(python3 "$REPO_ROOT/lib/config.py" get cortexllm_socket 2>/dev/null || echo "$HOME/.cortexllm/memory.sock")"
+SAVE_SCRIPT="$(python3 "$REPO_ROOT/lib/config.py" get cortexllm_save_script 2>/dev/null || echo "$HOME/.cortexllm/scripts/save-context.py")"
+if [ -S "${SOCKET}" ]; then
+  printf '{"role":"assistant","content":"%s","platform":"cortexagent"}\n' "${text}" | nc -U "${SOCKET}" 2>/dev/null || \
+  python3 "${SAVE_SCRIPT}" --role assistant --platform cortexagent "${text}" 2>/dev/null || true
+else
+  python3 "${SAVE_SCRIPT}" --role assistant --platform cortexagent "${text}" 2>/dev/null || true
+fi
 printf '%s' "${uuid}" > "${marker}"
 
 exit 0

@@ -48,7 +48,7 @@ while true; do
 
   # Check if main model is generating (proxy has recent activity)
   now=$(date +%s)
-  last_activity=$(stat -c %Y /home/grey/.cortexagent/logs/proxy.log 2>/dev/null || echo 0)
+  last_activity=$(stat -c %Y "$HOME/.cortexagent/logs/proxy.log" 2>/dev/null || echo 0)
   age=$(( now - last_activity ))
 
   tput cup 0 0

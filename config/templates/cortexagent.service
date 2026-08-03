@@ -1,0 +1,22 @@
+[Unit]
+Description=CortexAgent persistent backend daemon (llama.cpp models + grammar proxy)
+Documentation=https://github.com/cortexagent/cortexagent
+After=network.target
+
+[Service]
+Type=simple
+# The daemon owns both llama-servers + the grammar proxy. The big coding model
+# is loaded on demand and idle-unloaded (CORTEXAGENT_IDLE_UNLOAD_SEC) to free
+# VRAM; the tiny 0.5b stays up (cheap). The CLI is a thin client over its
+# control socket, so sessions never relaunch and never see a 502 on reload.
+ExecStart={{PYTHON}} {{REPO_ROOT}}/lib/daemon.py run
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+Environment=CORTEXAGENT_REPO={{REPO_ROOT}}
+# Big-model idle-unload window (seconds of no proxy traffic / no active session
+# before the ~13 GB model is stopped). Override per-user in ~/.cortexagent/cortexagent.conf.
+Environment=CORTEXAGENT_IDLE_UNLOAD_SEC=600
+
+[Install]
+WantedBy=default.target

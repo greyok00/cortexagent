@@ -4,7 +4,7 @@
   <img src="assets/cortexagent.jpg" alt="CortexAgent" width="600">
 </p>
 
-A local coding agent by **GreyOK00**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with a fully minified prompt system, lazy-loaded MCP tools, and built-in SQLite memory. Designed for maximum token efficiency and speed on a single 16 GB GPU.
+A local coding agent by **CortexAgent**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with a fully minified prompt system, lazy-loaded MCP tools, and built-in SQLite memory. Designed for maximum token efficiency and speed on a single 16 GB GPU.
 
 ## Features
 
@@ -29,21 +29,34 @@ A background monitor using a tiny LLM (`qwen2.5:0.5b` via Ollama, ~350 MB) that 
 
 Start it with `python3 lib/heartbeat_daemon.py start` after your session is running.
 
-### 🔄 Model orchestrator
-The **model orchestrator** (`lib/model_switcher.py`) manages VRAM by swapping the main coding model out and loading image/video generation models on demand. Since both can't fit in 16 GB VRAM simultaneously, the orchestrator:
+### 🎨 Image / video generation (diffusers, in-process)
+Image and video generation run through **HuggingFace `diffusers` loaded
+in-process** (`lib/diffusion_backend.py`) — no separate GUI app, no second
+process, no extra port. The main coding LLM (Qwen3.6-35B) **stays loaded** the
+whole time; diffusion runs on the same CUDA device with its own VRAM budget,
+and the daemon's idle-unload still governs the big model.
 
-1. **Saves state** — notes the current session
-2. **Unloads** the main coding model (Qwen3.6-35B, ~13 GB) from VRAM
-3. **Loads** the generation model (Flux Schnell for images, LTX-Video for video)
-4. **Generates** the output and opens it in your browser
-5. **Unloads** the generation model
-6. **Restores** the main coding model and grammar proxy automatically
+> #28 proved `llama-server` cannot host diffusion models
+> (`unknown model architecture: 'flux'`), so the old flux/ltx-GGUF-into-the-LLM
+> path was broken by design. diffusers is the correct backend.
 
-The heartbeat LLM (qwen2.5:0.5b) stays in VRAM the **entire time**, orchestrating the swap. All output is verbose with colored emoji status messages so you can see exactly what's happening.
+**Supported models (default = 4K UHD 3840×2160 output):**
+- **SDXL** (`sd_xl_base_1.0.safetensors`, ~6.5 GB) — preferred image base (best
+  4K quality; auto-used when its download is complete)
+- **SD 1.5** (`v1-5-pruned-emaonly.safetensors`, ~4 GB) — fallback image base
+- **LTX-Video** (`Lightricks/LTX-Video`, ~10 GB) — short 4K video clips;
+  downloaded to the HF cache on first `gen-video` (or set
+  `CORTEXAGENT_VIDEO_MODEL` to a local path). Group-offloaded to fit 16 GB.
 
-**Supported models:**
-- **Flux Schnell** (GGUF Q4_K_S, ~3.5 GB) — 4-step image generation, best quality-to-speed ratio for 16 GB VRAM
-- **LTX-Video 2b v0.9** (GGUF Q4_K_M, ~1.5 GB) — fast video generation with **built-in synchronized audio**
+> Image/video can't generate natively at 4K (UNet attention OOMs 16 GB and
+> quality collapses outside the training res), so the backend generates at a
+> model-native res (SDXL ~1920×1088, SD1.5/LTX ~1024×576) then upscales to 4K
+> with cv2 LANCZOS4 (`CORTEXAGENT_UPSCALER=lanczos`; `=realesrgan` for sharper,
+> optional).
+
+> **cuDNN note:** on this GPU/diver (cuDNN 9.2 / driver 550) a standard SD 1.5
+> conv raises `CUDNN_STATUS_NOT_INITIALIZED`, so cuDNN is **disabled by
+> default** (`CORTEXAGENT_DIFFUSION_CUDNN=0`); native conv runs at ~8 it/s.
 
 **Usage:**
 ```bash
@@ -79,7 +92,7 @@ Context auto-compacts at 95% of the window instead of the default lower threshol
 | Component | Default | Why |
 |---|---|---|
 | Model weights | `Qwen3.6-35B-A3B-UD-IQ3_S.gguf` | ~13 GB in VRAM. Large enough to act as a real coding assistant; small enough to leave headroom for KV cache and OS overhead on a 16 GB GPU. |
-| Context window (`-c`) | `131072` (128K) | Fits comfortably with the tiny KV cache of the hybrid architecture. |
+| Context window (`-c`) | `262144` (256K) | Native limit of the hybrid architecture. KV cache at q4_0 is ~1.3 GB — still fits in 16 GB VRAM alongside the model. |
 | KV cache type (`-ctk/-ctv`) | `q4_0` | ~5 KB per token. At 128K context that is ~640 MB, leaving plenty of room for weights and growth. |
 | KV cache offload | enabled | Keeps KV on the GPU with the weights; generation stays fast instead of falling back to system RAM. |
 | GPU layers (`-ngl`) | `999` | All weight layers on GPU. |

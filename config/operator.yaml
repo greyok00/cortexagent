@@ -1,6 +1,6 @@
 # OPERATOR Configuration — v1.0
 # This file is read at startup to initialize the system.
-# All paths are relative to /home/grey/cortexagent/
+# All paths are relative to the repository root.
 
 system:
   name: OPERATOR

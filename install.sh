@@ -19,6 +19,8 @@ echo "==> CortexAgent install — ${REPO_ROOT}"
 echo "    config dir: ${CONFIG_DIR}"
 echo "    memory dir: ${MEMORY_DIR}"
 
+mkdir -p "${CONFIG_DIR}" "${BIN_DIR}"
+
 MEMORY_CMD="python3 ${REPO_ROOT}/memory/mcp_server.py"
 
 # ── Make scripts executable ─────────────────────────────────────────────────
@@ -95,18 +97,72 @@ echo "      2. Enable Developer mode"
 echo "      3. Click 'Load unpacked'"
 echo "      4. Select ${EXTENSION_DIR}"
 
-# ── Symlink the binary ──────────────────────────────────────────────────────
+# ── Symlink the entry point → engine/cli.py (unified Python dispatcher) ──────
+# `cortexagent` (no args) → cli.py `run` → execs bin/cortexagent (the session
+# launcher). Subcommands (`models`, `daemon`, `status`, `install`) are the
+# control plane over the daemon's socket. This is the Nuitka-compilable entry.
 mkdir -p "$BIN_DIR"
 target="${BIN_DIR}/cortexagent"
 if [ -e "$target" ] && [ ! -L "$target" ]; then
   echo "    backing up existing ${target} -> ${target}.bak"
   mv "$target" "${target}.bak"
 fi
-ln -sfn "${REPO_ROOT}/bin/cortexagent" "$target"
-echo "    linked ${target} -> ${REPO_ROOT}/bin/cortexagent"
+chmod +x "${REPO_ROOT}/engine/cli.py"
+ln -sfn "${REPO_ROOT}/engine/cli.py" "$target"
+echo "    linked ${target} -> ${REPO_ROOT}/engine/cli.py"
+
+# ── systemd user service (Linux only; OS-aware) ──────────────────────────────
+# Installs a user unit that runs the persistent daemon (models + proxy). The
+# daemon idle-unloads the big model to free VRAM; the CLI is a thin client.
+# Enabled to start on login. Set CORTEXAGENT_AUTOSTART=1 to also start it now.
+install_systemd() {
+  local unit_tpl="${REPO_ROOT}/config/templates/cortexagent.service"
+  local unit_dir="$HOME/.config/systemd/user"
+  local unit_out="${unit_dir}/cortexagent.service"
+  local py
+  py="$(command -v python3 || echo /usr/bin/python3)"
+  mkdir -p "${unit_dir}"
+  if [ ! -f "${unit_tpl}" ]; then
+    echo "    systemd: unit template missing — skipping (non-fatal)" >&2
+    return 0
+  fi
+  sed -e "s|{{PYTHON}}|${py}|g" -e "s|{{REPO_ROOT}}|${REPO_ROOT}|g" \
+      "${unit_tpl}" > "${unit_out}"
+  echo "    wrote ${unit_out}"
+  if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
+    systemctl --user enable cortexagent >/dev/null 2>&1 && echo "    enabled cortexagent.service (starts on login)"
+    if [ "${CORTEXAGENT_AUTOSTART:-0}" = "1" ]; then
+      systemctl --user start cortexagent >/dev/null 2>&1 && echo "    started cortexagent.service now"
+    else
+      echo "    start now with: cortexagent daemon start   (or: systemctl --user start cortexagent)"
+    fi
+  else
+    echo "    systemd not available — daemon can still run manually: cortexagent daemon start"
+  fi
+}
+
+case "$(uname -s)" in
+  Linux) install_systemd ;;
+  *) echo "    $(uname -s): systemd install skipped — run 'cortexagent daemon start' manually" ;;
+esac
+
+# ── Patch the claude binary (hide "Welcome"/"Tips"/"What's new" banner) ─────────
+# Nulls the onboarding strings in the installed `claude` binary so the only
+# banner the user sees is CortexAgent's (lib/banner.py). Non-fatal: on a fresh
+# box `claude` may not be installed yet, and patching is opt-out. Backs up the
+# original to claude.exe.bak first (restore with: python3 lib/patch_binary.py --restore).
+if [ "${CORTEXAGENT_PATCH_BINARY:-1}" = "1" ] && [ -f "${REPO_ROOT}/lib/patch_binary.py" ]; then
+  if python3 "${REPO_ROOT}/lib/patch_binary.py" --check >/dev/null 2>&1; then
+    python3 "${REPO_ROOT}/lib/patch_binary.py" >/dev/null 2>&1 \
+      && echo "    claude binary patched (banner/tips hidden) — backup at claude.exe.bak" \
+      || echo "    claude binary patch: skipped (not found or not installed yet)"
+  else
+    echo "    claude binary patch: skipped (claude not installed yet — re-run install after installing claude)"
+  fi
+fi
 
 # ── PII self-check ──────────────────────────────────────────────────────────
-leak="$(grep -rn "/home/$(whoami)" "${REPO_ROOT}" --include='*.sh' --include='*.py' --include='*.json' --include='*.md' 2>/dev/null | grep -v 'config/mcp.json' | grep -v 'config/settings.json' | grep -v 'config/CLAUDE.md' | grep -v 'memory/' | grep -v '.git/' | grep -v 'tauri/src-tauri/target/' || true)"
+leak="$(grep -rn "/home/$(whoami)" "${REPO_ROOT}" --include='*.sh' --include='*.py' --include='*.json' --include='*.md' 2>/dev/null | grep -v 'config/mcp.json' | grep -v 'config/settings.json' | grep -v 'config/CLAUDE.md' | grep -v 'memory/' | grep -v '.git/' | grep -v 'tauri/src-tauri/target/' | grep -v '/.claude/' | grep -v '/tests/' || true)"
 if [ -n "$leak" ]; then
   echo "WARN: hardcoded home path found in package (review):" >&2
   echo "$leak" >&2
@@ -117,10 +173,15 @@ echo ""
 echo "Done. Make sure ${BIN_DIR} is on your PATH."
 echo "Run:    cortexagent                       # start an interactive session"
 echo "        cortexagent -p \"fix this bug\"     # one-shot"
+echo "        cortexagent daemon start         # start the persistent backend"
+echo "        cortexagent models status        # big/tiny/proxy state"
+echo "        cortexagent models unload big    # free ~13 GB VRAM now"
 echo "Env knobs: CORTEXAGENT_MODEL, CORTEXAGENT_PORT, CORTEXAGENT_CTX, CORTEXAGENT_NGL"
-echo "Logs:    \$HOME/.cortexagent-server.log"
+echo "           CORTEXAGENT_IDLE_UNLOAD_SEC (default 600)"
+echo "Logs:    \$HOME/.cortexagent/logs/daemon.log"
 echo ""
 echo "Self-contained layout:"
 echo "  • config dir:  ${CONFIG_DIR} (CLAUDE.md, settings.json, mcp.json)"
 echo "  • memory dir:  ${MEMORY_DIR}"
+echo "  • daemon:      systemd user service cortexagent.service (models + proxy)"
 echo "  • excludes:    \$HOME/.claude/CLAUDE.md (via claudeMdExcludes)"

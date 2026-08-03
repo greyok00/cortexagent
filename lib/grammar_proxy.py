@@ -4,16 +4,93 @@
 Claude Code sends a `grammar` parameter that llama-server can't parse.
 This proxy strips it and forwards everything else, including streaming.
 
+Also tracks token usage and exposes a /metrics endpoint for real-time
+token/s monitoring in the Claude Code status line.
+
 Usage:
   python3 lib/grammar_proxy.py [port] [target]
   # Default: port=8081, target=http://127.0.0.1:8080
 """
 import json, os, sys, socket, select, threading, time
+from datetime import datetime
+from pathlib import Path
+import urllib.request
 
-# ── Diagnostics (DIAGNOSTIC — safe to remove once 400 root cause is fixed) ──
-# Logs per-request structure to stderr (→ proxy.log) and optionally dumps the
-# forwarded (grammar-stripped) JSON to a local transient file for replay.
-_DUMP = os.environ.get("CORTEXAGENT_PROXY_DUMP", "")  # set to a path to enable body dump
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from lib import control  # reload-aware: trigger big-model reload via the daemon
+
+# ── Token Tracking ───────────────────────────────────────────────────────────
+_token_lock = threading.Lock()
+_token_metrics = {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "requests": 0,
+    "total_time_s": 0.0,
+    "started_at": datetime.now().isoformat(),
+    "current_tok_s": 0.0,  # tokens/s for the last request
+    "avg_tok_s": 0.0,      # running average
+    "last_request_ts": 0.0,  # unix ts of the last completed inference (0 = none yet)
+}
+
+
+def _record_tokens(prompt_tokens: int, completion_tokens: int, elapsed: float):
+    with _token_lock:
+        _token_metrics["prompt_tokens"] += prompt_tokens
+        _token_metrics["completion_tokens"] += completion_tokens
+        _token_metrics["total_tokens"] += prompt_tokens + completion_tokens
+        _token_metrics["requests"] += 1
+        _token_metrics["total_time_s"] += elapsed
+        _token_metrics["last_request_ts"] = time.time()
+        if elapsed > 0 and completion_tokens > 0:
+            _token_metrics["current_tok_s"] = round(completion_tokens / elapsed, 1)
+        if _token_metrics["total_time_s"] > 0 and _token_metrics["completion_tokens"] > 0:
+            _token_metrics["avg_tok_s"] = round(
+                _token_metrics["completion_tokens"] / _token_metrics["total_time_s"], 1
+            )
+
+
+# ── VRAM cache (throttled nvidia-smi) ────────────────────────────────────────
+# The statusline is a fresh process per render, so a per-render nvidia-smi
+# would be too slow. The proxy is long-lived: one nvidia-smi per _VRAM_TTL s,
+# cached in-process and served to every /metrics poll.
+_VRAM_TTL = 3.0
+_vram_cache = {"ts": 0.0, "used": None, "total": None}
+
+
+def _vram_mib():
+    """Return (used_mib, total_mib), cached for _VRAM_TTL seconds. None on failure."""
+    now = time.time()
+    if now - _vram_cache["ts"] < _VRAM_TTL:
+        return _vram_cache["used"], _vram_cache["total"]
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.used,memory.total",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5).stdout.strip().split(", ")
+        used, total = int(out[0]), int(out[1])
+        _vram_cache.update(ts=now, used=used, total=total)
+        return used, total
+    except Exception:
+        _vram_cache["ts"] = now  # backoff so a failing GPU doesn't spam nvidia-smi
+        return _vram_cache["used"], _vram_cache["total"]
+
+
+def _get_metrics() -> str:
+    with _token_lock:
+        m = dict(_token_metrics)
+    used, total = _vram_mib()
+    if used is not None:
+        m["vram_used_mib"] = used
+        m["vram_total_mib"] = total
+    return json.dumps(m, indent=2)
+
+
+# ── Diagnostics ──────────────────────────────────────────────────────────────
+_DUMP = os.environ.get("CORTEXAGENT_PROXY_DUMP", "")
 
 
 def _has_key(obj, key):
@@ -60,6 +137,53 @@ class ProxyHandler:
         self.addr = addr
         self.target = target
 
+    # ── Reload-aware target management ──────────────────────────────────────
+    def _target_healthy(self, timeout=2):
+        try:
+            h, p = self.target
+            req = urllib.request.Request(f"http://{h}:{p}/health", method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.status == 200
+        except Exception:
+            return False
+
+    def _touch_activity(self):
+        # Reset the daemon idle timer (best-effort; daemon may be absent in
+        # legacy per-session mode — a failed ping is silently ignored).
+        try:
+            control.send_request("activity", timeout=2)
+        except Exception:
+            pass
+
+    def _ensure_target(self):
+        # If the big model is idle-unloaded, ask the daemon to reload it, then
+        # wait for /health. Returns True once the target is reachable.
+        if self._target_healthy(timeout=2):
+            return True
+        print(f"[proxy] target {self.target} down — requesting reload...", file=sys.stderr)
+        try:
+            control.send_request("load", which="big", timeout=300)
+        except Exception as e:
+            print(f"[proxy] reload request failed (daemon absent?): {e}", file=sys.stderr)
+        deadline = time.time() + 300
+        while time.time() < deadline:
+            if self._target_healthy(timeout=2):
+                print("[proxy] target back up — forwarding", file=sys.stderr)
+                return True
+            time.sleep(1)
+        print("[proxy] target still down after reload — returning 503", file=sys.stderr)
+        return False
+
+    def _respond_503(self):
+        body = b'{"error":"model unavailable"}'
+        resp = ("HTTP/1.1 503 Service Unavailable\r\n"
+                "Content-Type: application/json\r\n"
+                f"Content-Length: {len(body)}\r\n\r\n").encode() + body
+        try:
+            self.conn.sendall(resp)
+        except Exception:
+            pass
+
     def handle(self):
         try:
             head_bytes, body = self._read_request()
@@ -95,6 +219,15 @@ class ProxyHandler:
             return
         method = parts[0].upper()
 
+        # ── Handle /metrics endpoint ──
+        if method == "GET" and len(parts) > 1 and parts[1] == "/metrics":
+            resp = f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len(_get_metrics())}\r\n\r\n{_get_metrics()}"
+            try:
+                self.conn.sendall(resp.encode())
+            except Exception:
+                pass
+            return
+
         # Parse headers into an ordered map (lowercased keys, original case kept).
         order, hdr, orig = [], {}, {}
         for line in lines[1:]:
@@ -108,6 +241,13 @@ class ProxyHandler:
             orig[k] = raw
 
         if method == "POST":
+            # Reload-aware: ensure the big model is up before forwarding, and
+            # reset the daemon idle timer. Only POSTs are inference requests —
+            # GET /health probes must NOT trigger a reload (or idle-unload breaks).
+            if not self._ensure_target():
+                self._respond_503()
+                return
+            self._touch_activity()
             # Honor Expect: 100-continue so large-body clients will send the body.
             if "100-continue" in hdr.get("expect", "").lower():
                 try:
@@ -118,7 +258,6 @@ class ProxyHandler:
             te = hdr.get("transfer-encoding", "").lower()
             cl = hdr.get("content-length")
             if "chunked" in te or cl is None:
-                # Unknown length: forward raw, streaming any remaining bytes.
                 _diag(method, parts[1] if len(parts) > 1 else "?",
                       cl, True, len(body), None,
                       "raw/no-strip (chunked or no content-length)")
@@ -140,7 +279,6 @@ class ProxyHandler:
                     del parsed["grammar"]
                 body = json.dumps(parsed).encode()
             except Exception as e:
-                # Not JSON or unparseable — forward the buffered body untouched.
                 parse_err = str(e)
                 print(f"[proxy] strip skipped: {e}", file=sys.stderr)
             _diag(method, parts[1] if len(parts) > 1 else "?",
@@ -207,6 +345,7 @@ class ProxyHandler:
         """
         dst = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         dst.settimeout(30)
+        _t0 = time.time()
         try:
             dst.connect(self.target)
             dst.sendall(data)
@@ -230,23 +369,25 @@ class ProxyHandler:
             pass
         finally:
             stop.set()
-            # Log token usage from response
+            # Extract token usage from response
+            pt, ct = 0, 0
             if resp_buf:
                 full = b"".join(resp_buf).decode("utf-8", errors="replace")
-                # Try to extract usage from the last JSON chunk (streaming) or full body
                 for line in full.split("\n"):
                     if "usage" in line.lower() or "completion_tokens" in line:
                         try:
-                            # Streaming: data: {"usage": {...}}
                             if line.startswith("data: "):
                                 line = line[6:]
                             usage = json.loads(line).get("usage", {})
-                            pt = usage.get("prompt_tokens", 0)
-                            ct = usage.get("completion_tokens", 0)
-                            if ct:
-                                print(f"[proxy] tokens: {pt} in → {ct} out", file=sys.stderr)
+                            pt = usage.get("prompt_tokens", 0) or pt
+                            ct = usage.get("completion_tokens", 0) or ct
                         except Exception:
                             pass
+            _elapsed = time.time() - _t0
+            if ct:
+                _record_tokens(pt, ct, _elapsed)
+                tok_s = round(ct / _elapsed, 1) if _elapsed > 0 else 0
+                print(f"[proxy] tokens: {pt} in → {ct} out ({tok_s} tok/s, {_elapsed:.1f}s)", file=sys.stderr)
             t1.join(timeout=3)
             try:
                 dst.close()

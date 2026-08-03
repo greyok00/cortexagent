@@ -38,6 +38,7 @@ from urllib.parse import urlparse
 # ── Config ────────────────────────────────────────────────────────────────
 DEFAULT_PORT = 8090
 DEFAULT_BIND = "127.0.0.1"
+_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "cortexagentsquarelogo.jpg"
 INDEX_HTML = """<!doctype html>
 <html lang="en">
 <head>
@@ -79,6 +80,7 @@ INDEX_HTML = """<!doctype html>
            align-items: center; gap: 16px; flex-shrink: 0; }
   h1 { font-size: 14px; font-weight: 700; letter-spacing: 0.1em;
        text-transform: uppercase; color: var(--accent); margin: 0; }
+  .logo { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; }
   .status { font-size: 12px; color: var(--text-tertiary);
             letter-spacing: 0.08em; text-transform: uppercase;
             margin-left: auto; transition: color var(--transition); }
@@ -166,6 +168,7 @@ INDEX_HTML = """<!doctype html>
 </head>
 <body>
 <header>
+  <img src="/assets/logo" alt="CortexAgent" class="logo">
   <h1>CORTEXAGENT</h1>
   <div class="status offline" id="status">OFFLINE</div>
 </header>
@@ -358,6 +361,19 @@ class WebUIHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    def _send_logo(self) -> None:
+        try:
+            data = _LOGO_PATH.read_bytes()
+        except Exception:
+            self._send_json(404, {"ok": False, "reason": "logo not found"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.end_headers()
+        self.wfile.write(data)
+
     def _check_auth_or_401(self) -> bool:
         if not _check_auth(self.headers):
             self._send_json(401, {"ok": False, "reason": "auth required"})
@@ -376,6 +392,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
             if not self._check_auth_or_401():
                 return
             self._send_json(200, _status_payload())
+            return
+        if parsed.path == "/assets/logo":
+            self._send_logo()
             return
         self._send_json(404, {"ok": False, "reason": "not found"})
 

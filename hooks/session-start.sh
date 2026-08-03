@@ -3,27 +3,57 @@ set -eu
 REPO_ROOT="${CORTEXAGENT_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 . "${REPO_ROOT}/lib/state.sh"
 
+# Start overseer daemon (heartbeat + orchestrator combined)
+python3 "$REPO_ROOT/lib/overseer.py" start --interval 30 >/dev/null 2>&1 || true
+
 payload="$(cat || true)"
 source="$(printf '%s' "$payload" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('source','startup') or 'startup')" 2>/dev/null || echo "startup")"
 
-python3 "$REPO_ROOT/lib/cortexagent_call.py" recent --limit 12 2>/dev/null | python3 -c "
+# Read from CortexAgent memory (own DB)
+AGENT_MEMORY=""
+AGENT_MEMORY="$(python3 "$REPO_ROOT/lib/cortexagent_call.py" recent --limit 12 2>/dev/null || true)"
+
+# Also read from shared CortexLLM hot memory (cortexagent platform)
+CORTEXLLM_MEMORY=""
+CORTEXLLM_FILE="$(python3 "$REPO_ROOT/lib/config.py" get cortexllm_hot_file 2>/dev/null || echo "$HOME/.config/cortexllm/memory/hot/cortexagent.jsonl")"
+if [ -f "$CORTEXLLM_FILE" ]; then
+  CORTEXLLM_MEMORY="$(tail -5 "$CORTEXLLM_FILE" 2>/dev/null | python3 -c "
+import json, sys
+lines = [json.loads(l) for l in sys.stdin.read().strip().split('\n') if l.strip()]
+for m in reversed(lines[-3:]):
+    role = m.get('role', '?')
+    content = m.get('content', '')[:5000]
+    ts = m.get('timestamp', '')[:16]
+    print(f'[{ts}] {role}: {content}')
+" 2>/dev/null || true)"
+fi
+
+python3 - "$source" "$AGENT_MEMORY" "$CORTEXLLM_MEMORY" <<'PY'
 import json, os, sys
-recent = sys.stdin.read().strip()
-lines = ''
-if recent:
-    lines = 'Recovered from CortexAgent memory:\n' + recent
-else:
-    lines = '(No prior CortexAgent memory for this profile yet.)'
-source = '$source'
-if source == 'compact':
+source = sys.argv[1]
+agent_mem = sys.argv[2]
+cortexllm_mem = sys.argv[3]
+
+lines = ""
+if agent_mem:
+    lines = "🤖 CortexAgent memory:\n" + agent_mem
+if cortexllm_mem:
+    if lines:
+        lines += "\n"
+    lines += "💬 Claude Code memory:\n" + cortexllm_mem
+if not lines:
+    lines = "(No prior memory found)"
+
+if source == "compact":
     f = os.path.join(os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')), 'cortexagent', 'last-prompt')
     try:
         with open(f) as fh:
             last = fh.read().strip()
         if last:
-            lines += '\n\nContext was just compacted. Continue the user\'s last request:\n' + last
+            lines += "\n\nContext was just compacted. Continue the user's last request:\n" + last
     except:
         pass
+
 print(json.dumps({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': lines}}))
-" 2>/dev/null || echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"(No prior CortexAgent memory for this profile yet.)"}}'
+PY
 exit 0
