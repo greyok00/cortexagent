@@ -159,8 +159,48 @@ install_systemd() {
   fi
 }
 
+# ── systemd user service: OVERSEER (always-on scheduler + tiny keepalive) ────
+# Installs a user unit that runs the overseer daemon — keepalives the 0.5b
+# tiny llama-server (:8082) and runs the cron scheduler + task queue + memory
+# health, independent of the cortexagent CLI (so scheduled tasks fire even
+# when no session is open). Enabled + started now: it is meant to be always on.
+install_overseer_systemd() {
+  local unit_tpl="${REPO_ROOT}/config/templates/cortexagent-overseer.service"
+  local unit_dir="$HOME/.config/systemd/user"
+  local unit_out="${unit_dir}/cortexagent-overseer.service"
+  local py
+  py="$(command -v python3 || echo /usr/bin/python3)"
+  mkdir -p "${unit_dir}"
+  if [ ! -f "${unit_tpl}" ]; then
+    echo "    systemd: overseer unit template missing — skipping (non-fatal)" >&2
+    return 0
+  fi
+  # Back up a hand-written / pre-existing unit before overwriting.
+  if [ -f "${unit_out}" ] && [ ! -f "${unit_out}.bak" ]; then
+    cp -a "${unit_out}" "${unit_out}.bak"
+    echo "    backed up existing unit → ${unit_out}.bak"
+  fi
+  sed -e "s|{{PYTHON}}|${py}|g" -e "s|{{REPO_ROOT}}|${REPO_ROOT}|g" \
+      "${unit_tpl}" > "${unit_out}"
+  echo "    wrote ${unit_out}"
+  if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
+    systemctl --user enable cortexagent-overseer >/dev/null 2>&1 && echo "    enabled cortexagent-overseer.service (starts on login)"
+    # Stop any manual/orphan overseer holding the pidfile first (Type=forking
+    # would otherwise see "already running" and go inactive).
+    if [ -f "$HOME/.cortexagent/overseer.pid" ]; then
+      "${py}" "${REPO_ROOT}/lib/overseer.py" stop >/dev/null 2>&1 || true
+    fi
+    systemctl --user restart cortexagent-overseer >/dev/null 2>&1 && echo "    started cortexagent-overseer.service now (always-on)"
+    if [ "${CORTEXAGENT_AUTOSTART:-0}" != "1" ]; then
+      echo "    (set CORTEXAGENT_AUTOSTART=1 to also autostart the big-model daemon)"
+    fi
+  else
+    echo "    systemd not available — overseer can still run manually: python3 lib/overseer.py start"
+  fi
+}
+
 case "$(uname -s)" in
-  Linux) install_systemd ;;
+  Linux) install_systemd; install_overseer_systemd ;;
   *) echo "    $(uname -s): systemd install skipped — run 'cortexagent daemon start' manually" ;;
 esac
 

@@ -34,6 +34,18 @@ if python3 "$REPO_ROOT/lib/control.py" 2>/dev/null | grep -q "True"; then
   echo "CortexAgent daemon detected — using managed models (daemon mode)."
 fi
 
+# ── Always-on overseer status (one line, CLI feedback) ────────────────────────
+# The overseer systemd user service keeps the 0.5b tiny + scheduler running
+# independent of this CLI. Surface its state so the user can see it's always on
+# (and gets a fix hint if it isn't). Non-fatal — never blocks the session.
+_ov_pid="$(python3 "$REPO_ROOT/lib/overseer.py" status 2>/dev/null | head -1)"
+if [ -n "${_ov_pid}" ]; then
+  echo "${_ov_pid}"
+else
+  echo "Overseer: not running — start with: systemctl --user start cortexagent-overseer"
+fi
+unset _ov_pid
+
 # ── Backend (llama.cpp) — defined early so kill_stale can use LLAMA_DIR ──────
 LLAMA_DIR="${CORTEXAGENT_LLAMA_DIR:-$HOME/llama.cpp/build}"
 MODELS_DIR="${CORTEXAGENT_MODELS_DIR:-$HOME/models}"
@@ -44,13 +56,19 @@ MODELS_DIR="${CORTEXAGENT_MODELS_DIR:-$HOME/models}"
 # for cloud model access).
 _cortexagent_kill_stale() {
   local pids
-  # Only match llama-server processes we own: either our own build path or --alias cortexagent
-  pids="$(ps aux | grep llama-server | grep -v grep | grep -E "(--alias|${LLAMA_DIR}/build)" | awk '{print $2}' || true)"
+  # Kill only STALE BIG-model llama-servers (alias "cortexagent"). MUST NOT match
+  # the always-on tiny (alias "cortexagent-tiny") — the tiny is owned by the
+  # overseer systemd service and must survive a cortexagent launch. The regex
+  # anchors the alias value with a trailing space/EOL so "cortexagent" matches
+  # but "cortexagent-tiny" does not. The ${LLAMA_DIR}/build path filter is
+  # intentionally dropped — both servers share that build path, so it can't
+  # distinguish them and would kill the tiny.
+  pids="$(ps aux | grep llama-server | grep -v grep | grep -E -- "--alias[[:space:]]+cortexagent([[:space:]]|\$)" | awk '{print $2}' || true)"
   if [ -n "${pids}" ]; then
-    echo "Killing stale cortexagent llama-server process(es)..."
+    echo "Killing stale cortexagent big-model llama-server..."
     kill ${pids} 2>/dev/null || true
     sleep 1
-    pids="$(ps aux | grep llama-server | grep -v grep | grep -E "(--alias|${LLAMA_DIR}/build)" | awk '{print $2}' || true)"
+    pids="$(ps aux | grep llama-server | grep -v grep | grep -E -- "--alias[[:space:]]+cortexagent([[:space:]]|\$)" | awk '{print $2}' || true)"
     [ -n "${pids}" ] && kill -9 ${pids} 2>/dev/null || true
     sleep 1
   fi
@@ -144,6 +162,15 @@ CTK="${CORTEXAGENT_CTK:-q4_0}"      # KV cache K type
 CTV="${CORTEXAGENT_CTV:-q4_0}"      # KV cache V type
 NP="${CORTEXAGENT_NP:-1}"           # server slots (1 = single user, max context)
 KV_OFFLOAD="${CORTEXAGENT_KV_OFFLOAD:-1}"  # 1 = KV cache on GPU (fast); 0 = force system RAM (--no-kv-offload, ~4x slower on this hybrid model)
+# Prompt-eval batching. llama-server defaults to -b 512 -ub 512 (small physical
+# batch → slow prompt eval for large prompts). Raising ubatch parallelizes prompt
+# eval — the main lever for the 30-tool / multi-kB requests claude sends (the
+# 83–157s responses in proxy.log are compute-bound prompt eval + generation, NOT
+# KV spill: the hybrid model's KV cache is tiny and fits at 256K ctx). 2048 is a
+# conservative 4× over default; raise to 4096 on headroom (env-tunable). Extra
+# temp VRAM is modest vs the ~13 GB model.
+B="${CORTEXAGENT_B:-2048}"          # logical batch (max tokens processed per batch)
+UB="${CORTEXAGENT_UB:-2048}"        # ubatch / physical batch (prompt-eval parallelism)
 LOG="${CORTEXAGENT_LOG:-$HOME/.cortexagent-server.log}"
 WEBUI_ENABLED="${CORTEXAGENT_WEBUI_ENABLED:-1}"
 
@@ -260,10 +287,11 @@ elif ss -ltn 2>/dev/null | grep -q ":${PORT} "; then
   echo "Port ${PORT} in use — assuming a llama-server is already running; reusing it."
 else
   echo "Starting llama-server on 127.0.0.1:${PORT} (model: $(basename "${MODEL}"))..."
-  echo "  ctx=${CTX} kv=${CTK}/${CTV} ngl=${NGL} fa=${FA} slots=${NP} kv_offload=${KV_OFFLOAD} kv_unified=on"
+  echo "  ctx=${CTX} kv=${CTK}/${CTV} ngl=${NGL} fa=${FA} slots=${NP} b=${B} ub=${UB} kv_offload=${KV_OFFLOAD} kv_unified=on"
   LD_LIBRARY_PATH="${LLAMA_DIR}/bin" nohup "${LLAMA_DIR}/bin/llama-server" \
     -m "${MODEL}" -c "${CTX}" -ngl "${NGL}" --alias "${ALIAS}" \
     -fa "${FA}" -ctk "${CTK}" -ctv "${CTV}" -np "${NP}" \
+    -b "${B}" -ub "${UB}" \
     $([ "${KV_OFFLOAD}" = "0" ] && echo "--no-kv-offload") \
     --kv-unified \
     --host 127.0.0.1 --port "${PORT}" \
@@ -309,17 +337,11 @@ cleanup() {
     kill "${WEBUI_PID}" 2>/dev/null || true
     wait "${WEBUI_PID}" 2>/dev/null || true
   fi
-  # Stop overseer (SIGTERMs daemon → it exits 0 cleanly and stops the 0.5b
-  # llama-server on :8082; then a backup stop runs). Output is shown so the
-  # lifecycle is observable. In daemon mode the overseer still runs per-session
-  # but its tiny-unload is internally guarded (it won't stop the daemon's tiny).
-  echo "Stopping overseer..."
-  python3 "${REPO_ROOT}/lib/overseer.py" stop 2>&1 || true
-  if [ "$DAEMON_MODE" = "0" ]; then
-    # Belt-and-suspenders: directly stop the tiny llama-server on :8082 even if
-    # the overseer is broken/uninstalled. (Daemon mode: the daemon owns the tiny.)
-    python3 "${REPO_ROOT}/lib/model_backend.py" stop tiny >/dev/null 2>&1 || true
-  fi
+  # The overseer + tiny 0.5b are an ALWAYS-ON systemd user service — do NOT
+  # stop them here. Closing cortexagent must free only the big model's ~13 GB
+  # VRAM + the grammar proxy; the tiny + scheduler stay up so scheduled tasks
+  # still fire after this session closes. (Daemon mode: the daemon owns the
+  # big model; the overseer still keeps the tiny.)
   # Stop memory daemon (flushes pending writes)
   bash "${HOME}/.cortexllm/scripts/memory-daemon.sh" stop 2>/dev/null || true
   if [ "$DAEMON_MODE" = "1" ]; then
@@ -329,14 +351,13 @@ cleanup() {
     python3 -c "import sys; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
 control.send_request('session-end', timeout=5)" 2>/dev/null || true
   else
-    # Kill our own llama-server (NOT Ollama's — keep Ollama alive for cloud models)
-    OLD_PIDS="$(ps aux | grep llama-server | grep -v grep | grep -E "(--alias|${LLAMA_DIR}/build)" | awk '{print $2}' || true)"
-    if [ -n "${OLD_PIDS}" ]; then
-      echo "Stopping llama-server — freeing VRAM..."
-      kill ${OLD_PIDS} 2>/dev/null || true
-      sleep 1
-      STILL_ALIVE="$(ps aux | grep llama-server | grep -v grep | grep -E "(--alias|${LLAMA_DIR}/build)" | awk '{print $2}' || true)"
-      [ -n "${STILL_ALIVE}" ] && kill -9 ${STILL_ALIVE} 2>/dev/null || true
+    # Stop ONLY the big-model llama-server on :8080 (port-specific — never the
+    # always-on tiny on :8082). model_backend stop big kills by port, so it
+    # can't accidentally hit the tiny (alias "cortexagent-tiny") or Ollama's
+    # llama-server.
+    if curl -sf -m 2 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+      echo "Stopping big-model llama-server on :${PORT} — freeing VRAM..."
+      python3 "${REPO_ROOT}/lib/model_backend.py" stop big >/dev/null 2>&1 || true
     fi
   fi
 }

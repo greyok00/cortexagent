@@ -199,6 +199,13 @@ class Config:
             "CORTEXAGENT_CTV", "backend", "big_ctv", "q4_0")
         self.big_np = _env_int(
             "CORTEXAGENT_NP", "backend", "big_np", 1)
+        # Prompt-eval batching (see bin/cortexagent). ubatch is the physical
+        # batch for prompt eval — the main lever for large multi-kB requests
+        # (30 tools). Default 512 in llama-server → slow; 2048 = 4× parallelism.
+        self.big_b = _env_int(
+            "CORTEXAGENT_B", "backend", "big_b", 2048)
+        self.big_ub = _env_int(
+            "CORTEXAGENT_UB", "backend", "big_ub", 2048)
         self.big_kv_offload = _env_int(
             "CORTEXAGENT_KV_OFFLOAD", "backend", "big_kv_offload", 1)
         self.big_alias = _env(

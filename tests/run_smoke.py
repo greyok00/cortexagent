@@ -1243,6 +1243,97 @@ def print_coverage() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AREA: overseer (always-on systemd autostart + big-only kill invariants)
+# ═══════════════════════════════════════════════════════════════════════════
+def test_overseer_unit_template() -> R:
+    """Overseer systemd unit template is PII-free + has no ollama dep + has DISPLAY."""
+    tpl = REPO / "config" / "templates" / "cortexagent-overseer.service"
+    if not tpl.exists():
+        return R("overseer unit template exists", "overseer", False, "template missing")
+    txt = tpl.read_text(errors="ignore")
+    checks = {
+        "no_/home/grey": "/home/grey" not in txt,
+        "uses_{{REPO_ROOT}}": "{{REPO_ROOT}}" in txt,
+        "no_ollama_Wants": "ollama.service" not in txt,
+        "has_DISPLAY": "DISPLAY=" in txt,
+        "WantedBy_default": "WantedBy=default.target" in txt,
+        "Type_forking": "Type=forking" in txt,
+    }
+    ok = all(checks.values())
+    return R("overseer unit template clean", "overseer", ok,
+             " ".join(f"{k}={'OK' if v else 'BAD'}" for k, v in checks.items()))
+
+
+def test_kill_stale_big_only() -> R:
+    """_cortexagent_kill_stale regex matches the big alias but NOT the tiny."""
+    import re
+    src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
+    # Extract the kill_stale grep -E pattern (the real POSIX ERE, not Python re).
+    m = re.search(r'grep -E -- "([^"]*cortexagent[^"]*)"', src)
+    if not m:
+        return R("kill_stale regex present", "overseer", False, "regex not found")
+    pat = m.group(1)
+    # Replicate bash's unescaping inside double quotes: \$ -> $ (so grep sees the
+    # EOL anchor, not a literal dollar). Without this, grep treats \$ as a
+    # literal '$' char and the test would mis-report the bin's real behavior.
+    pat = pat.replace("\\$", "$")
+    # The old build-path filter (which matches the tiny too) must be gone from
+    # the actual grep pattern (not just the comment).
+    no_build_filter = "LLAMA_DIR" not in pat
+    # Test with the REAL grep -E (POSIX ERE) against sample process-arg lines.
+    sample = "--alias cortexagent -fa on\n--alias cortexagent\n--alias cortexagent-tiny\n--alias cortexagent-tiny -fa on\n"
+    r = subprocess.run(["grep", "-E", "--", pat], input=sample,
+                       capture_output=True, text=True)
+    matched = r.stdout.splitlines()
+    matches_big = all("--alias cortexagent" in l and "tiny" not in l for l in matched[:2]) and len(matched) >= 2
+    skips_tiny = not any("tiny" in l for l in matched)
+    ok = matches_big and skips_tiny and no_build_filter
+    return R("kill_stale is big-only", "overseer", ok,
+             f"big={'OK' if matches_big else 'BAD'} tiny={'skipped' if skips_tiny else 'MATCHED'} build_filter={'gone' if no_build_filter else 'PRESENT'}")
+
+
+def test_overseer_big_params() -> R:
+    """big_ctx stays 262144 (NOT reduced) + ubatch knob defaults to 2048."""
+    checks = {}
+    # config.py defaults
+    env = dict(os.environ)
+    env["CORTEXAGENT_STATE_DIR"] = str(REPO / ".smoke_cfg_tmp")
+    r = _run(env, sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.'); from lib.config import CFG; "
+             "print(CFG.big_ctx, CFG.big_b, CFG.big_ub)", timeout=15)
+    out = r.stdout.strip()
+    if r.returncode == 0 and out.split() == ["262144", "2048", "2048"]:
+        checks["config"] = "OK"
+    else:
+        checks["config"] = f"BAD rc={r.returncode} out={out[:40]}"
+    # bin/cortexagent defaults
+    src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
+    checks["bin_ctx_262144"] = "OK" if 'CORTEXAGENT_CTX:-262144' in src else "BAD"
+    checks["bin_ub_2048"] = "OK" if 'CORTEXAGENT_UB:-2048' in src else "BAD"
+    checks["bin_no_65536"] = "OK" if "65536" not in src else "BAD (ctx reduced)"
+    ok = all(v == "OK" for v in checks.values())
+    return R("big-model params (ctx kept, ub=2048)", "overseer", ok,
+             " ".join(f"{k}={v}" for k, v in checks.items()))
+
+
+def test_cleanup_big_only() -> R:
+    """cleanup() does NOT stop the overseer/tiny (always-on); kills big only."""
+    src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
+    # Split at the cleanup() body.
+    c = src.split("cleanup() {", 1)
+    if len(c) != 2:
+        return R("cleanup body found", "overseer", False, "cleanup() not found")
+    body = c[1].split("\n}", 1)[0]
+    no_overseer_stop = "overseer.py\" stop" not in body
+    no_stop_tiny = 'model_backend.py" stop tiny' not in body and 'stop tiny' not in body
+    uses_stop_big = "stop big" in body
+    ok = no_overseer_stop and no_stop_tiny and uses_stop_big
+    return R("cleanup kills big-only (tiny stays)", "overseer", ok,
+             f"no_overseer_stop={'OK' if no_overseer_stop else 'BAD'} "
+             f"no_stop_tiny={'OK' if no_stop_tiny else 'BAD'} stop_big={'OK' if uses_stop_big else 'BAD'}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
 LIVE_AREAS = {"models", "daemon", "proxy", "cli", "tray"}
@@ -1267,6 +1358,8 @@ TESTS = {
     "patch": [test_patch_binary_wired],
     "webui": [test_webui_assets],
     "doctor": [test_doctor_drift_repair],
+    "overseer": [test_overseer_unit_template, test_kill_stale_big_only,
+                 test_overseer_big_params, test_cleanup_big_only],
 }
 
 

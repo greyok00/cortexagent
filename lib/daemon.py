@@ -76,6 +76,8 @@ def _big_extra_args() -> list:
         "-ctk", str(CFG.big_ctk),
         "-ctv", str(CFG.big_ctv),
         "-np", str(CFG.big_np),
+        "-b", str(CFG.big_b),
+        "-ub", str(CFG.big_ub),
         "--kv-unified",
     ]
     if int(CFG.big_kv_offload) == 0:
