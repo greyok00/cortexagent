@@ -485,6 +485,23 @@ fi
 # Disable auto-update checks — we control the version.
 export CLAUDE_CODE_DISABLE_UPDATE=1
 
+# ── Rebrand the terminal title: "Claude Code" → "CortexAgent" ──────────────
+# Claude sets the window title to "✳ Claude Code …" via an OSC sequence.
+# CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 stops Claude from emitting any title
+# OSC at all (verified: zero title emissions); we then set our own once.
+# What this DOES: window title → "CortexAgent" (separation-safe — only
+# bin/cortexagent sets this; the ollama-launched claude agent is unaffected).
+# What this does NOT do: the in-TUI persistent header (sparkle logo +
+# "Claude Code v<ver>") is rendered by Claude as cursor-positioned text
+# fragments ("Claude" / "Code" / "v"+version) with the logo assembled
+# per-char — none of which is a safely patchable contiguous string, and the
+# "Code"→"Agent" rebrand is an unsafe length change (4→5). So that locked
+# header line stays Claude's. The wolf + CORTEXAGENT identity show via
+# lib/banner.py (drawn before exec; visible at boot + on shutdown when the
+# alt-screen restores) and via the statusLine. Title is rebranded here.
+export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
+printf '\033]0;CortexAgent\007'
+
 # ── Show custom welcome banner (replaces Claude's suppressed welcome) ──────
 # lib/banner.py: ANSI truecolor logo + in-place boot animation (\033[H, no
 # `clear`/flicker, hide cursor). Non-TTY / CORTEXAGENT_BOOT_ANIM=0 → static.
