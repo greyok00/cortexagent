@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """patch_binary.py — Patch the Claude Code binary.
 
-Suppresses the "Tips" and "What's new" sections in the welcome banner.
-No branding changes — the wrapper script handles the visual identity.
+Suppresses the "Tips" and "What's new" sections in the welcome banner AND
+rebrands the persistent header text "Claude Code v<ver>" → "CortexAgent
+v<ver>" (same-length in-place swap, so the sparkle logo graphic remains).
+The wrapper script (bin/cortexagent) handles the rest of the visual identity
+(wolf banner, terminal title).
 
 Usage:
   python3 lib/patch_binary.py              # Patch the installed claude binary
@@ -59,6 +62,22 @@ REPLACEMENTS = [
     ("What's new", "\0\0\0\0\0\0\0\0\0\0"),
     ("Bug fixes and improvements", "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
     ("release-notes", "\0\0\0\0\0\0\0\0\0\0\0\0\0"),
+    # ── Rebrand two "Claude Code v<ver>" display strings → "CortexAgent v<ver>"
+    # SAME-LENGTH in-place swap (11→11 chars) — no binary offset / checksum risk.
+    # NOTE: these two literals (count=1 each) are the web-UI header template
+    # (<span>CortexAgent v${Ks(e.claudeVersion)}</span>) and a null-terminated
+    # string-table entry — NOT the terminal/TUI persistent header. The locked
+    # TUI header renders "Claude" / "Code" / "v"+version as separate
+    # cursor-positioned fragments with the sparkle logo assembled per-char;
+    # none of those is a safely patchable contiguous string, and "Code"→
+    # "Agent" is an unsafe 4→5 length change. So the TUI header text is left
+    # as Claude's; the web-UI header + title + statusLine + wolf banner carry
+    # the CortexAgent identity. The 13 functional "Claude Code version …"
+    # managed-settings docs are left intact (they end in "\x00"/"${…}", not
+    # "ersion"). Same binary is shared with the ollama-launched claude agent,
+    # but the terminal render of both is unaffected by these two swaps.
+    ("Claude Code v\x00", "CortexAgent v\x00"),
+    ("Claude Code v${Ks(e.claudeVersion)}", "CortexAgent v${Ks(e.claudeVersion)}"),
 ]
 
 

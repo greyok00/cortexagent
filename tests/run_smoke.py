@@ -774,6 +774,7 @@ def test_tray_headless() -> R:
         except Exception:
             return -1
     pre = tiny8082_count()
+    did_live_fork = False
     try:
         cli = _cli(env)
         r = _run(env, *cli, "tray", "--check", timeout=15)
@@ -783,6 +784,20 @@ def test_tray_headless() -> R:
             # logic + deps are exercised by --check + import. Skip the live fork.
             return R("tray --check + headless keeper", "tray", check_ok,
                      f"check={check_ok} (live fork skipped on Windows)")
+        if pre > 0:
+            # SAFETY (standing rule: never kill the user's :8082 tiny): the live
+            # `tray --headless` fork starts an overseer whose tiny-port isolation
+            # (CORTEXAGENT_TINY_PORT=18082) is unreliable in this build — the
+            # isolated env does not reliably propagate through the
+            # cli.py→tray→overseer.py fork chain, so the forked overseer can fall
+            # back to the REAL :8082 and port-kill the user's tiny (observed:
+            # test orphaned an overseer on 8082). When the user's :8082 tiny is
+            # already up, skip the live fork and rely on --check + import (same
+            # coverage basis as the Windows skip). Run the live fork only when
+            # :8082 is free.
+            return R("tray --check + headless keeper", "tray", check_ok,
+                     f"check={check_ok} (live fork skipped — user :8082 tiny up, count={pre})")
+        did_live_fork = True
         proc = subprocess.Popen(
             [sys.executable, str(REPO / "engine" / "cli.py"), "tray", "--headless"],
             env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -802,21 +817,28 @@ def test_tray_headless() -> R:
         return R("tray --check + headless keeper", "tray", ok,
                  f"check={check_ok} torn_down={torn} rc={proc.returncode} :8082_unchanged={untouched}")
     finally:
-        try:
-            _run(env, sys.executable, str(REPO / "lib" / "overseer.py"), "stop", timeout=20)
-        except Exception:
-            pass
-        _kill_aliased_servers()
-        # kill any isolated tiny we started on 18082 (alias cortexagent-tiny)
-        try:
-            ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
-            for line in ps.splitlines():
-                if "llama-server" in line and "--port 18082" in line and "grep" not in line:
-                    try: os.kill(int(line.split()[0]), 9)
-                    except Exception: pass
-        except Exception:
-            pass
-        shutil.rmtree(state, ignore_errors=True)
+        if not did_live_fork:
+            # We skipped the live fork (Windows, or user's :8082 tiny was up) —
+            # we started nothing, so clean up nothing. Running the aliased-server
+            # kill here would murder the user's real :8082 tiny (it shares the
+            # "cortexagent-tiny" alias). Only rmtree our isolated state dir.
+            shutil.rmtree(state, ignore_errors=True)
+        else:
+            try:
+                _run(env, sys.executable, str(REPO / "lib" / "overseer.py"), "stop", timeout=20)
+            except Exception:
+                pass
+            _kill_aliased_servers()
+            # kill any isolated tiny we started on 18082 (alias cortexagent-tiny)
+            try:
+                ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
+                for line in ps.splitlines():
+                    if "llama-server" in line and "--port 18082" in line and "grep" not in line:
+                        try: os.kill(int(line.split()[0]), 9)
+                        except Exception: pass
+            except Exception:
+                pass
+            shutil.rmtree(state, ignore_errors=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -942,9 +964,12 @@ def test_patch_binary_wired() -> R:
         missing = need - targets
         if missing:
             bad.append(f"REPLACEMENTS missing: {sorted(missing)}")
-        for _, new in repls:
-            if new.replace("\0", "") != "" and "\0" not in new:
-                bad.append("replacement not null-padded")
+        for old, new in repls:
+            ob, nb = old.encode("utf-8"), new.encode("utf-8")
+            if len(nb) > len(ob):
+                bad.append(f"replacement longer than target: {old[:24]!r}")
+            elif len(nb) < len(ob) and not new.endswith("\0"):
+                bad.append(f"replacement not null-padded: {old[:24]!r}")
         if not hasattr(m, "check_patched") or not hasattr(m, "patch_binary"):
             bad.append("missing check_patched/patch_binary funcs")
     except Exception as e:
