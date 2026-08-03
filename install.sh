@@ -31,6 +31,24 @@ chmod +x "${REPO_ROOT}/bin/cortexagent" \
         "${REPO_ROOT}/lib/"*.sh 2>/dev/null || true
 echo "    scripts made executable"
 
+# ── Diffusion deps (image/video via in-process diffusers) ────────────────────
+# Optional: only installs when CORTEXAGENT_INSTALL_DIFFUSION_DEPS=1 (heavy: torch
+# + diffusers + CUDA). Otherwise just prints what's needed so a user can install
+# manually. These are NOT auto-installed because a CPU-only/CI box doesn't want
+# a multi-GB CUDA torch pull. gen_image (SD1.5/SDXL) needs diffusers+torch+accelerate;
+# gen_video (LTX-Video) additionally needs sentencepiece (T5 tokenizer) +
+# imageio-ffmpeg (mp4 export).
+_diff_deps="diffusers transformers accelerate sentencepiece imageio imageio-ffmpeg opencv-python"
+if [ "${CORTEXAGENT_INSTALL_DIFFUSION_DEPS:-0}" = "1" ]; then
+  echo "    installing diffusion deps (torch + ${_diff_deps})…"
+  python3 -m pip install --break-system-packages --user torch "${_diff_deps}" 2>&1 | tail -2 || \
+    echo "    WARN: diffusion deps install failed — see README" >&2
+else
+  echo "    diffusion deps (not auto-installed): torch ${_diff_deps}"
+  echo "      install with: CORTEXAGENT_INSTALL_DIFFUSION_DEPS=1 ${REPO_ROOT}/install.sh"
+  echo "      (needed for: cortexagent gen-image / gen-video)"
+fi
+
 # ── Render templates → live config files ────────────────────────────────────
 python3 - "${REPO_ROOT}/config" "${CONFIG_DIR}" "${MEMORY_CMD}" "${HOME}" "${REPO_ROOT}" <<'PY'
 import json, os, sys, shutil

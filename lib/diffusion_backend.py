@@ -357,13 +357,28 @@ def _get_video_pipe():
     else:
         # local path: a parent dir or safetensors (from_pretrained handles dirs)
         pipe = LTXPipeline.from_pretrained(model, **kwargs)
-    pipe = pipe.to(DEVICE)
-    if offload and hasattr(pipe, "enable_group_offload"):
-        try:
-            pipe.enable_group_offload()
-            _log("group offload enabled (fits 16 GB alongside tiny)", "💾", DIM)
-        except Exception as e:
-            _log(f"group offload skipped: {e}", "⚠️", YELLOW)
+    # Offload chain: group_offload (newer diffusers needs onload_device kw) →
+    # model_cpu_offload → full GPU load. Only .to(DEVICE) when NOT offloading,
+    # since the offload methods own device placement (calling .to first would
+    # load everything to VRAM then fail to redistribute).
+    offloaded = False
+    if offload:
+        if hasattr(pipe, "enable_group_offload"):
+            try:
+                pipe.enable_group_offload(onload_device=torch.device(DEVICE))
+                _log("group offload enabled (fits 16 GB alongside tiny)", "💾", DIM)
+                offloaded = True
+            except Exception as e:
+                _log(f"group offload failed ({e}); trying model_cpu_offload", "⚠️", YELLOW)
+        if not offloaded and hasattr(pipe, "enable_model_cpu_offload"):
+            try:
+                pipe.enable_model_cpu_offload()
+                _log("model CPU offload enabled", "💾", DIM)
+                offloaded = True
+            except Exception as e:
+                _log(f"model_cpu_offload failed ({e}); full GPU load", "⚠️", YELLOW)
+    if not offloaded:
+        pipe = pipe.to(DEVICE)
     _log(f"loaded in {time.time()-t0:.1f}s | peak VRAM "
          f"{torch.cuda.max_memory_allocated()/1e9:.2f} GB", "✅", GREEN)
     _PIPES[key] = pipe
