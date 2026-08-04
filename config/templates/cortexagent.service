@@ -1,22 +1,31 @@
 [Unit]
 Description=CortexAgent persistent backend daemon (llama.cpp models + grammar proxy)
 Documentation=https://github.com/cortexagent/cortexagent
-After=network.target
+# Start AFTER the overseer so the daemon finds the overseer's tiny already up
+# on :8082 and ADOPTS it (proc=None) instead of racing to start its own. This
+# keeps a single tiny owner (the overseer) — the daemon never owns/kills it.
+After=network.target cortexagent-overseer.service
+Wants=cortexagent-overseer.service
 
 [Service]
 Type=simple
-# The daemon owns both llama-servers + the grammar proxy. The big coding model
-# is loaded on demand and idle-unloaded (CORTEXAGENT_IDLE_UNLOAD_SEC) to free
-# VRAM; the tiny 0.5b stays up (cheap). The CLI is a thin client over its
-# control socket, so sessions never relaunch and never see a 502 on reload.
+# The daemon owns the big coding model (:8080) + grammar proxy (:8081) + the
+# AF_UNIX control socket; it ADOPTS the overseer's tiny (:8082). The big model
+# is loaded on demand (session-start) and idle-unloaded to free VRAM. The CLI
+# is a thin client over the control socket, so sessions never relaunch and
+# never see a 502 on reload. This is the default backend — legacy in-process
+# mode only runs if the daemon is somehow down.
 ExecStart={{PYTHON}} {{REPO_ROOT}}/lib/daemon.py run
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 Environment=CORTEXAGENT_REPO={{REPO_ROOT}}
-# Big-model idle-unload window (seconds of no proxy traffic / no active session
-# before the ~13 GB model is stopped). Override per-user in ~/.cortexagent/cortexagent.conf.
-Environment=CORTEXAGENT_IDLE_UNLOAD_SEC=600
+# Big-model idle-unload window (seconds of no active session before the ~13 GB
+# model is stopped → frees VRAM). 0 = unload ~5s after the last session ends
+# (the idle watcher polls every 5s), so closing cortexagent frees VRAM fast
+# for the shared-GPU diffusion backend while keeping the daemon architecture.
+# Override per-user in ~/.cortexagent/cortexagent.conf.
+Environment=CORTEXAGENT_IDLE_UNLOAD_SEC=0
 
 [Install]
 WantedBy=default.target

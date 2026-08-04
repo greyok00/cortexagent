@@ -3,10 +3,13 @@
 
 Owns the model backends and the grammar proxy so the CLI can be a thin client:
 
-  - tiny 0.5b llama-server on :8082  (always up — cheap, used by overseer/etc.)
   - big coding model on :8080        (loaded on demand, idle-unloaded to free VRAM)
   - grammar proxy on :8081           (reload-aware: triggers big reload on request)
   - AF_UNIX control socket           (status / load / unload / session / shutdown)
+
+The tiny 0.5b (:8082) is owned by the always-on OVERSEER systemd service, not
+this daemon. The daemon reports its state + exposes manual ``load tiny`` /
+``unload tiny`` commands, but does NOT auto-start/stop it (avoids a boot race).
 
 Idle auto-unload: after ``CORTEXAGENT_IDLE_UNLOAD_SEC`` (default 600s) with no
 proxy traffic and no active CLI session, the big model is stopped → ~13 GB VRAM
@@ -343,7 +346,14 @@ def _handle(req: Dict) -> Dict:
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 def _run() -> None:
-    """Foreground daemon: tiny + proxy + control socket + idle watcher."""
+    """Foreground daemon: proxy + control socket + idle watcher.
+
+    The tiny 0.5b (:8082) is owned by the always-on OVERSEER systemd service,
+    NOT by this daemon. The daemon's ``_tiny`` instance is kept only for status
+    reporting (``is_healthy``) and manual ``load tiny``/``unload tiny`` control
+    commands — it does NOT auto-start/stop the tiny at boot/shutdown. This
+    avoids a boot race where both services start a tiny and contend for :8082.
+    """
     signal.signal(signal.SIGTERM, lambda *_: _request_shutdown())
     signal.signal(signal.SIGINT, lambda *_: _request_shutdown())
 
@@ -351,7 +361,13 @@ def _run() -> None:
     (CFG.logs_dir).mkdir(parents=True, exist_ok=True)
     _log(f"CortexAgent daemon starting (idle_unload={CFG.idle_unload_sec}s)", "🚀", CYAN)
 
-    _start_tiny()
+    # Tiny is the overseer's responsibility — don't start it here. Just report
+    # its state (overseer has it up); if it's down the overseer's keepalive owns
+    # the recovery, not us.
+    if _tiny.is_healthy():
+        _log(f"Tiny :{_tiny.port} up (owned by overseer — adopted)", "🛡️", DIM)
+    else:
+        _log(f"Tiny :{_tiny.port} down — overseer will keepalive it", "💤", DIM)
     _start_proxy()
 
     threading.Thread(target=_idle_watcher, daemon=True).start()
@@ -362,10 +378,10 @@ def _run() -> None:
         time.sleep(1)
 
     # ── graceful shutdown ──
-    _log("Daemon shutting down — stopping proxy + models...", "🛑", YELLOW)
+    # Stop the proxy + any big model we own; leave the tiny (overseer-owned).
+    _log("Daemon shutting down — stopping proxy + big model...", "🛑", YELLOW)
     _stop_proxy()
     _stop_big()
-    _stop_tiny()
     try:
         PID_FILE.unlink(missing_ok=True)
     except Exception:
