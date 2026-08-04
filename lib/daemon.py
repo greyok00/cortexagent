@@ -88,6 +88,94 @@ def _big_extra_args() -> list:
     return args
 
 
+def _fallback_extra_args() -> list:
+    """llama-server args for the small fallback model (Qwen3-4B dense).
+
+    Dense full-attention (not MoE/SSM like the 35B), so NO --kv-unified. Same
+    fa/ctk/ctv/np/batch knobs so the proxy + tool-calling path stay consistent.
+    """
+    return [
+        "-fa", str(CFG.big_fa),
+        "-ctk", str(CFG.big_ctk),
+        "-ctv", str(CFG.big_ctv),
+        "-np", str(CFG.big_np),
+        "-b", str(CFG.big_b),
+        "-ub", str(CFG.big_ub),
+    ]
+
+
+def _free_vram_gb(samples: int = 3, interval: float = 0.7) -> Optional[float]:
+    """Free GPU VRAM in GB, glitch-rejecting. Returns the MAX free across
+    ``samples`` reads spaced ``interval`` seconds apart.
+
+    Why max-of-N (not one read, not min, not median): a single nvidia-smi read
+    can catch a momentary spike — a browser compositing, a tab initializing,
+    a window resize — that frees in well under a second. One such glitch must
+    NOT force the small fallback when the GPU actually has room for the 35B.
+    Taking the best (max) reading across ~2s means we only fall back when VRAM
+    is CONSISTENTLY low on every sample — i.e. a real, sustained GPU consumer
+    (a game, a diffusion run, a browser with HW accel holding VRAM). A
+    sub-second transient is rejected because at least one sample lands outside
+    it. None (no NVIDIA GPU / nvidia-smi fails on every sample) → caller treats
+    as 'enough VRAM' so we never block on a missing probe.
+    """
+    best: Optional[float] = None
+    for i in range(max(1, samples)):
+        try:
+            out = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.free",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if out.returncode == 0 and out.stdout.strip():
+                val = float(out.stdout.strip().splitlines()[0].strip()) / 1024.0
+                if best is None or val > best:
+                    best = val
+        except Exception:
+            pass
+        if i < samples - 1:
+            time.sleep(interval)
+    return best
+
+
+def _load_session_model() -> tuple:
+    """Pick the big model if VRAM allows, else the small fallback. VRAM-aware.
+
+    Re-runs every session-start. Probes free VRAM (glitch-rejecting: max of 3
+    reads). If a sustained GPU load (browser, game, diffusion) leaves <
+    big_vram_min_gb free, the 35B would spill to CPU (slow), so swap in the
+    Qwen3-4B fallback (~3 GB, native tool calls). If the desired model is
+    already up + healthy, no-op (idempotent). Returns (ok, model_path, is_fallback).
+    """
+    free_gb = _free_vram_gb()
+    if free_gb is None:
+        desired_big = True
+        why = "VRAM probe failed"
+    else:
+        desired_big = free_gb >= float(CFG.big_vram_min_gb)
+        why = f"VRAM free {free_gb:.1f}GB {'≥' if desired_big else '<'} {CFG.big_vram_min_gb}GB"
+    desired_path = str(CFG.big_model) if desired_big else str(CFG.fallback_model)
+    already = Path(_big.model_path).resolve() == Path(desired_path).resolve()
+    if already and _big.is_healthy():
+        _log(f"Model already up: {Path(_big.model_path).name} ({why})", "▶️", DIM)
+        return True, str(_big.model_path), not desired_big
+    if desired_big:
+        if already:
+            _log(f"{why} — (re)loading big model", "▶️", CYAN)
+            ok = _start_big()
+        else:
+            _log(f"{why} — swapping to big model", "▶️", CYAN)
+            ok = _swap_big(str(CFG.big_model), ctx=int(CFG.big_ctx),
+                           ngl=int(CFG.big_ngl), alias=str(CFG.big_alias),
+                           extra_args=_big_extra_args())
+        return ok, str(_big.model_path), False
+    _log(f"{why} (sustained GPU load) — fallback {Path(CFG.fallback_model).name}",
+         "🎮", YELLOW)
+    ok = _swap_big(str(CFG.fallback_model), ctx=int(CFG.fallback_ctx), ngl=999,
+                   alias=str(CFG.big_alias), extra_args=_fallback_extra_args())
+    return ok, str(_big.model_path), True
+
+
 _big = LlamaServer(
     "big", str(CFG.big_model), port=int(CFG.big_model_port),
     ctx=int(CFG.big_ctx), ngl=int(CFG.big_ngl), alias=str(CFG.big_alias),
@@ -248,7 +336,9 @@ def _handle(req: Dict) -> Dict:
     if cmd == "status":
         return {
             "ok": True,
-            "big": {"port": _big.port, "healthy": _big.is_healthy(), "running": _big.running},
+            "big": {"port": _big.port, "healthy": _big.is_healthy(), "running": _big.running,
+                    "model": str(_big.model_path),
+                    "fallback": Path(_big.model_path).resolve() == Path(CFG.fallback_model).resolve()},
             "tiny": {"port": _tiny.port, "healthy": _tiny.is_healthy(), "running": _tiny.running},
             "proxy": {"running": bool(_proxy_proc and _proxy_proc.poll() is None)},
             "active_sessions": _active_sessions,
@@ -319,14 +409,15 @@ def _handle(req: Dict) -> Dict:
         with _lock:
             _active_sessions += 1
             _last_request = time.time()
-        _log(f"Session start (active={_active_sessions}) — loading big model", "▶️", CYAN)
-        # Synchronous: the FIRST session loads the main model before the CLI
-        # launches (so the first token isn't delayed by a cold load). Later
-        # sessions find it already up → _start_big is idempotent and instant.
-        # Thread-per-connection control socket means this long call does NOT
+        # VRAM-aware: load the big model if there's room, else the small
+        # fallback (game / GPU load present). Synchronous so the first token
+        # isn't delayed by a cold load; later sessions find it up → idempotent.
+        # Thread-per-connection control socket ⇒ this long call does NOT
         # block concurrent activity/status/ping commands.
-        ok = _start_big()
-        return {"ok": ok, "active_sessions": _active_sessions, "big_healthy": _big.is_healthy()}
+        ok, model_path, is_fallback = _load_session_model()
+        return {"ok": ok, "active_sessions": _active_sessions,
+                "big_healthy": _big.is_healthy(), "model": model_path,
+                "fallback": is_fallback}
 
     if cmd == "session-end":
         with _lock:
@@ -468,8 +559,12 @@ def _status() -> int:
         return 1
     big = s["big"]
     tiny = s["tiny"]
+    from pathlib import Path as _P
+    model_name = _P(big.get("model", "")).name or "?"
+    tag = " 🎮 fallback (low VRAM)" if big.get("fallback") else " (big)"
     print(f"CortexAgent daemon: 🟢 running")
     print(f"  big  :{big['port']}  {'🟢 healthy' if big['healthy'] else '🔴 down'}  (running={big['running']})")
+    print(f"       model: {model_name}{tag}")
     print(f"  tiny :{tiny['port']}  {'🟢 healthy' if tiny['healthy'] else '🔴 down'}  (running={tiny['running']})")
     print(f"  proxy: {'🟢 up' if s['proxy']['running'] else '🔴 down'}")
     print(f"  sessions: {s['active_sessions']}  idle: {s['idle_sec']}s / {s['idle_unload_sec']}s")

@@ -1427,6 +1427,82 @@ def test_install_starts_daemon_unconditional() -> R:
              f"no_autostart_gate={'OK' if no_autostart_gate else 'BAD'}")
 
 
+def _patch_vram(daemon_mod, seq_miB):
+    """Monkeypatch nvidia-smi in lib.daemon to return seq_miB stdout values."""
+    calls = {"i": 0}
+
+    class _P:
+        returncode = 0
+
+    def fake_run(cmd, **kw):
+        p = _P()
+        p.stdout = seq_miB[min(calls["i"], len(seq_miB) - 1)]
+        calls["i"] += 1
+        return p
+    orig_run, orig_sleep = daemon_mod.subprocess.run, daemon_mod.time.sleep
+    daemon_mod.subprocess.run = fake_run
+    daemon_mod.time.sleep = lambda *_: None
+    return orig_run, orig_sleep, calls
+
+
+def test_fallback_vram_probe_glitchrejection() -> R:
+    """_free_vram_gb takes the MAX of N reads, so a momentary spike (browser
+    compositor, tab init, window resize) can't force the small fallback —
+    only a reading that's low on EVERY sample (a real sustained GPU load:
+    browser w/ HW accel, game, diffusion) triggers it."""
+    try:
+        import importlib, sys
+        if "lib.daemon" in sys.modules:
+            del sys.modules["lib.daemon"]
+        import lib.daemon as d
+    except Exception as e:
+        return R("fallback vram import", "daemoncfg", False, f"import: {e}")
+    # transient dip: [low, high, low] → max=high → big model fits (glitch rejected)
+    orig_run, orig_sleep, calls = _patch_vram(d, ["7000", "15000", "7000"])
+    try:
+        free = d._free_vram_gb(samples=3, interval=0)
+    finally:
+        d.subprocess.run, d.time.sleep = orig_run, orig_sleep
+    glitch_ok = (free is not None and abs(free - 15000 / 1024) < 0.01
+                 and calls["i"] == 3)
+    # sustained low: [low, low, low] → max=low → fallback would trigger
+    orig_run, orig_sleep, calls = _patch_vram(d, ["7000", "7000", "7000"])
+    try:
+        free2 = d._free_vram_gb(samples=3, interval=0)
+    finally:
+        d.subprocess.run, d.time.sleep = orig_run, orig_sleep
+    sustained_ok = (free2 is not None and abs(free2 - 7000 / 1024) < 0.01)
+    ok = glitch_ok and sustained_ok
+    return R("fallback vram probe glitch-rejection (max-of-N)", "daemoncfg", ok,
+             f"transient_max={free} sustained_max={free2}")
+
+
+def test_fallback_config_and_args() -> R:
+    """Fallback model path + ctx + threshold defaults; fallback args omit
+    --kv-unified (Qwen3-4B is dense full-attention, not MoE/SSM like the 35B)."""
+    try:
+        import sys
+        if "lib.config" in sys.modules:
+            del sys.modules["lib.config"]
+        from lib.config import CFG
+    except Exception as e:
+        return R("fallback config import", "daemoncfg", False, f"import: {e}")
+    cfg_ok = ("qwen3-4b" in str(CFG.fallback_model).lower()
+              and "Q4_K_M" in str(CFG.fallback_model)
+              and CFG.fallback_ctx == 8192 and CFG.big_vram_min_gb == 14)
+    # fallback args must NOT carry --kv-unified (dense model); big args must.
+    try:
+        import lib.daemon as d
+        fb_no_kvu = "--kv-unified" not in d._fallback_extra_args()
+        big_has_kvu = "--kv-unified" in d._big_extra_args()
+    except Exception as e:
+        return R("fallback args", "daemoncfg", False, f"daemon import: {e}")
+    ok = cfg_ok and fb_no_kvu and big_has_kvu
+    return R("fallback config + args (no --kv-unified)", "daemoncfg", ok,
+             f"cfg={'OK' if cfg_ok else 'BAD'} fb_no_kvu={'OK' if fb_no_kvu else 'BAD'} "
+             f"big_has_kvu={'OK' if big_has_kvu else 'BAD'}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1455,7 +1531,9 @@ TESTS = {
     "overseer": [test_overseer_unit_template, test_kill_stale_big_only,
                  test_overseer_big_params, test_cleanup_big_only],
     "daemoncfg": [test_daemon_unit_template, test_daemon_no_auto_tiny,
-                  test_install_starts_daemon_unconditional],
+                  test_install_starts_daemon_unconditional,
+                  test_fallback_vram_probe_glitchrejection,
+                  test_fallback_config_and_args],
 }
 
 

@@ -277,11 +277,16 @@ fi
 SERVER_PID=""
 SERVER_STARTED=0
 if [ "$DAEMON_MODE" = "1" ]; then
-  # Daemon owns the big model — just notify it a session is starting so it
-  # loads (if idle-unloaded) and pins the model for the session lifetime.
-  echo "Daemon mode — requesting big model load via control socket..."
-  python3 -c "import sys; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
-r=control.send_request('session-start', timeout=300); print('  session-start:', r)" 2>&1 \
+  # Daemon owns the model slot — notify it a session is starting. The daemon
+  # probes free VRAM (glitch-rejecting) and loads the big 35B if there's room,
+  # else swaps in the small Qwen3-4B fallback (sustained GPU load — browser,
+  # game, diffusion — leaves too little for the 35B). Returns which it loaded.
+  echo "Daemon mode — requesting model load via control socket..."
+  python3 -c "import sys,os; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
+r=control.send_request('session-start', timeout=300); \
+m=os.path.basename(str(r.get('model','?'))); fb=r.get('fallback'); \
+print('  model:', m, '(🎮 fallback — low VRAM)' if fb else '(big 35B)') if r.get('ok') \
+else print('  session-start failed:', r)" 2>&1 \
     || echo "  (control socket request failed — the proxy will reload on demand)"
 elif ss -ltn 2>/dev/null | grep -q ":${PORT} "; then
   echo "Port ${PORT} in use — assuming a llama-server is already running; reusing it."
