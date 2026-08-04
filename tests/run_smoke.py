@@ -1334,6 +1334,88 @@ def test_cleanup_big_only() -> R:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AREA: daemoncfg (non-live) — daemon-as-default-backend config checks
+# ═══════════════════════════════════════════════════════════════════════════
+def _fn_body(src: str, name: str) -> str:
+    """Extract a bash function body: from 'name() {' to its closing '}' line.
+
+    Bash functions close with a '}' on its own line (case/if/fi/esac use
+    keywords, not braces), so the first line whose strip() == '}' after the
+    opener is the function end. Brace-counting is wrong here because ${...}
+    substitutions contain balanced braces that confuse depth tracking.
+    """
+    marker = f"{name}() {{"
+    i = src.find(marker)
+    if i < 0:
+        return ""
+    lines = src[i:].splitlines()
+    out = [lines[0]]
+    for ln in lines[1:]:
+        out.append(ln)
+        if ln.strip() == "}":
+            break
+    return "\n".join(out)
+
+
+def test_daemon_unit_template() -> R:
+    """Daemon unit: orders AFTER overseer (adopts tiny, no race) + idle-unload=0."""
+    tpl = REPO / "config" / "templates" / "cortexagent.service"
+    if not tpl.exists():
+        return R("daemon unit template exists", "daemoncfg", False, "template missing")
+    txt = tpl.read_text(errors="ignore")
+    checks = {
+        "no_/home/grey": "/home/grey" not in txt,
+        "uses_{{REPO_ROOT}}": "{{REPO_ROOT}}" in txt,
+        "After_overseer": "cortexagent-overseer.service" in txt,
+        "Wants_overseer": "Wants=cortexagent-overseer.service" in txt,
+        "idle_unload_0": "CORTEXAGENT_IDLE_UNLOAD_SEC=0" in txt,
+        "no_idle_unload_600": "CORTEXAGENT_IDLE_UNLOAD_SEC=600" not in txt,
+        "Type_simple": "Type=simple" in txt,
+        "WantedBy_default": "WantedBy=default.target" in txt,
+    }
+    ok = all(checks.values())
+    return R("daemon unit orders after overseer + idle=0", "daemoncfg", ok,
+             " ".join(f"{k}={'OK' if v else 'BAD'}" for k, v in checks.items()))
+
+
+def test_daemon_no_auto_tiny() -> R:
+    """daemon._run() does NOT auto start/stop the tiny (overseer owns it).
+
+    The overseer is the sole tiny owner; the daemon adopting it at boot would
+    race the overseer for :8082. The _run loop must not call _start_tiny() /
+    _stop_tiny() (manual 'load tiny'/'unload tiny' commands still may).
+    """
+    src = (REPO / "lib" / "daemon.py").read_text(errors="ignore")
+    r = src.split("def _run() ->", 1)
+    if len(r) != 2:
+        return R("daemon _run found", "daemoncfg", False, "_run() not found")
+    body = r[1].split("\ndef ", 1)[0]  # up to the next top-level def
+    no_start = "_start_tiny()" not in body
+    no_stop = "_stop_tiny()" not in body
+    ok = no_start and no_stop
+    return R("daemon doesn't auto-manage tiny", "daemoncfg", ok,
+             f"no_start_tiny={'OK' if no_start else 'BAD'} "
+             f"no_stop_tiny={'OK' if no_stop else 'BAD'}")
+
+
+def test_install_starts_daemon_unconditional() -> R:
+    """install_systemd starts the daemon unconditionally (no AUTOSTART gate)."""
+    src = (REPO / "install.sh").read_text(errors="ignore")
+    body = _fn_body(src, "install_systemd")
+    if not body:
+        return R("install_systemd found", "daemoncfg", False, "install_systemd() not found")
+    # The daemon is the default backend → started unconditionally (no
+    # CORTEXAGENT_AUTOSTART=1 gate). Check the gate CONDITION is gone (the
+    # word may still appear in an explanatory comment, which is fine).
+    has_restart = "systemctl --user restart cortexagent" in body
+    no_autostart_gate = '"${CORTEXAGENT_AUTOSTART:-0}" = "1"' not in body
+    ok = has_restart and no_autostart_gate
+    return R("install starts daemon unconditionally", "daemoncfg", ok,
+             f"restart_cortexagent={'OK' if has_restart else 'BAD'} "
+             f"no_autostart_gate={'OK' if no_autostart_gate else 'BAD'}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
 LIVE_AREAS = {"models", "daemon", "proxy", "cli", "tray"}
@@ -1360,6 +1442,8 @@ TESTS = {
     "doctor": [test_doctor_drift_repair],
     "overseer": [test_overseer_unit_template, test_kill_stale_big_only,
                  test_overseer_big_params, test_cleanup_big_only],
+    "daemoncfg": [test_daemon_unit_template, test_daemon_no_auto_tiny,
+                  test_install_starts_daemon_unconditional],
 }
 
 

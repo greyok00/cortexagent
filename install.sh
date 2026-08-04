@@ -144,16 +144,24 @@ install_systemd() {
     echo "    systemd: unit template missing — skipping (non-fatal)" >&2
     return 0
   fi
+  # Back up a hand-written / pre-existing unit before overwriting.
+  if [ -f "${unit_out}" ] && [ ! -f "${unit_out}.bak" ]; then
+    cp -a "${unit_out}" "${unit_out}.bak"
+    echo "    backed up existing unit → ${unit_out}.bak"
+  fi
   sed -e "s|{{PYTHON}}|${py}|g" -e "s|{{REPO_ROOT}}|${REPO_ROOT}|g" \
       "${unit_tpl}" > "${unit_out}"
   echo "    wrote ${unit_out}"
   if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
     systemctl --user enable cortexagent >/dev/null 2>&1 && echo "    enabled cortexagent.service (starts on login)"
-    if [ "${CORTEXAGENT_AUTOSTART:-0}" = "1" ]; then
-      systemctl --user start cortexagent >/dev/null 2>&1 && echo "    started cortexagent.service now"
-    else
-      echo "    start now with: cortexagent daemon start   (or: systemctl --user start cortexagent)"
+    # The daemon is the DEFAULT backend now (DAEMON_MODE in bin/cortexagent
+    # engages whenever this is up) — start it unconditionally, not gated on
+    # CORTEXAGENT_AUTOSTART. Stop any manual/orphan daemon holding the
+    # control socket / pidfile first so the restart doesn't conflict.
+    if [ -f "$HOME/.cortexagent/daemon.pid" ]; then
+      "${py}" "${REPO_ROOT}/lib/daemon.py" stop >/dev/null 2>&1 || true
     fi
+    systemctl --user restart cortexagent >/dev/null 2>&1 && echo "    started cortexagent.service now (always-on, big idle-unloads)"
   else
     echo "    systemd not available — daemon can still run manually: cortexagent daemon start"
   fi
