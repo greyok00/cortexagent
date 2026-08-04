@@ -101,13 +101,25 @@ def _sh_scripts() -> list[Path]:
 
 
 def _isolated_env(big_stand_in: bool = True) -> tuple[dict, Path]:
-    """Return (env, state_dir) for an isolated run. Caller removes state_dir."""
+    """Return (env, state_dir) for an isolated run. Caller removes state_dir.
+
+    CRITICAL: isolates the model/proxy PORTS (18080/18081/18082) too, not just
+    the state dir. Without port isolation, a test that calls ``overseer.py stop``
+    (whose backup path port-kills ``CFG.tiny_model_port``) or ``model_backend.py
+    stop tiny`` would kill the user's REAL always-on :8082 tiny / :8080 big on
+    every --no-live run — the recurring "tiny keeps dying" jank. 18080/18082
+    are free (nothing binds them) so a port-kill there is a harmless no-op.
+    """
     env = dict(os.environ)
     state = Path(tempfile.mkdtemp(prefix="ca-smoke-"))
     env["CORTEXAGENT_STATE_DIR"] = str(state)
     env["CORTEXAGENT_IDLE_UNLOAD_SEC"] = "99999"
     env["CORTEXAGENT_DB_PATH"] = str(state / "smoke.db")
     env["CORTEXAGENT_CONFIG_DIR"] = str(state / "config")
+    # Port isolation — never touch the user's real :8080/:8081/:8082.
+    env["CORTEXAGENT_PORT"] = "18080"        # big
+    env["CORTEXAGENT_TINY_PORT"] = "18082"   # tiny
+    env["CORTEXAGENT_PROXY_PORT"] = "18081"  # grammar proxy
     if big_stand_in:
         env["CORTEXAGENT_MODEL"] = str(Path.home() / "models" /
                                        "qwen2.5-0.5b" / "qwen2.5-0.5b-q4_0.gguf")
