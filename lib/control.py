@@ -121,6 +121,10 @@ def serve(handler: Callable[[Dict], Dict],
 
 
 def _serve_one(conn, handler):
+    # Bound the read: a client that connects and never sends data must not hold
+    # a handler thread forever (thread leak). 30s is far beyond any real
+    # request-write time.
+    conn.settimeout(30)
     try:
         data = b""
         while b"\n" not in data:

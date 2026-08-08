@@ -160,7 +160,21 @@ def _check_claude_md(cfg_dir: Path, dry: bool) -> Check:
     if dry:
         return Check("CLAUDE.md (isolated)", DRY, "would overwrite drifted CLAUDE.md")
     _bak(dst)
-    shutil.copy2(src, dst)
+    # A prior repair chmod'd dst to 444 (and possibly chattr +i), so make it
+    # writable before copying over it — otherwise shutil.copy2 raises
+    # PermissionError and `cortexagent doctor` dies with a traceback.
+    try:
+        os.chmod(dst, 0o644)
+    except Exception:
+        pass
+    try:
+        subprocess.run(["chattr", "-i", str(dst)], capture_output=True, timeout=3)
+    except Exception:
+        pass
+    try:
+        shutil.copy2(src, dst)
+    except Exception as e:
+        return Check("CLAUDE.md (isolated)", FAIL, f"copy failed: {e.__class__.__name__}: {e}")
     # Re-lock so Claude can't edit it (best-effort; chattr needs sudo/cap).
     try:
         subprocess.run(["chattr", "+i", str(dst)], capture_output=True, timeout=3)
@@ -220,14 +234,20 @@ def _check_binary_patch(no_patch: bool, dry: bool) -> Check:
     if not pb.exists():
         return Check("claude binary patch", FAIL, "lib/patch_binary.py missing")
     # --check prints "Status: PATCHED"/"NOT PATCHED"/"UNKNOWN".
-    r = subprocess.run([sys.executable, str(pb), "--check"],
-                       capture_output=True, text=True, timeout=15)
+    try:
+        r = subprocess.run([sys.executable, str(pb), "--check"],
+                           capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        return Check("claude binary patch", FAIL, "patch --check timed out (15s)")
     out = (r.stdout + r.stderr).strip()
     if "Status: PATCHED" in out:
         return Check("claude binary patch", HEALTHY, "banner/tips hidden")
     if dry:
         return Check("claude binary patch", DRY, "would patch (banner/tips)")
-    pr = subprocess.run([sys.executable, str(pb)], capture_output=True, text=True, timeout=60)
+    try:
+        pr = subprocess.run([sys.executable, str(pb)], capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return Check("claude binary patch", FAIL, "patch timed out (60s)")
     if pr.returncode == 0:
         return Check("claude binary patch", FIXED, "banner/tips hidden")
     return Check("claude binary patch", FAIL,
@@ -262,6 +282,46 @@ def _check_launcher_wiring() -> Check:
     return Check("launcher wiring", HEALTHY, "IS_DEMO/ALT_SCREEN/banner/MCP-guard intact")
 
 
+def _check_model_conf_lock(dry: bool) -> Check:
+    """Verify the model-conf lock: conf is read-only AND LOCKED_KEYS are active.
+
+    The real enforcement is ``lib/config.py`` LOCKED_KEYS — env vars + the conf
+    are ignored for the pinned big-model args (ctx/ub/ngl/fa/ctk/ctv/kv/np) so a
+    stray edit can't OOM the 16 GB card. The chmod 444 here is belt-and-suspenders
+    (stops accidental edits to the conf) + a visible signal. Reversible: chmod
+    644 to edit, or ``CORTEXAGENT_UNLOCK=1`` to bypass the pin for testing.
+    """
+    conf = Path(os.environ.get("CORTEXAGENT_CONF",
+                               str(Path.home() / ".cortexagent" / "cortexagent.conf")))
+    if not conf.exists():
+        return Check("model conf lock", HEALTHY, "no conf (defaults + LOCKED_KEYS active)")
+    try:
+        status = subprocess.run(
+            [sys.executable, str(_REPO_ROOT / "lib" / "config.py"), "lock-status"],
+            capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        status = ""
+    drift = [ln for ln in status.splitlines() if "DRIFT" in ln]
+    n_locked = sum(1 for ln in status.splitlines() if "locked" in ln)
+    mode = oct(conf.stat().st_mode & 0o777)
+    if mode == "0o444" and not drift:
+        return Check("model conf lock", HEALTHY,
+                     f"conf read-only + {n_locked} LOCKED_KEYS active")
+    detail = f"chmod 444 (now {mode})" + (f"; DRIFT: {drift}" if drift else "")
+    if dry:
+        return Check("model conf lock", DRY, "would " + detail)
+    try:
+        os.chmod(conf, 0o444)
+    except Exception as e:
+        return Check("model conf lock", FAIL, f"chmod failed: {e}")
+    try:  # chattr +i needs root/cap — best-effort, silent if unavailable
+        subprocess.run(["chattr", "+i", str(conf)], capture_output=True, timeout=3)
+    except Exception:
+        pass
+    return Check("model conf lock", FIXED, "chmod 444 applied" +
+                  (f" (DRIFT remains: {drift})" if drift else ""))
+
+
 # ── runner ───────────────────────────────────────────────────────────────────
 def run(dry: bool = False, no_patch: bool = False) -> list[Check]:
     cfg_dir = Path(os.environ.get("CORTEXAGENT_CONFIG_DIR", str(Path.home() / ".cortexagent-config")))
@@ -277,6 +337,7 @@ def run(dry: bool = False, no_patch: bool = False) -> list[Check]:
     checks.append(_check_binary_patch(no_patch, dry))
     checks.append(_check_asset())
     checks.append(_check_launcher_wiring())
+    checks.append(_check_model_conf_lock(dry))
     return checks
 
 

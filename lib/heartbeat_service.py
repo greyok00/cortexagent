@@ -123,16 +123,20 @@ def _check_health(session_path: Path) -> dict:
 
 
 def _clean_stale_locks(session_path: Path) -> int:
-    """Clean stale .lock files in the same directory as the session, only
-    if they're older than 2 minutes. Safe — only removes .lock files."""
+    """Clean the session's OWN stale .lock sibling (older than 2 minutes).
+
+    Only touches the lock file that belongs to this session (``<session>.lock``
+    or ``<session>.jsonl.lock``) — never every ``*.lock`` in the project dir,
+    which could delete another concurrent session's live lock.
+    """
     cleaned = 0
-    parent = session_path.parent
-    if not parent.exists():
-        return 0
-    for lock_file in parent.glob("*.lock"):
+    candidates = (
+        session_path.with_suffix(session_path.suffix + ".lock"),
+        session_path.with_suffix(".lock"),
+    )
+    for lock_file in candidates:
         try:
-            age = time.time() - lock_file.stat().st_mtime
-            if age > 120:
+            if lock_file.exists() and time.time() - lock_file.stat().st_mtime > 120:
                 lock_file.unlink()
                 cleaned += 1
         except Exception:
@@ -224,10 +228,15 @@ def _cli(argv: List[str]) -> int:
         interval = int(kwargs.get("interval", "60"))
         print(f"heartbeat daemon started (interval: {interval}s)")
         while True:
-            result = run_heartbeat()
-            print(format_report(result))
-            for w in result["warnings"]:
-                print(f"  ! {w}")
+            try:
+                result = run_heartbeat()
+                print(format_report(result))
+                for w in result["warnings"]:
+                    print(f"  ! {w}")
+            except Exception as e:
+                # A transient error (DB hiccup, file race) must not kill the
+                # daemon loop — log and continue on the next interval.
+                print(f"heartbeat error (continuing): {e}", file=sys.stderr)
             time.sleep(interval)
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2

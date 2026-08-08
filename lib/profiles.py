@@ -79,6 +79,12 @@ def delete_profile(name: str, force: bool = False) -> bool:
     root = profile_dir(name)
     if not root.exists():
         return False
+    # Belt-and-suspenders: never rmtree outside the profiles root, even if a
+    # future sanitizer regression lets a name like '..' through.
+    root_resolved = root.resolve()
+    profiles_root_resolved = _profiles_root().resolve()
+    if root_resolved != profiles_root_resolved and profiles_root_resolved not in root_resolved.parents:
+        raise ValueError(f"refusing to delete outside profiles root: {root}")
     if name == default_profile_name() and not force:
         raise ValueError(f"refusing to delete default profile '{name}' without force=True")
     shutil.rmtree(root)
@@ -129,8 +135,15 @@ def profile_summary(name: str) -> Dict:
 
 
 def _safe_name(name: str) -> str:
-    """Sanitize profile names — only alnum, dash, underscore."""
+    """Sanitize profile names — only alnum, dash, underscore.
+
+    Rejects '.' and '..' outright: a profile named '..' would resolve to the
+    parent of the profiles root, and delete_profile('..', force=True) would
+    shutil.rmtree the entire ~/.cortexagent config dir (conf, state, memory DBs).
+    """
     if not name or not isinstance(name, str):
+        raise ValueError(f"invalid profile name: {name!r}")
+    if name in (".", ".."):
         raise ValueError(f"invalid profile name: {name!r}")
     if any(c for c in name if not (c.isalnum() or c in "-_.")):
         raise ValueError(f"profile name must be alnum / - / _ / .: {name!r}")

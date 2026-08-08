@@ -99,6 +99,70 @@ def _env_int(name: str, conf_section: str, conf_key: str,
         return default
 
 
+# ── Locked model settings (Phase C) ──────────────────────────────────────────
+# These pinned values OVERRIDE env vars + the conf for the big-model llama-server
+# args, so a stray CORTEXAGENT_CTX / conf edit / launcher default can't silently
+# OOM the 16 GB card again (that was the original hang). The lock is the single
+# chokepoint: every Python caller reads CFG.big_ctx etc. The bash launcher
+# honors it by sourcing `python3 lib/config.py shell-locked`.
+#
+# Bypass: CORTEXAGENT_UNLOCK=1 (all keys) or CORTEXAGENT_UNLOCK_<KEY>=1 for one
+# key (e.g. CORTEXAGENT_UNLOCK_BIG_CTX=1) — the testing/tuning escape hatch.
+# When unlocked, env > conf > default precedence is restored for that key.
+LOCKED_KEYS = {
+    "big_ctx": 131072,
+    "big_ub": 1024,
+    "big_ngl": 999,
+    "big_fa": "on",
+    "big_ctk": "q4_0",
+    "big_ctv": "q4_0",
+    "big_kv_offload": 1,
+    "big_np": 1,
+}
+_LOCK_LOG: list = []
+
+
+def _unlock_for(key: str) -> bool:
+    if os.environ.get("CORTEXAGENT_UNLOCK", "").lower() in ("1", "true", "yes", "on"):
+        return True
+    return os.environ.get(f"CORTEXAGENT_UNLOCK_{key.upper()}", "").lower() in (
+        "1", "true", "yes", "on")
+
+
+def _locked_divergence(name: str, env_name: str, conf_section: str,
+                       conf_key: str, pinned) -> None:
+    """Record (once) if env or conf would have produced a different value."""
+    envval = os.environ.get(env_name)
+    conf_val = None
+    try:
+        if _CONF.has_option(conf_section, conf_key):
+            conf_val = _CONF.get(conf_section, conf_key)
+    except Exception:
+        pass
+    if (envval is not None and str(envval) != str(pinned)) or (
+            conf_val is not None and str(conf_val) != str(pinned)):
+        _LOCK_LOG.append(
+            f"LOCK: {name} env={envval!r} conf={conf_val!r} -> pinned={pinned}")
+
+
+def _env_locked_int(name: str, env_name: str, conf_section: str,
+                    conf_key: str, default: int) -> int:
+    if name in LOCKED_KEYS and not _unlock_for(name):
+        pinned = LOCKED_KEYS[name]
+        _locked_divergence(name, env_name, conf_section, conf_key, pinned)
+        return int(pinned)
+    return _env_int(env_name, conf_section, conf_key, default)
+
+
+def _env_locked(name: str, env_name: str, conf_section: str,
+                conf_key: str, default: Optional[str] = None) -> Optional[str]:
+    if name in LOCKED_KEYS and not _unlock_for(name):
+        pinned = LOCKED_KEYS[name]
+        _locked_divergence(name, env_name, conf_section, conf_key, pinned)
+        return str(pinned)
+    return _env(env_name, conf_section, conf_key, default)
+
+
 def _detect_cortexllm_dir() -> str:
     """Where does the CortexLLM code live?
 
@@ -182,32 +246,58 @@ class Config:
             "CORTEXAGENT_TINY_PORT", "backend", "tiny_model_port", 8082)
         self.tiny_model = _env(
             "CORTEXAGENT_TINY_MODEL", "backend", "tiny_model",
-            str(self.models_dir / "qwen2.5-0.5b" / "qwen2.5-0.5b-q4_0.gguf"))
+            str(self.models_dir / "lfm2.5-1.2b" / "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"))
+
+        # Vision model (Qwen3-VL-8B for image/video understanding)
+        self.vision_model = _env(
+            "CORTEXAGENT_VISION_MODEL", "vision", "vision_model",
+            str(self.models_dir / "qwen3vl-8b" / "Qwen3VL-8B-Instruct-Q4_K_M.gguf"))
+        self.vision_mmproj = _env(
+            "CORTEXAGENT_VISION_MMPROJ", "vision", "vision_mmproj",
+            str(self.models_dir / "qwen3vl-8b" / "mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf"))
+        self.vision_port = _env_int(
+            "CORTEXAGENT_VISION_PORT", "vision", "vision_port", 8083)
+        self.vision_ctx = _env_int(
+            "CORTEXAGENT_VISION_CTX", "vision", "vision_ctx", 4096)
 
         # ── Big model llama-server args (daemon-managed; mirror the launcher) ─
         # These mirror the env vars bin/cortexagent already reads, so an existing
         # shell profile keeps working. The daemon uses them to own the big model.
-        self.big_ctx = _env_int(
-            "CORTEXAGENT_CTX", "backend", "big_ctx", 262144)
-        self.big_ngl = _env_int(
-            "CORTEXAGENT_NGL", "backend", "big_ngl", 999)
-        self.big_fa = _env(
-            "CORTEXAGENT_FA", "backend", "big_fa", "on")
-        self.big_ctk = _env(
-            "CORTEXAGENT_CTK", "backend", "big_ctk", "q4_0")
-        self.big_ctv = _env(
-            "CORTEXAGENT_CTV", "backend", "big_ctv", "q4_0")
-        self.big_np = _env_int(
-            "CORTEXAGENT_NP", "backend", "big_np", 1)
-        # Prompt-eval batching (see bin/cortexagent). ubatch is the physical
-        # batch for prompt eval — the main lever for large multi-kB requests
-        # (30 tools). Default 512 in llama-server → slow; 2048 = 4× parallelism.
+        # Context window. 262144 (256k) OOMs a 16 GB card at ub>=2048:
+        # --kv-unified makes the compute-buffer reservation scale with ubatch,
+        # and at 256k the compute buffer alone is ~1.7 GB on top of the 14.3 GB
+        # IQ3_S weights. 131072 (128k) is the tuned value: the hybrid model's KV
+        # cache is tiny (~5 KB/token → ~0.6 GB at 128k), so at ub=1024 weights +
+        # KV + buffer ≈ 14.1 GB, and with the lean tiny resident ≈ 14.7 GB —
+        # a ~1.6 GB margin on 16 GB, with the full 128k window for long sessions.
+        # (Measured: 35B = 13.7 GB at 128k/ub512; ub=1024 adds ~0.43 GB buffer.)
+        # LOCKED in LOCKED_KEYS below; override only via CORTEXAGENT_UNLOCK=1.
+        self.big_ctx = _env_locked_int(
+            "big_ctx", "CORTEXAGENT_CTX", "backend", "big_ctx", 131072)
+        self.big_ngl = _env_locked_int(
+            "big_ngl", "CORTEXAGENT_NGL", "backend", "big_ngl", 999)
+        self.big_fa = _env_locked(
+            "big_fa", "CORTEXAGENT_FA", "backend", "big_fa", "on")
+        self.big_ctk = _env_locked(
+            "big_ctk", "CORTEXAGENT_CTK", "backend", "big_ctk", "q4_0")
+        self.big_ctv = _env_locked(
+            "big_ctv", "CORTEXAGENT_CTV", "backend", "big_ctv", "q4_0")
+        self.big_np = _env_locked_int(
+            "big_np", "CORTEXAGENT_NP", "backend", "big_np", 1)
+        # Prompt-eval batching. ubatch (-ub) is the physical batch and the
+        # lever for the compute/graph buffer under --kv-unified: 512 reserves
+        # ~0.43 GB, 1024 ~0.86 GB, 2048 ~1.7 GB. 1024 doubles prompt-eval
+        # parallelism vs 512 (the 30-tool system prompt evals in half the
+        # chunks → faster prompt eval) while staying inside the 16 GB budget
+        # (35B process ≈ 14.1 GB at 128k/ub1024 + tiny 0.6 GB ≈ 14.7 GB, ~1.6 GB
+        # margin). Token-generation speed is unaffected (governed by -b).
+        # LOCKED in LOCKED_KEYS below; override only via CORTEXAGENT_UNLOCK=1.
         self.big_b = _env_int(
             "CORTEXAGENT_B", "backend", "big_b", 2048)
-        self.big_ub = _env_int(
-            "CORTEXAGENT_UB", "backend", "big_ub", 2048)
-        self.big_kv_offload = _env_int(
-            "CORTEXAGENT_KV_OFFLOAD", "backend", "big_kv_offload", 1)
+        self.big_ub = _env_locked_int(
+            "big_ub", "CORTEXAGENT_UB", "backend", "big_ub", 1024)
+        self.big_kv_offload = _env_locked_int(
+            "big_kv_offload", "CORTEXAGENT_KV_OFFLOAD", "backend", "big_kv_offload", 1)
         self.big_alias = _env(
             "CORTEXAGENT_ALIAS", "backend", "big_alias", "cortexagent")
         self.big_log = Path(_env(
@@ -274,14 +364,35 @@ class Config:
             lines.append(f"export CORTEXAGENT_CFG_{k.upper()}={repr(str(v))}")
         return "\n".join(lines)
 
+    def locked_keys(self) -> dict:
+        """Return {key: (pinned, active, unlocked?)} for status display."""
+        out = {}
+        for k, pinned in LOCKED_KEYS.items():
+            active = getattr(self, k, None)
+            out[k] = {
+                "pinned": pinned,
+                "active": active,
+                "unlocked": _unlock_for(k),
+                "matches": str(active) == str(pinned),
+            }
+        return out
+
 
 CFG = Config()
+
+# Emit lock divergences once at import (one line per key env/conf tried to
+# change). Normally empty → silent. Suppressed if CORTEXAGENT_LOCK_QUIET=1.
+if _LOCK_LOG and os.environ.get("CORTEXAGENT_LOCK_QUIET", "").lower() not in (
+        "1", "true", "yes", "on"):
+    for line in _LOCK_LOG:
+        print(f"[config] {line}", file=sys.stderr)
 
 
 # ── CLI for bash hooks ──────────────────────────────────────────────────────
 def _cli() -> int:
     if len(sys.argv) < 2:
-        print("usage: config.py get <key> | shell | list", file=sys.stderr)
+        print("usage: config.py get <key> | shell | list | shell-locked | lock-status",
+              file=sys.stderr)
         return 2
     cmd = sys.argv[1]
     if cmd == "get" and len(sys.argv) >= 3:
@@ -298,6 +409,34 @@ def _cli() -> int:
     if cmd == "list":
         for k, v in CFG.as_dict().items():
             print(f"{k}={v}")
+        return 0
+    if cmd == "shell-locked":
+        # Emit `export CORTEXAGENT_*` for the locked keys only, so the bash
+        # launcher can source the pinned values regardless of the user's env.
+        # Honors CORTEXAGENT_UNLOCK: when a key is unlocked, emit the env/conf
+        # value (fall through to normal resolution) instead of the pin.
+        env_map = {
+            "big_ctx": ("CORTEXAGENT_CTX", 131072),
+            "big_ub": ("CORTEXAGENT_UB", 1024),
+            "big_ngl": ("CORTEXAGENT_NGL", 999),
+            "big_fa": ("CORTEXAGENT_FA", "on"),
+            "big_ctk": ("CORTEXAGENT_CTK", "q4_0"),
+            "big_ctv": ("CORTEXAGENT_CTV", "q4_0"),
+            "big_kv_offload": ("CORTEXAGENT_KV_OFFLOAD", 1),
+            "big_np": ("CORTEXAGENT_NP", 1),
+        }
+        for key, (env_name, pinned) in env_map.items():
+            if _unlock_for(key):
+                # unlocked: emit whatever the normal resolver produced
+                val = getattr(CFG, key, pinned)
+            else:
+                val = LOCKED_KEYS[key]
+            print(f"export {env_name}={val}")
+        return 0
+    if cmd == "lock-status":
+        for k, info in CFG.locked_keys().items():
+            flag = "UNLOCKED" if info["unlocked"] else ("locked" if info["matches"] else "DRIFT!")
+            print(f"{k}: pinned={info['pinned']} active={info['active']} [{flag}]")
         return 0
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2

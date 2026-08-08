@@ -13,20 +13,24 @@ source="$(printf '%s' "$payload" | python3 -c "import json,sys; d=json.load(sys.
 AGENT_MEMORY=""
 AGENT_MEMORY="$(python3 "$REPO_ROOT/lib/cortexagent_call.py" recent --limit 12 2>/dev/null || true)"
 
-# Also read from shared CortexLLM hot memory (cortexagent platform)
+# Read from shared CortexLLM hot memory (try cortexagent platform first, fall back to claude)
 CORTEXLLM_MEMORY=""
-CORTEXLLM_FILE="$(python3 "$REPO_ROOT/lib/config.py" get cortexllm_hot_file 2>/dev/null || echo "$HOME/.config/cortexllm/memory/hot/cortexagent.jsonl")"
-if [ -f "$CORTEXLLM_FILE" ]; then
-  CORTEXLLM_MEMORY="$(tail -5 "$CORTEXLLM_FILE" 2>/dev/null | python3 -c "
+for _platform in "cortexagent" "claude"; do
+  CORTEXLLM_FILE="$HOME/.config/cortexllm/memory/hot/${_platform}.jsonl"
+  if [ -f "$CORTEXLLM_FILE" ] && [ -s "$CORTEXLLM_FILE" ]; then
+    CORTEXLLM_MEMORY="$(tail -20 "$CORTEXLLM_FILE" 2>/dev/null | python3 -c "
 import json, sys
 lines = [json.loads(l) for l in sys.stdin.read().strip().split('\n') if l.strip()]
-for m in reversed(lines[-3:]):
+print(f'({_platform} — {len(lines)} recent entries)')
+for m in reversed(lines[-10:]):
     role = m.get('role', '?')
     content = m.get('content', '')[:5000]
     ts = m.get('timestamp', '')[:16]
     print(f'[{ts}] {role}: {content}')
 " 2>/dev/null || true)"
-fi
+    [ -n "$CORTEXLLM_MEMORY" ] && break
+  fi
+done
 
 python3 - "$source" "$AGENT_MEMORY" "$CORTEXLLM_MEMORY" <<'PY'
 import json, os, sys

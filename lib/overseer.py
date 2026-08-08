@@ -43,6 +43,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from datetime import datetime, timedelta
@@ -68,6 +69,13 @@ from lib.model_backend import LlamaServer  # noqa: E402
 from lib import tiny_llm  # noqa: E402
 from lib import control  # noqa: E402 — daemon_present() to detect daemon mode
 
+# Slimtoken pipeline for request optimization (minify, dedup, distill)
+try:
+    from slimtoken.pipeline import minify_request, MinifyConfig  # noqa: E402
+    SLIMTOKEN_AVAILABLE = True
+except ImportError:
+    SLIMTOKEN_AVAILABLE = False
+
 # ── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_INTERVAL = 30  # seconds
 WARM_CAP = 2000
@@ -75,9 +83,9 @@ HOT_CAP = 300
 COMPACT_THRESHOLD = 0.85
 COLD_DISTILL_INTERVAL = 3600  # 1 hour
 
-# ── Tiny 0.5b model on llama-server :8082 (replaces Ollama qwen2.5:0.5b) ──────
-# The overseer owns this server's lifecycle: start at daemon boot, health-check
-# each tick (restart if down), stop on clean shutdown so VRAM is freed.
+# ── Overseer model (LFM2.5-1.2B on llama-server :8082) ──────
+# LFM2.5-1.2B has better reasoning than 0.5B for scheduling/minification tasks.
+# 1 slot + q4_0 KV + flash-attn + 4096 ctx keeps it ~1.1 GB VRAM.
 _tiny = LlamaServer(
     name="tiny",
     model_path=str(CFG.tiny_model),
@@ -85,8 +93,18 @@ _tiny = LlamaServer(
     ctx=4096,
     ngl=999,
     alias="cortexagent-tiny",
+    extra_args=["-fa", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-np", "1", "-t", "4"],
     log_file=str(CFG.logs_dir / "tiny-server.log"),
 )
+
+# ── Vision model (Qwen3-VL-8B on llama-server :8083) ──────
+# Handles image/video understanding. Loaded on-demand, unloaded after use.
+_vision = None
+_vision_lock = threading.Lock()
+
+# Serializes tiny start/stop so a keepalive thread and a shutdown can't both
+# spawn a llama-server on :8082 (port conflict) or race a stop against a start.
+_tiny_lock = threading.Lock()
 
 # ── Clean shutdown flag ──────────────────────────────────────────────────────
 # Set by the SIGTERM/SIGINT handler so the daemon loop exits cleanly (exit code 0)
@@ -174,20 +192,27 @@ def _check_tiny_model() -> bool:
 
 def _preload_tiny_model() -> bool:
     """Start the tiny llama-server and wait for /health (idempotent)."""
-    _log(f"Starting tiny model on :{_tiny.port} (llama-server)...", "🔄", CYAN)
-    if _tiny.start():
-        _log(f"Tiny model ready on :{_tiny.port} (pid {_tiny.pid})", "✅", GREEN)
-        return True
-    _log(f"Failed to start tiny model on :{_tiny.port}", "❌", RED)
-    return False
+    with _tiny_lock:
+        _log(f"Starting tiny model on :{_tiny.port} (llama-server)...", "🔄", CYAN)
+        if _tiny.start():
+            _log(f"Tiny model ready on :{_tiny.port} (pid {_tiny.pid})", "✅", GREEN)
+            return True
+        _log(f"Failed to start tiny model on :{_tiny.port}", "❌", RED)
+        return False
 
 
 def _keepalive_tiny_model() -> bool:
-    """Health-check the tiny server; restart it if it died (self-healing)."""
-    if _tiny.is_healthy():
-        return True
-    _log("Tiny model down — restarting...", "🔄", YELLOW)
-    return _tiny.start()
+    """Health-check the tiny server; restart it if it died (self-healing).
+
+    Bounded to 60s of /health polling so a down tiny can't freeze the daemon
+    loop for the full 180s startup_timeout. Runs under _tiny_lock so a
+    concurrent keepalive/shutdown can't double-spawn on :8082.
+    """
+    with _tiny_lock:
+        if _tiny.is_healthy():
+            return True
+        _log("Tiny model down — restarting...", "🔄", YELLOW)
+        return _tiny.start(timeout=60)
 
 
 def _query_tiny_llm(prompt: str, system: str = "",
@@ -262,6 +287,84 @@ def _check_session_health() -> List[str]:
     except Exception:
         alerts.append(f"Proxy not reachable on port {proxy_port} — main model may be down")
     return alerts
+
+
+def _cortexagent_active() -> bool:
+    """True if a cortexagent session is running.
+
+    Detects either the cortexagent CLI wrapper (``bin/cortexagent``) or a claude
+    process launched by it (has ``--mcp-config`` pointing at the cortexagent
+    config). Fail-safe: returns True on any error so we never unload a model we
+    can't verify is idle.
+
+    Excludes the checker's own process and its ancestors so a caller whose own
+    command line happens to mention ``bin/cortexagent`` (e.g. a test harness)
+    can't self-match and suppress the watchdog.
+    """
+    exclude = set()
+    p = os.getpid()
+    for _ in range(32):
+        exclude.add(p)
+        try:
+            with open(f"/proc/{p}/stat") as f:
+                parts = f.read().split()
+            ppid = int(parts[3])
+            if ppid == p:
+                break
+            p = ppid
+        except Exception:
+            break
+    try:
+        out = subprocess.run(
+            ["ps", "-eo", "pid,comm,args"], capture_output=True, text=True, timeout=5
+        ).stdout
+    except Exception:
+        return True
+    for line in out.splitlines():
+        # split(None, 2) splits on runs of whitespace — the pid column is
+        # right-aligned to the widest pid on the system, so a fixed-width
+        # split(" ", 2) yields an empty pid for any process with fewer digits
+        # than the widest (e.g. a 4-digit cortexagent pid on a system whose
+        # widest pid is 7 digits) and silently skips it — which would make the
+        # watchdog unload the big model while cortexagent is actively running.
+        parts = line.split(None, 2)
+        if len(parts) != 3:
+            continue
+        pid, comm, args = parts
+        try:
+            if int(pid) in exclude:
+                continue
+        except ValueError:
+            continue
+        # cortexagent CLI wrapper (a bash script) or any process whose args
+        # reference the wrapper path.
+        if "bin/cortexagent" in args:
+            return True
+        # claude session launched by the wrapper (has --mcp-config → cortexagent).
+        if comm in ("claude", "node") and "--mcp-config" in args and "cortexagent" in args:
+            return True
+    return False
+
+
+def _watchdog_cortexagent() -> None:
+    """If cortexagent is closed but the daemon still tracks an active session,
+    reset the session and unload the big model (frees VRAM).
+
+    This is the safety net for the "model stays loaded after killing
+    cortexagent" bug: a SIGKILLed CLI never sends ``session-end``, so the
+    daemon's refcount stays > 0 and the idle watcher never fires. The overseer
+    (always-on systemd service) detects the stale session and forces cleanup.
+    """
+    if _cortexagent_active():
+        return
+    try:
+        st = control.send_request("status", timeout=5)
+        if st.get("ok") and st.get("active_sessions", 0) > 0:
+            _log("cortexagent closed but daemon tracks active session — "
+                 "resetting + unloading big model", "🧹", YELLOW)
+            control.send_request("session-reset", timeout=5)
+    except Exception:
+        pass
 
 
 def _check_db_integrity() -> List[str]:
@@ -446,7 +549,13 @@ def _process_queue() -> None:
         task["started_at"] = datetime.now().isoformat()
         _save_queue(queue)
 
-        success = _execute_task(task)
+        try:
+            success = _execute_task(task)
+        except Exception as e:
+            # A crash in _execute_task (e.g. MediaPipeline raising) must not
+            # leave the task stuck in "running" forever — mark it failed.
+            _log(f"Task {task['id']} crashed: {e}", "❌", RED)
+            success = False
 
         task["status"] = "completed" if success else "failed"
         task["completed_at"] = datetime.now().isoformat()
@@ -476,7 +585,9 @@ def _cron_matches(expr: str, now: datetime) -> bool:
     if len(fields) != 5:
         return False
     minute, hour, dom, mon, dow = fields
-    values = [now.minute, now.hour, now.day, now.month, now.weekday()]
+    # cron dow is 0=Sunday..6=Saturday; Python weekday() is 0=Monday..6=Sunday.
+    cron_dow = (now.weekday() + 1) % 7
+    values = [now.minute, now.hour, now.day, now.month, cron_dow]
     for fld, val in zip([minute, hour, dom, mon, dow], values):
         if fld == "*":
             continue
@@ -546,6 +657,17 @@ def _check_schedule() -> None:
     for entry in schedule:
         if not entry.get("enabled", True):
             continue
+
+        # Dedup: the loop runs every 30s, so a cron/daily/weekly job whose
+        # minute matches would otherwise fire twice in the same minute. Skip if
+        # this job already ran in the current minute.
+        last_run = entry.get("last_run")
+        if last_run:
+            try:
+                if datetime.fromisoformat(last_run).strftime("%Y%m%d%H%M") == now.strftime("%Y%m%d%H%M"):
+                    continue
+            except Exception:
+                pass
 
         should_run = False
         st = entry["schedule_type"]
@@ -700,6 +822,12 @@ def _daemon_loop(interval: int) -> None:
             alerts += _check_memory_writes()
             alerts += _check_session_health()
 
+            # ── CortexAgent watchdog (every 2nd tick) ──
+            # If cortexagent is closed but the daemon still tracks an active
+            # session, reset + unload the big model so VRAM is freed.
+            if tick % 2 == 0:
+                _watchdog_cortexagent()
+
             # DB integrity every 10th tick
             if tick % 10 == 0:
                 alerts += _check_db_integrity()
@@ -754,8 +882,12 @@ def _daemon_loop(interval: int) -> None:
                 pass
 
             # ── LLM keepalive (every 5th tick) ──
-            if has_llm and tick % 5 == 0:
-                _keepalive_tiny_model()
+            # Always run (not gated on the boot-time has_llm): if the tiny
+            # failed to start at boot, the keepalive is the only thing that can
+            # recover it. Runs in a thread so a down tiny (up to 60s of /health
+            # polling) can't freeze the watchdog / health checks / scheduler.
+            if tick % 5 == 0:
+                threading.Thread(target=_keepalive_tiny_model, daemon=True).start()
 
             # ── LLM health summary (every 10th tick) ──
             if has_llm and tick % 10 == 0:
@@ -853,10 +985,11 @@ def _unload_tiny_model() -> bool:
     if control.daemon_present():
         _log("Daemon present — leaving tiny model to the daemon (not stopping)", "🛡️", DIM)
         return True
-    if _tiny.stop():
-        _log(f"Tiny model stopped on :{_tiny.port} — VRAM freed", "💤", DIM)
-        return True
-    return False
+    with _tiny_lock:
+        if _tiny.stop():
+            _log(f"Tiny model stopped on :{_tiny.port} — VRAM freed", "💤", DIM)
+            return True
+        return False
 
 
 def _stop() -> None:
@@ -873,10 +1006,12 @@ def _stop() -> None:
     if pid:
         try:
             os.kill(pid, signal.SIGTERM)
-            # Wait up to 15s for a clean exit (daemon exits within ~2s normally;
-            # allow margin for a mid-tick LLM query).
+            # Wait up to 45s for a clean exit (daemon exits within ~2s normally;
+            # margin covers a mid-tick LLM query, which can take up to 30s).
+            # SIGKILLing a mid-query daemon would make systemd Restart=on-failure
+            # respawn it and re-pin the 0.5b — the exact bug clean exit 0 avoids.
             exited = False
-            for _ in range(150):
+            for _ in range(450):
                 try:
                     os.kill(pid, 0)
                     time.sleep(0.1)
@@ -960,7 +1095,15 @@ def _smoke() -> int:
     db_alerts = _check_db_integrity()
     print(f"  DB: {'✅' if not db_alerts else '⚠️ ' + ', '.join(db_alerts)}")
 
-    # 4. Plan tracking
+    # 4. Plan tracking — back up any real plan first so the smoke test can't
+    #    destroy the user's active plan (it would otherwise overwrite PLAN_FILE
+    #    and then unlink it).
+    saved_plan = None
+    if PLAN_FILE.exists():
+        try:
+            saved_plan = PLAN_FILE.read_text()
+        except Exception:
+            pass
     plan_set("smoke-test", 3, "Testing plan tracking")
     plan_step(1)
     plan_step(2)
@@ -982,8 +1125,13 @@ def _smoke() -> int:
     print(f"  Schedule: {'✅' if len(s) > 0 else '❌'} ({len(s)} entries)")
     schedule_remove("smoke-test-sched")
 
-    # Clean up plan
-    if PLAN_FILE.exists():
+    # Restore the user's plan (or remove the smoke-test plan if none existed)
+    if saved_plan is not None:
+        try:
+            PLAN_FILE.write_text(saved_plan)
+        except Exception:
+            pass
+    elif PLAN_FILE.exists():
         PLAN_FILE.unlink()
 
     print(f"{'─'*50}")
