@@ -160,15 +160,22 @@ def _stop_daemon(env: dict) -> None:
         _run(env, sys.executable, str(REPO / "lib" / "daemon.py"), "stop", timeout=30)
     except Exception:
         pass
-    # Force-kill any lingering daemon + its model servers (alias cortexagent*).
-    # NEVER touch ollama (cloud) — only our aliased llama-servers.
+    # Force-kill any lingering ISOLATED daemon by PID (from its state dir's
+    # daemon.pid). NEVER pkill by pattern — "lib/daemon.py run" matches the
+    # user's REAL systemd daemon too, and the full suite would murder it.
     time.sleep(1)
     try:
-        import subprocess as _sp
-        _sp.run(["pkill", "-f", "lib/daemon.py run"], capture_output=True, timeout=5)
+        pid_file = Path(env["CORTEXAGENT_STATE_DIR"]) / "daemon.pid"
+        if pid_file.exists():
+            pid = int(pid_file.read_text().strip())
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
     except Exception:
         pass
-    _kill_aliased_servers()
+    _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080)),
+                           int(env.get("CORTEXAGENT_TINY_PORT", 18082))})
     for _ in range(10):
         if not _daemon_up(env, timeout=1):
             break
@@ -176,14 +183,22 @@ def _stop_daemon(env: dict) -> None:
     time.sleep(1)
 
 
-def _kill_aliased_servers() -> None:
-    """Kill any llama-server we own (--alias cortexagent / cortexagent-tiny).
+def _kill_aliased_servers(ports: "set[int] | None" = None) -> None:
+    """Kill llama-servers we own on the ISOLATED test ports (never the real ones).
 
+    Port-aware: only kills servers whose ``--port`` is in ``ports`` (defaults to
+    the isolated 18080/18082). This is critical — the real always-on tiny on
+    :8082 carries the SAME ``--alias cortexagent-tiny`` as the isolated stand-in,
+    so a naive alias-substring match kills the user's live tiny on every cleanup.
     Safe vs Ollama: Ollama's llama-servers don't carry our --alias flags. Never
     raises — best-effort cleanup so repeated smoke runs don't accumulate
-    orphaned 0.5b servers on :8082/:8080.
+    orphaned 0.5b servers.
     """
+    import re as _re
     import subprocess as _sp
+    if ports is None:
+        ports = {18080, 18082}  # isolated big + tiny (see _isolated_env)
+    pat = _re.compile(r"--port[=\s]+(\d+)\b")
     try:
         out = _sp.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
     except Exception:
@@ -192,6 +207,9 @@ def _kill_aliased_servers() -> None:
         if "llama-server" not in line or "grep" in line:
             continue
         if "--alias cortexagent" not in line:
+            continue
+        m = pat.search(line)
+        if not m or int(m.group(1)) not in ports:
             continue
         try:
             pid = int(line.strip().split()[0])
@@ -251,20 +269,33 @@ def test_config_isolated() -> R:
 
 def test_config_user_shared() -> R:
     """User-shared mode: with no overrides, defaults match the original paths."""
+    # Use a clean env with NO CORTEXAGENT_ overrides so config.py falls back to
+    # its built-in defaults (8080/8082/600s idle).
     env = {k: v for k, v in os.environ.items()
-           if not k.startswith("CORTEXAGENT_") and k not in ("CORTEXLLM_DIR", "CORTEXLLM_DB_PATH")}
-    r = _run(env, sys.executable, "-c",
-             "import sys; sys.path.insert(0,'.'); from lib.config import CFG as c; "
-             "import json; print(json.dumps({'db':str(c.db_path),'backend':c.backend,"
-             "'tiny_port':c.tiny_model_port,'big_port':c.big_model_port,'idle':c.idle_unload_sec}))",
-             timeout=15)
+           if k not in ("CORTEXLLM_DIR", "CORTEXLLM_DB_PATH")}
+    # Strip override vars that would change the defaults we're testing.
+    for _k in list(env):
+        if _k.startswith("CORTEXAGENT_") and _k not in ("CORTEXAGENT_CONF",):
+            del env[_k]
+    state = Path(tempfile.mkdtemp(prefix="ca-smoke-"))
+    # Point CONF at a non-existent file so the user's ~/.cortexagent/cortexagent.conf
+    # (which overrides idle_unload_sec to 0) is NOT loaded.
+    env["CORTEXAGENT_CONF"] = str(state / "nonexistent.conf")
     try:
-        d = json.loads(r.stdout)
-    except Exception:
-        return R("config user-shared defaults", "config", False, f"parse fail: {r.stdout[:120]}")
-    ok = (d["backend"] == "llamacpp" and d["tiny_port"] == 8082 and d["big_port"] == 8080
-          and d["idle"] == 600 and "cortexllm.db" in d["db"])
-    return R("config user-shared defaults", "config", ok, f"db={d['db']} ports={d['big_port']}/{d['tiny_port']}")
+        r = _run(env, sys.executable, "-c",
+                 "import sys; sys.path.insert(0,'.'); from lib.config import CFG as c; "
+                 "import json; print(json.dumps({'db':str(c.db_path),'backend':c.backend,"
+                 "'tiny_port':c.tiny_model_port,'big_port':c.big_model_port,'idle':c.idle_unload_sec}))",
+                 timeout=15)
+        try:
+            d = json.loads(r.stdout)
+        except Exception:
+            return R("config user-shared defaults", "config", False, f"parse fail: {r.stdout[:120]}")
+        ok = (d["backend"] == "llamacpp" and d["tiny_port"] == 8082 and d["big_port"] == 8080
+              and d["idle"] == 600 and "cortexllm.db" in d["db"])
+        return R("config user-shared defaults", "config", ok, f"db={d['db']} ports={d['big_port']}/{d['tiny_port']}")
+    finally:
+        shutil.rmtree(state, ignore_errors=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -329,7 +360,8 @@ def test_models_start_stop() -> R:
         return R("model_backend start/health/stop tiny", "models", ok,
                  "" if ok else f"start={r.stdout[:80]}")
     finally:
-        _kill_aliased_servers()
+        _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080)),
+                               int(env.get("CORTEXAGENT_TINY_PORT", 18082))})
         shutil.rmtree(state, ignore_errors=True)
 
 
@@ -353,7 +385,8 @@ def test_tiny_llm_query() -> R:
         ok = bool(out) and out != "None" and "ok" in out.lower()
         return R("tiny_llm.query returns text", "models", ok, f"resp={out[:60]}")
     finally:
-        _kill_aliased_servers()
+        _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080)),
+                               int(env.get("CORTEXAGENT_TINY_PORT", 18082))})
         shutil.rmtree(state, ignore_errors=True)
 
 
@@ -398,12 +431,18 @@ def test_daemon_idle_unload() -> R:
         cli = _cli(env)
         _run(env, *cli, "models", "load", "big", timeout=60)  # big up (primes idle timer)
         st = _run(env, *cli, "models", "status", timeout=5)
-        if "down" in st.stdout and "running=False" in st.stdout:
+        # Check the BIG line specifically — the isolated tiny is always down
+        # (overseer owns the real :8082), so a whole-output grep for "down" /
+        # "running=False" false-positives on the tiny and reports "big never
+        # loaded" even when the big model is healthy.
+        big_line = next((l for l in st.stdout.splitlines() if "big" in l and ":" in l), "")
+        if "down" in big_line and "running=False" in big_line:
             return R("daemon idle-unload", "daemon", False, "big never loaded")
         # wait past the idle threshold (no session → should unload)
         time.sleep(20)
         st2 = _run(env, *cli, "models", "status", timeout=5)
-        unloaded = ("down" in st2.stdout and "running=False" in st2.stdout)
+        big_line2 = next((l for l in st2.stdout.splitlines() if "big" in l and ":" in l), "")
+        unloaded = ("down" in big_line2 and "running=False" in big_line2)
         return R("daemon idle-unload", "daemon", unloaded,
                  f"after 20s idle: {st2.stdout.strip()[:80]}")
     finally:
@@ -421,13 +460,16 @@ def test_proxy_reload_on_request() -> R:
     try:
         if not _start_daemon(env):
             return R("proxy reload-on-request", "proxy", False, "daemon did not come up")
-        # big is DOWN on demand. POST a minimal chat request to :8081.
+        # big is DOWN on demand. POST a minimal chat request to the ISOLATED
+        # proxy port (18081) — never the real :8081.
+        proxy_port = int(env.get("CORTEXAGENT_PROXY_PORT", 18081))
+        proxy_url = f"http://127.0.0.1:{proxy_port}/v1/chat/completions"
         body = json.dumps({
             "model": "cortexagent", "messages": [{"role": "user", "content": "say OK"}],
             "max_tokens": 8, "stream": False,
         }).encode()
         req = urllib.request.Request(
-            "http://127.0.0.1:8081/v1/chat/completions",
+            proxy_url,
             data=body, headers={"Content-Type": "application/json"}, method="POST")
         # The proxy's own reload deadline is 300s (it waits that long for the big
         # model to cold-load + /health). A cold 13.6 GB 35B GGUF load can exceed
@@ -440,7 +482,7 @@ def test_proxy_reload_on_request() -> R:
         status, txt, last_err = 0, "", ""
         for attempt in range(1, 4):
             req = urllib.request.Request(
-                "http://127.0.0.1:8081/v1/chat/completions",
+                proxy_url,
                 data=body, headers={"Content-Type": "application/json"}, method="POST")
             try:
                 with urllib.request.urlopen(req, timeout=330) as r:
@@ -514,22 +556,31 @@ def test_cli_routing() -> R:
 # ═══════════════════════════════════════════════════════════════════════════
 def test_hooks_syntax_and_nocortexllm() -> R:
     """Hooks are valid bash and no-op gracefully when CortexLLM is absent."""
-    env = dict(os.environ)
-    env["CORTEXAGENT_REPO"] = str(REPO)
-    # Point save-script at a missing path so the CortexLLM part must no-op.
-    env["CORTEXLLM_SAVE_SCRIPT"] = "/nonexistent/save-context.py"
-    env["CORTEXLLM_SOCKET"] = "/nonexistent/memory.sock"
-    bad = []
-    for h in ["hooks/session-start.sh", "hooks/user-prompt-submit.sh", "hooks/stop.sh"]:
-        r = subprocess.run(["bash", "-n", str(REPO / h)], capture_output=True, text=True)
+    # Isolated env: session-start.sh calls `overseer.py start`, which must NOT
+    # touch the real ~/.cortexagent state dir (it would start/attach a real
+    # overseer). The isolated state dir + ports keep it self-contained.
+    env, state = _isolated_env(big_stand_in=False)
+    try:
+        env["CORTEXAGENT_REPO"] = str(REPO)
+        # Point save-script at a missing path so the CortexLLM part must no-op.
+        env["CORTEXLLM_SAVE_SCRIPT"] = "/nonexistent/save-context.py"
+        env["CORTEXLLM_SOCKET"] = "/nonexistent/memory.sock"
+        bad = []
+        for h in ["hooks/session-start.sh", "hooks/user-prompt-submit.sh", "hooks/stop.sh"]:
+            r = subprocess.run(["bash", "-n", str(REPO / h)], capture_output=True, text=True)
+            if r.returncode != 0:
+                bad.append(f"{h}: syntax {r.stderr.strip()}")
+        # Functional no-op: run session-start with no CortexLLM; must exit 0 (graceful).
+        r = subprocess.run(["bash", str(REPO / "hooks" / "session-start.sh")],
+                           env=env, capture_output=True, text=True, timeout=20)
         if r.returncode != 0:
-            bad.append(f"{h}: syntax {r.stderr.strip()}")
-    # Functional no-op: run session-start with no CortexLLM; must exit 0 (graceful).
-    r = subprocess.run(["bash", str(REPO / "hooks" / "session-start.sh")],
-                       env=env, capture_output=True, text=True, timeout=20)
-    if r.returncode != 0:
-        bad.append(f"session-start no-cortexllm rc={r.returncode}: {r.stderr[:80]}")
-    return R("hooks bash -n + no-cortexllm no-op", "hooks", not bad, "; ".join(bad) if bad else "ok")
+            bad.append(f"session-start no-cortexllm rc={r.returncode}: {r.stderr[:80]}")
+        return R("hooks bash -n + no-cortexllm no-op", "hooks", not bad,
+                 "; ".join(bad) if bad else "ok")
+    finally:
+        # The hook forked an isolated overseer — stop it so it doesn't linger.
+        _run(env, sys.executable, str(REPO / "lib" / "overseer.py"), "stop", timeout=20)
+        shutil.rmtree(state, ignore_errors=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -840,7 +891,8 @@ def test_tray_headless() -> R:
                 _run(env, sys.executable, str(REPO / "lib" / "overseer.py"), "stop", timeout=20)
             except Exception:
                 pass
-            _kill_aliased_servers()
+            _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080)),
+                                   int(env.get("CORTEXAGENT_TINY_PORT", 18082))})
             # kill any isolated tiny we started on 18082 (alias cortexagent-tiny)
             try:
                 ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
@@ -1026,6 +1078,7 @@ def test_webui_assets() -> R:
             continue
     else:
         return R("webui /assets/logo route", "webui", False, "no free port")
+    old_webui = os.environ.get("CORTEXAGENT_WEBUI_ENABLED")
     os.environ["CORTEXAGENT_WEBUI_ENABLED"] = "1"
     try:
         server = w.serve_forever("127.0.0.1", port)
@@ -1050,6 +1103,12 @@ def test_webui_assets() -> R:
     finally:
         server.shutdown()
         th.join(timeout=3)
+        # Restore the global env — this test must not leak CORTEXAGENT_WEBUI_ENABLED
+        # into later tests (it is read at import time by lib.webui).
+        if old_webui is None:
+            os.environ.pop("CORTEXAGENT_WEBUI_ENABLED", None)
+        else:
+            os.environ["CORTEXAGENT_WEBUI_ENABLED"] = old_webui
     return R("webui /assets/logo route", "webui", not bad,
              "; ".join(bad) if bad else f"GET /assets/logo → 200 image/jpeg ({len(body)} bytes) on :{port}")
 
@@ -1305,7 +1364,7 @@ def test_kill_stale_big_only() -> R:
 
 
 def test_overseer_big_params() -> R:
-    """big_ctx stays 262144 (NOT reduced) + ubatch knob defaults to 2048."""
+    """big_ctx stays 131072 (NOT reduced) + ubatch knob defaults to 1024."""
     checks = {}
     # config.py defaults
     env = dict(os.environ)
@@ -1314,17 +1373,17 @@ def test_overseer_big_params() -> R:
              "import sys; sys.path.insert(0,'.'); from lib.config import CFG; "
              "print(CFG.big_ctx, CFG.big_b, CFG.big_ub)", timeout=15)
     out = r.stdout.strip()
-    if r.returncode == 0 and out.split() == ["262144", "2048", "2048"]:
+    if r.returncode == 0 and out.split() == ["131072", "2048", "1024"]:
         checks["config"] = "OK"
     else:
         checks["config"] = f"BAD rc={r.returncode} out={out[:40]}"
     # bin/cortexagent defaults
     src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
-    checks["bin_ctx_262144"] = "OK" if 'CORTEXAGENT_CTX:-262144' in src else "BAD"
-    checks["bin_ub_2048"] = "OK" if 'CORTEXAGENT_UB:-2048' in src else "BAD"
+    checks["bin_ctx_131072"] = "OK" if 'CORTEXAGENT_CTX:-131072' in src else "BAD"
+    checks["bin_ub_1024"] = "OK" if 'CORTEXAGENT_UB:-1024' in src else "BAD"
     checks["bin_no_65536"] = "OK" if "65536" not in src else "BAD (ctx reduced)"
     ok = all(v == "OK" for v in checks.values())
-    return R("big-model params (ctx kept, ub=2048)", "overseer", ok,
+    return R("big-model params (ctx kept, ub=1024)", "overseer", ok,
              " ".join(f"{k}={v}" for k, v in checks.items()))
 
 
@@ -1479,7 +1538,11 @@ def test_fallback_vram_probe_glitchrejection() -> R:
 
 def test_fallback_config_and_args() -> R:
     """Fallback model path + ctx + threshold defaults; fallback args omit
-    --kv-unified (Qwen3-4B is dense full-attention, not MoE/SSM like the 35B)."""
+    --kv-unified. Fallback is LFM2.5-8B-A1B (hybrid Mamba-2 + MoE, 8.3B total /
+    1.5B active) at Q4_K_M — verified to load with the standard fallback args
+    WITHOUT --kv-unified (log: kv_unified='false', model loaded) and to emit
+    structured OpenAI tool_calls. The 35B big model stays MoE/SSM and keeps
+    --kv-unified. See ~/.cortexagent/cortexagent.conf [backend] fallback_model."""
     try:
         import sys
         if "lib.config" in sys.modules:
@@ -1487,10 +1550,12 @@ def test_fallback_config_and_args() -> R:
         from lib.config import CFG
     except Exception as e:
         return R("fallback config import", "daemoncfg", False, f"import: {e}")
-    cfg_ok = ("qwen3-4b" in str(CFG.fallback_model).lower()
+    cfg_ok = ("lfm2.5-8b-a1b" in str(CFG.fallback_model).lower()
               and "Q4_K_M" in str(CFG.fallback_model)
-              and CFG.fallback_ctx == 8192 and CFG.big_vram_min_gb == 14)
-    # fallback args must NOT carry --kv-unified (dense model); big args must.
+              and CFG.fallback_ctx == 8192 and CFG.big_vram_min_gb == 14
+              and Path(str(CFG.fallback_model)).is_file())
+    # fallback args must NOT carry --kv-unified (LFM2.5 loads fine without it);
+    # big args must (the 35B is MoE/SSM and needs it).
     try:
         import lib.daemon as d
         fb_no_kvu = "--kv-unified" not in d._fallback_extra_args()

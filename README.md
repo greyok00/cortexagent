@@ -6,6 +6,8 @@
 
 A local coding agent by **CortexAgent**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with a fully minified prompt system, lazy-loaded MCP tools, and built-in SQLite memory. Designed for maximum token efficiency and speed on a single 16 GB GPU.
 
+**v0.2.0** · [github.com/greyok00/cortexagent](https://github.com/greyok00/cortexagent) — persistent daemon + always-on overseer, 128K default context, minified prompt pipeline, `cortexagent --restart`.
+
 ## Features
 
 ### 🧠 Minified prompt system
@@ -19,15 +21,23 @@ MCP servers are not loaded into every prompt's tool context. Instead, they expos
 - **wp-studio** — WordPress development (lazy, configured locally)
 - **Generic lazy proxy** — any personal MCP server can be added to `~/.cortexagent/config/lazy_mcp_servers.json` and it will only load when called
 
-### 💓 Heartbeat daemon
-A background monitor using a tiny LLM (`qwen2.5:0.5b` via Ollama, ~350 MB) that runs in spare VRAM alongside the main model. It automatically:
-- **Monitors** memory pressure (hot/warm/cold counts) every 30 seconds
-- **Auto-compacts** warm memory when it hits 85% capacity
-- **Cold distills** warm entries into distilled facts periodically
-- **Queries the tiny LLM** for periodic health summaries
-- **Logs alerts** to `~/.cortexagent/heartbeat.log`
+### 🧠 Always-on daemon + overseer (systemd user services)
+Two always-on systemd user services run the whole stack independent of any
+`cortexagent` CLI session:
 
-Start it with `python3 lib/heartbeat_daemon.py start` after your session is running.
+- **`cortexagent.service`** — the persistent backend daemon. Owns the big model
+  slot (:8080), the grammar proxy (:8081), and an AF_UNIX control socket. Loads
+  the big model on demand (`session-start`), idle-unloads it to free VRAM, and
+  swaps image / video / overseer / fallback models by type.
+- **`cortexagent-overseer.service`** — the overseer. Keepalives the tiny
+  LFM2.5-1.2B model on :8082 (~1.1 GB), runs the task scheduler, and
+  watchdog-unloads the big model on stale sessions so VRAM is freed.
+
+One command restarts both services and reloads the big model:
+
+```bash
+cortexagent --restart
+```
 
 ### 🎨 Image / video generation (diffusers, in-process)
 Image and video generation run through **HuggingFace `diffusers` loaded
@@ -92,7 +102,7 @@ Context auto-compacts at 95% of the window instead of the default lower threshol
 | Component | Default | Why |
 |---|---|---|
 | Model weights | `Qwen3.6-35B-A3B-UD-IQ3_S.gguf` | ~13 GB in VRAM. Large enough to act as a real coding assistant; small enough to leave headroom for KV cache and OS overhead on a 16 GB GPU. |
-| Context window (`-c`) | `262144` (256K) | Native limit of the hybrid architecture. KV cache at q4_0 is ~1.3 GB — still fits in 16 GB VRAM alongside the model. |
+| Context window (`-c`) | `131072` (128K) | Tuned for the 16 GB card: KV cache at q4_0 is ~640 MB, keeping weights + KV + compute buffer comfortably under budget while leaving a full 128K window for long sessions. |
 | KV cache type (`-ctk/-ctv`) | `q4_0` | ~5 KB per token. At 128K context that is ~640 MB, leaving plenty of room for weights and growth. |
 | KV cache offload | enabled | Keeps KV on the GPU with the weights; generation stays fast instead of falling back to system RAM. |
 | GPU layers (`-ngl`) | `999` | All weight layers on GPU. |
@@ -120,6 +130,7 @@ bash install.sh
 ```bash
 cortexagent                       # interactive
 cortexagent -p "fix this bug"     # one-shot
+cortexagent --restart             # restart daemon + overseer, reload big model
 CORTEXAGENT_CTX=65536 cortexagent # smaller window
 ```
 

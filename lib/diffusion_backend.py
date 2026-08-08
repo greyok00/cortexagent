@@ -331,6 +331,19 @@ def _get_image_pipe(ckpt_path: Path):
     t0 = time.time()
     pipe = cls.from_single_file(str(ckpt_path), torch_dtype=torch.float16)
     pipe = pipe.to(DEVICE)
+    # Memory: the non-sliced 1024×1024 forward needs ~9 GB on top of the
+    # weights (~9.2 GB) → OOMs on 16 GB beside the tiny :8082 llama-server.
+    # Attention slicing + VAE slicing/tiling trade a little speed for ~5 GB of
+    # peak, which fits comfortably.
+    try:
+        pipe.enable_attention_slicing()
+    except Exception:
+        pass
+    try:
+        pipe.enable_vae_slicing()
+        pipe.enable_vae_tiling()
+    except Exception:
+        pass
     _log(f"loaded in {time.time()-t0:.1f}s | peak VRAM "
          f"{torch.cuda.max_memory_allocated()/1e9:.2f} GB", "✅", GREEN)
     _PIPES[key] = pipe

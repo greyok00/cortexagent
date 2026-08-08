@@ -134,6 +134,7 @@ class LlamaServer:
             cmd, env=env, stdout=log_fh, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL, start_new_session=True,
         )
+        log_fh.close()  # parent's fd no longer needed — child has a dup'd copy
 
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -182,7 +183,16 @@ class LlamaServer:
         return self.start()
 
     def _kill_port_server(self) -> bool:
-        """Best-effort: kill any llama-server bound to our --port."""
+        """Best-effort: kill any llama-server bound to our --port.
+
+        Uses a regex with word boundaries to avoid substring collisions
+        (``--port 8080`` must NOT match ``--port 80808``), and handles both
+        ``--port 8080`` and ``--port=8080`` syntax. After SIGTERM, verifies
+        the PID still exists via ``/proc/<pid>`` before sending SIGKILL to
+        prevent a PID-reuse race.
+        """
+        import re as _re
+        pat = _re.compile(rf'--port[=\s]+{self.port}\b')
         try:
             out = subprocess.run(
                 ["ps", "-eo", "pid,args"], capture_output=True, text=True,
@@ -190,12 +200,14 @@ class LlamaServer:
             for line in out.splitlines():
                 if "grep" in line or "llama-server" not in line:
                     continue
-                if f"--port {self.port}" in line:
+                if pat.search(line):
                     try:
                         pid = int(line.split()[0])
                         os.kill(pid, 15)
                         time.sleep(1)
-                        os.kill(pid, 9)
+                        # Verify PID wasn't recycled before SIGKILL.
+                        if os.path.exists(f"/proc/{pid}"):
+                            os.kill(pid, 9)
                     except (ProcessLookupError, ValueError, OSError):
                         pass
         except Exception:
@@ -211,10 +223,12 @@ def _cli() -> int:
     cmd = sys.argv[1]
     name = sys.argv[2] if len(sys.argv) > 2 else "tiny"
     if name == "tiny":
-        srv = LlamaServer("tiny", CFG.tiny_model, port=CFG.tiny_model_port, ctx=4096)
+        srv = LlamaServer("tiny", CFG.tiny_model, port=CFG.tiny_model_port,
+                          ctx=2048, alias="cortexagent-tiny",
+                          extra_args=["-fa", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-np", "1"])
     elif name == "big":
         srv = LlamaServer("big", CFG.big_model, port=CFG.big_model_port,
-                          ctx=262144, ngl=999, alias="cortexagent")
+                          ctx=int(CFG.big_ctx), ngl=999, alias="cortexagent")
     else:
         print(f"unknown server name: {name}", file=sys.stderr)
         return 2

@@ -11,7 +11,7 @@ Usage:
   python3 lib/grammar_proxy.py [port] [target]
   # Default: port=8081, target=http://127.0.0.1:8080
 """
-import json, os, sys, socket, select, threading, time
+import json, os, sys, socket, threading, time, errno
 from datetime import datetime
 from pathlib import Path
 import urllib.request
@@ -20,6 +20,57 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from lib import control  # reload-aware: trigger big-model reload via the daemon
+
+# ── Minification pipeline (opt-out via CORTEXAGENT_MINIFY=off) ────────────────
+# On by default. Shrinks the request body (tools/system/messages whitespace +
+# tool-def noise + code-fence-aware prose) before it hits llama-server. Pure
+# stdlib; a parse failure in any stage is caught and never blocks inference.
+try:
+    from lib.minify.pipeline import minify_request, MinifyConfig
+    _MINIFY_OK = True
+except Exception as _e:  # pragma: no cover — minify is optional
+    _MINIFY_OK = False
+    print(f"[proxy] minify unavailable (continuing without): {_e}", file=sys.stderr)
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _build_minify_cfg():
+    if not _MINIFY_OK or not _bool_env("CORTEXAGENT_MINIFY", True):
+        return None
+    stages = set()
+    if _bool_env("CORTEXAGENT_MINIFY_TOOLS", True):
+        stages.add("tools")
+    if _bool_env("CORTEXAGENT_MINIFY_SYSTEM", True):
+        stages.add("system")
+    if _bool_env("CORTEXAGENT_MINIFY_MESSAGES", True):
+        stages.add("messages")
+    skip = {s.strip() for s in os.environ.get(
+        "CORTEXAGENT_MINIFY_TOOL_SKIP", "").split(",") if s.strip()}
+    try:
+        budget = int(os.environ.get("CORTEXAGENT_MINIFY_BUDGET", "0") or 0)
+    except ValueError:
+        budget = 0
+    try:
+        keep_last = int(os.environ.get("CORTEXAGENT_MINIFY_KEEP_LAST", "8") or 8)
+    except ValueError:
+        keep_last = 8
+    return MinifyConfig(
+        token_budget=budget,           # 0 = no message dropping (conservative default)
+        enabled_stages=stages,
+        tool_skip=skip,
+        minify_dom=_bool_env("CORTEXAGENT_MINIFY_DOM", False),
+        keep_last=keep_last,
+    )
+
+
+_MINIFY_CFG = _build_minify_cfg()
+_MINIFY_CHUNKED = _bool_env("CORTEXAGENT_MINIFY_CHUNKED", True)
 
 # ── Token Tracking ───────────────────────────────────────────────────────────
 _token_lock = threading.Lock()
@@ -120,15 +171,44 @@ def _diag(method, path, cl, chunked, body_len, parsed, parse_err):
 
 
 def pipe(src, dst, stop, resp_buf=None):
+    src.settimeout(0.3)
     while not stop.is_set():
-        r, _, _ = select.select([src], [], [], 0.3)
-        if r:
+        try:
             data = src.recv(65536)
             if not data:
                 break
             dst.sendall(data)
             if resp_buf is not None:
                 resp_buf.append(data)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+
+
+def _dechunk(data: bytes):
+    """Decode an HTTP chunked-transfer body. Returns bytes, or None if the
+    body is incomplete / malformed (caller falls back to raw passthrough)."""
+    out = b""
+    i = 0
+    n = len(data)
+    while True:
+        crlf = data.find(b"\r\n", i)
+        if crlf < 0:
+            return None
+        size_field = data[i:crlf].split(b";")[0].strip()
+        try:
+            size = int(size_field, 16)
+        except ValueError:
+            return None
+        i = crlf + 2
+        if size == 0:
+            break
+        if i + size + 2 > n:
+            return None  # incomplete data chunk
+        out += data[i:i + size]
+        i += size + 2  # data + trailing CRLF
+    return out
 
 
 class ProxyHandler:
@@ -174,6 +254,16 @@ class ProxyHandler:
         print("[proxy] target still down after reload — returning 503", file=sys.stderr)
         return False
 
+    def _respond_502(self):
+        body = b'{"error":"bad gateway - backend connection failed"}'
+        resp = ("HTTP/1.1 502 Bad Gateway\r\n"
+                "Content-Type: application/json\r\n"
+                f"Content-Length: {len(body)}\r\n\r\n").encode() + body
+        try:
+            self.conn.sendall(resp)
+        except Exception:
+            pass
+
     def _respond_503(self):
         body = b'{"error":"model unavailable"}'
         resp = ("HTTP/1.1 503 Service Unavailable\r\n"
@@ -199,15 +289,23 @@ class ProxyHandler:
                 pass
 
     def _read_request(self):
-        """Read full HTTP request headers + body. Returns (head_bytes, body)."""
+        """Read full HTTP request headers + body. Returns (head_bytes, body).
+
+        30s timeout prevents handler threads from blocking forever on a client
+        that connects but never sends data (the root cause of CLOSE-WAIT leaks).
+        """
+        self.conn.settimeout(30)
         buf = b""
-        while b"\r\n\r\n" not in buf:
-            chunk = self.conn.recv(65536)
-            if not chunk:
-                return None, b""
-            buf += chunk
-            if len(buf) > (1 << 20):  # 1 MB header guard
-                return None, b""
+        try:
+            while b"\r\n\r\n" not in buf:
+                chunk = self.conn.recv(65536)
+                if not chunk:
+                    return None, b""
+                buf += chunk
+                if len(buf) > (1 << 20):  # 1 MB header guard
+                    return None, b""
+        except socket.timeout:
+            return None, b""
         head_bytes, body = buf.split(b"\r\n\r\n", 1)
         return head_bytes, body
 
@@ -257,7 +355,14 @@ class ProxyHandler:
 
             te = hdr.get("transfer-encoding", "").lower()
             cl = hdr.get("content-length")
-            if "chunked" in te or cl is None:
+            is_chunked = "chunked" in te
+            if is_chunked and _MINIFY_CFG is not None and _MINIFY_CHUNKED:
+                _diag(method, parts[1] if len(parts) > 1 else "?",
+                      cl, True, len(body), None,
+                      "chunked → buffer+minify (raw fallback on parse fail)")
+                self._forward_chunked(head_bytes, body)
+                return
+            if is_chunked or cl is None:
                 _diag(method, parts[1] if len(parts) > 1 else "?",
                       cl, True, len(body), None,
                       "raw/no-strip (chunked or no content-length)")
@@ -275,8 +380,12 @@ class ProxyHandler:
             parsed = None
             try:
                 parsed = json.loads(body)
-                if isinstance(parsed, dict) and "grammar" in parsed:
-                    del parsed["grammar"]
+                if isinstance(parsed, dict):
+                    if "grammar" in parsed:
+                        del parsed["grammar"]
+                    if _MINIFY_CFG is not None:
+                        parsed, mstats = minify_request(parsed, _MINIFY_CFG)
+                        print(f"[proxy] minify: {mstats.summary()}", file=sys.stderr)
                 body = json.dumps(parsed).encode()
             except Exception as e:
                 parse_err = str(e)
@@ -304,6 +413,61 @@ class ProxyHandler:
         if _elapsed > 0.1:
             print(f"[proxy] completed in {_elapsed:.2f}s", file=sys.stderr)
 
+    def _forward_chunked(self, head_bytes, body):
+        """Buffer a chunked request, de-chunk, minify, re-send with Content-Length.
+
+        Falls back to raw passthrough (``_forward_raw``) if the chunked body
+        can't be fully read within the size cap or fails to de-chunk/parse.
+        The request body is one JSON object (only the *response* is streamed),
+        so buffering it fully is safe and lets us minify + strip grammar.
+        """
+        cap = int(os.environ.get("CORTEXAGENT_MINIFY_CHUNKED_MAX", str(16 * 1024 * 1024)))
+        buf = body
+        terminator = b"\r\n0\r\n\r\n"
+        while terminator not in buf:
+            chunk = self.conn.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            if len(buf) > cap:
+                # Too large to buffer safely → give up on minify, raw-passthrough.
+                self._forward_raw(head_bytes, buf)
+                return
+        dechunked = _dechunk(buf)
+        if dechunked is None:
+            self._forward_raw(head_bytes, buf)
+            return
+        try:
+            parsed = json.loads(dechunked)
+            if isinstance(parsed, dict):
+                if "grammar" in parsed:
+                    del parsed["grammar"]
+                parsed, mstats = minify_request(parsed, _MINIFY_CFG)
+                print(f"[proxy] minify(chunked): {mstats.summary()}", file=sys.stderr)
+                dechunked = json.dumps(parsed).encode()
+        except Exception as e:
+            print(f"[proxy] chunked minify skipped: {e}", file=sys.stderr)
+            self._forward_raw(head_bytes, buf)
+            return
+        # Rebuild headers: drop TE/CL/expect/host, set a fresh Content-Length.
+        headers_text = head_bytes.decode("utf-8", errors="replace")
+        lines = headers_text.split("\r\n")
+        new_lines = [lines[0]]
+        for line in lines[1:]:
+            if not line:
+                continue
+            k = line.split(":", 1)[0].strip().lower()
+            if k in ("transfer-encoding", "content-length", "expect", "host"):
+                continue
+            if k == "user-agent":
+                new_lines.append("User-Agent: cortexagent/1.0")
+            else:
+                new_lines.append(line)
+        new_lines.append(f"Content-Length: {len(dechunked)}")
+        new_lines.append("Host: 127.0.0.1")
+        head = ("\r\n".join(new_lines)).encode()
+        self._send_and_pipe(head + b"\r\n\r\n" + dechunked)
+
     def _forward_raw(self, head_bytes, body):
         """Forward headers + body and stream any further client bytes, then pipe response."""
         data = head_bytes + b"\r\n\r\n" + body
@@ -315,18 +479,25 @@ class ProxyHandler:
         except Exception as e:
             print(f"[proxy] connect error: {e}", file=sys.stderr)
             dst.close()
+            self._respond_502()
             return
         stop = threading.Event()
         t1 = threading.Thread(target=pipe, args=(dst, self.conn, stop), daemon=True)
         t1.start()
+        self.conn.settimeout(0.5)
+        _idle_since = time.monotonic()
         try:
             while True:
-                r, _, _ = select.select([self.conn], [], [], 0.5)
-                if r:
+                try:
                     chunk = self.conn.recv(65536)
                     if not chunk:
                         break
+                    _idle_since = time.monotonic()
                     dst.sendall(chunk)
+                except socket.timeout:
+                    if time.monotonic() - _idle_since > 30:
+                        break
+                    continue
         except Exception:
             pass
         finally:
@@ -336,12 +507,20 @@ class ProxyHandler:
                 dst.close()
             except Exception:
                 pass
+            try:
+                self.conn.close()
+            except Exception:
+                pass
 
     def _send_and_pipe(self, data):
         """Send the full (already-stripped) request, then relay the response.
 
         Tears down when either the client or the server closes — matching the
         pre-strip behavior so streaming and keep-alive responses both drain.
+
+        Idle timeout (30s) prevents CLOSE-WAIT accumulation: if the client
+        stops sending data after the backend has closed, the loop exits and
+        the socket is cleaned up.
         """
         dst = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         dst.settimeout(30)
@@ -352,19 +531,26 @@ class ProxyHandler:
         except Exception as e:
             print(f"[proxy] connect error: {e}", file=sys.stderr)
             dst.close()
+            self._respond_502()
             return
         stop = threading.Event()
         resp_buf: list[bytes] = []
         t1 = threading.Thread(target=pipe, args=(dst, self.conn, stop, resp_buf), daemon=True)
         t1.start()
+        self.conn.settimeout(0.5)
+        _idle_since = time.monotonic()
         try:
             while True:
-                r, _, _ = select.select([self.conn], [], [], 0.5)
-                if r:
+                try:
                     chunk = self.conn.recv(65536)
                     if not chunk:
                         break
+                    _idle_since = time.monotonic()
                     dst.sendall(chunk)
+                except socket.timeout:
+                    if time.monotonic() - _idle_since > 30:
+                        break
+                    continue
         except Exception:
             pass
         finally:
@@ -393,6 +579,10 @@ class ProxyHandler:
                 dst.close()
             except Exception:
                 pass
+            try:
+                self.conn.close()
+            except Exception:
+                pass
 
 
 def main():
@@ -404,12 +594,35 @@ def main():
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(("127.0.0.1", port))
+    # Retry bind with backoff: a freshly-killed predecessor may still hold the
+    # port for a moment even with SO_REUSEADDR (live process, not TIME_WAIT).
+    bound = False
+    for attempt in range(20):
+        try:
+            server.bind(("127.0.0.1", port))
+            bound = True
+            break
+        except OSError as e:
+            if e.errno != errno.EADDRINUSE:
+                raise
+            print(f"[proxy] :{port} busy (attempt {attempt+1}/20), retrying…", file=sys.stderr)
+            time.sleep(0.5)
+    if not bound:
+        raise OSError(errno.EADDRINUSE, f"port {port} still in use after 10s of retries")
     server.listen(10)
     print(f"[proxy] listening on {port} -> {target_url}", file=sys.stderr)
 
     while True:
         conn, addr = server.accept()
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        # TCP keepalive: 10s idle → 3 probes at 3s intervals → drop
+        if hasattr(socket, "TCP_KEEPIDLE"):
+            try:
+                conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10)
+                conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3)
+                conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+            except Exception:
+                pass
         handler = ProxyHandler(conn, addr, target)
         threading.Thread(target=handler.handle, daemon=True).start()
 

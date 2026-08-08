@@ -13,6 +13,7 @@
 # Usage: cortexagent [any agent flags/args]
 #   cortexagent                      # interactive
 #   cortexagent -p "fix this bug"    # one-shot
+#   cortexagent --restart            # restart daemon + overseer (one shot)
 #   cortexagent --list-models        # show available models
 #   cortexagent --model=other.gguf   # use a different model
 #   CORTEXAGENT_MODEL=/path/to.gguf cortexagent
@@ -25,11 +26,46 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURC
 REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
 
+# ── --restart: restart BOTH services (daemon + overseer) in one shot ─────────
+# Restarts cortexagent.service (persistent backend daemon) + the overseer,
+# which kills any stale/adopted llama-server on :8080 (daemon orphan-kill) so
+# the correct locked ctx takes effect, then re-loads the big model immediately
+# (the daemon does NOT auto-load big on startup).
+if [ $# -gt 0 ] && { [ "$1" = "--restart" ] || [ "$1" = "restart" ]; }; then
+  echo "🔄 Restarting CortexAgent daemon + overseer..."
+  systemctl --user restart cortexagent.service || { echo "❌ daemon restart failed" >&2; exit 1; }
+  systemctl --user restart cortexagent-overseer.service || { echo "❌ overseer restart failed" >&2; exit 1; }
+  echo "⏳ Waiting for daemon control socket..."
+  _up=0
+  for _i in $(seq 1 30); do
+    if python3 "$REPO_ROOT/lib/control.py" 2>/dev/null | grep -q "daemon present: True"; then _up=1; break; fi
+    sleep 1
+  done
+  if [ "$_up" != "1" ]; then echo "❌ daemon control socket not up after 30s" >&2; exit 1; fi
+  echo "🔄 Loading big model (daemon reads locked big_ctx=131072)..."
+  if python3 -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from lib import control; r=control.send_request('load', which='big', timeout=320); print('load:', r); sys.exit(0 if r.get('ok') else 1)"; then
+    echo "✅ Restart complete — daemon + overseer up, big on :8080"
+  else
+    echo "⚠️  Big model load failed — :8080 down (run 'cortexagent' to load on session start)" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+# ── Source the LOCKED model settings (lib/config.py LOCKED_KEYS) ──────────────
+# This pins ctx/ub/ngl/fa/ctk/ctv/kv-offload/np to the tuned-for-16GB values so
+# a stray env var / conf edit can't silently OOM the card again (the original
+# hang). Best-effort: if config.py is missing/broken, the bash defaults below
+# (which match the pins) take over. CORTEXAGENT_UNLOCK=1 bypasses per-key.
+if [ -f "$REPO_ROOT/lib/config.py" ]; then
+  eval "$(python3 "$REPO_ROOT/lib/config.py" shell-locked 2>/dev/null)" 2>/dev/null || true
+fi
+
 # ── Daemon mode? If the persistent daemon is up, IT owns the models + proxy;
 #    this launcher just points claude at the daemon's proxy and notifies it of
 #    session start/end. Legacy mode (no daemon) starts/stops its own servers.
 DAEMON_MODE=0
-if python3 "$REPO_ROOT/lib/control.py" 2>/dev/null | grep -q "True"; then
+if python3 "$REPO_ROOT/lib/control.py" 2>/dev/null | grep -q "daemon present: True"; then
   DAEMON_MODE=1
   echo "CortexAgent daemon detected — using managed models (daemon mode)."
 fi
@@ -63,12 +99,12 @@ _cortexagent_kill_stale() {
   # but "cortexagent-tiny" does not. The ${LLAMA_DIR}/build path filter is
   # intentionally dropped — both servers share that build path, so it can't
   # distinguish them and would kill the tiny.
-  pids="$(ps aux | grep llama-server | grep -v grep | grep -E -- "--alias[[:space:]]+cortexagent([[:space:]]|\$)" | awk '{print $2}' || true)"
+  pids="$(ps auxww | grep llama-server | grep -v grep | grep -E -- "--alias[[:space:]]+cortexagent([[:space:]]|\$)" | awk '{print $2}' || true)"
   if [ -n "${pids}" ]; then
     echo "Killing stale cortexagent big-model llama-server..."
     kill ${pids} 2>/dev/null || true
     sleep 1
-    pids="$(ps aux | grep llama-server | grep -v grep | grep -E -- "--alias[[:space:]]+cortexagent([[:space:]]|\$)" | awk '{print $2}' || true)"
+    pids="$(ps auxww | grep llama-server | grep -v grep | grep -E -- "--alias[[:space:]]+cortexagent([[:space:]]|\$)" | awk '{print $2}' || true)"
     [ -n "${pids}" ] && kill -9 ${pids} 2>/dev/null || true
     sleep 1
   fi
@@ -151,26 +187,30 @@ ALIAS="${CORTEXAGENT_ALIAS:-cortexagent}"
 PORT="${CORTEXAGENT_PORT:-8080}"
 # Context — Qwen3.6-35B-A3B is a hybrid SSM/attention model (only ~10 of 40
 # layers are full-attention; the rest carry a fixed Mamba state), so its KV
-# cache is tiny: ~5 KB/token at q4_0 → ~335 MB at 65K ctx, ~1.3 GB at 256K.
+# cache is tiny: ~5 KB/token at q4_0 → ~335 MB at 65K ctx, ~500 MB at 100K.
 # It fits in VRAM alongside the ~13 GB model, so KV stays on the GPU
-# (KV_OFFLOAD=1 below) for full generation speed. Going higher than the
-# native 262144 limit degrades output quality.
-CTX="${CORTEXAGENT_CTX:-262144}"
+# (KV_OFFLOAD=1 below) for full generation speed. 131072 (128k) is the hard
+# default (matches lib/config.py big_ctx): with --kv-unified the compute-buffer
+# reservation scales with ctx, and 128k keeps the reservation + KV comfortably
+# under the ~1.4 GB free margin while leaving the full 128k window for sessions.
+# These defaults are LOCKED in lib/config.py (LOCKED_KEYS); env vars can't
+# override them unless CORTEXAGENT_UNLOCK=1. See lib/config.py.
+CTX="${CORTEXAGENT_CTX:-131072}"
 NGL="${CORTEXAGENT_NGL:-999}"       # all model weights on GPU
 FA="${CORTEXAGENT_FA:-on}"          # flash attention (speed + lower VRAM/RAM)
 CTK="${CORTEXAGENT_CTK:-q4_0}"      # KV cache K type
 CTV="${CORTEXAGENT_CTV:-q4_0}"      # KV cache V type
 NP="${CORTEXAGENT_NP:-1}"           # server slots (1 = single user, max context)
 KV_OFFLOAD="${CORTEXAGENT_KV_OFFLOAD:-1}"  # 1 = KV cache on GPU (fast); 0 = force system RAM (--no-kv-offload, ~4x slower on this hybrid model)
-# Prompt-eval batching. llama-server defaults to -b 512 -ub 512 (small physical
-# batch → slow prompt eval for large prompts). Raising ubatch parallelizes prompt
-# eval — the main lever for the 30-tool / multi-kB requests claude sends (the
-# 83–157s responses in proxy.log are compute-bound prompt eval + generation, NOT
-# KV spill: the hybrid model's KV cache is tiny and fits at 256K ctx). 2048 is a
-# conservative 4× over default; raise to 4096 on headroom (env-tunable). Extra
-# temp VRAM is modest vs the ~13 GB model.
+# Prompt-eval batching. ubatch (-ub) is the physical batch and the lever for
+# the compute/graph buffer under --kv-unified: 512 reserves ~0.43 GB, 1024
+# ~0.86 GB. 1024 doubles prompt-eval parallelism vs 512 (the 30-tool system
+# prompt evals in half the chunks) while staying inside the 16 GB budget
+# (weights 13.7 GB + tiny 128k KV + 0.86 GB buffer ≈ 14.6 GB, ~1 GB margin).
+# Generation speed is unaffected (governed by -b). These defaults are LOCKED
+# in lib/config.py; override only via CORTEXAGENT_UNLOCK=1.
 B="${CORTEXAGENT_B:-2048}"          # logical batch (max tokens processed per batch)
-UB="${CORTEXAGENT_UB:-2048}"        # ubatch / physical batch (prompt-eval parallelism)
+UB="${CORTEXAGENT_UB:-1024}"        # ubatch / physical batch (prompt-eval parallelism)
 LOG="${CORTEXAGENT_LOG:-$HOME/.cortexagent-server.log}"
 WEBUI_ENABLED="${CORTEXAGENT_WEBUI_ENABLED:-1}"
 
@@ -255,23 +295,9 @@ export CORTEXAGENT_MCP_CONFIG="${CONFIG_DIR}/mcp.json"
 # ── Start the persistent memory daemon (if not already running) ────────────
 bash "${HOME}/.cortexllm/scripts/memory-daemon.sh" start 2>/dev/null || true
 
-# ── Kill any stale llama-server processes (from Ollama or previous sessions) ──
 # Daemon mode: the daemon owns the big+tiny llama-servers — DO NOT kill them.
-if [ "$DAEMON_MODE" = "0" ]; then
-  STALE_PIDS="$(ps aux | grep llama-server | grep -v grep | awk '{print $2}' || true)"
-  if [ -n "${STALE_PIDS}" ]; then
-    echo "Killing stale llama-server process(es) — loading our model..."
-    kill ${STALE_PIDS} 2>/dev/null || true
-    sleep 1
-    # Force kill if still running
-    STALE_PIDS="$(ps aux | grep llama-server | grep -v grep | awk '{print $2}' || true)"
-    if [ -n "${STALE_PIDS}" ]; then
-      kill -9 ${STALE_PIDS} 2>/dev/null || true
-      sleep 1
-    fi
-    echo "  VRAM freed."
-  fi
-fi
+# Legacy mode: _cortexagent_kill_stale (defined above) handles this with the
+# correct --alias cortexagent regex so it never touches Ollama or the tiny.
 
 # ── Start llama-server only if port is free ─────────────────────────────────
 SERVER_PID=""
@@ -547,6 +573,6 @@ for arg in "$@"; do
     *) FILTERED_ARGS+=("$arg") ;;
   esac
 done
-claude "${FILTERED_ARGS[@]}" --mcp-config "${CORTEXAGENT_MCP_CONFIG}" --strict-mcp-config
+claude "${FILTERED_ARGS[@]}" --mcp-config "${CORTEXAGENT_MCP_CONFIG}"
 echo "Claude session ended — cleaning up..."
 cleanup

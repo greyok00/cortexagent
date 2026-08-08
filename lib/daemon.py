@@ -67,9 +67,12 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
     ts = datetime.now().strftime("%H:%M:%S")
     line = f"{color}{emoji} {BOLD}daemon{RST} {DIM}{color}[{ts}]{RST} {color}{msg}{RST}"
     print(line, file=sys.stderr)
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(LOG_FILE, "a") as f:
-        f.write(f"[{ts}] {msg}\n")
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "a") as f:
+            f.write(f"[{ts}] {msg}\n")
+    except OSError:
+        pass  # best-effort — don't let logging failure mask the real error
 
 
 # ── Model backends ────────────────────────────────────────────────────────────
@@ -89,10 +92,14 @@ def _big_extra_args() -> list:
 
 
 def _fallback_extra_args() -> list:
-    """llama-server args for the small fallback model (Qwen3-4B dense).
+    """llama-server args for the small fallback model (LFM2.5-8B-A1B).
 
-    Dense full-attention (not MoE/SSM like the 35B), so NO --kv-unified. Same
-    fa/ctk/ctv/np/batch knobs so the proxy + tool-calling path stay consistent.
+    Mamba-2 + MoE hybrid (8.3B total / 1.5B active, Q4_K_M ≈ 6.7 GB). Used when
+    sustained GPU load leaves < big_vram_min_gb free, so the 35B won't fit. Runs
+    at fallback_ctx (8192) — small, so the kv-unified compute-buffer savings
+    are negligible; verified to load and emit OpenAI tool_calls WITHOUT
+    --kv-unified, so we omit it (same fa/ctk/ctv/np/batch knobs as the big
+    model so the proxy + tool-calling path stay consistent).
     """
     return [
         "-fa", str(CFG.big_fa),
@@ -141,12 +148,19 @@ def _free_vram_gb(samples: int = 3, interval: float = 0.7) -> Optional[float]:
 def _load_session_model() -> tuple:
     """Pick the big model if VRAM allows, else the small fallback. VRAM-aware.
 
-    Re-runs every session-start. Probes free VRAM (glitch-rejecting: max of 3
-    reads). If a sustained GPU load (browser, game, diffusion) leaves <
-    big_vram_min_gb free, the 35B would spill to CPU (slow), so swap in the
-    Qwen3-4B fallback (~3 GB, native tool calls). If the desired model is
-    already up + healthy, no-op (idempotent). Returns (ok, model_path, is_fallback).
+    Re-runs every session-start. If the current model is already up + healthy,
+    keep it — no VRAM probe. (The probe reads *free* VRAM, which counts the big
+    model's own ~14 GB as "used", so probing while the big model is loaded
+    would read ~2 GB free and wrongly swap the healthy big model out for the
+    fallback.) Otherwise probe free VRAM (glitch-rejecting: max of 3 reads). If
+    a sustained GPU load (browser, game, diffusion) leaves < big_vram_min_gb
+    free, the 35B would spill to CPU (slow), so swap in the small fallback.
+    Returns (ok, model_path, is_fallback).
     """
+    if _big.is_healthy():
+        is_fallback = Path(_big.model_path).resolve() == Path(CFG.fallback_model).resolve()
+        _log(f"Model already up: {Path(_big.model_path).name}", "▶️", DIM)
+        return True, str(_big.model_path), is_fallback
     free_gb = _free_vram_gb()
     if free_gb is None:
         desired_big = True
@@ -156,9 +170,6 @@ def _load_session_model() -> tuple:
         why = f"VRAM free {free_gb:.1f}GB {'≥' if desired_big else '<'} {CFG.big_vram_min_gb}GB"
     desired_path = str(CFG.big_model) if desired_big else str(CFG.fallback_model)
     already = Path(_big.model_path).resolve() == Path(desired_path).resolve()
-    if already and _big.is_healthy():
-        _log(f"Model already up: {Path(_big.model_path).name} ({why})", "▶️", DIM)
-        return True, str(_big.model_path), not desired_big
     if desired_big:
         if already:
             _log(f"{why} — (re)loading big model", "▶️", CYAN)
@@ -183,7 +194,10 @@ _big = LlamaServer(
 )
 _tiny = LlamaServer(
     "tiny", str(CFG.tiny_model), port=int(CFG.tiny_model_port),
-    ctx=4096, ngl=999, alias="cortexagent-tiny",
+    ctx=2048, ngl=999, alias="cortexagent-tiny",
+    # Lean keepalive: 1 slot + q4_0 KV + flash-attn ≈ 300 MB (was 640 MB at
+    # 4-slot f16). Frees VRAM for the 35B big model on 16 GB cards.
+    extra_args=["-fa", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-np", "1"],
     log_file=str(CFG.logs_dir / "tiny-server.log"), startup_timeout=180,
 )
 
@@ -203,7 +217,14 @@ def _start_big(timeout: Optional[int] = None) -> bool:
 
     Holds _big_lock for the (long) duration so only one load runs at a time,
     but does NOT hold _lock — so activity/status/session commands stay responsive.
+
+    If the big (35B) model fails to load — e.g. a transient CUDA OOM from VRAM
+    contention — falls back to the small model on the same port so :8080 stays
+    up. Without this, a failed 35B load leaves :8080 dead and the CLI hangs on
+    "Herding…". (_load_session_model picks the model up front from a VRAM probe;
+    this catches the case where VRAM looked free but the load still OOM'd.)
     """
+    global _big
     with _big_lock:
         if _big.is_healthy():
             return True
@@ -211,7 +232,24 @@ def _start_big(timeout: Optional[int] = None) -> bool:
         ok = _big.start(timeout=timeout)
         _log(f"Big model {'ready' if ok else 'FAILED'} on :{_big.port} (pid {_big.pid})",
              "✅" if ok else "❌", GREEN if ok else RED)
-        return ok
+        if ok:
+            return True
+        # 35B failed (e.g. CUDA OOM). Only fall back if we were actually trying
+        # the big model — don't recurse if the fallback itself just failed.
+        if Path(_big.model_path).resolve() != Path(CFG.big_model).resolve():
+            return False
+        _log("Big model failed — falling back to small model on :8080", "⚠️", YELLOW)
+        _big.stop()
+        _big = LlamaServer(
+            "big", str(CFG.fallback_model), port=int(CFG.big_model_port),
+            ctx=int(CFG.fallback_ctx), ngl=999, alias=str(CFG.big_alias),
+            extra_args=_fallback_extra_args(), log_file=str(CFG.big_log),
+            startup_timeout=300,
+        )
+        ok2 = _big.start(timeout=timeout)
+        _log(f"Fallback model {'ready' if ok2 else 'FAILED'} on :{_big.port} "
+             f"(pid {_big.pid})", "✅" if ok2 else "❌", GREEN if ok2 else RED)
+        return ok2
 
 
 def _stop_big() -> bool:
@@ -242,6 +280,14 @@ def _swap_big(model_path: str, ctx: int = 8192, ngl: int = 999,
     global _big
     with _big_lock:
         if _big.running or _big.is_healthy():
+            # Don't kill a big model we didn't start (adopted/external).
+            if _big.proc is None:
+                # An external server we don't own is up on :8080 — we can't
+                # swap (the port is occupied and we won't kill a server we
+                # didn't start). Refuse rather than start a second server that
+                # fails to bind.
+                _log("Big not owned by daemon (adopted/external) — refusing swap", "🛡️", DIM)
+                return False
             _log(f"Swapping — stopping current big ({Path(_big.model_path).name})",
                  "💤", YELLOW)
             _big.stop()
@@ -253,6 +299,19 @@ def _swap_big(model_path: str, ctx: int = 8192, ngl: int = 999,
         )
         _log(f"Loading big model: {Path(model_path).name} on :{_big.port}", "🔄", CYAN)
         ok = _big.start()
+        # OOM fallback (mirrors _start_big): a big-model swap that fails to
+        # load (e.g. CUDA OOM from VRAM contention) must not leave :8080 dead —
+        # fall back to the small model on the same port so the session works.
+        if not ok and Path(model_path).resolve() == Path(CFG.big_model).resolve():
+            _log("Big model failed — falling back to small model on :8080", "⚠️", YELLOW)
+            _big.stop()
+            _big = LlamaServer(
+                "big", str(CFG.fallback_model), port=int(CFG.big_model_port),
+                ctx=int(CFG.fallback_ctx), ngl=999, alias=str(CFG.big_alias),
+                extra_args=_fallback_extra_args(), log_file=str(CFG.big_log),
+                startup_timeout=300,
+            )
+            ok = _big.start()
         _log(f"Big model {'ready' if ok else 'FAILED'} ({Path(model_path).name})",
              "✅" if ok else "❌", GREEN if ok else RED)
         return ok
@@ -283,19 +342,25 @@ def _start_proxy() -> bool:
     env["CORTEXAGENT_PROXY_TARGET"] = f"http://127.0.0.1:{_big.port}"
     try:
         log_fh = open(log, "ab")
+    except OSError as e:
+        _log(f"Proxy log open error: {e}", "❌", RED)
+        return False
+    try:
         _proxy_proc = subprocess.Popen(
             [sys.executable, str(proxy_script), str(port)],
             env=env, stdout=log_fh, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL, start_new_session=True,
         )
-        time.sleep(1)
-        ok = _proxy_proc.poll() is None
-        _log(f"Grammar proxy {'ready' if ok else 'FAILED'} on :{port} (pid {_proxy_proc.pid if _proxy_proc else '?'})",
-             "✅" if ok else "❌", GREEN if ok else RED)
-        return ok
     except Exception as e:
+        log_fh.close()  # Popen raised — don't leak the log fd
         _log(f"Proxy start error: {e}", "❌", RED)
         return False
+    log_fh.close()  # parent's fd no longer needed — child has a dup'd copy
+    time.sleep(1)
+    ok = _proxy_proc.poll() is None
+    _log(f"Grammar proxy {'ready' if ok else 'FAILED'} on :{port} (pid {_proxy_proc.pid if _proxy_proc else '?'})",
+         "✅" if ok else "❌", GREEN if ok else RED)
+    return ok
 
 
 def _stop_proxy() -> None:
@@ -314,15 +379,24 @@ def _idle_watcher() -> None:
     """Unload the big model when idle to free VRAM."""
     while not _SHUTDOWN:
         time.sleep(IDLE_POLL)
-        with _lock:
-            last = _last_request
-            sessions = _active_sessions
-        if _big.running and sessions == 0 and last:
-            idle = time.time() - last
-            if idle > CFG.idle_unload_sec:
-                _log(f"Idle {int(idle)}s > {CFG.idle_unload_sec}s — unloading big model",
-                     "💤", YELLOW)
-                _stop_big()
+        should_unload = False
+        # Re-check sessions while holding _big_lock: a session-start's load
+        # (via _start_big/_swap_big) also takes _big_lock, so if a session
+        # started while we slept, we see its incremented refcount here and skip
+        # the unload instead of racing it (TOCTOU).
+        with _big_lock:
+            big_running = _big.running
+            with _lock:
+                last = _last_request
+                sessions = _active_sessions
+            if big_running and sessions == 0 and last:
+                idle = time.time() - last
+                if idle > CFG.idle_unload_sec:
+                    _log(f"Idle {int(idle)}s > {CFG.idle_unload_sec}s — unloading big model",
+                         "💤", YELLOW)
+                    should_unload = True
+        if should_unload:
+            _stop_big()  # re-acquires _big_lock — must be outside the with block
 
 
 # ── Control socket handler ────────────────────────────────────────────────────
@@ -334,13 +408,16 @@ def _handle(req: Dict) -> Dict:
         return {"ok": True}
 
     if cmd == "status":
+        # Short health-check timeout: status must stay responsive even when a
+        # model is down (a down port can take the full connect timeout to fail,
+        # and two sequential checks would blow past the CLI's 5s request timeout).
         return {
             "ok": True,
-            "big": {"port": _big.port, "healthy": _big.is_healthy(), "running": _big.running,
+            "big": {"port": _big.port, "healthy": _big.is_healthy(timeout=1), "running": _big.running,
                     "model": str(_big.model_path),
                     "fallback": Path(_big.model_path).resolve() == Path(CFG.fallback_model).resolve()},
-            "tiny": {"port": _tiny.port, "healthy": _tiny.is_healthy(), "running": _tiny.running},
-            "proxy": {"running": bool(_proxy_proc and _proxy_proc.poll() is None)},
+            "tiny": {"port": _tiny.port, "healthy": _tiny.is_healthy(timeout=1), "running": _tiny.running},
+            "proxy": {"running": (lambda p: bool(p and p.poll() is None))(_proxy_proc)},
             "active_sessions": _active_sessions,
             "last_request": _last_request,
             "idle_sec": int(time.time() - _last_request) if _last_request else None,
@@ -365,14 +442,14 @@ def _handle(req: Dict) -> Dict:
         # the big slot — the tiny overseer is fixed.
         model = req.get("model")
         if model and which in ("big", None):
-            ok = _swap_big(model, ctx=int(req.get("ctx", 8192)),
-                           ngl=int(req.get("ngl", 999)),
+            ok = _swap_big(model, ctx=int(req.get("ctx") or 8192),
+                           ngl=int(req.get("ngl") or 999),
                            alias=req.get("alias", "cortexagent"),
                            extra_args=req.get("extra_args"))
             return {"ok": ok, "big_healthy": _big.is_healthy(),
                     "model": str(_big.model_path)}
         if which == "big":
-            ok = _start_big(timeout=int(req.get("timeout", 300)))
+            ok = _start_big(timeout=int(req.get("timeout") or 300))
             return {"ok": ok, "big_healthy": _big.is_healthy()}
         if which == "tiny":
             return {"ok": _start_tiny(), "tiny_healthy": _tiny.is_healthy()}
@@ -388,8 +465,8 @@ def _handle(req: Dict) -> Dict:
             return {"ok": False, "error": "swap requires 'model' path"}
         with _lock:
             _last_request = time.time()
-        ok = _swap_big(model, ctx=int(req.get("ctx", 8192)),
-                       ngl=int(req.get("ngl", 999)),
+        ok = _swap_big(model, ctx=int(req.get("ctx") or 8192),
+                       ngl=int(req.get("ngl") or 999),
                        alias=req.get("alias", "cortexagent"),
                        extra_args=req.get("extra_args"))
         return {"ok": ok, "big_healthy": _big.is_healthy(),
@@ -427,6 +504,18 @@ def _handle(req: Dict) -> Dict:
              "⏹️", DIM)
         return {"ok": True, "active_sessions": _active_sessions}
 
+    if cmd == "session-reset":
+        # Stale-session recovery: the overseer watchdog calls this when it
+        # detects cortexagent is closed but the session refcount never reached 0
+        # (e.g. the CLI was SIGKILLed before its cleanup could send session-end).
+        with _lock:
+            _active_sessions = 0
+            _last_request = time.time()
+        _log("Session reset (stale session detected by overseer watchdog) — unloading big model",
+             "🧹", YELLOW)
+        _stop_big()
+        return {"ok": True, "active_sessions": 0}
+
     if cmd == "shutdown":
         _SHUTDOWN = True
         _log("Shutdown requested", "🛑", YELLOW)
@@ -460,6 +549,16 @@ def _run() -> None:
     else:
         _log(f"Tiny :{_tiny.port} down — overseer will keepalive it", "💤", DIM)
     _start_proxy()
+
+    # Kill any orphaned big model on :8080 that the daemon doesn't own.
+    # On restart, the old daemon's _big.proc is gone but the llama-server
+    # process may still be running — the daemon can't manage its lifecycle
+    # (idle-unload, swap, etc.) without owning the Popen handle.
+    if not _big.running and _big.is_healthy(timeout=1):
+        _log(f"Orphaned big model detected on :{_big.port} — killing it", "🧹", YELLOW)
+        _big._kill_port_server()
+    elif _big.running:
+        _log(f"Big model :{_big.port} up (pid {_big.pid})", "▶️", DIM)
 
     threading.Thread(target=_idle_watcher, daemon=True).start()
     threading.Thread(target=control.serve, args=(_handle,), daemon=True).start()
@@ -577,6 +676,10 @@ def main() -> int:
         return 1
     cmd = sys.argv[1]
     if cmd == "run":
+        existing = _is_running()
+        if existing:
+            print(f"Daemon already running (pid {existing}) — this instance will exit.", flush=True)
+            return 0
         PID_FILE.write_text(str(os.getpid()))
         try:
             _run()

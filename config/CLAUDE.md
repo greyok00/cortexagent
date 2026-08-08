@@ -36,10 +36,11 @@ The CortexAgent terminal is a locked-screen TUI (no scroll); the banner
 - Web: `brave_fetch` for JS-heavy; WebFetch/WebSearch fallback.
 - Reference: `config/AGENT.md` (on demand).
 
-## Memory
-- Auto-saved each turn to both cortexagent DB + shared CortexLLM.
-- Injected on start from both sources (dual-read).
-- `mcp__cortexllm__memory_*` for durable facts (shared across all platforms).
+## Memory (HARD — shared CortexLLM)
+- **Primary memory is the shared CortexLLM** (`~/.config/cortexllm/memory/hot/`), shared with Claude Code, OpenClaw, and all other platforms.
+- **ALWAYS use `mcp__cortexagent__memory_read`** when asked about prior sessions, context, or memory — do NOT read local files.
+- Auto-saved each turn to shared CortexLLM via `mcp__cortexagent__memory_write`.
+- Local `~/.claude/projects/*/memory/` files are secondary/fallback only.
 - Keep entries short; auto-prune/dedup.
 
 ## Tools
@@ -54,10 +55,11 @@ When user states a rule/constraint/directive:
 3. Do NOT edit CLAUDE.md — cold memory is source of truth.
 4. Startup scans cold memory and displays rules automatically.
 
-## Session Resume (HARD)
-First message in new session is "continue"/"go"/"retry"/"resume" or implies picking up work:
-1. Read hot memory from shared CortexLLM (mcp__cortexllm__memory_read tier=hot platform=cortexagent) for last 5+ user prompts.
-2. Quote the last user prompt verbatim.
-3. Summarize what was being worked on.
-4. Ask what to do next.
-Do NOT ask "what were we working on?" — read memory and report.
+## Session Resume / Memory Recall (HARD)
+When asked about prior sessions, context, or what was being worked on — OR on "continue"/"go"/"retry"/"resume":
+1. **Call `mcp__cortexagent__memory_read`** (tier=hot, platform=cortexagent) — this reads the shared CortexLLM memory used by ALL platforms.
+2. If that returns empty, also try platform="claude" (for sessions run under plain Claude Code).
+3. Quote the last user prompt verbatim.
+4. Summarize what was being worked on.
+5. Ask what to do next.
+Do NOT read local `~/.claude/projects/*/memory/` files as primary — the shared CortexLLM is the source of truth.

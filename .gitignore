@@ -43,3 +43,5 @@ build/
 __pycache__/
 *.pyc
 *.pyo
+# ── Local backups — never commit ────────────────────────────────
+*.bak-ctx*

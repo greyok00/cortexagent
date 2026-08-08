@@ -89,8 +89,12 @@ def main():
     # Token metrics from proxy
     tok_metrics = _get_token_metrics()
 
-    parts = ["CortexAgent", str(CFG.author)]
-    if model:
+    # Use the author tag as the brand; drop the leading literal "CortexAgent"
+    # (author already defaults to "CortexAgent"). Also skip the model field
+    # when it duplicates the brand (e.g. local alias "cortexagent").
+    brand = str(CFG.author) or "CortexAgent"
+    parts = [brand]
+    if model and model.strip().lower() != brand.strip().lower():
         parts.append(model)
     if cwd:
         parts.append(cwd)
