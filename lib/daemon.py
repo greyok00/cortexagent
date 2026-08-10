@@ -377,6 +377,7 @@ def _stop_proxy() -> None:
 # ── Idle watcher ──────────────────────────────────────────────────────────────
 def _idle_watcher() -> None:
     """Unload the big model when idle to free VRAM."""
+    global _active_sessions, _SHUTDOWN  # stale-release at line 405 mutates these
     while not _SHUTDOWN:
         time.sleep(IDLE_POLL)
         should_unload = False
@@ -389,7 +390,22 @@ def _idle_watcher() -> None:
             with _lock:
                 last = _last_request
                 sessions = _active_sessions
-            if big_running and sessions == 0 and last:
+            # Stale-session self-heal: a wrapper that died without sending
+            # session-end (SIGPIPE/SIGKILL/orphaned bash) leaves the refcount
+            # stuck >0, which permanently blocks the idle-unload below. If no
+            # request has arrived for stale_session_sec, treat the claim as
+            # dead and release it so idle-unload can free VRAM.
+            if big_running and sessions > 0 and last:
+                idle = time.time() - last
+                if idle > CFG.stale_session_sec:
+                    _log(f"Session claim stale ({int(idle)}s no request > "
+                         f"{CFG.stale_session_sec}s) — releasing {sessions} leaked "
+                         f"session(s) so big model can idle-unload",
+                         "🧹", YELLOW)
+                    with _lock:
+                        _active_sessions = 0
+                    sessions = 0
+            if big_running and sessions == 0 and last and CFG.idle_unload_sec > 0:
                 idle = time.time() - last
                 if idle > CFG.idle_unload_sec:
                     _log(f"Idle {int(idle)}s > {CFG.idle_unload_sec}s — unloading big model",

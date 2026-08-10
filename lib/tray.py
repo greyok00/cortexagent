@@ -241,14 +241,16 @@ def _run_headless(quit_event: threading.Event) -> None:
 
 def _make_icon_image():
     """CortexAgent tray icon — the square logo asset if present, else a small
-    64x64 'CA' mark drawn with Pillow."""
+    64x64 wolf head drawn with Pillow."""
     from PIL import Image, ImageDraw  # type: ignore
-    logo = Path(__file__).resolve().parent.parent / "assets" / "cortexagentsquarelogo.jpg"
-    if logo.exists():
-        try:
-            return Image.open(logo).convert("RGBA").resize((64, 64), Image.LANCZOS)
-        except Exception:
-            pass  # fall through to the drawn mark
+    # Try logo file (jpg or png), then fall back to drawn wolf head
+    for ext in ("png", "jpg"):
+        logo = Path(__file__).resolve().parent.parent / "assets" / f"cortexagentsquarelogo.{ext}"
+        if logo.exists():
+            try:
+                return Image.open(logo).convert("RGBA").resize((64, 64), Image.LANCZOS)
+            except Exception:
+                pass  # fall through to the drawn mark
     img = Image.new("RGBA", (64, 64), (15, 17, 21, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([6, 6, 58, 58], radius=12, fill=(150, 220, 255, 255))
@@ -288,6 +290,12 @@ def _run_gui(quit_event: threading.Event) -> None:
     def on_cli(icon, item):
         _launch_cli()
 
+    def on_open_webui(icon, item):
+        """Tray click → 8090 webui (the single dashboard, per R5)."""
+        import webbrowser
+        webbrowser.open("http://127.0.0.1:8090/")
+        _log("opened webui: http://127.0.0.1:8090/", "🌐", CYAN)
+
     def on_quit(icon, item):
         _log("Quit — tearing down overseer", "🛑", YELLOW)
         _overseer_stop()
@@ -303,6 +311,7 @@ def _run_gui(quit_event: threading.Event) -> None:
         MI("Reload config", on_reload_cfg),
         Menu.SEPARATOR,
         MI("Launch CLI", on_cli),
+        MI("Open webui (8090)", on_open_webui),
         Menu.SEPARATOR,
         MI("Quit", on_quit),
     )

@@ -97,10 +97,9 @@ _tiny = LlamaServer(
     log_file=str(CFG.logs_dir / "tiny-server.log"),
 )
 
-# ── Vision model (Qwen3-VL-8B on llama-server :8083) ──────
-# Handles image/video understanding. Loaded on-demand, unloaded after use.
-_vision = None
-_vision_lock = threading.Lock()
+# Vision model removed in v3.x — the big model is multimodal and handles
+# vision natively. To re-add a separate vision server, restore this block
+# from git history.
 
 # Serializes tiny start/stop so a keepalive thread and a shutdown can't both
 # spawn a llama-server on :8082 (port conflict) or race a stop against a start.
@@ -275,18 +274,93 @@ def _check_memory_writes() -> List[str]:
 
 
 def _check_session_health() -> List[str]:
-    """Check if the main model proxy is responding."""
+    """Check if the main model proxy is responding.
+
+    502 from the proxy = proxy is UP but the big model is idle-unloaded — the
+    normal no-session state (the daemon loads big on demand), NOT an alert.
+    Only a genuinely unreachable proxy (connection refused / 5xx other than 502)
+    is a real problem.
+    """
     alerts = []
     proxy_port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{proxy_port}/health",
                                      method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
-            if resp.status != 200:
+            if resp.status not in (200, 502):
                 alerts.append(f"Proxy health check failed (HTTP {resp.status})")
+    except urllib.error.HTTPError as e:
+        if e.code != 502:  # 502 = backend (big model) idle-unloaded → expected
+            alerts.append(f"Proxy health check failed (HTTP {e.code})")
     except Exception:
         alerts.append(f"Proxy not reachable on port {proxy_port} — main model may be down")
     return alerts
+
+
+# Context-window monitor state (big model KV usage). Reset once below critical.
+_CTX_CRITICAL_TICKS = 0
+_CTX_ALERT_PCT = 88.0          # warn when the slot is this full
+_CTX_CRITICAL_PCT = 95.0       # auto-compact should have fired before here
+_CTX_CRITICAL_TICKS_NEEDED = 3  # sustained critical ticks (90s @30s) → failsafe
+
+
+def _check_context_window() -> List[str]:
+    """Monitor the big model's context-window usage (n_past vs n_ctx).
+
+    The user hit hard 400s when the context grew to the server ceiling and
+    auto-compact never fired (window misconfig). With the window now matched
+    (131072), auto-compact keeps traffic ~95%; this monitor is the failsafe
+    that gives visibility near the ceiling and force-resets the session when
+    the slot is pegged ≥95% across several ticks (auto-compact clearly dead).
+    Returns alerts (does not self-mutate; the loop handles the failsafe).
+    """
+    global _CTX_CRITICAL_TICKS
+    port = CFG.big_model_port
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/slots")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            slots = json.loads(resp.read().decode() or "[]")
+    except Exception:
+        # Big model down/unreachable — session health check covers that.
+        _CTX_CRITICAL_TICKS = 0
+        return []
+    alerts: List[str] = []
+    critical = False
+    for s in slots:
+        n_past = int(s.get("n_past") or 0)
+        n_ctx = int(s.get("n_ctx") or 0)
+        if n_ctx <= 0 or n_past <= 0:
+            continue
+        pct = n_past / n_ctx * 100
+        if pct >= _CTX_CRITICAL_PCT:
+            critical = True
+            alerts.append(f"CONTEXT WINDOW at {pct:.0f}% ({n_past}/{n_ctx} tok) — "
+                          f"auto-compact failed, ceiling imminent")
+        elif pct >= _CTX_ALERT_PCT:
+            alerts.append(f"Context window at {pct:.0f}% ({n_past}/{n_ctx} tok) — near ceiling")
+    if critical:
+        _CTX_CRITICAL_TICKS += 1
+    else:
+        _CTX_CRITICAL_TICKS = 0
+    return alerts
+
+
+def _context_failsafe() -> None:
+    """Force a fresh session when the slot is pegged at the ceiling — the
+    auto-compact that should have fired is dead (misconfig or client bug), so
+    the next request would hard-400. Reset the session (unloads big) so the
+    next launch starts clean instead of failing at the ceiling again."""
+    global _CTX_CRITICAL_TICKS
+    if _CTX_CRITICAL_TICKS < _CTX_CRITICAL_TICKS_NEEDED:
+        return
+    _CTX_CRITICAL_TICKS = 0
+    _log(f"Context window pegged ≥{_CTX_CRITICAL_PCT:.0f}% for "
+         f"{_CTX_CRITICAL_TICKS_NEEDED} ticks — resetting session so the next "
+         f"launch starts with fresh context (avoiding a hard 400)", "🔥", RED)
+    try:
+        control.send_request("session-reset", timeout=5)
+    except Exception:
+        _log("context failsafe: session-reset failed", "❌", RED)
 
 
 def _cortexagent_active() -> bool:
@@ -821,6 +895,13 @@ def _daemon_loop(interval: int) -> None:
             alerts = _check_health(stats)
             alerts += _check_memory_writes()
             alerts += _check_session_health()
+            # Context-window monitor: alert near the ceiling; failsafe-reset on
+            # sustained critical (auto-compact dead → the 400-class bug).
+            ctx_alerts = _check_context_window()
+            alerts += ctx_alerts
+            _context_failsafe()
+            if ctx_alerts:
+                _log("Context: " + " | ".join(ctx_alerts), "📏", YELLOW)
 
             # ── CortexAgent watchdog (every 2nd tick) ──
             # If cortexagent is closed but the daemon still tracks an active

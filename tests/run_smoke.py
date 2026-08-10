@@ -31,6 +31,7 @@ Areas (``--area NAME`` to run one; default = all):
   nvsmi     nvidia-smi wrapper reads /metrics → real tok/s (#24)
   diffusion diffusers in-process (offline): resolution/detection/honest-miss paths
   banner   ANSI in-place boot banner (no clear/flicker) + static fallback; launcher wires it
+  tui      response_model parsing (pure) + lib/tui.py smoke self-test
   coverage   print the module→test coverage matrix + gap report
 
 Usage:
@@ -267,6 +268,86 @@ def test_config_isolated() -> R:
         shutil.rmtree(state, ignore_errors=True)
 
 
+def test_v03x_rules() -> R:
+    """Verify all v0.3.x rule defaults are wired correctly.
+
+    - R2: collapse() default = 0 visible artifacts (code hidden by default)
+    - R4: minify_response() strips filler ("Sure!\\n…")
+    - R5: format_visual() always-on (no opt-out flag in code)
+    - R6: pre_flight_gate classifies ambiguous prompts
+    - R7: big_idle_unload_sec default = 0 (big stays loaded)
+    - Config: big_model default empty, vision_* removed
+    """
+    fails = []
+    try:
+        from lib.response_model import collapse
+        if collapse.__kwdefaults__.get("max_visible_artifacts") != 0:
+            fails.append("R2 collapse default != 0")
+    except Exception as e:
+        fails.append(f"R2 import: {e}")
+    try:
+        from lib.grammar_proxy import minify_response
+        body = b'data: {"choices":[{"delta":{"content":"Sure!\\nHi."}}]}\n\ndata: [DONE]\n'
+        out = minify_response(body)
+        import json as _j
+        for line in out.split(b"\n"):
+            if line.startswith(b"data: ") and line != b"data: [DONE]":
+                c = _j.loads(line[6:])["choices"][0]["delta"]["content"]
+                if c.startswith("Sure!"):
+                    fails.append("R4 filler not stripped")
+                    break
+    except Exception as e:
+        fails.append(f"R4: {e}")
+    try:
+        from lib.pre_flight_gate import is_ambiguous
+        if not is_ambiguous("fix it") or is_ambiguous("rename foo.py to bar.py and reload"):
+            fails.append("R6 is_ambiguous heuristic off")
+    except Exception as e:
+        fails.append(f"R6: {e}")
+    try:
+        import re as _re
+        repopath = str(REPO)
+        for f in ("lib/grammar_proxy.py", "lib/response_model.py", "lib/pre_flight_gate.py"):
+            t = open(os.path.join(repopath, f)).read()
+            if _re.search(r"--no-format|--no-visual|format=False|charts=False", t):
+                fails.append(f"R5 opt-out flag found in {f}")
+    except Exception as e:
+        fails.append(f"R5: {e}")
+    try:
+        env = {k: v for k, v in os.environ.items()
+               if not (k.startswith("CORTEXAGENT_") and k != "CORTEXAGENT_CONF")}
+        env["CORTEXAGENT_CONF"] = "/dev/null"
+        r = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.'); from lib.config import Config; "
+             "c=Config(); print('BIG=' + repr(c.big_model) + ' IDLE=' + str(c.idle_unload_sec))"],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        line = (r.stdout or "").strip()
+        if "BIG=''" not in line:
+            fails.append(f"R7/Cfg big_model default not empty: {line!r}")
+        if "IDLE=0" not in line:
+            fails.append(f"R7 idle_unload_sec default != 0: {line!r}")
+    except Exception as e:
+        fails.append(f"R7/Cfg: {e}")
+    try:
+        env = {k: v for k, v in os.environ.items()
+               if not (k.startswith("CORTEXAGENT_") and k != "CORTEXAGENT_CONF")}
+        env["CORTEXAGENT_CONF"] = "/dev/null"
+        r = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.'); from lib.config import Config; c=Config(); "
+             "print(hasattr(c,'vision_model'), hasattr(c,'vision_port'))"],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        if "False False" not in r.stdout:
+            fails.append(f"vision_* attrs not removed: {r.stdout!r}")
+    except Exception as e:
+        fails.append(f"vision attrs: {e}")
+    return R("v0.3.x rule defaults", "static",
+             not fails,
+             "; ".join(fails) if fails else "R2/R4/R5/R6/R7/vision all wired")
+    """User-shared mode: with no overrides, defaults match the original paths."""
 def test_config_user_shared() -> R:
     """User-shared mode: with no overrides, defaults match the original paths."""
     # Use a clean env with NO CORTEXAGENT_ overrides so config.py falls back to
@@ -292,7 +373,7 @@ def test_config_user_shared() -> R:
         except Exception:
             return R("config user-shared defaults", "config", False, f"parse fail: {r.stdout[:120]}")
         ok = (d["backend"] == "llamacpp" and d["tiny_port"] == 8082 and d["big_port"] == 8080
-              and d["idle"] == 600 and "cortexllm.db" in d["db"])
+              and d["idle"] == 0 and "cortexllm.db" in d["db"])  # v0.3.x: idle_unload_sec=0 default (R7)
         return R("config user-shared defaults", "config", ok, f"db={d['db']} ports={d['big_port']}/{d['tiny_port']}")
     finally:
         shutil.rmtree(state, ignore_errors=True)
@@ -312,6 +393,7 @@ PII_EXCLUDE_FILES = {
     "tests/COVERAGE.md",                  # documents the patterns (audit doc)
     "lib/post_response_verifier.py",      # redacts sk-ant- keys from responses
     "lib/config.py",                      # docstring documents the old hardcoded paths
+    "docs/superpowers/specs/2026-08-10-daily-changelog.md",  # session record (PII by design — local-only)
 }
 
 
@@ -1296,6 +1378,8 @@ COVERAGE = [
     ("lib/webui.py — /assets/logo route", "webui_assets", True),
     ("lib/grammar_proxy.py + statusline.py — VRAM in /metrics + render", "proxy_vram_field", True),
     ("lib/doctor.py — settings drift repair + idempotent + non-destructive", "doctor_drift_repair", True),
+    ("lib/response_model.py — parse/sanitize/collapse/render (pure)", "tui (response_model)", True),
+    ("lib/tui.py — streaming TUI + block cards + artifact viewer", "tui (smoke)", True),
 ]
 
 
@@ -1569,6 +1653,42 @@ def test_fallback_config_and_args() -> R:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AREA: tui — response model (pure) + smoke
+# ═══════════════════════════════════════════════════════════════════════════
+def test_tui_response_model() -> R:
+    """lib/response_model.py parses artifacts, sanitizes ANSI, collapses."""
+    try:
+        from lib.response_model import (ArtifactBlock, DisclosureBlock,
+                                        TextBlock, collapse, parse_response,
+                                        sanitize_terminal)
+    except Exception as e:
+        return R("response_model import", "tui", False, f"import: {e}")
+    blocks = parse_response("Intro\n```python\nprint(1)\n```\nOutro")
+    arts = [b for b in blocks if isinstance(b, ArtifactBlock)]
+    if len(arts) != 1 or arts[0].artifact.language != "python":
+        return R("response_model parse", "tui", False, f"got {len(arts)} artifacts")
+    if sanitize_terminal("\x1b[31mhi\x1b[0m") != "hi":
+        return R("response_model sanitize", "tui", False, "ANSI not stripped")
+    if not any(isinstance(b, DisclosureBlock)
+               for b in collapse([TextBlock("x" * 5000)])):
+        return R("response_model collapse", "tui", False, "long text not collapsed")
+    return R("response_model parse/sanitize/collapse", "tui", True, "3/3 OK")
+
+
+def test_tui_smoke() -> R:
+    """lib/tui.py smoke self-test exits 0."""
+    out = subprocess.run(
+        [sys.executable, str(REPO / "lib" / "tui.py"), "smoke"],
+        capture_output=True, text=True, timeout=60,
+    )
+    if out.returncode != 0:
+        return R("tui smoke", "tui", False,
+                 (out.stderr or out.stdout).strip()[:300])
+    tail = out.stdout.strip().splitlines()[-1] if out.stdout.strip() else "ok"
+    return R("tui smoke", "tui", True, tail)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
 LIVE_AREAS = {"models", "daemon", "proxy", "cli", "tray"}
@@ -1599,6 +1719,7 @@ TESTS = {
                   test_install_starts_daemon_unconditional,
                   test_fallback_vram_probe_glitchrejection,
                   test_fallback_config_and_args],
+    "tui": [test_tui_response_model, test_tui_smoke],
 }
 
 

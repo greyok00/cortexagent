@@ -236,10 +236,12 @@ class Config:
         self.models_dir = Path(_env(
             "CORTEXAGENT_MODELS_DIR", "backend", "models_dir",
             str(home / "models")))
+        # Big model — empty by default; users MUST configure their own (env
+        # CORTEXAGENT_MODEL or ini [backend] big_model). The shipped defaults
+        # would otherwise pin new users to a 13 GB IQ3_S that won't fit their
+        # GPU. Set this to your own model file path to override.
         self.big_model = _env(
-            "CORTEXAGENT_MODEL", "backend", "big_model",
-            str(self.models_dir / "qwen3.6-35b-iq3s" /
-                "Qwen3.6-35B-A3B-UD-IQ3_S.gguf"))
+            "CORTEXAGENT_MODEL", "backend", "big_model", "")
         self.big_model_port = _env_int(
             "CORTEXAGENT_PORT", "backend", "big_model_port", 8080)
         self.tiny_model_port = _env_int(
@@ -248,17 +250,12 @@ class Config:
             "CORTEXAGENT_TINY_MODEL", "backend", "tiny_model",
             str(self.models_dir / "lfm2.5-1.2b" / "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"))
 
-        # Vision model (Qwen3-VL-8B for image/video understanding)
-        self.vision_model = _env(
-            "CORTEXAGENT_VISION_MODEL", "vision", "vision_model",
-            str(self.models_dir / "qwen3vl-8b" / "Qwen3VL-8B-Instruct-Q4_K_M.gguf"))
-        self.vision_mmproj = _env(
-            "CORTEXAGENT_VISION_MMPROJ", "vision", "vision_mmproj",
-            str(self.models_dir / "qwen3vl-8b" / "mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf"))
-        self.vision_port = _env_int(
-            "CORTEXAGENT_VISION_PORT", "vision", "vision_port", 8083)
-        self.vision_ctx = _env_int(
-            "CORTEXAGENT_VISION_CTX", "vision", "vision_ctx", 4096)
+        # Vision: REMOVED in v3.x. The big model is multimodal (Qwen3-VL family
+        # fine-tunes / Qwen3.6 35B), so a separate vision server (formerly
+        # qwen3vl-8b on :8083) is no longer needed. Big handles vision natively
+        # and orchestrates image/video gen via diffusers in-process. To re-add
+        # a separate vision model, subclass and override big_model with a
+        # vision-capable path.
 
         # ── Big model llama-server args (daemon-managed; mirror the launcher) ─
         # These mirror the env vars bin/cortexagent already reads, so an existing
@@ -324,8 +321,19 @@ class Config:
             "CORTEXAGENT_BIG_VRAM_MIN", "backend", "big_vram_min_gb", 14)
 
         # ── Daemon / idle VRAM management ──────────────────────────────────
+        # Big model stays loaded at all times (user pref: "keep it loaded").
+        # Set to 0 to disable idle-unload entirely. Any positive value is the
+        # grace period in seconds before the daemon unloads big after the last
+        # session ends. 0 = never unload (recommended; saves the swap latency
+        # the user perceived as bad UX).
         self.idle_unload_sec = _env_int(
-            "CORTEXAGENT_IDLE_UNLOAD_SEC", "daemon", "idle_unload_sec", 600)
+            "CORTEXAGENT_IDLE_UNLOAD_SEC", "daemon", "idle_unload_sec", 0)
+        # A session that claims the big model but has produced NO request for
+        # this long is stale (wrapper died without session-end — SIGPIPE,
+        # SIGKILL, orphaned bash). Released so idle-unload can free VRAM.
+        # Generous default: longer than any realistic human think gap.
+        self.stale_session_sec = _env_int(
+            "CORTEXAGENT_STALE_SESSION_SEC", "daemon", "stale_session_sec", 1800)
         self.control_socket = self.state_dir / "control.sock"
 
         # ── Display / UX ───────────────────────────────────────────────────
