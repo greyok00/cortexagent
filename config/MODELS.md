@@ -23,8 +23,16 @@
 ```
 
 **The LLM owns the VRAM by default; diffusion runs in-process on the same GPU.**
-The main LLM (Qwen3.6) stays loaded for coding/chat and idle-unloads to free
-VRAM when untouched (`CORTEXAGENT_IDLE_UNLOAD_SEC`). Image/video generation
+**v0.3.x** — big stays loaded at all times (`big_idle_unload_sec=0` by default;
+user pref: keep it loaded). Big is multimodal (Qwen3-VL family / Qwen3.6 35B),
+so a separate vision server is no longer needed. The big model handles vision
+natively and orchestrates image/video gen via diffusers in-process.
+
+The shipped default `big_model` is **empty** — users MUST configure their own
+via `CORTEXAGENT_MODEL=/path/to.gguf` or `[backend] big_model = /path/to.gguf`
+in `cortexagent.conf`. The shipped `tiny_model` (LFM2.5-1.2B, ~728 MB, tool-call
+native) and `fallback_model` (LFM2.5-8B-A1B, MoE+Mamba-2 hybrid, ~6.7 GB) are
+kept as defaults. Image/video generation
 loads HuggingFace `diffusers` **in-process** (`lib/diffusion_backend.py`, #33)
 — it does NOT swap into the LLM slot (that was the broken #28 path: llama-server
 can't host diffusion). For a heavy video gen the LLM idle-unloads first.

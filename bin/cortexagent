@@ -5,14 +5,14 @@
 # model into VRAM only while the session runs, and frees VRAM on exit. Full
 # CortexAgent memory integration: hot memory is auto-injected on every session
 # start / clear / compact, and prompts are auto-saved through the warm-memory
-# pruning pipeline. Context auto-compacts before the local 32k limit instead
+# pruning pipeline. Context auto-compacts before the local 128k limit instead
 # of hard-failing.
 #
 # Everything here is env-driven — no hardcoded home paths, no secrets.
 #
 # Usage: cortexagent [any agent flags/args]
-#   cortexagent                      # interactive
-#   cortexagent -p "fix this bug"    # one-shot
+#   cortexagent                      # plain CLI — launches Claude interactively
+#   cortexagent -p "fix this bug"    # one-shot, output passed through untouched
 #   cortexagent --restart            # restart daemon + overseer (one shot)
 #   cortexagent --list-models        # show available models
 #   cortexagent --model=other.gguf   # use a different model
@@ -392,7 +392,10 @@ control.send_request('session-end', timeout=5)" 2>/dev/null || true
     fi
   fi
 }
-trap cleanup EXIT INT TERM
+# PIPE added: dying on SIGPIPE (piping output into head/less that closes early)
+# used to kill the wrapper WITHOUT running cleanup → session-end never sent →
+# active_sessions leaked. Trapping it runs cleanup (which sends session-end) first.
+trap cleanup EXIT INT TERM PIPE
 
 # ── Start Brave CDP debugging server (for Playwright web fetch/browser tools) ──
 BRAVE_PID=""
@@ -492,7 +495,7 @@ export CLAUDE_MODEL_NAME="$(basename "${MODEL}" .gguf)"
 
 # ── The fix: tell the agent the REAL context window so it auto-compacts ──────
 # Without this it defaults to a 200k window and never compacts, then hard-fails
-# at the local 32k limit. Matching the llama-server `-c` value is what makes
+# at the local 128k limit. Matching the llama-server `-c` value is what makes
 # auto-compact fire in time and the token bar reflect reality.
 #
 # `unset` FIRST because the shell may have inherited a huge value (cloud-model
@@ -503,10 +506,14 @@ unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
 # alt-screen TUI. We want the locked-screen experience, so explicitly unset
 # any inherited value.
 unset CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN 2>/dev/null || true
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS="192000"
+# Both match the locked server context (lib/config.py big_ctx=131072). Setting
+# them above 131072 means auto-compact (95% of the window) would fire at a point
+# the server can never reach → hard 400s again (the same class of bug the
+# earlier 32k overflow was). 131072 → compact at ~124k, safely under the ceiling.
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="131072"
 # AUTO_COMPACT_WINDOW is what auto-compact thresholds against. If inherited as
-# 524288, the local 256k never reaches it → no compact → lock at the limit.
-export CLAUDE_CODE_AUTO_COMPACT_WINDOW="192000"
+# 524288, the local 128k never reaches it → no compact → lock at the limit.
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW="131072"
 # Auto-compact fires at 95% of the window instead of the default (much lower).
 # Stops "compact every turn" — we want compact to fire ONLY when context is
 # actually nearly full, not when it's still mostly free.
@@ -573,6 +580,7 @@ for arg in "$@"; do
     *) FILTERED_ARGS+=("$arg") ;;
   esac
 done
-claude "${FILTERED_ARGS[@]}" --mcp-config "${CORTEXAGENT_MCP_CONFIG}"
+
+${AGENT_CLI} "${FILTERED_ARGS[@]}" --mcp-config "${CORTEXAGENT_MCP_CONFIG}"
 echo "Claude session ended — cleaning up..."
 cleanup

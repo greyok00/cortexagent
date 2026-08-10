@@ -44,4 +44,6 @@ __pycache__/
 *.pyc
 *.pyo
 # ── Local backups — never commit ────────────────────────────────
+*.bak*
 *.bak-ctx*
+*.pre-wolf-*

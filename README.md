@@ -6,7 +6,21 @@
 
 A local coding agent by **CortexAgent**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with a fully minified prompt system, lazy-loaded MCP tools, and built-in SQLite memory. Designed for maximum token efficiency and speed on a single 16 GB GPU.
 
-**v0.2.0** · [github.com/greyok00/cortexagent](https://github.com/greyok00/cortexagent) — persistent daemon + always-on overseer, 128K default context, minified prompt pipeline, `cortexagent --restart`.
+**v0.3.x** · [github.com/greyok00/cortexagent](https://github.com/greyok00/cortexagent) — typed response model with streaming TUI, session bridge, unified overseer with context monitor, luxury 3D web UI, stale-session self-heal, slimtoken minify pipeline.
+
+### What's new in v0.3.x
+
+| Rule | Behavior |
+|------|----------|
+| **R1** | Plain CLI only — no TUI. The dashboard is the **8090 webui**. |
+| **R2** | Code is hidden by default in plain-CLI output. Add `show code` / `with code` to your prompt to reveal. |
+| **R3** | After every response: `_` divider + `▎ thinking: …` line via stderr (CLI bottom bar). |
+| **R4** | Output-side minify via `lib/grammar_proxy.minify_response()` — strips "Sure!" / "Here is the code:" filler. |
+| **R5** | Visual scannable output is **always on** — markdown tables → box-drawn, numeric → `█` charts, `#` → `▎`. |
+| **R6** | Ambiguous prompts trigger a clarifying question instead of being routed to big. |
+| **R7** | Big stays loaded (`big_idle_unload_sec=0`). Big is multimodal — handles vision natively. |
+
+Default `big_model` is now empty — set `CORTEXAGENT_MODEL=/path/to.gguf` (or `big_model` in `cortexagent.conf`) to your own model. The shipped `tiny_model` (LFM2.5-1.2B Q4_K_M, ~728 MB, tool-call native) and `fallback_model` (LFM2.5-8B-A1B Q4_K_M, MoE+Mamba-2 hybrid, ~6.7 GB) are kept as defaults.
 
 ## Features
 
@@ -132,13 +146,14 @@ cortexagent                       # interactive
 cortexagent -p "fix this bug"     # one-shot
 cortexagent --restart             # restart daemon + overseer, reload big model
 CORTEXAGENT_CTX=65536 cortexagent # smaller window
+CORTEXAGENT_MODEL=~/models/my.gguf cortexagent   # override the default (empty)
 ```
 
 ## Configuration (env vars)
 
 | Var | Default | Purpose |
 |---|---|---|
-| `CORTEXAGENT_MODEL` | path to default Qwen3.6-35B-A3B GGUF | model file |
+| `CORTEXAGENT_MODEL` | **empty** — user MUST configure (env or `cortexagent.conf`) | big model file |
 | `CORTEXAGENT_ALIAS` | `cortexagent` | model alias |
 | `CORTEXAGENT_PORT` | `8080` | llama-server port |
 | `CORTEXAGENT_PROXY_PORT` | `8081` | grammar-proxy port |

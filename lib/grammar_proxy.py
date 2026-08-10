@@ -22,15 +22,23 @@ if str(_REPO_ROOT) not in sys.path:
 from lib import control  # reload-aware: trigger big-model reload via the daemon
 
 # ── Minification pipeline (opt-out via CORTEXAGENT_MINIFY=off) ────────────────
-# On by default. Shrinks the request body (tools/system/messages whitespace +
-# tool-def noise + code-fence-aware prose) before it hits llama-server. Pure
-# stdlib; a parse failure in any stage is caught and never blocks inference.
+# On by default. Prefers the user's slimtoken engine (real compression:
+# dedup of repeated tool output + distill of old turns + budget backstop),
+# falls back to the conservative lib.minify (whitespace/tool-def noise only).
+# A parse failure in any stage is caught and never blocks inference.
 try:
-    from lib.minify.pipeline import minify_request, MinifyConfig
+    from slimtoken.pipeline import minify_request, MinifyConfig
+    _MINIFY_BACKEND = "slimtoken"
     _MINIFY_OK = True
-except Exception as _e:  # pragma: no cover — minify is optional
-    _MINIFY_OK = False
-    print(f"[proxy] minify unavailable (continuing without): {_e}", file=sys.stderr)
+except Exception:  # pragma: no cover — slimtoken is optional
+    try:
+        from lib.minify.pipeline import minify_request, MinifyConfig
+        _MINIFY_BACKEND = "lib.minify"
+        _MINIFY_OK = True
+    except Exception as _e:  # pragma: no cover — minify is optional
+        _MINIFY_OK = False
+        print(f"[proxy] minify unavailable (continuing without): {_e}",
+              file=sys.stderr)
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -50,27 +58,115 @@ def _build_minify_cfg():
         stages.add("system")
     if _bool_env("CORTEXAGENT_MINIFY_MESSAGES", True):
         stages.add("messages")
+        # Real compression: dedup repeated tool results + distill old turns.
+        # (lib.minify ignores unknown stage names — safe to add either way.)
+        stages.update(("dedup", "distill"))
     skip = {s.strip() for s in os.environ.get(
         "CORTEXAGENT_MINIFY_TOOL_SKIP", "").split(",") if s.strip()}
+    # slimtoken default = 131072: a HARD backstop at the server ceiling. If a
+    # request ever exceeds it (the 400-class bug: context grows to the ceiling,
+    # server rejects), history is dropped to fit instead of erroring. Auto-
+    # compact at 124k keeps normal traffic well under, so this rarely engages.
+    _default_budget = 131072 if _MINIFY_BACKEND == "slimtoken" else 0
     try:
-        budget = int(os.environ.get("CORTEXAGENT_MINIFY_BUDGET", "0") or 0)
+        budget = int(os.environ.get("CORTEXAGENT_MINIFY_BUDGET", "") or _default_budget)
     except ValueError:
-        budget = 0
+        budget = _default_budget
     try:
         keep_last = int(os.environ.get("CORTEXAGENT_MINIFY_KEEP_LAST", "8") or 8)
     except ValueError:
         keep_last = 8
-    return MinifyConfig(
-        token_budget=budget,           # 0 = no message dropping (conservative default)
+    kw = dict(
+        token_budget=budget,           # slimtoken: 0→off, 131072→backstop
         enabled_stages=stages,
         tool_skip=skip,
-        minify_dom=_bool_env("CORTEXAGENT_MINIFY_DOM", False),
         keep_last=keep_last,
     )
+    if _MINIFY_BACKEND == "slimtoken":
+        kw["dedup_min_chars"] = int(os.environ.get(
+            "CORTEXAGENT_MINIFY_DEDUP_MIN", "200") or 200)
+        kw["distill_max_chars"] = int(os.environ.get(
+            "CORTEXAGENT_MINIFY_DISTILL_MAX", "240") or 240)
+    else:  # lib.minify fallback keeps its conservative defaults
+        kw["minify_dom"] = _bool_env("CORTEXAGENT_MINIFY_DOM", False)
+    return MinifyConfig(**kw)
 
 
 _MINIFY_CFG = _build_minify_cfg()
 _MINIFY_CHUNKED = _bool_env("CORTEXAGENT_MINIFY_CHUNKED", True)
+_MINIFY_RESPONSE = _bool_env("CORTEXAGENT_MINIFY_RESPONSE", True)
+
+# ── Output-side minify (R4) ──────────────────────────────────────────────────
+# Slimtoken has no response minify, so we run a thin local helper. Strips
+# model-generated filler ("Sure!", "Here is the code:", "Let me know if…")
+# from the assistant message content. Operates on already-buffered response
+# chunks AFTER upstream sends a "data: [DONE]" sentinel — never on a live
+# stream (would corrupt partial tokens). Bounded to ~16 KB scan per call.
+_FILLER_PATTERNS = (
+    "Sure!\n", "Sure!\n\n", "Sure, ", "Sure.\n",
+    "Here is the code:\n", "Here is the code:\n\n",
+    "Here is your code:\n", "Here is your code:\n\n",
+    "Let me know if you need anything else.\n",
+    "Let me know if you have any questions.\n",
+    "I hope this helps!\n", "I hope this helps.\n",
+    "Feel free to ask if you have any questions.\n",
+)
+
+
+def minify_response(body: bytes) -> bytes:
+    """Strip model-generated filler phrases from a buffered response.
+
+    No-op for streams (SSE chunks have no [DONE] yet); caller must buffer
+    the full response first. Returns body unchanged on any parse error so a
+    malformed payload still reaches the client.
+    """
+    if not _MINIFY_RESPONSE or not body:
+        return body
+    try:
+        text = body.decode("utf-8", errors="replace")
+    except Exception:
+        return body
+    # SSE responses are line-delimited; only touch data: lines (object schema).
+    out_lines = []
+    changed = False
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not (stripped.startswith("data: ") and stripped != "data: [DONE]"):
+            out_lines.append(line)
+            continue
+        payload = stripped[6:]
+        try:
+            obj = json.loads(payload)
+        except Exception:
+            out_lines.append(line)
+            continue
+        # OpenAI-style choices[].delta.content / choices[].message.content
+        try:
+            choices = obj.get("choices") or []
+            for ch in choices:
+                delta = ch.get("delta") or {}
+                msg = ch.get("message") or {}
+                c = delta.get("content")
+                if not c:
+                    c = msg.get("content")
+                if isinstance(c, str):
+                    new = c
+                    for pat in _FILLER_PATTERNS:
+                        if new.startswith(pat):
+                            new = new[len(pat):]
+                            changed = True
+                            break
+                    if new != c:
+                        if "delta" in ch:
+                            ch["delta"]["content"] = new
+                        else:
+                            ch["message"]["content"] = new
+        except Exception:
+            pass
+        out_lines.append("data: " + json.dumps(obj, ensure_ascii=False))
+    if not changed:
+        return body
+    return ("\n".join(out_lines)).encode("utf-8")
 
 # ── Token Tracking ───────────────────────────────────────────────────────────
 _token_lock = threading.Lock()
@@ -412,6 +508,12 @@ class ProxyHandler:
         _elapsed = time.time() - _t0
         if _elapsed > 0.1:
             print(f"[proxy] completed in {_elapsed:.2f}s", file=sys.stderr)
+        # R3: thinking-bottom-line (CLI) — emit divider + reflection via stderr
+        # so a CLI front-end can render "_ divider / ▎ thinking: ..." as a
+        # bottom task bar. Skipped for non-streaming clients; only meaningful
+        # when the call path is interactive.
+        if os.isatty(sys.stderr.fileno()) if hasattr(sys.stderr, "fileno") else False:
+            print("\n_\n▎ thinking: completion in {:.2f}s\n".format(_elapsed), file=sys.stderr)
 
     def _forward_chunked(self, head_bytes, body):
         """Buffer a chunked request, de-chunk, minify, re-send with Content-Length.
@@ -555,11 +657,19 @@ class ProxyHandler:
             pass
         finally:
             stop.set()
-            # Extract token usage from response
+            # Extract token usage from response. Run minify_response on the
+            # buffered response (no-op for live SSE — we already piped live
+            # bytes to the client; this only feeds token accounting / metrics).
             pt, ct = 0, 0
             if resp_buf:
-                full = b"".join(resp_buf).decode("utf-8", errors="replace")
-                for line in full.split("\n"):
+                full = b"".join(resp_buf)
+                minified = minify_response(full)
+                if minified is not full:
+                    # update in-place so subsequent accounting sees the minified form
+                    resp_buf.clear()
+                    resp_buf.append(minified)
+                full_text = (minified if minified is not full else full).decode("utf-8", errors="replace")
+                for line in full_text.split("\n"):
                     if "usage" in line.lower() or "completion_tokens" in line:
                         try:
                             if line.startswith("data: "):

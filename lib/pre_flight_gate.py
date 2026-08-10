@@ -101,7 +101,35 @@ def classify_intent(prompt: str) -> str:
         return "scheduling"
     if any(kw in p for kw in ["verify", "check", "test", "validate"]):
         return "verification"
+    if is_ambiguous(prompt):
+        return "ambiguous"
     return "llm_required"
+
+
+def is_ambiguous(prompt: str) -> bool:
+    """R6: heuristic ambiguity detector.
+
+    Flags prompts that are too short or underspecified to act on confidently.
+    Pattern: <=6 words AND no concrete noun + no concrete verb. Conservative —
+    only TRUE on the empty/single-word/question-without-noun cases, never on
+    even a modestly specific prompt. Caller branches off `ambiguous` intent
+    with a clarifying question before reaching big.
+    """
+    p = prompt.strip()
+    if not p or len(p) < 8:
+        return True
+    words = p.split()
+    if len(words) <= 4:
+        # ≤4 words → almost always needs clarification
+        return True
+    # Pronoun-heavy / no concrete noun
+    pronouns = sum(1 for w in words if w.lower() in {
+        "it", "this", "that", "these", "those", "they", "them",
+        "there", "here", "do", "does", "did", "fix", "make", "update",
+    })
+    if len(words) <= 7 and pronouns >= 1 and not any(c.isupper() for c in p):
+        return True
+    return False
 
 
 # ── Main gate ─────────────────────────────────────────────────────────────
@@ -171,6 +199,18 @@ class PreFlightGate:
 
         # Intent
         result.intent = classify_intent(prompt)
+        # R6: ambiguous prompts → ask clarifying question instead of guessing
+        if result.intent == "ambiguous" and not result.cached_response:
+            result.warnings.append(
+                "Prompt looks ambiguous — asking for clarification instead of "
+                "passing to big. Rephrase with the file, function, or goal."
+            )
+            result.cached_response = (
+                "Could you clarify what you mean?\n"
+                "• Which file or component?\n"
+                "• What's the symptom or expected behavior?\n"
+                "• Any constraints (no restart, must keep model X, etc)?"
+            )
         return result
 
     def reset_iterations(self, profile: str) -> None:
