@@ -35,7 +35,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -57,6 +57,74 @@ _last_request = 0.0          # unix ts of last proxy activity / session event
 _active_sessions = 0         # CLI sessions currently active (refcount)
 _SHUTDOWN = False
 _proxy_proc: Optional[subprocess.Popen] = None
+
+
+def _scan_active_sessions() -> List[Dict]:
+    """Inventory ONLY CortexAgent's own local stack — NEVER generic claude /
+    ollama / shell processes. We match by comm + cmdline marker:
+
+      comm == "llama-server" with --port 8080 (big) or --port 8082 (tiny)
+      cmdline contains  /lib/daemon.py
+      cmdline contains  /lib/overseer.py
+      cmdline contains  /lib/grammar_proxy.py
+      cmdline contains  /lib/webui.py
+      cmdline contains  /lib/diffusion_backend.py  (diffusers run)
+
+    The user explicitly does NOT want generic Claude / ollama launches picked
+    up here — those can be any third-party claude session and would mislead
+    the dashboard. If we don't match a process here, it isn't CortexAgent.
+
+    Returns a list of dicts; capped at 12."""
+    out: List[Dict] = []
+    try:
+        ps = subprocess.run(
+            ["ps", "-eo", "pid,etime,comm,args"],
+            capture_output=True, text=True, timeout=4
+        ).stdout
+    except Exception:
+        return out
+    seen: set = set()
+
+    def _emit(pid_i: int, etime: str, comm: str, args: str, kind: str) -> None:
+        if pid_i in seen:
+            return
+        seen.add(pid_i)
+        out.append({"pid": pid_i, "etime": etime, "comm": comm,
+                    "kind": kind, "args_excerpt": args[:160]})
+
+    for line in ps.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) != 4:
+            continue
+        pid_s, etime, comm, args = parts
+        if not args:
+            continue
+        try:
+            pid_i = int(pid_s)
+        except ValueError:
+            continue
+        # llama-server on the ports we own
+        if comm == "llama-server":
+            if "--port 8080" in args or "--port=8080" in args:
+                _emit(pid_i, etime, comm, args, "big")
+                continue
+            if "--port 8082" in args or "--port=8082" in args:
+                _emit(pid_i, etime, comm, args, "tiny")
+                continue
+        # Own-stack python processes (lib/* paths under this repo)
+        for marker, kind in (
+            ("/lib/daemon.py",        "daemon"),
+            ("/lib/overseer.py",      "overseer"),
+            ("/lib/grammar_proxy.py", "proxy"),
+            ("/lib/webui.py",         "webui"),
+            ("/lib/diffusion_backend.py", "diffusion"),
+        ):
+            if marker in args:
+                _emit(pid_i, etime, comm, args, kind)
+                break
+        if len(out) >= 12:
+            break
+    return out
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 CYAN, GREEN, YELLOW, RED, DIM, BOLD, RST = (
@@ -91,24 +159,99 @@ def _big_extra_args() -> list:
     return args
 
 
-def _fallback_extra_args() -> list:
-    """llama-server args for the small fallback model (LFM2.5-8B-A1B).
+def _fallback_extra_args() -> list:  # pragma: no cover — kept for back-compat
+    # Historical: returned the llama-server flags for the small fallback
+    # model that used to swap in when free VRAM was tight. Removed
+    # 2026-08-11 — the daemon no longer has a fallback model; if the big
+    # 35B can't load it logs the failure and leaves :8080 down. Stub left
+    # in case any external script imported it; returns an empty list.
+    return []
 
-    Mamba-2 + MoE hybrid (8.3B total / 1.5B active, Q4_K_M ≈ 6.7 GB). Used when
-    sustained GPU load leaves < big_vram_min_gb free, so the 35B won't fit. Runs
-    at fallback_ctx (8192) — small, so the kv-unified compute-buffer savings
-    are negligible; verified to load and emit OpenAI tool_calls WITHOUT
-    --kv-unified, so we omit it (same fa/ctk/ctv/np/batch knobs as the big
-    model so the proxy + tool-calling path stay consistent).
+
+def _vram_by_process() -> Dict[str, Any]:
+    """Per-process VRAM breakdown for the status payload.
+
+    Uses ``nvidia-smi --query-compute-apps=pid,process_name,used_memory`` so the
+    dashboard + statusline can show "big 14.3GB + tiny 0.9GB + other 0GB" instead
+    of a single 14.9/16GB total that hides who's using what. Categorises by
+    whether the owning PID matches a known model slot (:8080 big / :8082 tiny
+    llama-server); everything else falls into ``other``.
+
+    Cheap & cached: the query runs at most once per status call (~tens of ms),
+    and the result is structured so a failed nvidia-smi just yields zeros — the
+    UI degrades to the existing total-only display, never an error.
     """
-    return [
-        "-fa", str(CFG.big_fa),
-        "-ctk", str(CFG.big_ctk),
-        "-ctv", str(CFG.big_ctv),
-        "-np", str(CFG.big_np),
-        "-b", str(CFG.big_b),
-        "-ub", str(CFG.big_ub),
-    ]
+    out: Dict[str, Any] = {
+        "big_mib": 0,        # llama-server on _big.port
+        "tiny_mib": 0,       # llama-server on _tiny.port
+        "other_mib": 0,
+        "by_pid": [],        # [{pid, name, mib}] for transparency
+        "ok": False,
+    }
+    try:
+        proc = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=3,
+        )
+    except Exception:
+        return out
+    if proc.returncode != 0:
+        return out
+    # Map PID → port via /proc/<pid>/cmdline for known llama-server PIDs. We
+    # only do this once per status call (typically 1-3 rows), so the cost is
+    # negligible compared to nvidia-smi itself.
+    big_pid: Optional[int] = None
+    tiny_pid: Optional[int] = None
+    try:
+        for port_attr, target in (("_big.port", "big"), ("_tiny.port", "tiny")):
+            # port lookup via the local Popen registry would be ideal but we
+            # only need the PID for VRAM bucketing — accept a small race if the
+            # model restarts between the nvidia-smi snapshot and the proc scan.
+            for line in subprocess.run(
+                ["ps", "-eo", "pid,args"],
+                capture_output=True, text=True, timeout=2,
+            ).stdout.splitlines():
+                parts = line.split(None, 1)
+                if len(parts) != 2:
+                    continue
+                try:
+                    pidi = int(parts[0])
+                except ValueError:
+                    continue
+                if "llama-server" not in parts[1]:
+                    continue
+                # The big/tiny ports are stable per process startup; match by
+                # the same port our LlamaServer instance is using.
+                want_port = _big.port if target == "big" else _tiny.port
+                if f"--port {want_port}" in parts[1] or f"--port={want_port}" in parts[1]:
+                    if target == "big":
+                        big_pid = pidi
+                    else:
+                        tiny_pid = pidi
+    except Exception:
+        pass
+    for line in proc.stdout.splitlines():
+        # csv-ish row: pid, name, used_mib  (name may contain spaces)
+        try:
+            pid_s, mib_s = line.rsplit(",", 1)
+            name = pid_s.split(",", 1)[0] if "," in pid_s else ""
+            # actually the schema is "pid, process_name, used_memory" — reparse
+            first, rest = line.split(",", 1)
+            name, mib_s = rest.rsplit(",", 1)
+            pid_i = int(first.strip())
+            mib = int(mib_s.strip())
+        except Exception:
+            continue
+        out["by_pid"].append({"pid": pid_i, "name": name.strip(), "mib": mib})
+        if big_pid is not None and pid_i == big_pid:
+            out["big_mib"] += mib
+        elif tiny_pid is not None and pid_i == tiny_pid:
+            out["tiny_mib"] += mib
+        else:
+            out["other_mib"] += mib
+    out["ok"] = True
+    return out
 
 
 def _free_vram_gb(samples: int = 3, interval: float = 0.7) -> Optional[float]:
@@ -146,45 +289,33 @@ def _free_vram_gb(samples: int = 3, interval: float = 0.7) -> Optional[float]:
 
 
 def _load_session_model() -> tuple:
-    """Pick the big model if VRAM allows, else the small fallback. VRAM-aware.
+    """Load the big model for the new session. Re-runs every session-start.
 
-    Re-runs every session-start. If the current model is already up + healthy,
-    keep it — no VRAM probe. (The probe reads *free* VRAM, which counts the big
-    model's own ~14 GB as "used", so probing while the big model is loaded
-    would read ~2 GB free and wrongly swap the healthy big model out for the
-    fallback.) Otherwise probe free VRAM (glitch-rejecting: max of 3 reads). If
-    a sustained GPU load (browser, game, diffusion) leaves < big_vram_min_gb
-    free, the 35B would spill to CPU (slow), so swap in the small fallback.
-    Returns (ok, model_path, is_fallback).
+    If the big model is already up + healthy, keep it — no VRAM probe. (The
+    probe reads *free* VRAM, which counts the big model's own ~14 GB as
+    "used", so probing while the big model is loaded would read ~2 GB free
+    and wrongly unload the healthy big model.) Otherwise probe free VRAM
+    (glitch-rejecting: max of 3 reads) and log the result, then load the
+    big model — it just gets loaded; if VRAM is genuinely too tight it
+    fails and the daemon logs the failure (no fallback swap path).
+    Returns (ok, model_path, is_fallback=False always).
     """
     if _big.is_healthy():
-        is_fallback = Path(_big.model_path).resolve() == Path(CFG.fallback_model).resolve()
         _log(f"Model already up: {Path(_big.model_path).name}", "▶️", DIM)
-        return True, str(_big.model_path), is_fallback
+        return True, str(_big.model_path), False
     free_gb = _free_vram_gb()
     if free_gb is None:
-        desired_big = True
         why = "VRAM probe failed"
     else:
-        desired_big = free_gb >= float(CFG.big_vram_min_gb)
-        why = f"VRAM free {free_gb:.1f}GB {'≥' if desired_big else '<'} {CFG.big_vram_min_gb}GB"
-    desired_path = str(CFG.big_model) if desired_big else str(CFG.fallback_model)
-    already = Path(_big.model_path).resolve() == Path(desired_path).resolve()
-    if desired_big:
-        if already:
-            _log(f"{why} — (re)loading big model", "▶️", CYAN)
-            ok = _start_big()
-        else:
-            _log(f"{why} — swapping to big model", "▶️", CYAN)
-            ok = _swap_big(str(CFG.big_model), ctx=int(CFG.big_ctx),
-                           ngl=int(CFG.big_ngl), alias=str(CFG.big_alias),
-                           extra_args=_big_extra_args())
-        return ok, str(_big.model_path), False
-    _log(f"{why} (sustained GPU load) — fallback {Path(CFG.fallback_model).name}",
-         "🎮", YELLOW)
-    ok = _swap_big(str(CFG.fallback_model), ctx=int(CFG.fallback_ctx), ngl=999,
-                   alias=str(CFG.big_alias), extra_args=_fallback_extra_args())
-    return ok, str(_big.model_path), True
+        why = f"VRAM free {free_gb:.1f}GB"
+    _log(f"{why} — loading big model {Path(CFG.big_model).name}", "🔄", CYAN)
+    if Path(_big.model_path).resolve() != Path(CFG.big_model).resolve():
+        ok = _swap_big(str(CFG.big_model), ctx=int(CFG.big_ctx),
+                       ngl=int(CFG.big_ngl), alias=str(CFG.big_alias),
+                       extra_args=_big_extra_args())
+    else:
+        ok = _start_big()
+    return ok, str(_big.model_path), False
 
 
 _big = LlamaServer(
@@ -218,11 +349,9 @@ def _start_big(timeout: Optional[int] = None) -> bool:
     Holds _big_lock for the (long) duration so only one load runs at a time,
     but does NOT hold _lock — so activity/status/session commands stay responsive.
 
-    If the big (35B) model fails to load — e.g. a transient CUDA OOM from VRAM
-    contention — falls back to the small model on the same port so :8080 stays
-    up. Without this, a failed 35B load leaves :8080 dead and the CLI hangs on
-    "Herding…". (_load_session_model picks the model up front from a VRAM probe;
-    this catches the case where VRAM looked free but the load still OOM'd.)
+    If the load fails (CUDA OOM, missing GGUF, etc.) the daemon logs the
+    failure and returns False. There is no fallback swap path; :8080 stays
+    down until the user fixes the underlying issue.
     """
     global _big
     with _big_lock:
@@ -232,24 +361,7 @@ def _start_big(timeout: Optional[int] = None) -> bool:
         ok = _big.start(timeout=timeout)
         _log(f"Big model {'ready' if ok else 'FAILED'} on :{_big.port} (pid {_big.pid})",
              "✅" if ok else "❌", GREEN if ok else RED)
-        if ok:
-            return True
-        # 35B failed (e.g. CUDA OOM). Only fall back if we were actually trying
-        # the big model — don't recurse if the fallback itself just failed.
-        if Path(_big.model_path).resolve() != Path(CFG.big_model).resolve():
-            return False
-        _log("Big model failed — falling back to small model on :8080", "⚠️", YELLOW)
-        _big.stop()
-        _big = LlamaServer(
-            "big", str(CFG.fallback_model), port=int(CFG.big_model_port),
-            ctx=int(CFG.fallback_ctx), ngl=999, alias=str(CFG.big_alias),
-            extra_args=_fallback_extra_args(), log_file=str(CFG.big_log),
-            startup_timeout=300,
-        )
-        ok2 = _big.start(timeout=timeout)
-        _log(f"Fallback model {'ready' if ok2 else 'FAILED'} on :{_big.port} "
-             f"(pid {_big.pid})", "✅" if ok2 else "❌", GREEN if ok2 else RED)
-        return ok2
+        return ok
 
 
 def _stop_big() -> bool:
@@ -299,19 +411,6 @@ def _swap_big(model_path: str, ctx: int = 8192, ngl: int = 999,
         )
         _log(f"Loading big model: {Path(model_path).name} on :{_big.port}", "🔄", CYAN)
         ok = _big.start()
-        # OOM fallback (mirrors _start_big): a big-model swap that fails to
-        # load (e.g. CUDA OOM from VRAM contention) must not leave :8080 dead —
-        # fall back to the small model on the same port so the session works.
-        if not ok and Path(model_path).resolve() == Path(CFG.big_model).resolve():
-            _log("Big model failed — falling back to small model on :8080", "⚠️", YELLOW)
-            _big.stop()
-            _big = LlamaServer(
-                "big", str(CFG.fallback_model), port=int(CFG.big_model_port),
-                ctx=int(CFG.fallback_ctx), ngl=999, alias=str(CFG.big_alias),
-                extra_args=_fallback_extra_args(), log_file=str(CFG.big_log),
-                startup_timeout=300,
-            )
-            ok = _big.start()
         _log(f"Big model {'ready' if ok else 'FAILED'} ({Path(model_path).name})",
              "✅" if ok else "❌", GREEN if ok else RED)
         return ok
@@ -427,14 +526,21 @@ def _handle(req: Dict) -> Dict:
         # Short health-check timeout: status must stay responsive even when a
         # model is down (a down port can take the full connect timeout to fail,
         # and two sequential checks would blow past the CLI's 5s request timeout).
+        sessions = _scan_active_sessions()
+        primary = sessions[0] if sessions else {}
         return {
             "ok": True,
             "big": {"port": _big.port, "healthy": _big.is_healthy(timeout=1), "running": _big.running,
                     "model": str(_big.model_path),
-                    "fallback": Path(_big.model_path).resolve() == Path(CFG.fallback_model).resolve()},
+                    "alias": str(_big.alias) if hasattr(_big, "alias") else ""},
             "tiny": {"port": _tiny.port, "healthy": _tiny.is_healthy(timeout=1), "running": _tiny.running},
             "proxy": {"running": (lambda p: bool(p and p.poll() is None))(_proxy_proc)},
             "active_sessions": _active_sessions,
+            "sessions": sessions,
+            "session": primary,
+            "profile": primary.get("profile") or "",
+            "model_alias": primary.get("model_alias") or str(_big.alias) if hasattr(_big, "alias") else "",
+            "vram_by_proc": _vram_by_process(),
             "last_request": _last_request,
             "idle_sec": int(time.time() - _last_request) if _last_request else None,
             "idle_unload_sec": int(CFG.idle_unload_sec),

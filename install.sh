@@ -207,8 +207,44 @@ install_overseer_systemd() {
   fi
 }
 
+# ── Install the system tray unit (linked to overseer) ──────────────────────
+# The tray is the user's persistent companion (wolf-head system-tray icon +
+# popout overseer dashboard). Linked to the overseer: Wants= pulls overseer
+# up when tray starts; PartOf= stops the tray when overseer stops. Only
+# installed on Linux with systemd; headless installs skip it.
+install_tray_systemd() {
+  if [ "$(uname -s)" != "Linux" ]; then return; fi
+  if ! command -v systemctl >/dev/null 2>&1; then return; fi
+  if [ ! -f "${REPO_ROOT}/lib/tray.py" ]; then return; fi
+  unit_tpl="${REPO_ROOT}/config/templates/cortexagent-tray.service"
+  unit_out="${HOME}/.config/systemd/user/cortexagent-tray.service"
+  if [ ! -f "${unit_tpl}" ]; then
+    echo "    tray template missing — skipping (${unit_tpl})" >&2
+    return
+  fi
+  if [ -f "${unit_out}" ] && [ ! -f "${unit_out}.bak" ]; then
+    cp -a "${unit_out}" "${unit_out}.bak"
+    echo "    backed up existing unit → ${unit_out}.bak"
+  fi
+  sed -e "s|{{PYTHON}}|${py}|g" -e "s|{{REPO_ROOT}}|${REPO_ROOT}|g" \
+      "${unit_tpl}" > "${unit_out}"
+  echo "    wrote ${unit_out}"
+  if systemctl --user daemon-reload >/dev/null 2>&1; then
+    systemctl --user enable cortexagent-tray.service >/dev/null 2>&1 \
+      && echo "    enabled cortexagent-tray.service (wolf-head tray on login)"
+    # Only start if DISPLAY is set (otherwise headless — let the user start
+    # it manually after they get a graphical session).
+    if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+      systemctl --user start cortexagent-tray.service >/dev/null 2>&1 \
+        && echo "    started cortexagent-tray.service (linked to overseer)"
+    else
+      echo "    no DISPLAY/WAYLAND_DISPLAY — skipping tray start (will autostart on next graphical login)"
+    fi
+  fi
+}
+
 case "$(uname -s)" in
-  Linux) install_systemd; install_overseer_systemd ;;
+  Linux) install_systemd; install_overseer_systemd; install_tray_systemd ;;
   *) echo "    $(uname -s): systemd install skipped — run 'cortexagent daemon start' manually" ;;
 esac
 

@@ -224,6 +224,57 @@ def cmd_status(args) -> int:
 
 
 # ── queue (prompt queue) ──────────────────────────────────────────────────────
+def cmd_minify(args) -> int:
+    """Read the proxy's minify snapshot and print it.
+
+    The proxy writes `~/.cortexagent/minify_stats.json` (tmp+rename) after each
+    minified request. The file holds lifetime counters + a 60-sample rolling
+    history so the dashboard / statusline can render a savings% sparkline.
+    """
+    import json
+    try:
+        p = Path.home() / ".cortexagent" / "minify_stats.json"
+        if not p.exists():
+            print("Minify: no data yet (proxy hasn't served a minified request)")
+            return 0
+        snap = json.loads(p.read_text() or "{}")
+    except Exception as e:
+        _err(f"minify: failed to read snapshot: {e}")
+        return 1
+    if not isinstance(snap, dict) or not snap:
+        print("Minify: snapshot empty")
+        return 0
+    runs = int(snap.get("runs", 0) or 0)
+    tin = int(snap.get("tokens_in", 0) or 0)
+    tout = int(snap.get("tokens_out", 0) or 0)
+    saved = int(snap.get("tokens_saved", 0) or 0)
+    ratio = float(snap.get("ratio_pct", 0.0) or 0.0)
+    last_pct = float(snap.get("last_saved_pct", 0.0) or 0.0)
+    print(f"  Minify: {runs} run(s)")
+    print(f"    tokens in:    {tin:,}")
+    print(f"    tokens out:   {tout:,}")
+    print(f"    tokens saved: {saved:,}  ({ratio:.1f}%)")
+    print(f"    last run:     {last_pct:.1f}% saved")
+    history = snap.get("history_60s") or []
+    if history:
+        # Tiny inline sparkline (12 buckets) so output is scannable in CLI.
+        n_buckets = 12
+        bucket_size = max(1, len(history) // n_buckets)
+        buckets = []
+        for i in range(0, len(history), bucket_size):
+            chunk = history[i:i + bucket_size]
+            if not chunk:
+                continue
+            buckets.append(sum(v for _, v in chunk) / len(chunk))
+        bars = "▁▂▃▄▅▆▇█"
+        spark = "".join(
+            bars[min(len(bars) - 1, int((b or 0) / 12.5))]
+            for b in buckets
+        )
+        print(f"    60s trend:    {spark}")
+    return 0
+
+
 def cmd_queue(args) -> int:
     """Manage the prompt queue (the default per-prompt agenda).
 
@@ -370,6 +421,12 @@ def _build_parser() -> argparse.ArgumentParser:
     qp.add_argument("action", choices=["list", "clear", "done", "drop", "context"])
     qp.add_argument("item_id", nargs="?", default=None, help="item id for done/drop")
     qp.set_defaults(func=cmd_queue)
+
+    # minify (proxy minification savings — direct read from the snapshot file)
+    mp2 = sub.add_parser("minify", help="proxy minify stats (savings, runs, history)")
+    mp2.add_argument("action", nargs="?", default="status",
+                     choices=["status"], help="what to show (default: status)")
+    mp2.set_defaults(func=cmd_minify)
 
     # tray (system-tray app that owns the overseer — CLI close ≠ kill overseer)
     tp = sub.add_parser("tray", help="run the system-tray app (owns the overseer)")

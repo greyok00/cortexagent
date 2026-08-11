@@ -64,19 +64,14 @@ if [ -f "${marker}" ] && [ "$(cat "${marker}" 2>/dev/null || true)" = "${uuid}" 
   exit 0
 fi
 
-# Save the assistant context through the memory pipeline + MCP-readable file.
-python3 "${REPO_ROOT}/lib/cortexagent_call.py" write --role assistant --content "${text}" >/dev/null 2>&1 || true
-# Save to shared CortexLLM memory via daemon (fast path) or direct.
-# Paths resolved via lib/config.py (env/conf overridable); fallbacks preserve
-# the original hardcoded paths so existing installs keep working identically.
-SOCKET="$(python3 "$REPO_ROOT/lib/config.py" get cortexllm_socket 2>/dev/null || echo "$HOME/.cortexllm/memory.sock")"
-SAVE_SCRIPT="$(python3 "$REPO_ROOT/lib/config.py" get cortexllm_save_script 2>/dev/null || echo "$HOME/.cortexllm/scripts/save-context.py")"
-if [ -S "${SOCKET}" ]; then
-  printf '{"role":"assistant","content":"%s","platform":"cortexagent"}\n' "${text}" | nc -U "${SOCKET}" 2>/dev/null || \
-  python3 "${SAVE_SCRIPT}" --role assistant --platform cortexagent "${text}" 2>/dev/null || true
-else
-  python3 "${SAVE_SCRIPT}" --role assistant --platform cortexagent "${text}" 2>/dev/null || true
-fi
+# Save the assistant context through the memory pipeline.
+# Single write path via lib/memory_thin.py — daemon first, direct fallback.
+# No caps (2026-08-11 hard rule). Mirrors to hot + warm atomically.
+PYTHONPATH="${REPO_ROOT}" python3 -c "
+from lib.memory_thin import append
+import sys
+sys.stdout.write(str(append('assistant', sys.argv[1], platform='cortexagent')))
+" "${text}" >/dev/null 2>&1 || true
 printf '%s' "${uuid}" > "${marker}"
 
 exit 0

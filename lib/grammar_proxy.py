@@ -14,6 +14,7 @@ Usage:
 import json, os, sys, socket, threading, time, errno
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict
 import urllib.request
 
 
@@ -71,21 +72,17 @@ from lib import control  # reload-aware: trigger big-model reload via the daemon
 # ── Minification pipeline (opt-out via CORTEXAGENT_MINIFY=off) ────────────────
 # On by default. Prefers the user's slimtoken engine (real compression:
 # dedup of repeated tool output + distill of old turns + budget backstop),
-# falls back to the conservative lib.minify (whitespace/tool-def noise only).
-# A parse failure in any stage is caught and never blocks inference.
+# Single minify backend — slimtoken. The vendored lib/minify copy was
+# hard-removed (2026-08-11); slimtoken is the canonical pipeline. A parse
+# failure in any stage is caught and never blocks inference.
 try:
     from slimtoken.pipeline import minify_request, MinifyConfig
     _MINIFY_BACKEND = "slimtoken"
     _MINIFY_OK = True
-except Exception:  # pragma: no cover — slimtoken is optional
-    try:
-        from lib.minify.pipeline import minify_request, MinifyConfig
-        _MINIFY_BACKEND = "lib.minify"
-        _MINIFY_OK = True
-    except Exception as _e:  # pragma: no cover — minify is optional
-        _MINIFY_OK = False
-        print(f"[proxy] minify unavailable (continuing without): {_e}",
-              file=sys.stderr)
+except Exception as _e:  # pragma: no cover — slimtoken is required
+    _MINIFY_OK = False
+    print(f"[proxy] slimtoken unavailable (continuing without): {_e}",
+          file=sys.stderr)
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -106,7 +103,6 @@ def _build_minify_cfg():
     if _bool_env("CORTEXAGENT_MINIFY_MESSAGES", True):
         stages.add("messages")
         # Real compression: dedup repeated tool results + distill old turns.
-        # (lib.minify ignores unknown stage names — safe to add either way.)
         stages.update(("dedup", "distill"))
     skip = {s.strip() for s in os.environ.get(
         "CORTEXAGENT_MINIFY_TOOL_SKIP", "").split(",") if s.strip()}
@@ -114,7 +110,7 @@ def _build_minify_cfg():
     # request ever exceeds it (the 400-class bug: context grows to the ceiling,
     # server rejects), history is dropped to fit instead of erroring. Auto-
     # compact at 124k keeps normal traffic well under, so this rarely engages.
-    _default_budget = 131072 if _MINIFY_BACKEND == "slimtoken" else 0
+    _default_budget = 131072 if _MINIFY_OK else 0
     try:
         budget = int(os.environ.get("CORTEXAGENT_MINIFY_BUDGET", "") or _default_budget)
     except ValueError:
@@ -128,14 +124,13 @@ def _build_minify_cfg():
         enabled_stages=stages,
         tool_skip=skip,
         keep_last=keep_last,
+        dedup_min_chars=int(os.environ.get(
+            "CORTEXAGENT_MINIFY_DEDUP_MIN", "200") or 200),
+        distill_max_chars=int(os.environ.get(
+            "CORTEXAGENT_MINIFY_DISTILL_MAX", "240") or 240),
+        tool_compress=_bool_env("CORTEXAGENT_MINIFY_TOOL_COMPRESS", False),
+        minify_dom=_bool_env("CORTEXAGENT_MINIFY_DOM", False),
     )
-    if _MINIFY_BACKEND == "slimtoken":
-        kw["dedup_min_chars"] = int(os.environ.get(
-            "CORTEXAGENT_MINIFY_DEDUP_MIN", "200") or 200)
-        kw["distill_max_chars"] = int(os.environ.get(
-            "CORTEXAGENT_MINIFY_DISTILL_MAX", "240") or 240)
-    else:  # lib.minify fallback keeps its conservative defaults
-        kw["minify_dom"] = _bool_env("CORTEXAGENT_MINIFY_DOM", False)
     return MinifyConfig(**kw)
 
 
@@ -198,10 +193,17 @@ def minify_response(body: bytes) -> bytes:
                     c = msg.get("content")
                 if isinstance(c, str):
                     new = c
-                    for pat in _FILLER_PATTERNS:
-                        if new.startswith(pat):
-                            new = new[len(pat):]
-                            changed = True
+                    # Strip ALL consecutive leading filler phrases (slimtoken
+                    # parity) — a model may emit "Sure!\nHere is the code:\n…".
+                    while True:
+                        hit = False
+                        for pat in _FILLER_PATTERNS:
+                            if new.startswith(pat):
+                                new = new[len(pat):]
+                                hit = True
+                                changed = True
+                                break
+                        if not hit:
                             break
                     if new != c:
                         if "delta" in ch:
@@ -224,8 +226,12 @@ _token_metrics = {
     "requests": 0,
     "total_time_s": 0.0,
     "started_at": datetime.now().isoformat(),
-    "current_tok_s": 0.0,  # tokens/s for the last request
-    "avg_tok_s": 0.0,      # running average
+    "current_tok_s": 0.0,    # tokens/s for the last request (output)
+    "current_in_tps": 0.0,   # input tokens/s for the last request (prompt eval rate)
+    "current_out_tps": 0.0,  # output tokens/s for the last request (decode rate)
+    "avg_tok_s": 0.0,        # running average
+    "avg_in_tps": 0.0,       # running average input rate
+    "avg_out_tps": 0.0,      # running average output rate
     "last_request_ts": 0.0,  # unix ts of the last completed inference (0 = none yet)
 }
 
@@ -239,11 +245,147 @@ def _record_tokens(prompt_tokens: int, completion_tokens: int, elapsed: float):
         _token_metrics["total_time_s"] += elapsed
         _token_metrics["last_request_ts"] = time.time()
         if elapsed > 0 and completion_tokens > 0:
-            _token_metrics["current_tok_s"] = round(completion_tokens / elapsed, 1)
+            out_tps = completion_tokens / elapsed
+            _token_metrics["current_tok_s"] = round(out_tps, 1)
+            _token_metrics["current_out_tps"] = round(out_tps, 1)
+            in_tps = prompt_tokens / elapsed if elapsed > 0 else 0.0
+            _token_metrics["current_in_tps"] = round(in_tps, 1)
         if _token_metrics["total_time_s"] > 0 and _token_metrics["completion_tokens"] > 0:
-            _token_metrics["avg_tok_s"] = round(
-                _token_metrics["completion_tokens"] / _token_metrics["total_time_s"], 1
-            )
+            avg_out = _token_metrics["completion_tokens"] / _token_metrics["total_time_s"]
+            _token_metrics["avg_tok_s"] = round(avg_out, 1)
+            _token_metrics["avg_out_tps"] = round(avg_out, 1)
+            avg_in = _token_metrics["prompt_tokens"] / _token_metrics["total_time_s"]
+            _token_metrics["avg_in_tps"] = round(avg_in, 1)
+
+
+# ── Session-id registry ─────────────────────────────────────────────────────
+# When a request carries `X-CortexAgent-Session: <id>`, capture it in a small
+# in-memory table so the proxy knows which UI surface (CLI vs webui) is the
+# originator. CLI surfaces pick the bound claude PID; the webui picks a uuid
+# derived from that PID's session so both UIs share context on the same proxy
+# chokepoint. TTL-swept (1h) so the dict can't grow unbounded.
+_session_lock = threading.Lock()
+_sessions: Dict[str, Dict[str, Any]] = {}  # id → {origin, pid, kind, ts}
+_SESSION_TTL = 3600.0
+
+
+def _register_session(hdr: Dict[str, str], kind: str = "unknown") -> str:
+    """Read X-CortexAgent-Session from the parsed header map (case-preserved
+    keys). If absent, return "" without registering. Returned id is the value
+    the caller can stamp onto outbound headers / logs.
+
+    Origin (webui vs cli) is read from the explicit X-CortexAgent-Origin
+    header set by the webui chat handler. When absent, falls back to the
+    caller-supplied ``kind`` so HTTP-vs-other transports still bucket
+    correctly."""
+    sid = (hdr.get("X-CortexAgent-Session")
+           or hdr.get("x-cortexagent-session")
+           or "").strip()
+    if not sid:
+        return ""
+    origin = (hdr.get("X-CortexAgent-Origin")
+              or hdr.get("x-cortexagent-origin")
+              or "").strip().lower() or kind
+    now = time.time()
+    with _session_lock:
+        _sessions[sid] = {"origin": origin, "kind": kind, "ts": now}
+        # Cheap inline sweep: drop entries older than TTL. Bounded to ~64 entries
+        # in practice — one per active surface — so this is constant-time.
+        if len(_sessions) > 64:
+            cutoff = now - _SESSION_TTL
+            for k in list(_sessions.keys()):
+                if _sessions[k].get("ts", 0) < cutoff:
+                    _sessions.pop(k, None)
+    return sid
+
+
+def _snapshot_sessions() -> Dict[str, Dict[str, Any]]:
+    """Return a copy of the current session table for /metrics consumption."""
+    with _session_lock:
+        return {k: dict(v) for k, v in _sessions.items()}
+
+
+# ── Minify stats (persistent + rolling) ─────────────────────────────────────
+# Mirrors `_token_metrics` for tokens: cumulative counters in-memory + a small
+# JSON snapshot file the overseer/dashboard poll. Stored alongside the proxy's
+# token metrics so a single /metrics fetch surfaces everything the UI needs.
+#
+# Snapshot file layout (atomic tmp+rename):
+#   ~/.cortexagent/minify_stats.json
+#     {runs, tokens_in, tokens_out, tokens_saved, ratio_pct,
+#      last_run_ts, last_saved_pct, history_60s: [(ts, saved_pct), ...]}
+#
+# `history_60s` is a rolling 60s sample of savings percent — the dashboard
+# renders it as a sparkline (replaces nothing, additive).
+_minify_lock = threading.Lock()
+_minify_stats = {
+    "runs": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "tokens_saved": 0,
+    "ratio_pct": 0.0,         # lifetime saved / in (0-100)
+    "last_run_ts": 0.0,
+    "last_saved_pct": 0.0,    # last request's saved/in * 100
+    "history_60s": [],        # [(ts, saved_pct)] cap 60 (1Hz trim, kept short)
+    "errors": 0,
+}
+_MINIFY_STATS_FILE = Path.home() / ".cortexagent" / "minify_stats.json"
+_MINIFY_HIST_CAP = 60       # ~60s at 1 sample per successful minify run
+
+
+def _record_minify(mstats) -> None:
+    """Update cumulative counters from a MinifyStats instance and persist."""
+    try:
+        tin = int(getattr(mstats, "tokens_in", 0) or 0)
+        tout = int(getattr(mstats, "tokens_out", 0) or 0)
+        if tin <= 0:
+            return
+        saved = max(tin - tout, 0)
+        saved_pct = round(saved / tin * 100, 1) if tin else 0.0
+        now = time.time()
+        with _minify_lock:
+            _minify_stats["runs"] += 1
+            _minify_stats["tokens_in"] += tin
+            _minify_stats["tokens_out"] += tout
+            _minify_stats["tokens_saved"] += saved
+            if _minify_stats["tokens_in"] > 0:
+                _minify_stats["ratio_pct"] = round(
+                    _minify_stats["tokens_saved"] / _minify_stats["tokens_in"] * 100, 1
+                )
+            _minify_stats["last_run_ts"] = now
+            _minify_stats["last_saved_pct"] = saved_pct
+            hist = _minify_stats["history_60s"]
+            hist.append((now, saved_pct))
+            # Trim to last 60s — keep the most recent ~60 samples.
+            cutoff = now - 60.0
+            if len(hist) > _MINIFY_HIST_CAP:
+                hist[:] = [(t, v) for (t, v) in hist if t >= cutoff][-_MINIFY_HIST_CAP:]
+            errs = getattr(mstats, "errors", None) or []
+            _minify_stats["errors"] += len(errs) if isinstance(errs, (list, tuple)) else 0
+        # Atomic write so a half-flushed snapshot can't crash the reader.
+        try:
+            _MINIFY_STATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = _MINIFY_STATS_FILE.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(dict(_minify_stats), default=str))
+            tmp.replace(_MINIFY_STATS_FILE)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _get_minify_snapshot() -> Dict[str, Any]:
+    """Read the persisted minify snapshot. Returns live dict (caller may copy)."""
+    try:
+        with _MINIFY_STATS_FILE.open() as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            return d
+    except Exception:
+        pass
+    # Fall back to in-memory state if the file is missing/unreadable.
+    with _minify_lock:
+        return dict(_minify_stats)
 
 
 # ── VRAM cache (throttled nvidia-smi) ────────────────────────────────────────
@@ -280,6 +422,9 @@ def _get_metrics() -> str:
     if used is not None:
         m["vram_used_mib"] = used
         m["vram_total_mib"] = total
+    with _minify_lock:
+        m["minify"] = dict(_minify_stats)
+    m["sessions"] = _snapshot_sessions()
     return json.dumps(m, indent=2)
 
 
@@ -485,6 +630,13 @@ class ProxyHandler:
             # Reload-aware: ensure the big model is up before forwarding, and
             # reset the daemon idle timer. Only POSTs are inference requests —
             # GET /health probes must NOT trigger a reload (or idle-unload breaks).
+            # Also tag the request with the UI surface it came from, so the
+            # proxy knows CLI vs webui and any future log analytics can group
+            # by session-id (see _session_lock table above).
+            try:
+                _register_session(hdr, kind="http")
+            except Exception:
+                pass
             if not self._ensure_target():
                 self._respond_503()
                 return
@@ -505,10 +657,20 @@ class ProxyHandler:
                       "chunked → buffer+minify (raw fallback on parse fail)")
                 self._forward_chunked(head_bytes, body)
                 return
-            if is_chunked or cl is None:
+            if is_chunked:
+                # Grammar stripping must run even when minify is off —
+                # otherwise chunked uploads pass `grammar` through to
+                # llama-server and 400. We dechunk, strip, and re-forward
+                # with a fresh Content-Length (no chunked re-encode).
                 _diag(method, parts[1] if len(parts) > 1 else "?",
                       cl, True, len(body), None,
-                      "raw/no-strip (chunked or no content-length)")
+                      "chunked → dechunk+grammar-strip only")
+                self._forward_chunked_strip_only(head_bytes, body)
+                return
+            if cl is None:
+                _diag(method, parts[1] if len(parts) > 1 else "?",
+                      cl, True, len(body), None,
+                      "raw/no-strip (no content-length)")
                 self._forward_raw(head_bytes, body)
                 return
 
@@ -529,6 +691,7 @@ class ProxyHandler:
                     if _MINIFY_CFG is not None:
                         parsed, mstats = minify_request(parsed, _MINIFY_CFG)
                         print(f"[proxy] minify: {mstats.summary()}", file=sys.stderr)
+                        _record_minify(mstats)
                 body = json.dumps(parsed).encode()
             except Exception as e:
                 parse_err = str(e)
@@ -603,12 +766,63 @@ class ProxyHandler:
                     del parsed["grammar"]
                 parsed, mstats = minify_request(parsed, _MINIFY_CFG)
                 print(f"[proxy] minify(chunked): {mstats.summary()}", file=sys.stderr)
+                _record_minify(mstats)
                 dechunked = json.dumps(parsed).encode()
         except Exception as e:
             print(f"[proxy] chunked minify skipped: {e}", file=sys.stderr)
             self._forward_raw(head_bytes, buf)
             return
         # Rebuild headers: drop TE/CL/expect/host, set a fresh Content-Length.
+        headers_text = head_bytes.decode("utf-8", errors="replace")
+        lines = headers_text.split("\r\n")
+        new_lines = [lines[0]]
+        for line in lines[1:]:
+            if not line:
+                continue
+            k = line.split(":", 1)[0].strip().lower()
+            if k in ("transfer-encoding", "content-length", "expect", "host"):
+                continue
+            if k == "user-agent":
+                new_lines.append("User-Agent: cortexagent/1.0")
+            else:
+                new_lines.append(line)
+        new_lines.append(f"Content-Length: {len(dechunked)}")
+        new_lines.append("Host: 127.0.0.1")
+        head = ("\r\n".join(new_lines)).encode()
+        self._send_and_pipe(head + b"\r\n\r\n" + dechunked)
+
+    def _forward_chunked_strip_only(self, head_bytes, body):
+        """De-chunk + strip `grammar` field, then forward with Content-Length.
+
+        Mirrors `_forward_chunked` but skips minify. Used when minify is
+        disabled but the client still sent chunked (which would otherwise
+        passthrough the unsupported `grammar` field to llama-server).
+        """
+        cap = int(os.environ.get("CORTEXAGENT_MINIFY_CHUNKED_MAX", str(16 * 1024 * 1024)))
+        buf = body
+        terminator = b"\r\n0\r\n\r\n"
+        while terminator not in buf:
+            chunk = self.conn.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            if len(buf) > cap:
+                self._forward_raw(head_bytes, buf)
+                return
+        dechunked = _dechunk(buf)
+        if dechunked is None:
+            self._forward_raw(head_bytes, buf)
+            return
+        try:
+            parsed = json.loads(dechunked)
+            if isinstance(parsed, dict) and "grammar" in parsed:
+                del parsed["grammar"]
+                dechunked = json.dumps(parsed).encode()
+        except Exception as e:
+            print(f"[proxy] chunked strip skipped: {e}", file=sys.stderr)
+            self._forward_raw(head_bytes, buf)
+            return
+        # Rebuild headers — drop TE/CL/expect/host, set fresh Content-Length.
         headers_text = head_bytes.decode("utf-8", errors="replace")
         lines = headers_text.split("\r\n")
         new_lines = [lines[0]]
@@ -726,16 +940,46 @@ class ProxyHandler:
                     resp_buf.clear()
                     resp_buf.append(minified)
                 full_text = (minified if minified is not full else full).decode("utf-8", errors="replace")
+                # Two SSE shapes we accept:
+                #   OpenAI: data: {"choices":[...], "usage":{"prompt_tokens":N,"completion_tokens":N}}
+                #     (usage may arrive on the final chunk or in a dedicated chunk)
+                #   llama-server: data: {"choices":[{...finish_reason:"length"...}],
+                #                          "timings":{"prompt_n":N,"predicted_n":N,
+                #                                     "predicted_per_second":F}}
+                #     (timings appear on the last chunk before data: [DONE])
+                # Both arrive inside a "data:" line; [DONE] carries nothing.
                 for line in full_text.split("\n"):
-                    if "usage" in line.lower() or "completion_tokens" in line:
-                        try:
-                            if line.startswith("data: "):
-                                line = line[6:]
-                            usage = json.loads(line).get("usage", {})
-                            pt = usage.get("prompt_tokens", 0) or pt
-                            ct = usage.get("completion_tokens", 0) or ct
-                        except Exception:
-                            pass
+                    stripped = line.strip()
+                    if not stripped.startswith("data:"):
+                        continue
+                    payload = stripped[5:].strip()
+                    if payload == "[DONE]" or not payload:
+                        continue
+                    try:
+                        obj = json.loads(payload)
+                    except Exception:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    # OpenAI shape — preferred when both are present.
+                    usage = obj.get("usage")
+                    if isinstance(usage, dict):
+                        u_pt = int(usage.get("prompt_tokens", 0) or 0)
+                        u_ct = int(usage.get("completion_tokens", 0) or 0)
+                        if u_pt:
+                            pt = u_pt
+                        if u_ct:
+                            ct = u_ct
+                    # llama-server shape — only used when OpenAI usage was absent.
+                    if not pt and not ct:
+                        timings = obj.get("timings")
+                        if isinstance(timings, dict):
+                            pn = int(timings.get("prompt_n", 0) or 0)
+                            prn = int(timings.get("predicted_n", 0) or 0)
+                            if pn:
+                                pt = pn
+                            if prn:
+                                ct = prn
             _elapsed = time.time() - _t0
             if ct:
                 _record_tokens(pt, ct, _elapsed)

@@ -1,6 +1,6 @@
 [Unit]
 Description=CortexAgent Overseer — always-on scheduler + 0.5b tiny-LLM keepalive daemon
-Documentation=https://github.com/cortexagent/cortexagent
+Documentation=https://github.com/greyok00/cortexagent
 After=network.target
 # No ollama dependency — both models run on llama.cpp (ollama removed).
 

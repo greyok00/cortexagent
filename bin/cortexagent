@@ -114,10 +114,37 @@ if [ "$DAEMON_MODE" = "0" ]; then
   _cortexagent_kill_stale
 fi
 
-# ── Check if tray is running ──────────────────────────────────────────────
+# ── Auto-start the system tray (linked to overseer) ────────────────────────
+# The tray is owned by the cortexagent-tray.service systemd unit. It links to
+# the overseer via Wants=/PartOf=, so starting it pulls the overseer up too
+# (and stopping the overseer stops the tray). When the user runs `cortexagent`
+# interactively we want the wolf-head tray + popout dashboard available, so we
+# ensure the unit is active. We never stop the tray from this wrapper — the
+# user quits it via the tray menu's Quit (which also stops the overseer).
+if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+  if command -v systemctl >/dev/null 2>&1 && \
+     systemctl --user cat cortexagent-tray.service >/dev/null 2>&1; then
+    if ! systemctl --user is-active --quiet cortexagent-tray.service 2>/dev/null; then
+      systemctl --user start cortexagent-tray.service >/dev/null 2>&1 || true
+    fi
+    if systemctl --user is-active --quiet cortexagent-tray.service 2>/dev/null; then
+      echo "CortexAgent tray: 🟢 active (systemd user unit)"
+    fi
+  else
+    # No systemd unit — fall back to a detached nohup. The tray still owns the
+    # overseer for this session; it exits when this shell exits.
+    if ! pgrep -f "python3 .*lib\.tray(\s|$)" >/dev/null 2>&1; then
+      nohup python3 -m lib.tray > "${HOME}/.cortexagent/logs/tray.log" 2>&1 &
+      disown || true
+      sleep 1
+      echo "CortexAgent tray: 🟢 started (no systemd unit, background)"
+    fi
+  fi
+fi
+
+# ── Webui status (informational; the webui runs separately if enabled) ──────
 if ss -ltn 2>/dev/null | grep -q ":8090 "; then
-  echo "CortexAgent tray is running (port 8090)."
-  echo "Web UI: http://127.0.0.1:8090/"
+  echo "Web UI: http://127.0.0.1:8090/ (running)"
   echo "Starting standalone CLI session (independent from web UI)."
   echo ""
 fi
@@ -223,14 +250,13 @@ AGENT_CLI="${CORTEXAGENT_CLI:-claude}"
 [ -f "${REPO_ROOT}/config/settings.json" ] || { echo "missing ${REPO_ROOT}/config/settings.json — run ${REPO_ROOT}/install.sh" >&2; exit 1; }
 
 # ── Isolate the config dir so the global ~/.claude/CLAUDE.md does NOT load ─
-#    into this local agent. cortexagent is self-contained: its own minified
-#    CLAUDE.md, its own memory, its own settings.
+#    into this local agent. cortexagent is self-contained: its own memory,
+#    its own settings, NO CLAUDE.md — the practical-reasoning profile is
+#    injected at runtime (slimtoken system_minify + lib/tiny_llm default).
+#    We hard-removed config/CLAUDE.md and config/AGENT.md so any update to
+#    claude Code's CLAUDE.md parser can't break us.
 CONFIG_DIR="${CORTEXAGENT_CONFIG_DIR:-$HOME/.cortexagent-config}"
 mkdir -p "${CONFIG_DIR}"
-# Always (re-)sync our minified CLAUDE.md into the isolated config dir.
-[ -f "${REPO_ROOT}/config/CLAUDE.md" ] && cp -f "${REPO_ROOT}/config/CLAUDE.md" "${CONFIG_DIR}/CLAUDE.md"
-# Lock it immutable so Claude Code updates can't overwrite it.
-chattr +i "${CONFIG_DIR}/CLAUDE.md" 2>/dev/null || chmod 444 "${CONFIG_DIR}/CLAUDE.md"
 # Render settings.json.template into the isolated config dir, replacing
 # {{HOME}} so claudeMdExcludes points at the real global CLAUDE.md path.
 if [ -f "${REPO_ROOT}/config/settings.json.template" ]; then
@@ -241,7 +267,7 @@ fi
 # Uses the shared CortexLLM MCP server so all platforms share one memory.
 FIRECRAWL_ENABLED="${CORTEXAGENT_FIRECRAWL_ENABLED:-1}"
 BRAVE_ENABLED="${CORTEXAGENT_BRAVE_ENABLED:-1}"
-MEMORY_CMD="python3 ${HOME}/cortexllm/repo/cortexllm_mcp_server.py"
+MEMORY_CMD="python3 ${REPO_ROOT}/memory/mcp_server.py"
 python3 - "${REPO_ROOT}" "${CONFIG_DIR}" "${MEMORY_CMD}" "${FIRECRAWL_ENABLED}" "${BRAVE_ENABLED}" <<'PY'
 import json, os, sys
 repo_root, config_dir, memory_cmd, fire_enabled, brave_enabled = sys.argv[1:6]
@@ -304,15 +330,14 @@ SERVER_PID=""
 SERVER_STARTED=0
 if [ "$DAEMON_MODE" = "1" ]; then
   # Daemon owns the model slot — notify it a session is starting. The daemon
-  # probes free VRAM (glitch-rejecting) and loads the big 35B if there's room,
-  # else swaps in the small Qwen3-4B fallback (sustained GPU load — browser,
-  # game, diffusion — leaves too little for the 35B). Returns which it loaded.
+  # probes free VRAM (informational) and loads the big 35B on :8080. If the
+  # load fails, the daemon logs the failure and leaves :8080 down — there is
+  # no fallback swap path anymore.
   echo "Daemon mode — requesting model load via control socket..."
   python3 -c "import sys,os; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
 r=control.send_request('session-start', timeout=300); \
-m=os.path.basename(str(r.get('model','?'))); fb=r.get('fallback'); \
-print('  model:', m, '(🎮 fallback — low VRAM)' if fb else '(big 35B)') if r.get('ok') \
-else print('  session-start failed:', r)" 2>&1 \
+m=os.path.basename(str(r.get('model','?'))); \
+print('  model:', m) if r.get('ok') else print('  session-start failed:', r)" 2>&1 \
     || echo "  (control socket request failed — the proxy will reload on demand)"
 elif ss -ltn 2>/dev/null | grep -q ":${PORT} "; then
   echo "Port ${PORT} in use — assuming a llama-server is already running; reusing it."
@@ -569,8 +594,8 @@ python3 "${REPO_ROOT}/lib/banner.py" --model "$(basename "${MODEL}")" 2>/dev/nul
 # ── Launch Claude Code (with all our fixes, hooks, and memory) ───────────────
 # The hooks in the isolated config dir (SessionStart + UserPromptSubmit)
 # auto-inject memory on startup and save every prompt to CortexAgent via
-# cortexagent_call.py. The CLAUDE.md in the isolated config dir loads our
-# custom instructions.
+# cortexagent_call.py. The practical-reasoning profile is applied via the
+# slimtoken system_minify path and the tiny_llm default — no CLAUDE.md.
 cd "${REPO_ROOT}"
 # Filter out our custom flags before passing to claude
 FILTERED_ARGS=()

@@ -1303,15 +1303,17 @@ def test_doctor_drift_repair() -> R:
         if cfg.exists():
             bad.append("dry-run wrote (should be read-only)")
 
-        # 2. live repair → the 4 writable checks become fixed.
+        # 2. live repair → the 3 writable checks become fixed.
         r = _run("--json")
         out = json.loads(r.stdout)
         statuses = {c["name"]: c["status"] for c in out}
-        for n in ("config dir exists", "CLAUDE.md (isolated)", "settings.json", "mcp.json"):
+        for n in ("config dir exists", "settings.json", "mcp.json"):
             if statuses.get(n) != "fixed":
                 bad.append(f"live {n} → {statuses.get(n)}")
-        if not (cfg / "settings.json").exists() or not (cfg / "CLAUDE.md").exists():
-            bad.append("live repair didn't write config files")
+        # CLAUDE.md is no longer copied (hard-removed 2026-08-11) — only the
+        # settings.json + mcp.json files should land in the isolated config dir.
+        if not (cfg / "settings.json").exists():
+            bad.append("live repair didn't write settings.json")
 
         # 3. idempotent re-run → 0 fixed (all healthy).
         r = _run("--json")
