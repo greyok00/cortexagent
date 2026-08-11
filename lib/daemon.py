@@ -603,6 +603,13 @@ def _handle(req: Dict) -> Dict:
         # Thread-per-connection control socket ⇒ this long call does NOT
         # block concurrent activity/status/ping commands.
         ok, model_path, is_fallback = _load_session_model()
+        if not ok:
+            # M11 fix: load failed → unwind the refcount increment so the
+            # idle-unload path can still fire when there are no live sessions.
+            # Without this, the big stays "claimed" by a session that never
+            # opened (refcount leaks).
+            with _lock:
+                _active_sessions = max(0, _active_sessions - 1)
         return {"ok": ok, "active_sessions": _active_sessions,
                 "big_healthy": _big.is_healthy(), "model": model_path,
                 "fallback": is_fallback}

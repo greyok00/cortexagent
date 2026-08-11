@@ -31,6 +31,15 @@ chmod +x "${REPO_ROOT}/bin/cortexagent" \
         "${REPO_ROOT}/lib/"*.sh 2>/dev/null || true
 echo "    scripts made executable"
 
+# ── Minify deps (slimtoken — REQUIRED for the proxy's chunked path) ────────
+# slimtoken is a hard runtime dep: grammar_proxy.py imports slimtoken.pipeline
+# directly. If missing, the chunked transport returns 400 from llama-server
+# because the `grammar` field isn't stripped. Install on every install.
+echo "    installing slimtoken (minify + grammar-strip)…"
+python3 -m pip install --break-system-packages --user \
+  "slimtoken>=0.3.3" "orjson" "xxhash" 2>&1 | tail -2 || \
+  echo "    WARN: slimtoken install failed — see README" >&2
+
 # ── Diffusion deps (image/video via in-process diffusers) ────────────────────
 # Optional: only installs when CORTEXAGENT_INSTALL_DIFFUSION_DEPS=1 (heavy: torch
 # + diffusers + CUDA). Otherwise just prints what's needed so a user can install
