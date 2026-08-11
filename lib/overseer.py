@@ -343,31 +343,49 @@ def _query_tiny_llm(prompt: str, system: str = "",
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _get_memory_stats() -> Dict:
-    """Get current memory counts from SQLite + byte sizes from NDJSON files."""
+    """Get current memory counts (NDJSON = file of truth) and byte sizes.
+
+    Adapter over cortexllm.stats.stats (v0.4.0) — returns the legacy shape
+    {hot, warm, cold, hot_bytes, warm_bytes} that callers expect, but the
+    counts come from the NDJSON files (the file-of-truth per the no-caps
+    rule), not from SQLite. SQLite is still queried only for the cold
+    category count (cortexllm's stats returns the list of categories).
+    """
+    out = {"hot": 0, "warm": 0, "cold": 0,
+           "hot_bytes": 0, "warm_bytes": 0}
     try:
-        sys.path.insert(0, str(REPO_ROOT))
-        from memory.db import db
-        reader = db.reader()
-        hot = reader.execute("SELECT COUNT(*) FROM Memory_Hot").fetchone()[0]
-        warm = reader.execute("SELECT COUNT(*) FROM Memory_Warm").fetchone()[0]
-        cold = reader.execute("SELECT COUNT(*) FROM Memory_Cold").fetchone()[0]
-        # Compute byte sizes from the NDJSON files (file of truth for clients).
-        hot_bytes = 0
-        warm_bytes = 0
+        from cortexllm.stats import stats as _cl_stats
+        from lib.memory_thin import HOT_DIR, WARM_DIR  # noqa: F401
+        s = _cl_stats(platform="cortexagent", dir=HOT_DIR.parent)
+        plat = s.get("hot", {}).get("by_platform", {}).get("cortexagent", {})
+        out["hot"] = plat.get("entries", 0)
+        out["hot_bytes"] = plat.get("bytes", 0)
+        plat_w = s.get("warm", {}).get("by_platform", {}).get("cortexagent", {})
+        out["warm"] = plat_w.get("entries", 0)
+        out["warm_bytes"] = plat_w.get("bytes", 0)
+        # Cold is category count (1 per category file). cortexllm.stats returns
+        # the list; len() is the category count.
+        out["cold"] = len(s.get("cold", {}).get("categories", []))
+    except Exception:
+        # Fallback: SQLite count + NDJSON bytes (the legacy code path).
+        try:
+            sys.path.insert(0, str(REPO_ROOT))
+            from memory.db import db
+            reader = db.reader()
+            out["hot"] = reader.execute("SELECT COUNT(*) FROM Memory_Hot").fetchone()[0]
+            out["warm"] = reader.execute("SELECT COUNT(*) FROM Memory_Warm").fetchone()[0]
+            out["cold"] = reader.execute("SELECT COUNT(*) FROM Memory_Cold").fetchone()[0]
+        except Exception as e:
+            _log(f"Memory stats fallback error: {e}", "⚠️", YELLOW)
         try:
             from lib.memory_thin import HOT_DIR, WARM_DIR
             for p in HOT_DIR.glob("*.jsonl"):
-                hot_bytes += p.stat().st_size
+                out["hot_bytes"] += p.stat().st_size
             for p in WARM_DIR.glob("*.warm.jsonl"):
-                warm_bytes += p.stat().st_size
+                out["warm_bytes"] += p.stat().st_size
         except (ImportError, OSError):
             pass
-        return {"hot": hot, "warm": warm, "cold": cold,
-                "hot_bytes": hot_bytes, "warm_bytes": warm_bytes}
-    except Exception as e:
-        _log(f"Memory stats error: {e}", "⚠️", YELLOW)
-        return {"hot": 0, "warm": 0, "cold": 0,
-                "hot_bytes": 0, "warm_bytes": 0}
+    return out
 
 
 def _check_health(stats: Dict) -> List[str]:
@@ -691,9 +709,18 @@ def _check_db_integrity() -> List[str]:
 
 
 def _estimate_tokens(stats: Dict) -> str:
-    """Rough token estimate: 4 chars per token, ~200 chars per entry."""
+    """Rough token estimate: 4 chars per token, ~200 chars per entry.
+
+    Backed by cortexllm.stats.estimate_tokens (v0.4.0) when available —
+    same heuristic (4 chars/token, ~200 chars/entry), just routed through
+    the public API so we don't drift from the canonical estimator.
+    """
     total = stats["hot"] + stats["warm"] + stats["cold"]
-    est = (total * 200) // 4
+    try:
+        from cortexllm.stats import estimate_tokens
+        est = estimate_tokens("x" * (total * 200))
+    except ImportError:
+        est = (total * 200) // 4
     if est > 1_000_000:
         return f"{est/1_000_000:.1f}M"
     if est > 1_000:
@@ -926,7 +953,18 @@ def _hot_to_warm_sync(state: Dict) -> None:
 
 
 def _atomic_append_bytes(file_path, data: bytes) -> None:
-    """POSIX-atomic append raw bytes. Safe for ≤PIPE_BUF (4096B) per write."""
+    """POSIX-atomic append raw bytes. Safe for ≤PIPE_BUF (4096B) per write.
+
+    Drop-in to cortexllm.atomic.atomic_append_bytes (v0.4.0). The local copy
+    was a verbatim duplicate; kept as a one-liner shim so callers don't
+    change and the import is optional.
+    """
+    try:
+        from cortexllm.atomic import atomic_append_bytes
+        atomic_append_bytes(file_path, data)
+        return
+    except ImportError:
+        pass
     import os as _os
     file_path.parent.mkdir(parents=True, exist_ok=True)
     fd = _os.open(file_path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o644)
@@ -1261,12 +1299,41 @@ def _check_schedule() -> None:
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  PLAN TRACKING
+#  (Post-cortexllm v0.4.0: thin shim over cortexllm.plan.Plan. The Plan class
+#  stores the dict shape verbatim — name/total_steps/current_step/context/
+#  steps/step_status/started_at/updated_at/completed — so callers don't
+#  change. Local copy only kept for the log lines + the pre-existing caller
+#  signature of plan_set(name, total_steps, context, steps) which is
+#  DIFFERENT from cortexllm.plan.Plan.set(name, total_steps, steps, context)
+#  (note the swapped last two args). The shim fixes the order.)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def _plan():
+    """Lazy singleton for the cortexllm plan backing store."""
+    try:
+        from cortexllm.plan import Plan as _Plan
+        return _Plan(dir=str(STATE_DIR), name="overseer_plan")
+    except ImportError:
+        return None
+
 
 def plan_set(name: str, total_steps: int, context: str = "",
              steps: Optional[List[str]] = None) -> Dict:
-    """Set or update the current plan."""
-    plan = {
+    """Set or update the current plan.
+
+    Note: parameter order is `(name, total_steps, context, steps)` — fixed
+    from the pre-2026-08-11 bug where cortexllm's order is
+    `(name, total_steps, steps, context)`. The shim swaps before calling.
+    """
+    plan = _plan()
+    if plan is not None:
+        # cortexllm.plan.Plan.set signature: (name, total_steps, steps, context)
+        result = plan.set(name=name, total_steps=total_steps,
+                          steps=steps, context=context)
+        _log(f"Plan set: '{name}' ({total_steps} steps)", "📋", CYAN)
+        return result
+    # Fallback (cortexllm missing): local copy.
+    local = {
         "name": name,
         "total_steps": total_steps,
         "current_step": 0,
@@ -1277,61 +1344,78 @@ def plan_set(name: str, total_steps: int, context: str = "",
         "updated_at": datetime.now().isoformat(),
         "completed": False,
     }
-    _save_json(PLAN_FILE, plan)
+    _save_json(PLAN_FILE, local)
     _log(f"Plan set: '{name}' ({total_steps} steps)", "📋", CYAN)
-    return plan
+    return local
 
 
 def plan_step(n: Optional[int] = None) -> Dict:
     """Advance to step N, or next step if N is None."""
-    plan = _load_json(PLAN_FILE)
-    if not plan:
+    plan = _plan()
+    if plan is not None:
+        result = plan.advance(n=n)
+        if "error" in result:
+            return result
+        if result.get("completed"):
+            _log(f"Plan '{result['name']}' completed!", "🎉", GREEN)
+        else:
+            _log(f"Step {result['current_step']}/{result['total_steps']}: "
+                 f"{result['steps'][result['current_step']-1]}", "➡️", CYAN)
+        return result
+    # Fallback (cortexllm missing): local copy.
+    data = _load_json(PLAN_FILE)
+    if not data:
         return {"error": "No plan set. Use plan-set first."}
-
-    if plan.get("completed"):
+    if data.get("completed"):
         return {"error": "Plan already completed."}
-
     if n is not None:
-        if n < 1 or n > plan["total_steps"]:
-            return {"error": f"Step {n} out of range (1-{plan['total_steps']})"}
-        plan["current_step"] = n
+        if n < 1 or n > data["total_steps"]:
+            return {"error": f"Step {n} out of range (1-{data['total_steps']})"}
+        data["current_step"] = n
     else:
-        plan["current_step"] += 1
-
-    if plan["current_step"] > plan["total_steps"]:
-        plan["completed"] = True
-        plan["current_step"] = plan["total_steps"]
-        plan["updated_at"] = datetime.now().isoformat()
-        _save_json(PLAN_FILE, plan)
-        _log(f"Plan '{plan['name']}' completed!", "🎉", GREEN)
-        return plan
-
-    plan["step_status"][plan["current_step"] - 1] = "in_progress"
-    plan["updated_at"] = datetime.now().isoformat()
-    _save_json(PLAN_FILE, plan)
-    _log(f"Step {plan['current_step']}/{plan['total_steps']}: {plan['steps'][plan['current_step']-1]}",
-         "➡️", CYAN)
-    return plan
+        data["current_step"] += 1
+    if data["current_step"] > data["total_steps"]:
+        data["completed"] = True
+        data["current_step"] = data["total_steps"]
+        data["updated_at"] = datetime.now().isoformat()
+        _save_json(PLAN_FILE, data)
+        _log(f"Plan '{data['name']}' completed!", "🎉", GREEN)
+        return data
+    data["step_status"][data["current_step"] - 1] = "in_progress"
+    data["updated_at"] = datetime.now().isoformat()
+    _save_json(PLAN_FILE, data)
+    _log(f"Step {data['current_step']}/{data['total_steps']}: "
+         f"{data['steps'][data['current_step']-1]}", "➡️", CYAN)
+    return data
 
 
 def plan_status() -> Dict:
     """Get current plan status."""
-    plan = _load_json(PLAN_FILE)
-    if not plan:
+    plan = _plan()
+    if plan is not None:
+        return plan.status()
+    data = _load_json(PLAN_FILE)
+    if not data:
         return {"error": "No plan set. Use plan-set first."}
-    return plan
+    return data
 
 
 def plan_complete() -> Dict:
     """Mark the current plan as completed."""
-    plan = _load_json(PLAN_FILE)
-    if not plan:
+    plan = _plan()
+    if plan is not None:
+        result = plan.complete()
+        if "error" not in result:
+            _log(f"Plan '{result['name']}' marked complete", "🎉", GREEN)
+        return result
+    data = _load_json(PLAN_FILE)
+    if not data:
         return {"error": "No plan set."}
-    plan["completed"] = True
-    plan["updated_at"] = datetime.now().isoformat()
-    _save_json(PLAN_FILE, plan)
-    _log(f"Plan '{plan['name']}' marked complete", "🎉", GREEN)
-    return plan
+    data["completed"] = True
+    data["updated_at"] = datetime.now().isoformat()
+    _save_json(PLAN_FILE, data)
+    _log(f"Plan '{data['name']}' marked complete", "🎉", GREEN)
+    return data
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
