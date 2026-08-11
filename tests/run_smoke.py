@@ -735,14 +735,22 @@ def test_regression_overseer_exit0() -> R:
 
 
 def test_regression_cortexllm_apis() -> R:
-    """CortexLLM vector/graph/ontology modules import READ-ONLY and expose APIs."""
+    """CortexLLM vector/graph/ontology modules import READ-ONLY and expose APIs.
+
+    Post v0.3.2 split: flat modules moved to `legacy/`; the new `cortexllm/`
+    package is canonical. We check both — cortexagent still depends on the
+    flat shape via `CFG.cortexllm_dir/legacy/` fallback paths.
+    """
     from lib.config import CFG
     d = CFG.cortexllm_dir
     if not d.is_dir():
         return R("cortexllm vector/graph/ontology APIs", "regression", False, f"{d} missing")
     import sys as _sys
-    if str(d) not in _sys.path:
-        _sys.path.insert(0, str(d))
+    # Try the canonical new package first, then the legacy flat fallbacks.
+    candidates = [d / "cortexllm", d / "legacy"]
+    for c in candidates:
+        if c.is_dir() and str(c) not in _sys.path:
+            _sys.path.insert(0, str(c))
     checks = []
     for mod, attrs in [
         ("cortexllm_vector", ["VectorStore"]),
