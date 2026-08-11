@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace">
+  <title>CortexAgent — request flow (post-v0.4.0)</title>
+  <desc>How a prompt flows from CLI or Webui through the grammar proxy to the big model, while the daemon owns :8080/:8081, the overseer keeps tiny :8082 alive and distills warm to cold memory, and cortexllm drop-ins handle atomic persistence, stats, and planning.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0e1a"/>
+      <stop offset="1" stop-color="#0d1320"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#131a2c"/>
+      <stop offset="1" stop-color="#0f1525"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00d4ff"/>
+      <stop offset="1" stop-color="#23b7d6"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0fbf9f"/>
+      <stop offset="1" stop-color="#1a8a8a"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9b6dff"/>
+      <stop offset="1" stop-color="#7a4ed1"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f5a623"/>
+      <stop offset="1" stop-color="#d18a14"/>
+    </linearGradient>
+    <linearGradient id="rose" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff6b8e"/>
+      <stop offset="1" stop-color="#c94a6b"/>
+    </linearGradient>
+    <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00d4ff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#9b6dff" stop-opacity="0.85"/>
+    </linearGradient>
+    <linearGradient id="flowBack" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9b6dff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#00d4ff" stop-opacity="0.85"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#00d4ff"/>
+    </marker>
+    <marker id="arrowBack" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9b6dff"/>
+    </marker>
+    <marker id="arrowDim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5a7090"/>
+    </marker>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32,0 L0,0 L0,32" fill="none" stroke="#1a2440" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- background -->
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#grid)" opacity="0.5"/>
+
+  <!-- title bar -->
+  <g transform="translate(40,30)">
+    <text x="0" y="0" fill="#00d4ff" font-size="22" font-weight="700" letter-spacing="2">CORTEXAGENT</text>
+    <text x="170" y="0" fill="#5a7090" font-size="14" letter-spacing="1">request flow · post-v0.4.0</text>
+    <line x1="0" y1="14" x2="1200" y2="14" stroke="#1a2440" stroke-width="1"/>
+  </g>
+
+  <!-- ============ TOP-LEFT: Client side ============ -->
+  <g transform="translate(40,90)">
+    <rect width="220" height="160" rx="10" fill="url(#card)" stroke="#1a2440" stroke-width="1"/>
+    <rect x="0" y="0" width="220" height="3" rx="1.5" fill="url(#cyan)"/>
+    <text x="14" y="28" fill="#00d4ff" font-size="12" font-weight="700" letter-spacing="1">CLIENT</text>
+    <text x="14" y="56" fill="#e8eef7" font-size="14" font-weight="600">CLI · Webui :8090</text>
+    <text x="14" y="80" fill="#7a8aa8" font-size="11">typing here, shared session</text>
+    <text x="14" y="106" fill="#7a8aa8" font-size="11">through proxy SSE</text>
+    <g transform="translate(14,120)">
+      <rect width="192" height="26" rx="4" fill="#0a1020" stroke="#1a2440"/>
+      <text x="10" y="17" fill="#a8b5cc" font-size="11">cortexagent  →  prompt</text>
+    </g>
+  </g>
+
+  <!-- ============ CENTER: Grammar proxy :8081 ============ -->
+  <g transform="translate(330,90)">
+    <rect width="280" height="160" rx="10" fill="url(#card)" stroke="#23b7d6" stroke-width="1.5" filter="url(#glow)"/>
+    <rect x="0" y="0" width="280" height="3" rx="1.5" fill="url(#cyan)"/>
+    <text x="14" y="28" fill="#00d4ff" font-size="12" font-weight="700" letter-spacing="1">GRAMMAR PROXY · :8081</text>
+    <text x="14" y="56" fill="#e8eef7" font-size="14" font-weight="600">minify + tool routing</text>
+    <text x="14" y="80" fill="#7a8aa8" font-size="11">drops tool-call grammar from</text>
+    <text x="14" y="96" fill="#7a8aa8" font-size="11">big request, attaches slimtoken</text>
+    <g transform="translate(14,108)">
+      <rect width="252" height="42" rx="4" fill="#0a1020" stroke="#1a2440"/>
+      <text x="10" y="16" fill="#23b7d6" font-size="11">▸ slimtoken.optimize_messages()</text>
+      <text x="10" y="32" fill="#a8b5cc" font-size="11">pair-safe · fence-aware · budgeted</text>
+    </g>
+  </g>
+
+  <!-- ============ TOP-RIGHT: Big model :8080 ============ -->
+  <g transform="translate(680,90)">
+    <rect width="280" height="160" rx="10" fill="url(#card)" stroke="#9b6dff" stroke-width="1.5"/>
+    <rect x="0" y="0" width="280" height="3" rx="1.5" fill="url(#violet)"/>
+    <text x="14" y="28" fill="#9b6dff" font-size="12" font-weight="700" letter-spacing="1">BIG MODEL · :8080</text>
+    <text x="14" y="56" fill="#e8eef7" font-size="14" font-weight="600">Qwen3.6-35B-A3B</text>
+    <text x="14" y="76" fill="#7a8aa8" font-size="11">IQ3_S · ~13.6 GB · 128K ctx</text>
+    <text x="14" y="96" fill="#7a8aa8" font-size="11">llama-server · multimodal</text>
+    <g transform="translate(14,108)">
+      <rect width="252" height="42" rx="4" fill="#1a0f2c" stroke="#3a2a5a"/>
+      <text x="10" y="16" fill="#c4a8ff" font-size="11">▸ streams tokens back</text>
+      <text x="10" y="32" fill="#a8b5cc" font-size="11">minified response · → proxy</text>
+    </g>
+  </g>
+
+  <!-- ============ FAR-RIGHT: Diffusers (in-process) ============ -->
+  <g transform="translate(1030,90)">
+    <rect width="220" height="160" rx="10" fill="url(#card)" stroke="#f5a623" stroke-width="1"/>
+    <rect x="0" y="0" width="220" height="3" rx="1.5" fill="url(#amber)"/>
+    <text x="14" y="28" fill="#f5a623" font-size="12" font-weight="700" letter-spacing="1">DIFFUSION · in-proc</text>
+    <text x="14" y="56" fill="#e8eef7" font-size="14" font-weight="600">SDXL · SD1.5 · LTX</text>
+    <text x="14" y="80" fill="#7a8aa8" font-size="11">no second port, no second</text>
+    <text x="14" y="96" fill="#7a8aa8" font-size="11">process — shares the GPU</text>
+    <g transform="translate(14,108)">
+      <rect width="192" height="42" rx="4" fill="#1a1408" stroke="#3a2a14"/>
+      <text x="10" y="16" fill="#f5c878" font-size="11">▸ gen-image / gen-video</text>
+      <text x="10" y="32" fill="#a8b5cc" font-size="11">4K upscaled · 16 GB VRAM</text>
+    </g>
+  </g>
+
+  <!-- ============ flow arrows: top row ============ -->
+  <line x1="260" y1="170" x2="328" y2="170" stroke="url(#flow)" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="266" y="160" fill="#7a8aa8" font-size="10">prompt</text>
+  <line x1="610" y1="170" x2="678" y2="170" stroke="url(#flow)" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="616" y="160" fill="#7a8aa8" font-size="10">minified</text>
+  <line x1="960" y1="170" x2="1028" y2="170" stroke="#5a7090" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrowDim)"/>
+  <text x="966" y="160" fill="#5a7090" font-size="10">image gen</text>
+
+  <!-- response arrow (right-to-left, below) -->
+  <line x1="678" y1="208" x2="612" y2="208" stroke="url(#flowBack)" stroke-width="2.5" marker-end="url(#arrowBack)"/>
+  <line x1="328" y1="208" x2="262" y2="208" stroke="url(#flowBack)" stroke-width="2.5" marker-end="url(#arrowBack)"/>
+  <text x="266" y="224" fill="#9b6dff" font-size="10">tokens / SSE stream</text>
+
+  <!-- ============ MIDDLE: Daemon (owns :8080, :8081) ============ -->
+  <g transform="translate(330,300)">
+    <rect width="630" height="150" rx="10" fill="url(#card)" stroke="#1a2440" stroke-width="1.5"/>
+    <rect x="0" y="0" width="630" height="3" rx="1.5" fill="url(#teal)"/>
+    <text x="14" y="28" fill="#0fbf9f" font-size="12" font-weight="700" letter-spacing="1">DAEMON · AF_UNIX control.sock</text>
+    <text x="14" y="54" fill="#e8eef7" font-size="14" font-weight="600">owns :8080 and :8081, session lifecycle, idle-unload</text>
+    <text x="14" y="78" fill="#7a8aa8" font-size="11">every CLI/webui session opens a unix socket to the daemon — status, session-start/end, model load</text>
+
+    <!-- drop-in badges -->
+    <g transform="translate(14,92)">
+      <g>
+        <rect width="120" height="42" rx="6" fill="#0a1820" stroke="#0fbf9f" stroke-width="1"/>
+        <text x="10" y="16" fill="#0fbf9f" font-size="10" font-weight="700">cortexllm.atomic</text>
+        <text x="10" y="32" fill="#7a8aa8" font-size="10">atomic JSONL write</text>
+      </g>
+      <g transform="translate(132,0)">
+        <rect width="120" height="42" rx="6" fill="#0a1820" stroke="#0fbf9f" stroke-width="1"/>
+        <text x="10" y="16" fill="#0fbf9f" font-size="10" font-weight="700">cortexllm.stats</text>
+        <text x="10" y="32" fill="#7a8aa8" font-size="10">memory + tokens</text>
+      </g>
+      <g transform="translate(264,0)">
+        <rect width="120" height="42" rx="6" fill="#0a1820" stroke="#0fbf9f" stroke-width="1"/>
+        <text x="10" y="16" fill="#0fbf9f" font-size="10" font-weight="700">cortexllm.plan</text>
+        <text x="10" y="32" fill="#7a8aa8" font-size="10">task DAG</text>
+      </g>
+      <g transform="translate(396,0)">
+        <rect width="220" height="42" rx="6" fill="#0a1820" stroke="#0fbf9f" stroke-width="1" stroke-dasharray="3 3"/>
+        <text x="10" y="16" fill="#0fbf9f" font-size="10" font-weight="700">cortexllm.lifecycle · dag · workflow</text>
+        <text x="10" y="32" fill="#7a8aa8" font-size="10">template-local — not migrated</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- daemon arrows down -->
+  <line x1="470" y1="250" x2="470" y2="298" stroke="url(#teal)" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="820" y1="250" x2="820" y2="298" stroke="url(#teal)" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ============ BOTTOM-LEFT: Overseer ============ -->
+  <g transform="translate(40,490)">
+    <rect width="370" height="180" rx="10" fill="url(#card)" stroke="#ff6b8e" stroke-width="1.5"/>
+    <rect x="0" y="0" width="370" height="3" rx="1.5" fill="url(#rose)"/>
+    <text x="14" y="28" fill="#ff6b8e" font-size="12" font-weight="700" letter-spacing="1">OVERSEER · systemd · always-on</text>
+    <text x="14" y="54" fill="#e8eef7" font-size="14" font-weight="600">scheduler · warm→cold · tiny keepalive</text>
+    <text x="14" y="78" fill="#7a8aa8" font-size="11">runs cron tasks even when no session is open</text>
+
+    <g transform="translate(14,90)">
+      <rect width="342" height="76" rx="6" fill="#1a0810" stroke="#3a1424"/>
+      <text x="10" y="16" fill="#ff6b8e" font-size="10" font-weight="700">▸ cron schedule</text>
+      <text x="10" y="32" fill="#a8b5cc" font-size="10">wake-up interval · queue dispatch under lock</text>
+      <text x="10" y="50" fill="#ff6b8e" font-size="10" font-weight="700">▸ warm → cold distillation (every 30s, idle only)</text>
+      <text x="10" y="66" fill="#a8b5cc" font-size="10">no caps: every prompt appends, never trimmed</text>
+    </g>
+  </g>
+
+  <!-- ============ BOTTOM-CENTER: Tiny model :8082 ============ -->
+  <g transform="translate(490,490)">
+    <rect width="240" height="180" rx="10" fill="url(#card)" stroke="#23b7d6" stroke-width="1"/>
+    <rect x="0" y="0" width="240" height="3" rx="1.5" fill="url(#cyan)"/>
+    <text x="14" y="28" fill="#00d4ff" font-size="12" font-weight="700" letter-spacing="1">TINY · :8082</text>
+    <text x="14" y="54" fill="#e8eef7" font-size="14" font-weight="600">LFM2.5-1.2B</text>
+    <text x="14" y="74" fill="#7a8aa8" font-size="11">Q4_K_M · ~728 MB</text>
+    <text x="14" y="94" fill="#7a8aa8" font-size="11">overseer minifier only</text>
+    <text x="14" y="114" fill="#7a8aa8" font-size="11">isolated from big — never</text>
+    <text x="14" y="130" fill="#7a8aa8" font-size="11">touched by user requests</text>
+    <g transform="translate(14,142)">
+      <rect width="212" height="28" rx="4" fill="#0a1020" stroke="#1a2440"/>
+      <text x="10" y="18" fill="#23b7d6" font-size="10">▸ keepalive pings every 15s</text>
+    </g>
+  </g>
+
+  <!-- ============ BOTTOM-RIGHT: Memory tiers ============ -->
+  <g transform="translate(800,490)">
+    <rect width="450" height="180" rx="10" fill="url(#card)" stroke="#9b6dff" stroke-width="1"/>
+    <rect x="0" y="0" width="450" height="3" rx="1.5" fill="url(#violet)"/>
+    <text x="14" y="28" fill="#9b6dff" font-size="12" font-weight="700" letter-spacing="1">MEMORY · 3 tiers · stdlib SQLite</text>
+    <text x="14" y="54" fill="#e8eef7" font-size="14" font-weight="600">no caps — append forever, distill to cold</text>
+
+    <g transform="translate(14,70)">
+      <!-- hot -->
+      <rect width="130" height="98" rx="6" fill="#1a0f2c" stroke="#9b6dff" stroke-width="1"/>
+      <text x="10" y="18" fill="#c4a8ff" font-size="10" font-weight="700">HOT</text>
+      <text x="10" y="36" fill="#e8eef7" font-size="13" font-weight="600">inlined</text>
+      <text x="10" y="56" fill="#a8b5cc" font-size="10">every prompt</text>
+      <text x="10" y="74" fill="#a8b5cc" font-size="10">FIFO queue</text>
+      <text x="10" y="90" fill="#5a7090" font-size="9">jsonl · O_APPEND</text>
+      <!-- warm -->
+      <g transform="translate(140,0)">
+        <rect width="130" height="98" rx="6" fill="#1a0f2c" stroke="#9b6dff" stroke-width="1"/>
+        <text x="10" y="18" fill="#c4a8ff" font-size="10" font-weight="700">WARM</text>
+        <text x="10" y="36" fill="#e8eef7" font-size="13" font-weight="600">curated</text>
+        <text x="10" y="56" fill="#a8b5cc" font-size="10">70% recent</text>
+        <text x="10" y="74" fill="#a8b5cc" font-size="10">30% curated</text>
+        <text x="10" y="90" fill="#5a7090" font-size="9">dedup + prune</text>
+      </g>
+      <!-- cold -->
+      <g transform="translate(280,0)">
+        <rect width="140" height="98" rx="6" fill="#1a0f2c" stroke="#9b6dff" stroke-width="1" stroke-dasharray="3 3"/>
+        <text x="10" y="18" fill="#c4a8ff" font-size="10" font-weight="700">COLD  (unlimited)</text>
+        <text x="10" y="36" fill="#e8eef7" font-size="13" font-weight="600">distilled</text>
+        <text x="10" y="56" fill="#a8b5cc" font-size="10">facts only</text>
+        <text x="10" y="74" fill="#a8b5cc" font-size="10">graph + vector</text>
+        <text x="10" y="90" fill="#5a7090" font-size="9">MCP search · semantic</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- arrow from overseer → tiny -->
+  <line x1="412" y1="560" x2="488" y2="560" stroke="url(#rose)" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- arrow from overseer → memory -->
+  <line x1="412" y1="600" x2="798" y2="600" stroke="url(#rose)" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="520" y="594" fill="#ff6b8e" font-size="10">distill</text>
+
+  <!-- arrow from daemon → overseer (status only, dashed) -->
+  <line x1="200" y1="450" x2="200" y2="488" stroke="#5a7090" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrowDim)"/>
+  <text x="208" y="475" fill="#5a7090" font-size="10">status</text>
+
+  <!-- legend -->
+  <g transform="translate(40,685)">
+    <text x="0" y="0" fill="#5a7090" font-size="10">━━━ request   ┄┄┄ status</text>
+    <text x="220" y="0" fill="#5a7090" font-size="10">| cyan: big path   violet: response   teal: daemon   rose: overseer</text>
+  </g>
+</svg>
