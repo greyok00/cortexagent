@@ -50,6 +50,23 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+
+def _fromiso(s: str) -> datetime:
+    """Compat wrapper for datetime.fromisoformat. Pre-3.11 only accepted the
+    exact format `datetime.isoformat()` produces (no 'T' separator, no
+    fractional seconds). 3.11+ accepts most ISO 8601 strings. We always
+    generate ISO via `datetime.now().isoformat()` so the upgrade-to-3.11
+    case is a no-op; the downgrade case is the one this guards against.
+    """
+    try:
+        return datetime.fromisoformat(s)
+    except (TypeError, ValueError):
+        # Common pre-3.11 issues: 'T' separator, 'Z' suffix, fractional secs.
+        s2 = s.replace("T", " ").rstrip("Z")
+        if "." in s2:
+            s2 = s2.split(".")[0]
+        return datetime.fromisoformat(s2)
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
@@ -155,6 +172,7 @@ _tiny = LlamaServer(
 # Serializes tiny start/stop so a keepalive thread and a shutdown can't both
 # spawn a llama-server on :8082 (port conflict) or race a stop against a start.
 _tiny_lock = threading.Lock()
+_queue_dispatch_lock = threading.Lock()  # M9 fix: prevent double-dispatch
 
 # ── Clean shutdown flag ──────────────────────────────────────────────────────
 # Set by the SIGTERM/SIGINT handler so the daemon loop exits cleanly (exit code 0)
@@ -419,7 +437,7 @@ def _check_memory_writes() -> List[str]:
         ).fetchone()
         if row:
             ts = row["timestamp"]
-            age = (datetime.now() - datetime.fromisoformat(ts)).total_seconds()
+            age = (datetime.now() - _fromiso(ts)).total_seconds()
             if age > 300:
                 alerts.append(f"No memory writes in {int(age)}s — session may be stalled")
         else:
@@ -1103,49 +1121,62 @@ def _execute_task(task: Dict) -> bool:
 
 
 def _process_queue() -> None:
-    """Process all queued tasks sequentially."""
-    queue = _load_queue()
-    pending = [t for t in queue if t["status"] == "queued"]
-    if not pending:
+    """Process all queued tasks sequentially.
+
+    M9 fix (2026-08-11): guarded by ``_queue_dispatch_lock`` so a second
+    caller (e.g. a scheduled task triggering during an in-progress dispatch)
+    can't double-dispatch the same queued item. Without this, overlapping
+    threads both see ``status="queued"`` and both invoke ``_execute_task``.
+    """
+    if not _queue_dispatch_lock.acquire(blocking=False):
+        # Another dispatch is in progress; let it finish and the next tick
+        # will pick up whatever remains.
         return
+    try:
+        queue = _load_queue()
+        pending = [t for t in queue if t["status"] == "queued"]
+        if not pending:
+            return
 
-    _log(f"Processing {len(pending)} queued tasks...", "▶️", MAGENTA)
-    _bridge_emit("queue", f"▶️ Processing {len(pending)} queued task(s)")
+        _log(f"Processing {len(pending)} queued tasks...", "▶️", MAGENTA)
+        _bridge_emit("queue", f"▶️ Processing {len(pending)} queued task(s)")
 
-    for task in pending:
-        task["status"] = "running"
-        task["started_at"] = datetime.now().isoformat()
-        _save_queue(queue)
-        _bridge_emit(
-            "task_start",
-            f"▶️ Task {task['id']} ({task['type']}) starting — {task.get('prompt') or task.get('command','')[:120]}",
-            task_id=task["id"],
-            task_type=task["type"],
-        )
+        for task in pending:
+            task["status"] = "running"
+            task["started_at"] = datetime.now().isoformat()
+            _save_queue(queue)
+            _bridge_emit(
+                "task_start",
+                f"▶️ Task {task['id']} ({task['type']}) starting — {task.get('prompt') or task.get('command','')[:120]}",
+                task_id=task["id"],
+                task_type=task["type"],
+            )
 
-        try:
-            success = _execute_task(task)
-        except Exception as e:
-            # A crash in _execute_task (e.g. MediaPipeline raising) must not
-            # leave the task stuck in "running" forever — mark it failed.
-            _log(f"Task {task['id']} crashed: {e}", "❌", RED)
-            _bridge_emit("task_crash", f"❌ Task {task['id']} crashed: {e}",
-                         task_id=task["id"])
-            success = False
+            try:
+                success = _execute_task(task)
+            except Exception as e:
+                # A crash in _execute_task (e.g. MediaPipeline raising) must not
+                # leave the task stuck in "running" forever — mark it failed.
+                _log(f"Task {task['id']} crashed: {e}", "❌", RED)
+                _bridge_emit("task_crash", f"❌ Task {task['id']} crashed: {e}",
+                             task_id=task["id"])
+                success = False
 
-        task["status"] = "completed" if success else "failed"
-        task["completed_at"] = datetime.now().isoformat()
-        task["result"] = "success" if success else "failed"
-        _save_queue(queue)
+            task["status"] = "completed" if success else "failed"
+            task["completed_at"] = datetime.now().isoformat()
+            task["result"] = "success" if success else "failed"
+            _save_queue(queue)
 
-        if success:
-            _log(f"Task {task['id']} completed", "✅", GREEN)
-            _bridge_emit("task_done", f"✅ Task {task['id']} completed",
-                         task_id=task["id"])
-        else:
-            _log(f"Task {task['id']} failed", "❌", RED)
-            _bridge_emit("task_fail", f"❌ Task {task['id']} failed",
-                         task_id=task["id"])
+            if success:
+                _log(f"Task {task['id']} completed", "✅", GREEN)
+                _bridge_emit("task_done", f"✅ Task {task['id']} completed",
+                             task_id=task["id"])
+            else:
+                _log(f"Task {task['id']} failed", "❌", RED)
+                _bridge_emit("task_fail", f"❌ Task {task['id']} failed",
+                             task_id=task["id"])
+    finally:
+        _queue_dispatch_lock.release()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1244,7 +1275,7 @@ def _check_schedule() -> None:
         last_run = entry.get("last_run")
         if last_run:
             try:
-                if datetime.fromisoformat(last_run).strftime("%Y%m%d%H%M") == now.strftime("%Y%m%d%H%M"):
+                if _fromiso(last_run).strftime("%Y%m%d%H%M") == now.strftime("%Y%m%d%H%M"):
                     continue
             except Exception:
                 pass
@@ -1270,10 +1301,10 @@ def _check_schedule() -> None:
                          now.hour == target_hour and now.minute == target_min)
         elif st == "date":
             try:
-                target = datetime.fromisoformat(sv)
+                target = _fromiso(sv)
                 should_run = (now >= target and
                               (entry.get("last_run") is None or
-                               datetime.fromisoformat(entry["last_run"]) < target))
+                               _fromiso(entry["last_run"]) < target))
             except Exception:
                 pass
 
@@ -1516,7 +1547,7 @@ def _daemon_loop(interval: int) -> None:
             last_distill = state.get("last_distill")
             if stats["warm"] > 100 and (
                 not last_distill or
-                (datetime.now() - datetime.fromisoformat(last_distill)).total_seconds() > COLD_DISTILL_INTERVAL
+                (datetime.now() - _fromiso(last_distill)).total_seconds() > COLD_DISTILL_INTERVAL
             ):
                 overseer_set_state(state, "distilling warm → cold")
                 _cold_distill()

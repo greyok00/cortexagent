@@ -161,7 +161,7 @@ cortexagent/
 │   ├── model_backend.py            # llama-server wrapper
 │   ├── diffusion_backend.py        # in-process SDXL/SD1.5/LTX
 │   ├── tiny_llm.py                 # LFM2.5-1.2B client
-│   ├── minify/pipeline.py          # prompt minify stages
+│   ├── prompt_queue.py             # decompose/conflict/supersede
 │   ├── webui.py                    # :8090 server
 │   ├── tray_dashboard.py           # tray popout overseer view
 │   ├── statusline.py               # brand bar (CLI bottom)
