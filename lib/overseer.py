@@ -77,6 +77,31 @@ try:
 except ImportError:
     SLIMTOKEN_AVAILABLE = False
 
+# SessionBridge for unified multi-agent chat (overseer emits "Overseer"
+# username events). Imported lazily to keep boot safe if the bridge file
+# is unreadable for any reason — the chat pane is a nice-to-have, the
+# scheduler/dispatcher is the load-bearing thing.
+def _bridge_emit(kind: str, content: str, **extra) -> None:
+    """Emit one chat event to the SessionBridge with username='Overseer'.
+
+    Best-effort: any exception is swallowed. The chat pane is decoration;
+    the dispatch path is what matters.
+    """
+    try:
+        from lib.session_bridge import SessionBridge
+        ev = {
+            "id": f"ovr-{int(time.time()*1000)}-{kind}",
+            "from": "overseer",
+            "username": "Overseer",
+            "type": "message",
+            "content": content,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        }
+        ev.update(extra)
+        SessionBridge().write("overseer", ev)
+    except Exception:
+        pass
+
 # ── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_INTERVAL = 30  # seconds
 WARM_CAP = 2000
@@ -1065,11 +1090,18 @@ def _process_queue() -> None:
         return
 
     _log(f"Processing {len(pending)} queued tasks...", "▶️", MAGENTA)
+    _bridge_emit("queue", f"▶️ Processing {len(pending)} queued task(s)")
 
     for task in pending:
         task["status"] = "running"
         task["started_at"] = datetime.now().isoformat()
         _save_queue(queue)
+        _bridge_emit(
+            "task_start",
+            f"▶️ Task {task['id']} ({task['type']}) starting — {task.get('prompt') or task.get('command','')[:120]}",
+            task_id=task["id"],
+            task_type=task["type"],
+        )
 
         try:
             success = _execute_task(task)
@@ -1077,6 +1109,8 @@ def _process_queue() -> None:
             # A crash in _execute_task (e.g. MediaPipeline raising) must not
             # leave the task stuck in "running" forever — mark it failed.
             _log(f"Task {task['id']} crashed: {e}", "❌", RED)
+            _bridge_emit("task_crash", f"❌ Task {task['id']} crashed: {e}",
+                         task_id=task["id"])
             success = False
 
         task["status"] = "completed" if success else "failed"
@@ -1086,8 +1120,12 @@ def _process_queue() -> None:
 
         if success:
             _log(f"Task {task['id']} completed", "✅", GREEN)
+            _bridge_emit("task_done", f"✅ Task {task['id']} completed",
+                         task_id=task["id"])
         else:
             _log(f"Task {task['id']} failed", "❌", RED)
+            _bridge_emit("task_fail", f"❌ Task {task['id']} failed",
+                         task_id=task["id"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1231,6 +1269,12 @@ def _check_schedule() -> None:
             entry["last_run"] = now.isoformat()
             _save_schedule(schedule)
             _log(f"Scheduled task '{entry['name']}' queued", "📅", GREEN)
+            _bridge_emit(
+                "schedule_fired",
+                f"📅 Scheduled task '{entry['name']}' queued ({task['type']})",
+                schedule_name=entry["name"],
+                task_type=task["type"],
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
