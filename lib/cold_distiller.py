@@ -98,7 +98,54 @@ def _save_seen_facts(seen: Set[str]) -> None:
 
 # ── Warm memory reader ────────────────────────────────────────────────────
 def _read_warm_entries(profile: Optional[str] = None) -> List[Dict]:
-    """Read warm memory from SQLite. Each row has {content, role, timestamp, profile, platform}."""
+    """Read warm memory. Prefers NDJSON (file-of-truth per the 2026-08-11
+    no-caps rule) and falls back to SQLite if NDJSON is missing.
+
+    NDJSON lives at ~/.config/cortexllm/memory/warm/<platform>.warm.jsonl,
+    written atomically by lib/memory_thin.py on every prompt. Each line is
+    a JSON object with at least {role, content, timestamp}.
+
+    SQLite is the legacy read path — kept as a fallback for installs where
+    the in-tree manager wrote rows directly without mirroring to NDJSON.
+    """
+    ndjson_entries: List[Dict] = []
+    try:
+        from lib.memory_thin import WARM_DIR  # local import: not always importable
+        if profile:
+            files = [WARM_DIR / f"{profile}.warm.jsonl"]
+        else:
+            files = list(WARM_DIR.glob("*.warm.jsonl"))
+        for fp in files:
+            if not fp.exists():
+                continue
+            try:
+                with fp.open("r", encoding="utf-8", errors="replace") as f:
+                    for raw in f:
+                        line = raw.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                        except Exception:
+                            continue
+                        content = obj.get("content", "")
+                        if not content:
+                            continue
+                        ndjson_entries.append({
+                            "content": content,
+                            "role": obj.get("role", "user"),
+                            "timestamp": obj.get("timestamp"),
+                            "profile": obj.get("platform", profile or "shared"),
+                            "source": "ndjson",
+                        })
+            except OSError:
+                continue
+    except Exception:
+        ndjson_entries = []
+    if ndjson_entries:
+        return ndjson_entries
+
+    # Fallback: legacy SQLite read
     try:
         if profile:
             rows = manager.get_warm_messages(platform=profile, limit=10000)
@@ -116,6 +163,7 @@ def _read_warm_entries(profile: Optional[str] = None) -> List[Dict]:
             "role": r.get("role", "user"),
             "timestamp": r.get("timestamp"),
             "profile": r.get("profile", "shared"),
+            "source": "sqlite",
         })
     return entries
 
