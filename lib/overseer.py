@@ -428,15 +428,38 @@ def _watchdog_cortexagent() -> None:
     cortexagent" bug: a SIGKILLed CLI never sends ``session-end``, so the
     daemon's refcount stays > 0 and the idle watcher never fires. The overseer
     (always-on systemd service) detects the stale session and forces cleanup.
+
+    Important: a 'closed' CLI must be backed by *no recent daemon activity*
+    on the proxy (:8081). Otherwise a webui-only / daemon-managed session
+    (no `bin/cortexagent` process running) would be falsely flagged as stale
+    and unloaded mid-conversation. We require BOTH signals:
+      1. No `bin/cortexagent` / `claude --mcp-config ...cortexagent` process
+      2. Daemon `_last_request` older than ``watchdog_stale_sec`` (default 300s)
+         OR the daemon reports active_sessions == 0
     """
     if _cortexagent_active():
         return
+    # Hardcoded: matches daemon's stale_session_sec default. If the daemon has
+    # received a proxy request within this window, a session is alive even
+    # when we can't see the CLI process (webui, MCP clients, daemons).
+    watchdog_stale_sec = 300
     try:
         st = control.send_request("status", timeout=5)
-        if st.get("ok") and st.get("active_sessions", 0) > 0:
-            _log("cortexagent closed but daemon tracks active session — "
-                 "resetting + unloading big model", "🧹", YELLOW)
-            control.send_request("session-reset", timeout=5)
+        if not st.get("ok"):
+            return
+        active = st.get("active_sessions", 0)
+        idle = st.get("idle_sec")
+        if active == 0:
+            return
+        if idle is not None and idle < watchdog_stale_sec:
+            # Daemon saw a request recently — a client (webui or otherwise) is
+            # using the proxy. Do not treat the absence of `bin/cortexagent`
+            # as proof of a closed session.
+            return
+        _log("cortexagent closed AND daemon idle > "
+             f"{watchdog_stale_sec}s with active session — "
+             "resetting + unloading big model", "🧹", YELLOW)
+        control.send_request("session-reset", timeout=5)
     except Exception:
         pass
 

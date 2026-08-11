@@ -16,6 +16,53 @@ from datetime import datetime
 from pathlib import Path
 import urllib.request
 
+
+# ── Tray dashboard state (consumed by lib/tray_dashboard.py) ───────────────
+# We approximate the big model's "Step N of M" progress by counting distinct
+# tool calls in the response body — each tool call represents a reasoning
+# step. The popout dashboard polls ~/.cortexagent/big_model_steps.json every
+# 1s and renders this. Writes are atomic (tmp + rename) so a half-written
+# file can't crash the dashboard reader.
+_DASHBOARD_STEPS = Path.home() / ".cortexagent" / "big_model_steps.json"
+
+
+def _emit_dashboard_step(body: bytes, elapsed: float) -> None:
+    """Count tool calls in the proxy response and write the dashboard state
+    file. Called once per forwarded response (non-streaming path).
+    """
+    try:
+        parsed = json.loads(body.decode("utf-8", errors="replace"))
+    except Exception:
+        return
+    # OpenAI / Anthropic responses carry tool_calls on choices[].message
+    steps: list = []
+    try:
+        choices = parsed.get("choices") or []
+        if choices:
+            msg = (choices[0] or {}).get("message") or {}
+            tcs = msg.get("tool_calls") or []
+            for i, tc in enumerate(tcs):
+                fn = (tc.get("function") or {}).get("name") or f"tool_{i+1}"
+                steps.append({"label": f"call {fn}", "status": "done"})
+            if not steps and msg.get("content"):
+                # Plain text reply — single step
+                steps = [{"label": "respond", "status": "done"}]
+    except Exception:
+        steps = []
+    payload = {
+        "steps": steps,
+        "current": max(len(steps) - 1, 0) if steps else 0,
+        "elapsed_s": round(elapsed, 2),
+        "updated_at": time.time(),
+    }
+    try:
+        _DASHBOARD_STEPS.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _DASHBOARD_STEPS.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload))
+        tmp.replace(_DASHBOARD_STEPS)
+    except Exception:
+        pass
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -514,6 +561,16 @@ class ProxyHandler:
         # when the call path is interactive.
         if os.isatty(sys.stderr.fileno()) if hasattr(sys.stderr, "fileno") else False:
             print("\n_\n▎ thinking: completion in {:.2f}s\n".format(_elapsed), file=sys.stderr)
+        # Tray dashboard state: emit a small JSON file with step counters
+        # so the popout overseer dashboard can show "Step N of M" + progress
+        # bar. We approximate step count by the number of distinct tool
+        # calls (rough heuristic — the big model emits a tool call per
+        # reasoning step), then mark the request as complete. No-op if the
+        # file path isn't writable. See lib/tray_dashboard.py.
+        try:
+            _emit_dashboard_step(body, _elapsed)
+        except Exception:
+            pass
 
     def _forward_chunked(self, head_bytes, body):
         """Buffer a chunked request, de-chunk, minify, re-send with Content-Length.

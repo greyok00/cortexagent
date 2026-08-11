@@ -350,7 +350,7 @@ class Config:
 
         # ── Branding (configurable; default neutral for distribution) ───────
         self.brand = _env("CORTEXAGENT_BRAND", "branding", "name", "CortexAgent")
-        self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "CortexAgent")
+        self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "GreyOK00")
 
     # ── Helpers ────────────────────────────────────────────────────────────
     def ensure_dirs(self) -> None:

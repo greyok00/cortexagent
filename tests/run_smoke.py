@@ -394,6 +394,13 @@ PII_EXCLUDE_FILES = {
     "lib/post_response_verifier.py",      # redacts sk-ant- keys from responses
     "lib/config.py",                      # docstring documents the old hardcoded paths
     "docs/superpowers/specs/2026-08-10-daily-changelog.md",  # session record (PII by design — local-only)
+    # Legitimate project authorship — NOT personal info. These name the
+    # project owner (the literal string `GreyOK00`) in shipped files. The
+    # scanner must NOT flag them as PII. Add here only after confirming
+    # the file ships the literal authorship, not a personal filesystem
+    # path or secret.
+    "README.md",                          # 'A local coding agent by **GreyOK00**'
+    "bin/cortexagent",                    # '# cortexagent — a local coding agent by GreyOK00'
 }
 
 
@@ -1621,12 +1628,17 @@ def test_fallback_vram_probe_glitchrejection() -> R:
 
 
 def test_fallback_config_and_args() -> R:
-    """Fallback model path + ctx + threshold defaults; fallback args omit
-    --kv-unified. Fallback is LFM2.5-8B-A1B (hybrid Mamba-2 + MoE, 8.3B total /
-    1.5B active) at Q4_K_M — verified to load with the standard fallback args
-    WITHOUT --kv-unified (log: kv_unified='false', model loaded) and to emit
-    structured OpenAI tool_calls. The 35B big model stays MoE/SSM and keeps
-    --kv-unified. See ~/.cortexagent/cortexagent.conf [backend] fallback_model."""
+    """Fallback model is OPT-IN per user decision (Aug 2026 — no fallback for
+    big model, daemon refuses to swap when VRAM tight). The shipped default
+    is an empty string; users can configure a fallback via
+    CORTEXAGENT_FALLBACK_MODEL env or [backend] fallback_model in
+    cortexagent.conf. The remaining checks (big_has_kvu, fallback_ctx,
+    big_vram_min_gb) still apply when a fallback IS configured.
+
+    When fallback_model is non-empty, the path must contain a known-good
+    model family (lfm2.5-8b-a1b at Q4_K_M) and the file must exist.
+    When empty, the daemon skips swap entirely (see lib/daemon._swap_big).
+    """
     try:
         import sys
         if "lib.config" in sys.modules:
@@ -1634,10 +1646,19 @@ def test_fallback_config_and_args() -> R:
         from lib.config import CFG
     except Exception as e:
         return R("fallback config import", "daemoncfg", False, f"import: {e}")
-    cfg_ok = ("lfm2.5-8b-a1b" in str(CFG.fallback_model).lower()
-              and "Q4_K_M" in str(CFG.fallback_model)
-              and CFG.fallback_ctx == 8192 and CFG.big_vram_min_gb == 14
-              and Path(str(CFG.fallback_model)).is_file())
+    fb_path = str(CFG.fallback_model).strip()
+    if not fb_path:
+        # No fallback configured — user decision. Daemon must NOT swap. Skip
+        # the path/file checks; keep the args + threshold checks since those
+        # are constant regardless of fallback presence.
+        cfg_ok = (CFG.fallback_ctx == 8192 and CFG.big_vram_min_gb == 14)
+        cfg_msg = f"empty (no fallback, per user)" if cfg_ok else "BAD ctx/threshold"
+    else:
+        cfg_ok = ("lfm2.5-8b-a1b" in fb_path.lower()
+                  and "Q4_K_M" in fb_path
+                  and CFG.fallback_ctx == 8192 and CFG.big_vram_min_gb == 14
+                  and Path(fb_path).is_file())
+        cfg_msg = f"configured={Path(fb_path).name}"
     # fallback args must NOT carry --kv-unified (LFM2.5 loads fine without it);
     # big args must (the 35B is MoE/SSM and needs it).
     try:
@@ -1648,7 +1669,7 @@ def test_fallback_config_and_args() -> R:
         return R("fallback args", "daemoncfg", False, f"daemon import: {e}")
     ok = cfg_ok and fb_no_kvu and big_has_kvu
     return R("fallback config + args (no --kv-unified)", "daemoncfg", ok,
-             f"cfg={'OK' if cfg_ok else 'BAD'} fb_no_kvu={'OK' if fb_no_kvu else 'BAD'} "
+             f"cfg={cfg_msg} fb_no_kvu={'OK' if fb_no_kvu else 'BAD'} "
              f"big_has_kvu={'OK' if big_has_kvu else 'BAD'}")
 
 
