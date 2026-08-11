@@ -821,21 +821,26 @@ class Dashboard(tk.Tk):
             from lib import overseer
             stats = overseer._get_memory_stats()
         except Exception:
-            stats = {"hot": 0, "warm": 0, "cold": 0}
-        # Caps (live config in lib/config.py; hardcode fallback).
-        HOT_CAP = 300
-        WARM_CAP = 2000
-        # Cold is unbounded — show a relative-to-warm ratio instead.
+            stats = {"hot": 0, "warm": 0, "cold": 0,
+                     "hot_bytes": 0, "warm_bytes": 0}
+        # No caps (HARD RULE 2026-08-11): every prompt appends, never trimmed.
+        # The dashboard shows count + bytes (MB) instead of "/N" fullness.
         self.mem_hot["count"].config(text=str(stats["hot"]))
         self.mem_warm["count"].config(text=str(stats["warm"]))
         self.mem_cold["count"].config(text=str(stats["cold"]))
-        self.mem_hot["cap"].config(text=f"/ {HOT_CAP}")
-        self.mem_warm["cap"].config(text=f"/ {WARM_CAP}")
-        self.mem_cold["cap"].config(text=f"(warm ×{WARM_CAP})")
-        self._draw_mem_bar(self.mem_hot,  stats["hot"],  HOT_CAP,  HOT_FG)
-        self._draw_mem_bar(self.mem_warm, stats["warm"], WARM_CAP, WARM_FG)
-        # Cold: render at ratio of warm bar (1 = matches warm cap).
-        ratio = min(stats["cold"] / WARM_CAP, 1.0)
+        hot_mb = stats.get("hot_bytes", 0) / (1024 * 1024)
+        warm_mb = stats.get("warm_bytes", 0) / (1024 * 1024)
+        self.mem_hot["cap"].config(text=f"{hot_mb:.1f} MB")
+        self.mem_warm["cap"].config(text=f"{warm_mb:.1f} MB")
+        self.mem_cold["cap"].config(text="unlimited")
+        # Bars: render at UI-friendly proportions — 1.0 = full bar width.
+        # Pick soft targets so the bar is informative, not capped-at-N.
+        SOFT_HOT = 1000.0   # 1k entries = full bar
+        SOFT_WARM = 5000.0  # 5k entries = full bar
+        self._draw_mem_bar(self.mem_hot,  stats["hot"],  SOFT_HOT,  HOT_FG)
+        self._draw_mem_bar(self.mem_warm, stats["warm"], SOFT_WARM, WARM_FG)
+        # Cold is unbounded — show count only; bar is a separator.
+        ratio = min(stats["cold"] / 100.0, 1.0)
         self.mem_cold["bar"].delete("all")
         w = self.mem_cold["bar"].winfo_width() or 200
         h = 14

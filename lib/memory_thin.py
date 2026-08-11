@@ -7,6 +7,10 @@ tooling — just hot append + warm mirror + cold write + read/search.
 
 HARD RULE (2026-08-11): no caps. Every prompt appends to hot and is mirrored
 to warm. Warm is the cross-session buffer the engine was designed for.
+
+DROPPED 2026-08-11 (post-cortexllm v0.4.0): the local `_atomic_append` is now
+`from cortexllm.atomic import atomic_append`. POSIX-atomic O_APPEND ≤ PIPE_BUF
+(4096B) on Linux. The local copy was a verbatim duplicate of the public API.
 """
 import json
 import os
@@ -15,6 +19,20 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
+
+# Re-export the drop-in so internal callers can keep using the underscore name.
+try:
+    from cortexllm.atomic import atomic_append as _atomic_append  # noqa: F401
+except ImportError:
+    # cortexllm not installed / vendored fallback missing — provide a local
+    # POSIX-only atomic append (kept here so the wrapper degrades gracefully).
+    def _atomic_append(file_path, line):  # type: ignore[no-redef]
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(file_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, line.encode("utf-8"))
+        finally:
+            os.close(fd)
 
 # Resolve CortexLLM paths (mirrors lib/config.py get cortexllm_*)
 _HOME = Path.home()
@@ -25,17 +43,6 @@ COLD_DIR = CORTEXLLM_DIR / "memory/cold"
 DAEMON_SOCKET = _HOME / ".cortexllm" / "memory.sock"
 SAVE_SCRIPT = _HOME / ".cortexllm" / "scripts" / "save-context.py"
 ENTERPRISE_DB = CORTEXLLM_DIR / "cortexllm.db"
-
-
-def _atomic_append(file_path: Path, line: str) -> None:
-    """POSIX-atomic append one line. Safe for ≤PIPE_BUF (4096B)."""
-    import os as _os
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = _os.open(file_path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o644)
-    try:
-        _os.write(fd, line.encode("utf-8"))
-    finally:
-        _os.close(fd)
 
 
 def _now_ts() -> str:
