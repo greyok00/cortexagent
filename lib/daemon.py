@@ -159,15 +159,6 @@ def _big_extra_args() -> list:
     return args
 
 
-def _fallback_extra_args() -> list:  # pragma: no cover — kept for back-compat
-    # Historical: returned the llama-server flags for the small fallback
-    # model that used to swap in when free VRAM was tight. Removed
-    # 2026-08-11 — the daemon no longer has a fallback model; if the big
-    # 35B can't load it logs the failure and leaves :8080 down. Stub left
-    # in case any external script imported it; returns an empty list.
-    return []
-
-
 def _vram_by_process() -> Dict[str, Any]:
     """Per-process VRAM breakdown for the status payload.
 
@@ -538,8 +529,6 @@ def _handle(req: Dict) -> Dict:
             "active_sessions": _active_sessions,
             "sessions": sessions,
             "session": primary,
-            "profile": primary.get("profile") or "",
-            "model_alias": primary.get("model_alias") or str(_big.alias) if hasattr(_big, "alias") else "",
             "vram_by_proc": _vram_by_process(),
             "last_request": _last_request,
             "idle_sec": int(time.time() - _last_request) if _last_request else None,
@@ -782,10 +771,9 @@ def _status() -> int:
     tiny = s["tiny"]
     from pathlib import Path as _P
     model_name = _P(big.get("model", "")).name or "?"
-    tag = " 🎮 fallback (low VRAM)" if big.get("fallback") else " (big)"
     print(f"CortexAgent daemon: 🟢 running")
     print(f"  big  :{big['port']}  {'🟢 healthy' if big['healthy'] else '🔴 down'}  (running={big['running']})")
-    print(f"       model: {model_name}{tag}")
+    print(f"       model: {model_name} (big)")
     print(f"  tiny :{tiny['port']}  {'🟢 healthy' if tiny['healthy'] else '🔴 down'}  (running={tiny['running']})")
     print(f"  proxy: {'🟢 up' if s['proxy']['running'] else '🔴 down'}")
     print(f"  sessions: {s['active_sessions']}  idle: {s['idle_sec']}s / {s['idle_unload_sec']}s")
