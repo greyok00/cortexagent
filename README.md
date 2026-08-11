@@ -3,8 +3,9 @@
 CortexAgent is a runtime for a self-hosted coding agent. It pairs a
 35-billion-parameter mixture-of-experts model for inference with a
 small always-on model for orchestration, threads every request through
-a middleware proxy, and persists conversation state to a local SQLite
-database. Diffusion runs in-process on the same GPU.
+a middleware proxy, and persists conversation state to plain NDJSON
+files via [cortexllm](https://github.com/greyok00/cortexllm). Diffusion
+runs in-process on the same GPU.
 
 ## Overview
 
@@ -123,8 +124,9 @@ this layer is not supported.
 
 ## Memory
 
-CortexAgent stores conversation state in three tiers, backed by a
-local stdlib SQLite database.
+CortexAgent stores conversation state in three tiers, backed by
+plain NDJSON files via [cortexllm](https://github.com/greyok00/cortexllm).
+No SQL, no vector store, no daemon.
 
 | Tier | Capacity | Purpose |
 |---|---|---|
