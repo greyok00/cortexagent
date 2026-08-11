@@ -15,7 +15,7 @@ CortexAgent **imports** from two upstream packages:
 | `slimtoken.pipeline` | `lib/grammar_proxy.py`, `lib/overseer.py` (minify_request, MinifyConfig) | prompt-shape tuning, LOCKED_KEYS-style config gating |
 | `cortexllm.*` (db, vector, graph, ontology, mcp_server) | `lib/grammar_proxy.py`, `bin/cortexagent`, `memory/`, `lib/memory_thin.py`, `~/.cortexllm/scripts/memory-daemon.py` | platform="cortexagent", in-tree `memory/mcp_server.py`, integration with SessionBridge |
 
-Everything else in `/home/grey/cortexagent/lib`, `/memory`, `/engine`, `/hooks`,
+Everything else in `~/cortexagent/lib`, `/memory`, `/engine`, `/hooks`,
 `/install.sh`, `bin/cortexagent` is **CortexAgent-specific** — it must NOT be
 propagated upstream.
 

@@ -400,7 +400,11 @@ PII_EXCLUDE_FILES = {
     # the file ships the literal authorship, not a personal filesystem
     # path or secret.
     "README.md",                          # 'A local coding agent by **GreyOK00**'
+    "ABOUT.md",                           # 'Maintained by GreyOK00' (branding)
     "bin/cortexagent",                    # '# cortexagent — a local coding agent by GreyOK00'
+    "docs/ARCHITECTURE.md",               # audit doc — local-only, names owner
+    "docs/AUDIT-2026-08-11.md",          # audit doc — local-only
+    "lib/tray_dashboard.py",              # branding line
 }
 
 
@@ -1637,50 +1641,56 @@ def test_fallback_vram_probe_glitchrejection() -> R:
              f"transient_max={free} sustained_max={free2}")
 
 
-def test_fallback_config_and_args() -> R:
-    """Fallback model is OPT-IN per user decision (Aug 2026 — no fallback for
-    big model, daemon refuses to swap when VRAM tight). The shipped default
-    is an empty string; users can configure a fallback via
-    CORTEXAGENT_FALLBACK_MODEL env or [backend] fallback_model in
-    cortexagent.conf. The remaining checks (big_has_kvu, fallback_ctx,
-    big_vram_min_gb) still apply when a fallback IS configured.
+def test_no_fallback_two_models_only() -> R:
+    """Two-models-only rule (enforced 2026-08-11). The big model is the only
+    model served on :8080; the overseer MoE is the only model on :8082. There
+    is NO third model, NO fallback model, NO separate vision server. If a
+    fallback is configured the test fails loudly — this is intentional, so
+    that any future re-introduction of an intermediate (5–6 GB) model is
+    caught at the gate.
 
-    When fallback_model is non-empty, the path must contain a known-good
-    model family (lfm2.5-8b-a1b at Q4_K_M) and the file must exist.
-    When empty, the daemon skips swap entirely (see lib/daemon._swap_big).
+    Verified by reading the shipped cortexagent.conf [backend] section:
+    fallback_model must be empty/blank. The Config class no longer
+    exposes a fallback_model attribute (the daemon rejects any third
+    model), so absence-of-attribute IS the proof.
+
+    The big args must still carry --kv-unified (35B MoE/SSM needs it).
     """
     try:
         import sys
         if "lib.config" in sys.modules:
             del sys.modules["lib.config"]
-        from lib.config import CFG
+        from lib.config import CFG, _load_conf
     except Exception as e:
-        return R("fallback config import", "daemoncfg", False, f"import: {e}")
-    fb_path = str(CFG.fallback_model).strip()
-    if not fb_path:
-        # No fallback configured — user decision. Daemon must NOT swap. Skip
-        # the path/file checks; keep the args + threshold checks since those
-        # are constant regardless of fallback presence.
-        cfg_ok = (CFG.fallback_ctx == 8192 and CFG.big_vram_min_gb == 14)
-        cfg_msg = f"empty (no fallback, per user)" if cfg_ok else "BAD ctx/threshold"
-    else:
-        cfg_ok = ("lfm2.5-8b-a1b" in fb_path.lower()
-                  and "Q4_K_M" in fb_path
-                  and CFG.fallback_ctx == 8192 and CFG.big_vram_min_gb == 14
-                  and Path(fb_path).is_file())
-        cfg_msg = f"configured={Path(fb_path).name}"
-    # fallback args must NOT carry --kv-unified (LFM2.5 loads fine without it);
-    # big args must (the 35B is MoE/SSM and needs it).
+        return R("two-models-only config import", "daemoncfg", False, f"import: {e}")
+    # Config must not expose a fallback_model attr — the rule is enforced
+    # by *not having* the attribute, not by leaving it empty.
+    cfg_no_fb = not hasattr(CFG, "fallback_model") or str(getattr(CFG, "fallback_model", "")).strip() == ""
+    # And the shipped conf (if present) must declare fallback_model = empty.
+    conf_empty = True
+    conf_msg = "no conf"
+    try:
+        conf = _load_conf()
+        if conf.has_section("backend") and conf.has_option("backend", "fallback_model"):
+            fb = conf.get("backend", "fallback_model").strip()
+            conf_empty = (fb == "")
+            conf_msg = f"fallback_model={fb!r}"
+    except Exception as e:
+        conf_empty = True   # missing conf = no fallback possible
+        conf_msg = f"no conf ({e})"
+    if not (cfg_no_fb and conf_empty):
+        return R("no fallback model (two-models-only)", "daemoncfg", False,
+                 f"FORBIDDEN: {conf_msg} — three models are not allowed")
+    # Big args must carry --kv-unified (the 35B MoE/SSM needs it).
     try:
         import lib.daemon as d
-        fb_no_kvu = "--kv-unified" not in d._fallback_extra_args()
         big_has_kvu = "--kv-unified" in d._big_extra_args()
     except Exception as e:
-        return R("fallback args", "daemoncfg", False, f"daemon import: {e}")
-    ok = cfg_ok and fb_no_kvu and big_has_kvu
-    return R("fallback config + args (no --kv-unified)", "daemoncfg", ok,
-             f"cfg={cfg_msg} fb_no_kvu={'OK' if fb_no_kvu else 'BAD'} "
-             f"big_has_kvu={'OK' if big_has_kvu else 'BAD'}")
+        return R("big args", "daemoncfg", False, f"daemon import: {e}")
+    ok = cfg_no_fb and conf_empty and big_has_kvu
+    return R("no fallback (two-models-only) + big has --kv-unified",
+             "daemoncfg", ok,
+             f"cfg=clean conf={conf_msg} big_has_kvu={'OK' if big_has_kvu else 'BAD'}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1749,7 +1759,7 @@ TESTS = {
     "daemoncfg": [test_daemon_unit_template, test_daemon_no_auto_tiny,
                   test_install_starts_daemon_unconditional,
                   test_fallback_vram_probe_glitchrejection,
-                  test_fallback_config_and_args],
+                  test_no_fallback_two_models_only],
     "tui": [test_tui_response_model, test_tui_smoke],
 }
 
