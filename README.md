@@ -1,10 +1,11 @@
 # CortexAgent
 
-**A local-first coding agent that runs entirely on your hardware.** One daemon,
-one always-on overseer, one big model on `:8080`, one tiny LLM on `:8082` for
-the overseer's minifier, in-process `diffusers` for image and video. No cloud,
-no API key, no telemetry, no fallback swap path — the big model **is** the
-agent, and if it can't load, `:8080` goes down.
+**A local coding agent. Two models. Your hardware. Your rules.**
+
+CortexAgent runs a single 35B-parameter MoE on your GPU, an always-on
+overseer MoE for scheduling, and `diffusers` in-process for image and video.
+No cloud, no API key, no telemetry, no fallback swap path. The big model
+**is** the agent. If it can't load, `:8080` goes down.
 
 You talk to it through the CLI, the tray popout, or the 3D webui on `:8090`.
 All three share the same session through the proxy.
@@ -15,30 +16,45 @@ All three share the same session through the proxy.
 
 | Reason | What it means for you |
 |---|---|
-| **No API bills, no rate limits, no rate-limit reroutes** | The 35B MoE runs on your GPU. Prompt as fast as you can think. |
-| **Your code never leaves the box** | Repo, memory, conversation, and embeddings all live under `~/.cortexagent/`. Airgap-friendly. |
-| **Two systemd services that survive logout** | `cortexagent.service` (daemon + big model) and `cortexagent-overseer.service` (scheduler + tiny keepalive) start on login. Close the CLI — they keep running. |
-| **Three memory tiers with no caps** | Every prompt appends to HOT and mirrors to WARM forever. The overseer distills facts into COLD (unlimited) every 30 s, only when idle. You don't lose context to a window or a tokenizer. |
+| **Two models total — that's it** | The 35B MoE on `:8080` and an overseer MoE on `:8082`. No fallback, no third model, no separate vision server, no embeddings server. Nothing in the 2–12 GB gap. |
+| **No API bills, no rate limits** | The big model runs on your GPU. Prompt as fast as you can think. |
+| **Your code never leaves the box** | Repo state, memory, conversation, and embeddings all live under `~/.cortexagent/`. Airgap-friendly. |
+| **Two systemd services that survive logout** | `cortexagent.service` (daemon + big model) and `cortexagent-overseer.service` (scheduler + overseer) start on login. Close the CLI — they keep running. |
+| **Memory with no caps** | Every prompt appends to HOT and mirrors to WARM forever. The overseer distills facts into COLD (unlimited) every 30 s, only when idle. You don't lose context to a window or a tokenizer. |
 | **Grammar proxy as a chokepoint** | Every chat request flows through `:8081`, which strips tool-call grammars and minifies the prompt via `slimtoken` before it reaches the big model. You save VRAM, you save latency, you don't break tool calls. |
 | **In-process diffusion** | SDXL / SD1.5 / LTX-Video on the same GPU, no second port, no second process. Ask for `gen-image` and `gen-video` from the same prompt. |
-| **Drop-in core, not a fork** | CortexAgent consumes `cortexllm` and `slimtoken` as real packages. Local-only changes are adapters, not duplicates. We side-port; we don't fragment. |
+| **Big is multimodal and uncensored** | The 35B MoE handles vision natively (no separate vision server needed) and ships uncensored for cybersecurity support. |
+
+## The two models
+
+| # | Role | Port | Model | Size | Notes |
+|---|---|---|---|---|---|
+| 1 | **Big** | `:8080` | `Qwen3.6-35B-A3B-UD-IQ3_S.gguf` | **13.7 GB** | MoE (35B total / 3B active), uncensored, multimodal. 128K context. KV q4_0 ≈ 640 MB. Fits 16 GB. |
+| 2 | **Overseer** | `:8082` | Overseer MoE | **≤2 GB** | Always-on. Drives the scheduler, warms the cold tier, swaps big when diffusion needs VRAM. |
+
+**Hard rules:**
+
+- ❌ No model above 2 GB except the big.
+- ❌ No model under 12 GB (i.e. nothing in the 2–12 GB range).
+- ❌ No third model. No fallback. No separate vision server. No embedding model. No classifier.
+- ❌ No 5 GB anything. Specifically forbidden: `lfm2.5-8b-a1b` (5.2 GB), `qwen3vl-8b` (5.4 GB), `qwen3-4b` (2.4 GB), `flux2-klein-9b-q4` (5.6 GB).
 
 ## Stack at a glance
 
 | Component | Port | Process | Purpose |
 |---|---|---|---|
-| Big LLM | `:8080` | `llama-server` | Qwen3.6-35B-A3B IQ3_S (~13.6 GB, 128K context) |
-| Tiny LLM | `:8082` | `llama-server` | LFM2.5-1.2B Q4_K_M (~728 MB) — overseer minifier only |
-| Grammar proxy | `:8081` | `lib/grammar_proxy.py` | Minify + tool-call routing for every chat request |
-| Daemon | AF_UNIX `~/.cortexagent/control.sock` | `lib/daemon.py run` | Owns `:8080` / `:8081`, session lifecycle, idle-unload |
-| Overseer | always-on systemd service | `lib/overseer.py start` | Scheduler, warm→cold distillation, tiny keepalive |
-| Webui | `:8090` | `lib/webui.py serve` | 3D chat + live dashboard, shared session with CLI |
-| Diffusion | in-process | `lib/diffusion_backend.py` | SDXL / SD1.5 image, LTX-Video (group-offloaded) |
+| Big LLM | `:8080` | `llama-server` | The agent. Multimodal, uncensored. |
+| Overseer | `:8082` | `llama-server` | MoE scheduler. Drives big unload for diffusion, distills warm→cold. |
+| Grammar proxy | `:8081` | `lib/grammar_proxy.py` | Minify + tool-call routing for every chat request. |
+| Daemon | AF_UNIX `~/.cortexagent/control.sock` | `lib/daemon.py run` | Owns `:8080` / `:8081`, session lifecycle, idle-unload. |
+| Overseer service | always-on systemd | `lib/overseer.py start` | Keeps the overseer alive; runs cron + memory distillation. |
+| Webui | `:8090` | `lib/webui.py serve` | 3D chat + live dashboard, shared session with CLI. |
+| Diffusion | in-process | `lib/diffusion_backend.py` | SDXL / SD1.5 image, LTX-Video (group-offloaded). |
 
 Two systemd user services run the whole stack independent of any CLI session:
 
 - `cortexagent.service` — daemon + proxy + big-model slot
-- `cortexagent-overseer.service` — overseer + tiny keepalive
+- `cortexagent-overseer.service` — overseer + scheduler
 
 ## How it works
 
@@ -49,20 +65,21 @@ Two systemd user services run the whole stack independent of any CLI session:
 1. You type in the CLI, the tray, or the webui. All three share the same session.
 2. Every request hits the grammar proxy on `:8081`. The proxy:
    - Strips `grammar` fields that llama-server rejects on the chunked transport.
-   - Calls `slimtoken.optimize_messages()` to minify the prompt pair-safely (system prompt and tools are not touched; only the conversation is compressed).
+   - Calls `slimtoken.optimize_messages()` to minify the prompt pair-safely.
    - Attaches a `<cold_memory>` block distilled from COLD.
 3. The minified request goes to the big model on `:8080`. Tokens stream back as SSE.
 4. The proxy re-emits the stream to the client. The SessionBridge atomically appends the turn to `~/.cortexagent/state/webui_session.jsonl` (O_APPEND + flock, never clobbers).
 
 **Out of band, the overseer:**
 
-- Pings the tiny model on `:8082` every 15 s so it stays warm.
-- Every 30 s, when the system is idle, runs warm→cold distillation — pulls recent warm entries, asks the tiny model to extract facts, writes them to cold SQLite.
+- Keeps the overseer MoE on `:8082` warm with periodic pings.
+- Every 30 s, when the system is idle, runs warm→cold distillation — pulls recent warm entries, extracts facts, writes them to cold SQLite.
 - Runs scheduled cron tasks even when no CLI session is open.
+- Orchestrates the diffusion path: when you ask for `gen-image` / `gen-video`, it unloads the big model to free ~14 GB of VRAM, runs diffusers, then reloads big.
 
 **The daemon:**
 
-- Owns `:8080` and `:8081`. If the big model can't load, the daemon exits and the systemd unit shows failed status — there is no fallback swap path, by design.
+- Owns `:8080` and `:8081`. If the big model can't load, the daemon exits and the systemd unit shows failed status — **there is no fallback swap path, by design**.
 - Tracks session lifecycle (start, end, idle timer) and exposes them over the AF_UNIX control socket for the tray and webui to display.
 
 ## Install
@@ -73,10 +90,10 @@ cd ~/cortexagent
 bash install.sh        # installs the two systemd services + creates ~/.cortexagent/
 ```
 
-Drop a GGUF at the default path, or override:
+Drop the big GGUF at the default path, or override:
 
 ```bash
-export CORTEXAGENT_MODEL="$HOME/models/your-model.gguf"
+export CORTEXAGENT_MODEL="$HOME/models/qwen3.6-35b-iq3s/Qwen3.6-35B-A3B-UD-IQ3_S.gguf"
 ```
 
 `cortexagent.conf` (`~/.cortexagent/cortexagent.conf`) accepts the same keys in
@@ -99,12 +116,12 @@ session through the proxy — typing in either window sees the same context.
 
 | Key (`cortexagent.conf [backend]`) | Env | Default | Notes |
 |---|---|---|---|
-| `big_model` | `CORTEXAGENT_MODEL` | `~/models/qwen3.6-35b-iq3s/Qwen3.6-35B-A3B-UD-IQ3_S.gguf` | Big GGUF |
+| `big_model` | `CORTEXAGENT_MODEL` | `~/models/qwen3.6-35b-iq3s/Qwen3.6-35B-A3B-UD-IQ3_S.gguf` | Big GGUF. The only model on `:8080`. |
 | `big_model_port` | `CORTEXAGENT_PORT` | `8080` | |
 | `big_ctx` | `CORTEXAGENT_CTX` | `131072` | 128K — KV q4_0 ≈ 640 MB |
 | `big_alias` | `CORTEXAGENT_ALIAS` | `cortexagent` | OpenAI `model` field |
-| `tiny_model` | `CORTEXAGENT_TINY_MODEL` | `~/models/lfm2.5-1.2b/LFM2.5-1.2B-Instruct-Q4_K_M.gguf` | Overseer only |
-| `tiny_model_port` | `CORTEXAGENT_TINY_PORT` | `8082` | **Isolate in tests** — see CLAUDE.md |
+| `overseer_model` | `CORTEXAGENT_OVERSEER_MODEL` | `~/models/<overseer>/<overseer>.gguf` | Overseer MoE. ≤2 GB. |
+| `overseer_model_port` | `CORTEXAGENT_OVERSEER_PORT` | `8082` | **Isolate in tests** — see CLAUDE.md |
 
 | Key (`[daemon]`) | Default | Meaning |
 |---|---|---|
@@ -130,8 +147,10 @@ session.
 ## Diffusion
 
 In-process `diffusers`, no second port, no second process. The big LLM stays
-loaded the whole time; diffusion runs on the same CUDA device with its own
-VRAM budget.
+loaded the whole time; when you ask for `gen-image` / `gen-video`, the
+overseer unloads big to free ~14 GB of VRAM, runs diffusers, then reloads
+big. ~30 s of swap latency is the cost — that's why big stays loaded
+otherwise.
 
 - **Image:** SDXL preferred (best 4K quality), SD1.5 fallback
 - **Video:** LTX-Video, group-offloaded to fit 16 GB
@@ -150,6 +169,8 @@ python3 lib/diffusion_backend.py gen-video "a dog running"   --output dog.mp4
 | Area | Feature | Where |
 |---|---|---|
 | **Agent** | One big model, no fallback swap | `lib/daemon.py _start_big` |
+| **Agent** | Big is multimodal — vision handled natively | `lib/grammar_proxy.py` |
+| **Agent** | Big is uncensored (UD fine-tune) | `lib/daemon.py` |
 | **Agent** | Idle-unload big model (opt-in, default off) | `[daemon] idle_unload_sec` |
 | **Agent** | Hot-swap model file at runtime | `lib/daemon.py swap` |
 | **Agent** | Adopted-model guard (no orphan llama-server) | `lib/daemon.py` |
@@ -158,9 +179,9 @@ python3 lib/diffusion_backend.py gen-video "a dog running"   --output dog.mp4
 | **Proxy** | Real `/metrics` (tok/s source of truth) | `lib/grammar_proxy.py` |
 | **Proxy** | Reload-aware (picks up new big model without restart) | `lib/grammar_proxy.py` |
 | **Overseer** | Always-on systemd service | `cortexagent-overseer.service` |
-| **Overseer** | Tiny keepalive (15 s pings on `:8082`) | `lib/overseer.py` |
+| **Overseer** | Scheduler + cron | `lib/overseer.py` |
 | **Overseer** | Warm→cold distillation (30 s, idle-only) | `lib/overseer.py` |
-| **Overseer** | Cron schedule + plan/workflow tracking | `lib/overseer.py` |
+| **Overseer** | Orchestrates big unload for diffusion | `lib/overseer.py` |
 | **Overseer** | Clean SIGPIPE-safe exit 0 | `lib/overseer.py` |
 | **Webui** | 3D chat surface on `:8090` | `lib/webui.py` |
 | **Webui** | Shared session with CLI via SessionBridge | `lib/session_bridge.py` |
@@ -175,7 +196,6 @@ python3 lib/diffusion_backend.py gen-video "a dog running"   --output dog.mp4
 | **CLI** | Response minify via grammar proxy (R4) | `lib/grammar_proxy.py` |
 | **CLI** | Box-drawn tables, `█` numerics, `▎` lists (R5) | `lib/visual.py` |
 | **CLI** | Clarifying question on ambiguous prompts (R6) | `engine/cli.py` |
-| **CLI** | Big is multimodal (R7) | `lib/grammar_proxy.py` |
 | **Memory** | Atomic append-only JSONL (O_APPEND + flock) | `lib/session_bridge.py` |
 | **Memory** | Username field for multi-voice identity | `lib/session_bridge.py` |
 | **Memory** | Hot/Warm write-through (no caps, no rotation) | `lib/cortexagent_call.py` |
@@ -183,7 +203,7 @@ python3 lib/diffusion_backend.py gen-video "a dog running"   --output dog.mp4
 | **Diffusion** | LTX-Video group-offloaded | `lib/diffusion_backend.py` |
 | **Diffusion** | 4K upscale (LANCZOS4 or Real-ESRGAN) | `lib/diffusion_backend.py` |
 | **Doctor** | `cortexagent doctor` repairs settings drift | `engine/cli.py` |
-| **Smoke** | 29-test gate before commit | `tests/run_smoke.py` |
+| **Smoke** | 30-test gate before commit | `tests/run_smoke.py` |
 
 ## cortexllm — what ships standalone vs. what CortexAgent uses
 
@@ -248,7 +268,7 @@ in a TUI panel.
 ## What's intentionally NOT here
 
 - **No fallback model.** If the big GGUF can't load, `:8080` goes down.
-  Re-add a fallback path by reverting `lib/daemon.py` `_start_big`.
+- **No third model.** No intermediate 5–6 GB anything. No separate vision server.
 - **No separate flux/LTX GGUF into the LLM slot.** Diffusers is the only
   diffusion path; llama-server can't host SDXL/LTX (unknown architecture).
 - **No openclaw integration.** Was an experimental module; removed.
@@ -262,11 +282,11 @@ cortexagent/
 ├── engine/cli.py                   # argparse → daemon control socket
 ├── lib/
 │   ├── daemon.py                   # owns :8080/:8081 + AF_UNIX sock
-│   ├── overseer.py                 # scheduler + tiny keepalive
+│   ├── overseer.py                 # scheduler + overseer orchestration
 │   ├── grammar_proxy.py            # :8081 chokepoint (minify + tool routing)
 │   ├── model_backend.py            # llama-server wrapper
 │   ├── diffusion_backend.py        # in-process SDXL/SD1.5/LTX
-│   ├── tiny_llm.py                 # LFM2.5-1.2B client
+│   ├── tiny_llm.py                 # overseer MoE client (≤2 GB)
 │   ├── prompt_queue.py             # decompose/conflict/supersede
 │   ├── webui.py                    # :8090 server
 │   ├── tray_dashboard.py           # tray popout overseer view
@@ -276,15 +296,16 @@ cortexagent/
 ├── assets/cortexagent.jpg          # brand reference
 ├── config/templates/*.service      # systemd unit templates
 ├── install.sh
-└── tests/run_smoke.py              # gate (29/29 must pass before commit)
+└── tests/run_smoke.py              # gate (30/30 must pass before commit)
 ```
 
 ## Dependencies
 
 The core is stdlib-only Python.
 
-- **Required:** `llama-server` (llama.cpp build), the GGUF you want to serve,
-  an NVIDIA GPU with enough VRAM for the model (defaults tuned for 16 GB).
+- **Required:** `llama-server` (llama.cpp build), the big GGUF (13.7 GB Qwen3.6-
+  35B-A3B-UD-IQ3_S), the overseer GGUF (≤2 GB MoE), an NVIDIA GPU with enough
+  VRAM for the big model + overseer (defaults tuned for 16 GB).
 - **Optional:** `claude` CLI (for interactive mode), Brave/Chrome (browser
   tools), `diffusers` + `torch` (image/video — only needed if you call
   diffusion endpoints).
@@ -292,7 +313,7 @@ The core is stdlib-only Python.
 
 ## See also
 
-- [ABOUT.md](ABOUT.md) — short pitch, screenshots, "is this for me?"
+- [ABOUT.md](ABOUT.md) — short pitch, "is this for me?"
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — full system architecture
 - [docs/CORTEXLLM-0.4.0-DIVERGENCE.md](docs/CORTEXLLM-0.4.0-DIVERGENCE.md) —
   why CortexAgent uses cortexllm as a package, not a fork
