@@ -233,3 +233,65 @@ generic enough to mention when the upstream PR for v0.4.0 lands:
    side assumes the canonical MCP key. If the upstream engine has a
    `profile` concept, document it; the cortexllm v0.4.0 API
    `cortexllm.distill()` should accept either form and normalize.
+
+---
+
+## 2026-08-11 — post-v0.4.0 cortexagent follow-ups
+
+### What landed upstream
+
+- **v0.4.0 tagged on `master`** (4 commits between v0.3.3 and v0.4.0).
+- **9 new modules** in `~/cortexllm/repo/cortexllm/` (atomic, drain,
+  lifecycle, stats, integrity, scheduler, queue, plan, dag, workflow —
+  ~1,800 lines total). All stdlib-only. None touch cortexagent.
+- **5 new MCP tools**: `memory_stats`, `memory_integrity`, `cron_parse`,
+  `workflow_run`, `workflow_status`.
+- **76 cortexllm tests** (19 baseline + 17 Phase A + 22 Phase B + 18 Phase C).
+  All green.
+- **README rewrite** — new "Lifecycle & scheduling helpers" section.
+- **No cortexagent imports / `platform="cortexagent"` defaults /
+  `CORTEXAGENT_*` env names / `~/.cortexagent/` paths** in v0.4.0
+  (confirmed by §10 of the brief).
+
+### cortexagent required updates (blocking) — STATUS
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | `start-cortexllm-mcp.sh` fallback chain | ✅ Done (`b130297`) | First branch (flat `cortexllm_mcp_server.py` at repo root) was dead — moved in v0.3.2 split. New chain: `cortexllm/` package → `legacy/` → in-tree. PYTHONPATH updated to include the package dir so sub-imports resolve. |
+| 2 | `_detect_cortexllm_dir` re-test | ✅ No change needed | Vendored path still `~/cortexllm/repo/cortexllm/` — same as before. 3-tier preference (env > repo > vendored) works. |
+| 3 | CortexAgent smoke gate | ✅ Baseline 34/38 | Same 4 known failures (S1 PII, S2 tiny_llm behavior, S3 statusline test, S5 fallback-attr). No regressions. Coverage 31/31. |
+
+### cortexagent optional migrations (deferred — do at leisure)
+
+Per the brief §11, these are non-blocking. Status as of v0.4.0:
+
+| cortexagent file | What | Decision |
+|---|---|---|
+| `lib/overseer.py:_get_memory_stats/_estimate_tokens` | swap to `cortexllm.stats` | Deferred — local copy works; brief confirms "same dict shape, plus estimated_tokens field". Migrate when convenient. |
+| `lib/overseer.py:_check_db_integrity/_check_memory_writes` | swap to `cortexllm.integrity` | Deferred. |
+| `lib/overseer.py:_cron_matches/schedule_*/_check_schedule` | swap to `cortexllm.scheduler` | Deferred — semantic mismatch risk. Cortexagent's cron is **calibrated for the daemon/overseer use case**; new module has a generic parser + aliases. Test both before swapping. |
+| `lib/overseer.py:queue_*` | swap to `cortexllm.queue` | Deferred. |
+| `lib/overseer.py:plan_*` | swap to `cortexllm.plan` | Deferred. |
+| `lib/overseer.py:_is_running/_start/_stop` | swap to `cortexllm.lifecycle` | **Do not migrate.** cortexagent's `os.fork` + `os.setsid` is daemonization (full session leader), not single-instance lock. cortexllm's `SingleInstance(pidfile)` is a CM; its `daemonize()` is functionally equivalent but the integration with systemd Type=forking + the systemd `Restart=on-failure` loop and the SIGPIPE-safety redirects is non-trivial. Keep local. |
+| `lib/memory_thin.py:_atomic_append` | swap to `cortexllm.atomic.atomic_append` | **Migrate.** Drop-in. |
+| `lib/memory-daemon.py:_atomic_append_ndjson/socket drain` | swap to `cortexllm.atomic + drain` | **Migrate.** Drop-in. |
+| `engine/dag.py` | delete, use `cortexllm.dag` | **Do not migrate.** Cortexagent's DAG is template-aware (deploy/pentest/malware-analysis step kinds). The generic `cortexllm.dag.DAGScheduler` has no domain knowledge. Keep local. |
+| `engine/workflow.py` | delegate engine to `cortexllm.workflow` | **Keep local templates, can opt-in to engine shell.** Per the brief §3.2. |
+
+### Recommended migration order (when convenient, not blocking)
+
+1. **`lib/memory_thin.py:_atomic_append`** — 1 line. Do first.
+2. **`lib/memory-daemon.py` socket drain** — 1 line. Do with #1.
+3. **`lib/overseer.py:_get_memory_stats/_estimate_tokens`** — small, low-risk.
+4. **`lib/overseer.py:_check_db_integrity`** — small, low-risk.
+5. **`lib/overseer.py:queue_*/plan_*`** — easy wins if testable.
+6. **`lib/overseer.py:schedule_*`** — needs care (semantic test).
+7. `lifecycle`/`dag`/`workflow` — **leave local** (see notes above).
+
+### Don't touch
+
+- **`lib/daemon.py`** — daemon policy is CortexAgent-specific.
+- **`lib/session_bridge.py`** — multi-voice UX, stays.
+- **`memory/mcp_server.py` (in-tree)** — knows `platform="cortexagent"`.
+- **systemd units, `install.sh`, `bin/cortexagent`** — CortexAgent-specific.
+- **`engine/dag.py` + `engine/workflow.py`** — template-specific (see notes).
