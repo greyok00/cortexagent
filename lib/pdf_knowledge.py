@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """pdf_knowledge.py — Extract practical knowledge from technical PDFs into Coding_Practices DB.
 
-Uses pdftotext for extraction and the tiny LLM (qwen2.5:0.5b) to identify
+Uses pdftotext for extraction and the tiny LLM (LFM2.5-1.2B) to identify
 actionable practices. Saves only practical info — no intros, no fluff.
 
 Usage:
@@ -17,11 +17,11 @@ from datetime import datetime
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-from lib import tiny_llm  # 0.5b on llama-server :8082 (no Ollama)
+from lib import tiny_llm  # LFM2.5-1.2B on llama-server :8082 (no Ollama)
 
 # ── Config ───────────────────────────────────────────────────────────────────
 DB = Path.home() / ".config/cortexllm" / "cortexllm.db"
-CHUNK_SIZE = 1500  # chars per chunk (fits in 0.5b context)
+CHUNK_SIZE = 1500  # chars per chunk (fits in 1.2B context)
 CHUNK_OVERLAP = 200
 MAX_CHUNKS_PER_PDF = 50  # safety limit
 PROCESSED_LOG = Path.home() / ".cortexagent" / "logs" / "pdf_processed.json"
@@ -94,7 +94,7 @@ def chunk_text(text: str) -> list:
 # ── LLM Extraction ─────────────────────────────────────────────────────────
 
 def query_llm(prompt: str, max_tokens: int = 256) -> str:
-    """Query the tiny 0.5b LLM on llama-server :8082 (no Ollama)."""
+    """Query the tiny LFM2.5-1.2B LLM on llama-server :8082 (no Ollama)."""
     try:
         result = tiny_llm.query(prompt, max_tokens=max_tokens, temperature=0.1, timeout=60)
         return result or ""

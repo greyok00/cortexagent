@@ -2,7 +2,7 @@
 """overseer — unified heartbeat + orchestrator daemon for CortexAgent.
 
 Combines memory health monitoring, task scheduling, plan tracking, and
-the tiny LLM (qwen2.5-0.5b on llama-server :8082) into one persistent
+the tiny LLM (LFM2.5-1.2B on llama-server :8082) into one persistent
 background overseer.
 
 Features:
@@ -11,7 +11,7 @@ Features:
   - Task queue (add/list/clear/remove)
   - Calendar scheduler (cron/daily/weekly/date)
   - Plan tracking (set steps, advance, status)
-  - Tiny LLM start/keepalive (0.5b on llama-server :8082 — no Ollama)
+  - Tiny LLM start/keepalive (LFM2.5-1.2B on llama-server :8082 — no Ollama)
   - PID-locked single instance
   - Persistent state across restarts
 
@@ -159,7 +159,7 @@ _tiny_lock = threading.Lock()
 # ── Clean shutdown flag ──────────────────────────────────────────────────────
 # Set by the SIGTERM/SIGINT handler so the daemon loop exits cleanly (exit code 0)
 # instead of being signal-killed. A signal-kill would make systemd's
-# Restart=on-failure respawn the overseer, which would re-pin the 0.5b model —
+# Restart=on-failure respawn the overseer, which would re-pin the LFM2.5-1.2B model —
 # the "memory jumps back up after closing cortexagent" bug.
 _SHUTDOWN = False
 
@@ -270,7 +270,7 @@ def task_steps_publish(state: Dict, steps: List[Dict], current: Optional[int]) -
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  TINY LLM (0.5b on llama-server :8082 — no Ollama)
+#  TINY LLM (LFM2.5-1.2B on llama-server :8082 — no Ollama)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _check_tiny_model() -> bool:
@@ -1360,7 +1360,7 @@ def _daemon_loop(interval: int) -> None:
     """Main overseer loop: health checks, schedule, queue, LLM keepalive."""
     # Register clean-shutdown handlers so SIGTERM/SIGINT exit 0 (not signal-kill).
     # This prevents systemd Restart=on-failure from respawning us and re-pinning
-    # the 0.5b model after cortexagent closes.
+    # the LFM2.5-1.2B model after cortexagent closes.
     signal.signal(signal.SIGTERM, _handle_stop_signal)
     signal.signal(signal.SIGINT, _handle_stop_signal)
 
@@ -1370,7 +1370,7 @@ def _daemon_loop(interval: int) -> None:
     state["started_at"] = datetime.now().isoformat()
     _save_state(state)
 
-    # Start the tiny 0.5b llama-server (replaces Ollama preload)
+    # Start the tiny LFM2.5-1.2B llama-server (replaces Ollama preload)
     has_llm = _preload_tiny_model()
 
     tick = 0
@@ -1535,7 +1535,7 @@ def _daemon_loop(interval: int) -> None:
                 break
             time.sleep(1)
 
-    # ── Clean shutdown: unload the 0.5b so the llama-server frees VRAM, then exit 0 ──
+    # ── Clean shutdown: unload the LFM2.5-1.2B so the llama-server frees VRAM, then exit 0 ──
     _log("Overseer shutting down — unloading tiny model...", "🛑", YELLOW)
     _unload_tiny_model()
     state = _load_state()
@@ -1612,11 +1612,11 @@ def _stop() -> None:
     """Stop the overseer daemon and stop the tiny llama-server.
 
     Order matters: SIGTERM the daemon FIRST so it can no longer issue keepalive
-    ticks that would restart the 0.5b. The daemon's clean handler stops the
+    ticks that would restart the LFM2.5-1.2B. The daemon's clean handler stops the
     tiny server itself and exits 0. We then stop again as a backup so VRAM is
     freed even if the daemon was already dead or failed to stop it.
     Exiting 0 (not signal-killed) keeps systemd Restart=on-failure from
-    respawning us and re-loading the 0.5b after cortexagent closes.
+    respawning us and re-loading the LFM2.5-1.2B after cortexagent closes.
     """
     pid = _is_running()
     if pid:
@@ -1625,7 +1625,7 @@ def _stop() -> None:
             # Wait up to 45s for a clean exit (daemon exits within ~2s normally;
             # margin covers a mid-tick LLM query, which can take up to 30s).
             # SIGKILLing a mid-query daemon would make systemd Restart=on-failure
-            # respawn it and re-pin the 0.5b — the exact bug clean exit 0 avoids.
+            # respawn it and re-pin the LFM2.5-1.2B — the exact bug clean exit 0 avoids.
             exited = False
             for _ in range(450):
                 try:
@@ -1667,7 +1667,7 @@ def _status() -> None:
         print(f"Overseer: RUNNING (pid {pid})")
         print(f"  Started: {state.get('started_at', 'unknown')}")
         print(f"  Ticks: {state['total_ticks']}")
-        print(f"  Model: tiny 0.5b on :{_tiny.port} ({'up' if _tiny.is_healthy() else 'down'})")
+        print(f"  Model: tiny LFM2.5-1.2B on :{_tiny.port} ({'up' if _tiny.is_healthy() else 'down'})")
 
         stats = _get_memory_stats()
         print(f"  Memory: {stats['hot']}H / {stats['warm']}W / {stats['cold']}C")

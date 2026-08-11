@@ -51,7 +51,7 @@ def status() -> dict:
     return {
         "main_model": _port_alive(8080),
         "gen_model": s["diffusers_ready"],   # diffusion runs in-process
-        "heartbeat": _port_alive(8082),       # tiny 0.5b on llama-server
+        "heartbeat": _port_alive(8082),       # tiny LFM2.5-1.2B on llama-server
         "diffusion": s,
     }
 

@@ -3,7 +3,7 @@
 
 One ``LlamaServer`` instance = one GGUF model on one TCP port. Used for:
   - the big coding model   (port 8080 — managed by the daemon in the new arch)
-  - the tiny 0.5b overseer model (port 8082 — managed by lib/overseer.py)
+  - the tiny LFM2.5-1.2B overseer model (port 8082 — managed by lib/overseer.py)
 
 No Ollama. Pure subprocess + HTTP ``/health`` polling. All paths resolve
 through ``lib/config.py`` (env → conf → default), so nothing here is hardcoded
