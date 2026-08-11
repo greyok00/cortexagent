@@ -1,9 +1,36 @@
-# CortexAgent — Condensed Plan (Aug 9 + Aug 10 only)
+# CortexAgent — Condensed Plan (Aug 9 + Aug 10 + Aug 11)
 
-**Owner:** grey · **Last updated:** 2026-08-10 12:50 MST · **Status:** 🔴 active
+**Owner:** grey · **Last updated:** 2026-08-11 · **Status:** 🟢 active
 
 Append-only daily log. Latest entries supersede prior ones. Aug 8 ignored
 per user (2026-08-10). Each item: **what**, **files**, **why**, **status**.
+
+---
+
+## 🎯 ACTIVE PLAN (Aug 11 — supersedes everything below)
+
+### UI separation: tray popout ACTIVE, :8090 webui DEFERRED
+User pivot 2026-08-11: "the system tray popout UI for the overseer model is
+NOT the same thing. do not mix them up."
+
+| UI | Status | Reason |
+|---|---|---|
+| Tray popout dashboard (`lib/tray_dashboard.py`) | ✅ **ACTIVE** | Local, stdlib-only, no extra deps. Shows overseer state + big-model step counter + idle tip. |
+| :8090 webui | ⏸️ **DEFERRED** | Not a core feature until CLI is 100%. tui/streaming block cards stay local-only until then. |
+| Tray click → launch 8090 | ❌ **REMOVED** | Was confusing tray popout with webui. Menu still offers both, but they're separate. |
+
+### Big model behavior
+- Live install uses **Qwen3.6-35B-A3B UD-IQ3_S** (UD uncensored fine-tune, 13 GB).
+- github copy at `/home/grey/cortexagent-github/` uses base **IQ3_S** (no UD).
+- **No fallback model** — both copies ship `fallback_model = ""`. User: "I just want the UD model."
+- `idle_unload_sec = 0` — big stays loaded.
+
+### Branding
+- "CortexAgent by GreyOK00" in `bin/cortexagent:2`, `README.md:7`, and `lib/config.py:355` (author default).
+- Authorship strings are NOT PII — PII exclude covers README.md + bin/cortexagent.
+
+### Overseer watchdog
+- Requires BOTH signals before unloading big on apparent CLI close: no `bin/cortexagent` process AND daemon idle > 300s (or active_sessions == 0). Prevents webui-only sessions from false-positive unload.
 
 ---
 
@@ -51,10 +78,16 @@ Decision deferred until everything else ships. Current lfm2.5-1.2b works.
 
 ---
 
-## ✅ DONE (Aug 9 + Aug 10 only — latest first)
+## ✅ DONE (Aug 9 + Aug 10 + Aug 11 — latest first)
 
 | # | When | Item | Files | Why |
 |---|------|------|-------|-----|
+| 17 | Aug 11 | **Tray popout overseer dashboard** — `lib/tray_dashboard.py` (Tkinter, stdlib-only). Shows overseer state (offline/thinking/idle + dot), big-model step counter (▓▓░░ progress bar with labels), 30-message rotating tip pool (15s cadence). Polls daemon control socket + overseer state JSON + big-model steps JSON at 1Hz. Plain language, no raw numerals (no t/s, ports, MiB). Esc closes. Wired into tray menu + double-click handler. | `lib/tray_dashboard.py` (new, 391 lines), `lib/tray.py` (+21), `lib/grammar_proxy.py` (+57, `_emit_dashboard_step`) | User: "implement ALL" of the tray dashboard. CLI 100% working milestone. |
+| 16 | Aug 11 | **Branding: 'CortexAgent by GreyOK00'** — consistent across launcher, README, config author default. Added `README.md` + `bin/cortexagent` to PII exclude (authorship is not PII). | `bin/cortexagent:2`, `README.md:7`, `lib/config.py:355`, `tests/run_smoke.py` PII_EXCLUDE_FILES | User feedback: "it should say CortexAgent by GreyOK00 but it says CortexAgent by CortexAgent". Authorship ≠ PII. |
+| 15 | Aug 11 | **Overseer watchdog false-positive fix** — requires BOTH `no bin/cortexagent` AND `daemon idle > 300s` before unloading big on apparent CLI close. Previously unloaded big mid-conversation during webui-only sessions. | `lib/overseer.py` (`_watchdog_cortexagent`, +31 lines) | User selected "Fix watchdog (proper)" option after diagnosing the unload-during-webui race. |
+| 14 | Aug 11 | **No-fallback config + smoke fix** — `fallback_model = ""` (empty) in both live install conf + github copy. `test_fallback_config_and_args` now passes when empty (per user "I just want the UD model") while still validating ctx/threshold/args constants. | `~/.cortexagent/cortexagent.conf`, `lib/config.py` github copy, `tests/run_smoke.py` (+30 lines) | User explicit: "I dont want a fallback model just the uncensored model. i told you this several times". |
+| 13 | Aug 11 | **GitHub copy prepared** at `/home/grey/cortexagent-github/` — 217 files / 6.8 MB, PII scrubbed (`/home/grey`, `GreyOK00` kept as legit author, `fc-`, `sk-ant-`, `UD-IQ3_S`→`IQ3_S`). Old changelogs removed (Aug 4 overseer-registry design, output-rules-design). `big_model` default = base IQ3_S (no UD), `fallback_model = ""`, version 0.3.2. Git initialized + commit `5c20b87`. | `/home/grey/cortexagent-github/` (full copy) | User: "purge any PII from the public repo... remove any old changelogs that have personal info". |
+| 12 | Aug 11 | **Big-model step emission in proxy** — `_emit_dashboard_step(body, elapsed)` counts tool calls in response and writes `~/.cortexagent/big_model_steps.json` (atomic tmp+rename). Read by `lib/tray_dashboard.py` to render the step counter. | `lib/grammar_proxy.py` (+57 lines) | Feeds the tray dashboard's big-model panel. |
 | 10 | Aug 10 | **Daily changelog tracking** — this file + MEMORY.md pointer | `docs/superpowers/specs/2026-08-10-daily-changelog.md`, `~/.claude/projects/-home-grey/memory/cortexagent-daily-changelog.md`, `MEMORY.md` entry | Never lose context again. Future sessions READ THIS FIRST. |
 | 9 | Aug 10 | **Wolf-head tray icon** — replaced fake-looking AI wolf. Built from `/home/grey/Desktop/Twitch/GREYOK_ ANIME DUDE.PNG` (768×1376 wolf-knight). Auto-detected head region, square-cropped to 767×767, multi-size. Tray.py auto-picks via existing fallback. | `assets/cortexagentsquarelogo.{png,jpg}`, `assets/cortexagent-icon-{16,32,48,64,128,256,512}.png`, `assets/cortexagent-webui-{128,256,512}.png`, `extension/assets/favicon-32.png`, `*.pre-wolf-20260810-*` (backups of old), `/tmp/build-wolf-icon.py` (re-runnable) | User: "find an actual wolf head image... the one you made doesn't look real" |
 | 8 | Aug 10 | **Hot-memory hook JSON-escape bug fix** — `printf '%s' "$CONTEXT"` was sending unescaped newlines → daemon `json.loads` silently dropped every multi-line Bash/Read result → **39 hours of lost messages** (Aug 9 00:24 → Aug 10 12:14). Fix: replaced printf with `python3 -c 'json.dumps(...)'` in both `hook-save-context.sh` + `hook-save-user-prompt.sh`. 4-case escape test suite passes. Cold-memory rule saved (priority=critical). | `~/.cortexllm/scripts/hook-save-context.sh`, `~/.cortexllm/scripts/hook-save-user-prompt.sh`, `~/.config/cortexllm/memory/cold/agent_critical_rules.json` | Daemon/socket/script all looked fine in isolation; only the JSON payload construction was broken. Hooks must use python json.dumps, NEVER printf %s. |
@@ -68,11 +101,12 @@ Decision deferred until everything else ships. Current lfm2.5-1.2b works.
 
 | Old item | Why removed |
 |----------|-------------|
-| Tray pop-out 360×360 dashboard showing overseer activity | User: "shouldn't be multiple dashboards" → tray = click-to-launch 8090. Activity visible IN 8090, not in tray. |
+| ~~Tray pop-out 360×360 dashboard showing overseer activity~~ **(Aug 11: RE-ADDED)** | Aug 10: "shouldn't be multiple dashboards". Aug 11: user pivoted — "tray popout dashboard is ACTIVE, webui :8090 is DEFERRED. they are NOT the same thing." Re-added as item #17. |
 | SmolVLM2-2.2B vision bridge | User: "no other models" + Qwen 3.6 35B is already multimodal. |
 | Whisper audio → text | Same — no separate models. |
 | Prompt optimizer (2-pass) | Qwen 3.6 + slimtoken minify in proxy covers the use case. |
 | Separate qwen3vl-8b server (:8083) | Qwen 3.6 35B IS multimodal. Drop the entire `[vision]` block. |
+| Fallback model swap path | Aug 11: user: "no fallback model anymore. I just want the UD model." Both live + github ship `fallback_model = ""`. |
 
 ---
 
