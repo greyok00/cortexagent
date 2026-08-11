@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cortexagent": {
+      "command": "{{CORTEXAGENT_MCP_CMD}}"
+    },
+    "firecrawl": {
+      "command": "python3 {{REPO_ROOT}}/lib/firecrawl_proxy.py"
+    }
+  }
+}
