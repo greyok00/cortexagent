@@ -6,7 +6,7 @@ the tiny LLM (LFM2.5-1.2B on llama-server :8082) into one persistent
 background overseer.
 
 Features:
-  - Memory health monitoring (hot/warm/cold counts, auto-compact, cold distill)
+  - Memory health monitoring (hot/warm/cold counts, cold distill)
   - Session health checks (proxy, DB integrity)
   - Task queue (add/list/clear/remove)
   - Calendar scheduler (cron/daily/weekly/date)
@@ -141,7 +141,7 @@ _tiny = LlamaServer(
     name="tiny",
     model_path=str(CFG.tiny_model),
     port=int(CFG.tiny_model_port),
-    ctx=4096,
+    ctx=2048,  # matches daemon's lean tiny config (~300 MB, was 640 MB)
     ngl=999,
     alias="cortexagent-tiny",
     extra_args=["-fa", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-np", "1", "-t", "4"],
@@ -272,13 +272,6 @@ def task_steps_publish(state: Dict, steps: List[Dict], current: Optional[int]) -
 # ═══════════════════════════════════════════════════════════════════════════════
 #  TINY LLM (LFM2.5-1.2B on llama-server :8082 — no Ollama)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-def _check_tiny_model() -> bool:
-    """True iff the tiny llama-server is healthy (starts it if down)."""
-    if _tiny.is_healthy():
-        return True
-    return _tiny.start()
-
 
 def _preload_tiny_model() -> bool:
     """Start the tiny llama-server and wait for /health (idempotent)."""
@@ -655,9 +648,11 @@ def _watchdog_cortexagent() -> None:
     """
     if _cortexagent_active():
         return
-    # Hardcoded: matches daemon's stale_session_sec default. If the daemon has
-    # received a proxy request within this window, a session is alive even
-    # when we can't see the CLI process (webui, MCP clients, daemons).
+    # 300s is tighter than daemon's stale_session_sec default (1800s) — the
+    # watchdog fires BEFORE the daemon's self-heal so a leaked session is
+    # reset sooner. If the daemon has received a proxy request within this
+    # window, a session is alive even when we can't see the CLI process
+    # (webui, MCP clients, daemons).
     watchdog_stale_sec = 300
     try:
         st = control.send_request("status", timeout=5)
@@ -704,19 +699,6 @@ def _estimate_tokens(stats: Dict) -> str:
     if est > 1_000:
         return f"{est/1_000:.0f}K"
     return str(est)
-
-
-def _auto_compact() -> bool:
-    """Trigger warm memory compaction."""
-    try:
-        sys.path.insert(0, str(REPO_ROOT))
-        from memory.manager import manager
-        manager._update_warm_buffer()
-        _log("Auto-compact: warm memory pruned and deduplicated", "🧹", GREEN)
-        return True
-    except Exception as e:
-        _log(f"Auto-compact failed: {e}", "❌", RED)
-        return False
 
 
 def _cold_distill() -> bool:
@@ -1785,8 +1767,12 @@ def _minify_status_cli(args: List[str]) -> None:
           f"@ {snap.get('last_run_ts', 0)}")
     history = snap.get("history_60s") or []
     if history:
-        print(f"    60s samples:  {len(history)} "
-              f"(last {history[-1][1]:.1f}% saved)")
+        if history:
+            last = history[-1]
+            pct = f"{last[1]:.1f}% saved" if isinstance(last, (list, tuple)) and len(last) >= 2 else "n/a"
+        else:
+            pct = "n/a"
+        print(f"    60s samples:  {len(history)} (last {pct})")
 
 
 def _parse_interval(args: List[str]) -> int:

@@ -55,7 +55,6 @@ CONF_FILE = Path(os.environ.get(
 
 def _load_conf() -> configparser.ConfigParser:
     """Load the optional user conf file (INI). Missing file → empty config."""
-    cp = configparser.ConfigParser()
     # interpolate=False so {{HOME}}-style placeholders in values aren't mangled
     cp = configparser.ConfigParser(interpolation=None)
     if CONF_FILE.exists():
