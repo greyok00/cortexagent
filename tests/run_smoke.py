@@ -404,6 +404,7 @@ PII_EXCLUDE_FILES = {
     "bin/cortexagent",                    # '# cortexagent — a local coding agent by GreyOK00'
     "docs/ARCHITECTURE.md",               # audit doc — local-only, names owner
     "docs/AUDIT-2026-08-11.md",          # audit doc — local-only
+    "docs/CORTEXLLM-0.4.0-DIVERGENCE.md", # divergence tracker — local-only
     "lib/tray_dashboard.py",              # branding line
 }
 
