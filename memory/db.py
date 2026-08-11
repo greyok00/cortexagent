@@ -90,6 +90,21 @@ CREATE TABLE IF NOT EXISTS Memory_Cold (
     metadata    TEXT    DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS Coding_Practices (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT    NOT NULL DEFAULT (datetime('now')),
+    category    TEXT    NOT NULL,
+    practice    TEXT    NOT NULL,
+    description TEXT    DEFAULT '',
+    source      TEXT    DEFAULT 'unknown',
+    priority    TEXT    DEFAULT 'medium' CHECK (priority IN ('critical','high','medium','low')),
+    tags        TEXT    DEFAULT '[]',
+    UNIQUE(category, practice)
+);
+CREATE INDEX IF NOT EXISTS Coding_Practices_category_idx ON Coding_Practices(category);
+CREATE INDEX IF NOT EXISTS Coding_Practices_source_idx   ON Coding_Practices(source);
+CREATE INDEX IF NOT EXISTS Coding_Practices_priority_idx ON Coding_Practices(priority);
+
 CREATE TABLE IF NOT EXISTS Logs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     profile     TEXT    NOT NULL,
