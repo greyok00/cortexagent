@@ -319,13 +319,15 @@ side-effects), not regressions from the audit fixes.
     test imports from `CFG.cortexllm_dir` which now resolves to the new
     package.
 
-- **MEDIUM (deferred):** M21 memory-store split (hooks write NDJSON, distillers
-  read SQLite — both kept in sync via the daemon), M22 `Coding_Practices` table
-  never created, M23 cold-fact profile mismatch (MCP `platform:cortexagent`
-  vs distiller shared). These don't cause user-visible regressions; the
-  fallback reads work either way.
+- **MEDIUM (deferred):** ~~M21~~ memory-store split, ~~M22~~ `Coding_Practices`
+  table, ~~M23~~ cold-fact profile mismatch. **All three fixed 2026-08-11**:
+  M21 → distiller reads NDJSON first (lib/cold_distiller.py:_read_warm_entries),
+  M22 → table added to SCHEMA_SQL (memory/db.py), M23 → distiller normalizes
+  profile to `platform:<x>` (lib/cold_distiller.py:_write_cold_fact).
 
-- **TODO:** Overseer should emit `username="Overseer"` chat events to the
+- **TODO:** ~~Overseer should emit `username="Overseer"` chat events to the
   SessionBridge for scheduled-task activity (wiring is in place — the bridge
   accepts any origin/username — but the actual overseer loop calls haven't been
-  added yet).
+  added yet).~~ **Done 2026-08-11** — `lib/overseer.py:_bridge_emit()` writes
+  to the bridge with `username="Overseer"`. Wired into `_process_queue` (queue
+  start/done/fail/crash) and `_check_schedule` (cron/daily/weekly fire).
