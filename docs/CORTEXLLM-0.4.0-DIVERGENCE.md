@@ -144,3 +144,49 @@ Other session does all 4 phases in one pass without stopping. Watch
 - Action: opened this tracker. No code changes yet. Waiting for v0.4.0 commits.
 
 <!-- Append new dated entries below as the other session ships phases. -->
+
+### 2026-08-11 cortexagent side changes (this session)
+
+While waiting for v0.4.0 to ship, took the user's "have at it" guidance
+and fixed cortexagent-side issues that don't depend on the v0.4.0 surface:
+
+**WIP commits (3,265 lines staged) — see git log on master:**
+- `37d456f` docs: ARCHITECTURE/AUDIT/SEPARATION/v0.4.0-DIVERGENCE
+- `0190613` feat: branding swap (wolfhead icons), v0.4.x docs, lib/minify → slimtoken
+- `3ec7b54` test: 33-test unit suite for lib/response_model.py
+
+**Fix commits (side-portable improvements):**
+- `c2defd0` fix(cold_distiller): read NDJSON first, SQLite fallback (M21)
+- `48c666d` fix(db): create Coding_Practices table on fresh installs (M22)
+- `6157546` fix(cold_distiller): normalize profile to platform:<x> (M23)
+- `5dc5093` feat(overseer): emit SessionBridge events as 'Overseer' (unified chat)
+- `b94698e` fix(readme): daemon.sock → control.sock (L39)
+
+**Cleanup:**
+- Deleted 12 `*.png.pre-wolfhead-20260811-011630` backups (pre-rebrand snapshots)
+- Skipped `.bak` files (user may want them as reference)
+
+**Smoke gate after all changes:** 31/31 coverage + 33/38 tests pass.
+Same 5 known failures (all pre-existing, documented in
+`docs/ARCHITECTURE.md` §12). No regressions.
+
+### 2026-08-11 — what to side-port from this batch to upstream cortexllm
+
+These fixes are cortexagent-specific but the underlying techniques are
+generic enough to mention when the upstream PR for v0.4.0 lands:
+
+1. **NDJSON-first reads** — `lib/cold_distiller.py:_read_warm_entries`
+   reads NDJSON (file-of-truth per the no-caps rule) before falling back
+   to SQLite. Useful pattern for any engine that has dual stores.
+   Worth mentioning in the upstream README so consumers know to mirror
+   to NDJSON if they want fast consumer reads.
+
+2. **Lazy import for optional integrations** —
+   `lib/overseer.py:_bridge_emit` imports SessionBridge inside the
+   function, never at module load. Same pattern works for any optional
+   notification path (webhooks, queues, etc.).
+
+3. **`platform:<x>` profile normalization** — the distiller's write
+   side assumes the canonical MCP key. If the upstream engine has a
+   `profile` concept, document it; the cortexllm v0.4.0 API
+   `cortexllm.distill()` should accept either form and normalize.
