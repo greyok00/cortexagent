@@ -7,14 +7,14 @@ Owns the model backends and the grammar proxy so the CLI can be a thin client:
   - grammar proxy on :8081           (reload-aware: triggers big reload on request)
   - AF_UNIX control socket           (status / load / unload / session / shutdown)
 
-The tiny 0.5b (:8082) is owned by the always-on OVERSEER systemd service, not
+The tiny LFM2.5-1.2B (:8082) is owned by the always-on OVERSEER systemd service, not
 this daemon. The daemon reports its state + exposes manual ``load tiny`` /
 ``unload tiny`` commands, but does NOT auto-start/stop it (avoids a boot race).
 
-Idle auto-unload: after ``CORTEXAGENT_IDLE_UNLOAD_SEC`` (default 600s) with no
-proxy traffic and no active CLI session, the big model is stopped → ~13 GB VRAM
-freed. The next request reloads it transparently (the proxy buffers + retries),
-so the CLI never relaunches and never sees a 502.
+Idle auto-unload: after ``CORTEXAGENT_IDLE_UNLOAD_SEC`` (default 0s — big stays
+loaded) with no proxy traffic and no active CLI session, the big model is
+stopped → ~13 GB VRAM freed. The next request reloads it transparently (the
+proxy buffers + retries), so the CLI never relaunches and never sees a 502.
 
 Lifecycle:
   python3 lib/daemon.py run       # foreground (systemd ExecStart)
@@ -650,7 +650,7 @@ def _handle(req: Dict) -> Dict:
 def _run() -> None:
     """Foreground daemon: proxy + control socket + idle watcher.
 
-    The tiny 0.5b (:8082) is owned by the always-on OVERSEER systemd service,
+    The tiny LFM2.5-1.2B (:8082) is owned by the always-on OVERSEER systemd service,
     NOT by this daemon. The daemon's ``_tiny`` instance is kept only for status
     reporting (``is_healthy``) and manual ``load tiny``/``unload tiny`` control
     commands — it does NOT auto-start/stop the tiny at boot/shutdown. This

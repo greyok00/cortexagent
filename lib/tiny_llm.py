@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""lib/tiny_llm.py — shared client for the tiny 0.5b model on llama-server.
+"""lib/tiny_llm.py — shared client for the tiny LFM2.5-1.2B model on llama-server.
 
 Talks to the OpenAI-compatible ``/v1/chat/completions`` endpoint exposed by the
 tiny model's llama-server (port 8082, started by lib/overseer.py via
 lib/model_backend.py). Replaces every former Ollama ``/api/generate`` call to
-``qwen2.5:0.5b`` across the codebase (overseer, media_pipeline, pdf_knowledge,
+``lfm2.5:1.2b`` across the codebase (overseer, media_pipeline, pdf_knowledge,
 model_switcher) — so the CortexAgent product has **no Ollama dependency**.
 
 If the tiny server is down, queries return ``None`` (graceful — callers already

@@ -18,7 +18,7 @@ Models (defaults, all overridable via env):
     loads via ``StableDiffusionXLPipeline.from_single_file``.
   - 🎬 video: ``Lightricks/LTX-Video`` (2B) via ``LTXPipeline.from_pretrained``.
     Cached in the HuggingFace hub cache on first use (download). ~9–10 GB VRAM
-    with group offloading so it fits alongside the 0.5b tiny on a 16 GB GPU.
+    with group offloading so it fits alongside the LFM2.5-1.2B tiny on a 16 GB GPU.
 
 cuDNN caveat (verified on this machine, 2026-08-02)
 ---------------------------------------------------
@@ -507,7 +507,7 @@ def gen_video(prompt: str, output: str = "output.mp4",
     ``CORTEXAGENT_VIDEO_MODEL`` defaults to the HuggingFace repo
     ``Lightricks/LTX-Video`` (downloaded + cached on first use). Frames must be
     8k+1 (default 161); resolution divisible by 32. Group offloading is on by
-    default so it fits a 16 GB GPU next to the 0.5b tiny. Returns True on success.
+    default so it fits a 16 GB GPU next to the LFM2.5-1.2B tiny. Returns True on success.
     """
     if model:
         os.environ["CORTEXAGENT_VIDEO_MODEL"] = model
