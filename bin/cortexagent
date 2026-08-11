@@ -1,5 +1,5 @@
 #!/bin/bash
-# cortexagent — a local coding agent by CortexAgent.
+# cortexagent — a local coding agent by GreyOK00.
 #
 # Runs the agent on a local llama.cpp model (no cloud, no API key). Loads the
 # model into VRAM only while the session runs, and frees VRAM on exit. Full

@@ -4,7 +4,7 @@
   <img src="assets/cortexagent.jpg" alt="CortexAgent" width="600">
 </p>
 
-A local coding agent by **CortexAgent**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with a fully minified prompt system, lazy-loaded MCP tools, and built-in SQLite memory. Designed for maximum token efficiency and speed on a single 16 GB GPU.
+A local coding agent by **GreyOK00**. Runs entirely on a local [llama.cpp](https://github.com/ggml-org/llama.cpp) model — no cloud, no API key — with a fully minified prompt system, lazy-loaded MCP tools, and built-in SQLite memory. Designed for maximum token efficiency and speed on a single 16 GB GPU.
 
 **v0.3.x** · [github.com/greyok00/cortexagent](https://github.com/greyok00/cortexagent) — typed response model with streaming TUI, session bridge, unified overseer with context monitor, luxury 3D web UI, stale-session self-heal, slimtoken minify pipeline.
 

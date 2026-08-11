@@ -296,6 +296,20 @@ def _run_gui(quit_event: threading.Event) -> None:
         webbrowser.open("http://127.0.0.1:8090/")
         _log("opened webui: http://127.0.0.1:8090/", "🌐", CYAN)
 
+    def on_dashboard(icon, item):
+        """Tray click → popout overseer dashboard (NOT the :8090 webui).
+        Opens a small Tk window with overseer state + big-model steps +
+        rotating idle tip. See lib/tray_dashboard.py.
+        """
+        try:
+            from lib import tray_dashboard
+            t = threading.Thread(target=tray_dashboard.open_dashboard,
+                                  daemon=True, name="tray-dashboard")
+            t.start()
+            _log("opened overseer dashboard", "📊", CYAN)
+        except Exception as e:
+            _log(f"failed to open dashboard: {e}", "⚠️", YELLOW)
+
     def on_quit(icon, item):
         _log("Quit — tearing down overseer", "🛑", YELLOW)
         _overseer_stop()
@@ -311,12 +325,19 @@ def _run_gui(quit_event: threading.Event) -> None:
         MI("Reload config", on_reload_cfg),
         Menu.SEPARATOR,
         MI("Launch CLI", on_cli),
+        MI("Overseer dashboard", on_dashboard),
         MI("Open webui (8090)", on_open_webui),
         Menu.SEPARATOR,
         MI("Quit", on_quit),
     )
     icon = pystray.Icon("cortexagent", _make_icon_image(),
                         "CortexAgent", menu)
+    # Double-click tray icon → open overseer dashboard (the local popout,
+    # not the deferred :8090 webui).
+    try:
+        icon.on_activate = on_dashboard
+    except Exception:
+        pass
     _log("tray icon running — close it via the menu's Quit to stop the overseer",
          "🟢", GREEN)
     icon.run()
