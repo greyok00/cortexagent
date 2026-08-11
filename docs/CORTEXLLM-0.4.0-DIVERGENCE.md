@@ -170,7 +170,50 @@ and fixed cortexagent-side issues that don't depend on the v0.4.0 surface:
 Same 5 known failures (all pre-existing, documented in
 `docs/ARCHITECTURE.md` §12). No regressions.
 
-### 2026-08-11 — what to side-port from this batch to upstream cortexllm
+### 2026-08-11 — low/medium sweep continues
+
+After the WIP and crash-fix commits, continued fixing remaining LOW audit
+items. **3 new commits, no regressions (smoke 34/38, up from 33/38):**
+
+- `bc4bc26` fix(docs): stale 0.5b docstrings → LFM2.5-1.2B (L2); malformed CSS var (L32)
+  - 25 docstring hits across 7 lib files (overseer, tiny_llm, model_backend,
+    model_switcher, pdf_knowledge, daemon, diffusion_backend) replaced with
+    "LFM2.5-1.2B" / "LFM2.5:1.2b"
+  - `assets/webui_template.html:95` — `var(--surface; rgba(20,20,20,0.5))`
+    malformed (missing closing paren); replaced with `var(--surface)`; the
+    override on the next line still wins
+- `e7b2e69` fix: dead code cleanup (L3/L4/L5/L6/L17/L19/L20/L21/L23)
+  - L3: watchdog_stale_sec comment now explains 300s is INTENTIONALLY tighter
+    than daemon's 1800s (watchdog fires first)
+  - L4: dropped dead `tag = " 🎮 fallback (low VRAM)"` (big dict never has
+    `fallback` key)
+  - L5: dropped dead `profile`/`model_alias` fields (scan dicts lack those)
+  - L6: aligned tiny ctx 4096 → 2048 to match daemon's lean tiny config
+  - L17: dropped duplicate `ConfigParser()` (interpolation=None wins)
+  - L19: removed unused `_check_tiny_model` (replaced by `_preload_tiny_model`)
+  - L20: removed unused `_auto_compact` (no-caps rule: never trim warm)
+  - L21: removed unused `_fallback_extra_args` (no fallback model exists)
+  - L23: guarded `history[-1][1]` for empty / list-of-1 cases
+- `946ecf6` fix(tests): S4 regression test tries legacy/ path after v0.3.2 split
+  - The test was inserting `CFG.cortexllm_dir` into sys.path only, but post
+    v0.3.2 split the flat modules (`cortexllm_vector.py`, `cortexllm_graph.py`,
+    `cortexllm_ontology.py`) live in `~/cortexllm/repo/legacy/`. Now the test
+    tries the new `cortexllm/` package first, then the legacy flat fallbacks.
+  - Smoke flips to 34/38. Pre-existing failures (S1 PII, S2 tiny_llm behavior,
+    S3 statusline test, S5 fallback attr removed) unchanged — all documented.
+
+**Side-port candidates (this batch):**
+- L6 (tiny ctx alignment) — generic. If v0.4.0's tiny-LLM keepalive exposes
+  its own ctx knob, document the canonical value (2048 here, daemon's view
+  is truth; matches lean ~300 MB footprint).
+- L17 (ConfigParser) — purely local cleanup, but if v0.4.0 has a similar
+  `_load_conf()`, the `interpolation=None` default is correct (so `{{HOME}}`-
+  style placeholders in values aren't mangled).
+
+The body of "2026-08-11 — what to side-port from this batch to upstream
+cortexllm" continues below — those three generic techniques (NDJSON-first
+reads, lazy import for optional integrations, `platform:<x>` profile
+normalization) remain the canonical side-port list.
 
 These fixes are cortexagent-specific but the underlying techniques are
 generic enough to mention when the upstream PR for v0.4.0 lands:
