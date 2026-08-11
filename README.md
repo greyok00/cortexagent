@@ -13,7 +13,7 @@ and if it can't load the port goes down.
 | Big LLM | `:8080` | `llama-server` | Qwen3.6-35B-A3B IQ3_S (~13.6 GB, 128K context) |
 | Tiny LLM | `:8082` | `llama-server` | LFM2.5-1.2B Q4_K_M (~728 MB) — overseer only |
 | Grammar proxy | `:8081` | `lib/grammar_proxy.py` | Minify + tool-call routing for every chat request |
-| Daemon | AF_UNIX `~/.cortexagent/daemon.sock` | `lib/daemon.py run` | Owns `:8080` / `:8081`, session lifecycle, idle-unload |
+| Daemon | AF_UNIX `~/.cortexagent/control.sock` | `lib/daemon.py run` | Owns `:8080` / `:8081`, session lifecycle, idle-unload |
 | Overseer | always-on systemd service | `lib/overseer.py start` | Scheduler, warm→cold distillation, tiny keepalive |
 | Webui | `:8090` | `lib/webui.py serve` | 3D chat + live dashboard, shared session with CLI |
 | Diffusion | in-process | `lib/diffusion_backend.py` | SDXL / SD1.5 image, LTX-Video (group-offloaded) |
