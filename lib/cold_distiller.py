@@ -170,10 +170,21 @@ def _read_warm_entries(profile: Optional[str] = None) -> List[Dict]:
 
 # ── Cold fact writer ──────────────────────────────────────────────────────
 def _write_cold_fact(category: str, fact: Dict, profile: str = "shared") -> bool:
-    """Write a distilled fact to the SQLite cold table. Returns True if written."""
+    """Write a distilled fact to the SQLite cold table. Returns True if written.
+
+    Profile normalization: the MCP server reads cold facts with the key
+    `platform:<platform>` (see memory/mcp_server.py:PROFILE). The distiller
+    receives `profile` as either `platform:<x>`, `<x>`, or `shared`; we
+    normalize to `platform:<platform>` so the MCP server can find what the
+    distiller wrote.
+    """
+    if profile and not profile.startswith("platform:") and profile != "shared":
+        normalized = f"platform:{profile}"
+    else:
+        normalized = profile
     try:
         db.add_to_cold(
-            profile=profile,
+            profile=normalized,
             category=category,
             fact=fact["description"],
             source=f"distiller:{fact.get('profile', 'shared')}",
