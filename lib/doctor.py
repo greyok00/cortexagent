@@ -10,23 +10,25 @@ one place, not three.
 
 What it repairs (idempotent — re-running is a no-op when everything matches):
   1. Isolated config dir exists (``$CORTEXAGENT_CONFIG_DIR`` / ~/.cortexagent-config).
-  2. ``CLAUDE.md`` in the config dir == repo ``config/CLAUDE.md`` (byte compare);
-     on drift → backup + copy + re-lock (chmod 444 / chattr +i) so Claude can't
-     re-edit it.
-  3. ``settings.json`` in the config dir == rendered template ({{HOME}}→$HOME);
+  2. ``settings.json`` in the config dir == rendered template ({{HOME}}→$HOME);
      on drift → backup + re-render. Verifies the key custom fields:
      quiet, spinnerTipsEnabled=false, claudeMdExcludes the global CLAUDE.md,
      statusLine → our lib/statusline.py, the 3 hooks (SessionStart /
      UserPromptSubmit / Stop).
-  4. ``mcp.json`` in the config dir has the cortexagent server (or is correctly
+  3. ``mcp.json`` in the config dir has the cortexagent server (or is correctly
      skipped when the MCP script is absent); on drift → backup + re-render.
-  5. The ``claude`` binary banner/tips patch (``lib/patch_binary.py``) — re-applies
+  4. The ``claude`` binary banner/tips patch (``lib/patch_binary.py``) — re-applies
      if ``--check`` says NOT PATCHED. Opt out with --no-patch or
      ``CORTEXAGENT_PATCH_BINARY=0``.
-  6. The ``assets/cortexagentsquarelogo.jpg`` asset exists (tray + webui need it).
-  7. (report-only) ``bin/cortexagent`` still has the env wiring the brand depends
+  5. The ``assets/cortexagentsquarelogo.jpg`` asset exists (tray + webui need it).
+  6. (report-only) ``bin/cortexagent`` still has the env wiring the brand depends
      on (IS_DEMO, ALT_SCREEN, banner call, MCP guard). The doctor does NOT
      rewrite repo source — it flags tampering so a human re-runs install.
+
+The CLAUDE.md check was hard-removed (2026-08-11): the practical-reasoning
+profile is now injected at runtime via slimtoken system_minify and
+lib/tiny_llm's default system prompt — no file dependency that Claude Code
+updates can break.
 
 Non-destructive: every overwritten live file is copied to ``<name>.doctor.bak``
 first. NEVER touches the user's global ``~/.claude/CLAUDE.md``, memory DBs,
@@ -150,41 +152,12 @@ def _check_config_dir(cfg_dir: Path, dry: bool) -> Check:
         return Check("config dir exists", FAIL, f"{e.__class__.__name__}: {e}")
 
 
-def _check_claude_md(cfg_dir: Path, dry: bool) -> Check:
-    src = _REPO_ROOT / "config" / "CLAUDE.md"
-    dst = cfg_dir / "CLAUDE.md"
-    if not src.exists():
-        return Check("CLAUDE.md (isolated)", FAIL, "repo config/CLAUDE.md missing")
-    if _same(src, dst):
-        return Check("CLAUDE.md (isolated)", HEALTHY, "matches repo template")
-    if dry:
-        return Check("CLAUDE.md (isolated)", DRY, "would overwrite drifted CLAUDE.md")
-    _bak(dst)
-    # A prior repair chmod'd dst to 444 (and possibly chattr +i), so make it
-    # writable before copying over it — otherwise shutil.copy2 raises
-    # PermissionError and `cortexagent doctor` dies with a traceback.
-    try:
-        os.chmod(dst, 0o644)
-    except Exception:
-        pass
-    try:
-        subprocess.run(["chattr", "-i", str(dst)], capture_output=True, timeout=3)
-    except Exception:
-        pass
-    try:
-        shutil.copy2(src, dst)
-    except Exception as e:
-        return Check("CLAUDE.md (isolated)", FAIL, f"copy failed: {e.__class__.__name__}: {e}")
-    # Re-lock so Claude can't edit it (best-effort; chattr needs sudo/cap).
-    try:
-        subprocess.run(["chattr", "+i", str(dst)], capture_output=True, timeout=3)
-    except Exception:
-        pass
-    try:
-        os.chmod(dst, 0o444)
-    except Exception:
-        pass
-    return Check("CLAUDE.md (isolated)", FIXED, "restored + re-locked (chmod 444)")
+def _check_profile_at_runtime() -> Check:
+    # Replaces the old _check_claude_md. The practical-reasoning profile is
+    # applied at runtime (slimtoken system_minify + lib/tiny_llm default
+    # system prompt) — there is no CLAUDE.md file to drift.
+    return Check("practical-reasoning profile", HEALTHY,
+                 "applied at runtime (slimtoken + tiny_llm)")
 
 
 def _check_settings(cfg_dir: Path, home: str, dry: bool) -> Check:
@@ -331,7 +304,7 @@ def run(dry: bool = False, no_patch: bool = False) -> list[Check]:
     fire_enabled = os.environ.get("CORTEXAGENT_FIRECRAWL_ENABLED", "0")
     checks: list[Check] = []
     checks.append(_check_config_dir(cfg_dir, dry))
-    checks.append(_check_claude_md(cfg_dir, dry))
+    checks.append(_check_profile_at_runtime())
     checks.append(_check_settings(cfg_dir, home, dry))
     checks.append(_check_mcp(cfg_dir, memory_cmd, fire_enabled, brave, dry))
     checks.append(_check_binary_patch(no_patch, dry))

@@ -1,122 +1,148 @@
 # CortexAgent Model Stack
 
-## VRAM Budget (16GB Total)
+## VRAM layout
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                    VRAM MAP (16 GB total)                    │
+│                     16 GB GPU                              │
 ├────────────────────────────────────────────────────────────┤
+│  🧠  Qwen3.6-35B-A3B IQ3_S                                 │
+│     weights 13.6 GB  │  KV (128K, q4_0) ~640 MB            │
+│     total ~14.3 GB                                         │
 │                                                            │
-│  ┌──────────────────────────────────────────────────┐      │
-│  │  🧠  Qwen3.6-35B (IQ3_S)                        │      │
-│  │  ┌──────────────────────┬───────────────────────┐ │      │
-│  │  │ Weights: 13.0 GB    │ KV Cache: 1.3 GB      │ │      │
-│  │  │                     │ (256k ctx, q4_0)       │ │      │
-│  │  └──────────────────────┴───────────────────────┘ │      │
-│  │  Total: 14.3 GB                                  │      │
-│  └──────────────────────────────────────────────────┘      │
-│                                                            │
-│  ┌── 1.7 GB reserved for system / GPU ops ──────────┐      │
-│  └──────────────────────────────────────────────────┘      │
-│                                                            │
+│  🎨  SDXL / SD 1.5 / 🎬 LTX-Video   (in-process diffusers) │
+│     loaded only when gen-image / gen-video fires           │
 └────────────────────────────────────────────────────────────┘
 ```
 
-**The LLM owns the VRAM by default; diffusion runs in-process on the same GPU.**
-**v0.3.x** — big stays loaded at all times (`big_idle_unload_sec=0` by default;
-user pref: keep it loaded). Big is multimodal (Qwen3-VL family / Qwen3.6 35B),
-so a separate vision server is no longer needed. The big model handles vision
-natively and orchestrates image/video gen via diffusers in-process.
+The LLM is always resident by default (`idle_unload_sec=0`); diffusion
+allocates from the remaining headroom when invoked. There is no fallback
+model — if the 35B GGUF can't load, `:8080` goes down.
 
-The shipped default `big_model` is **empty** — users MUST configure their own
-via `CORTEXAGENT_MODEL=/path/to.gguf` or `[backend] big_model = /path/to.gguf`
-in `cortexagent.conf`. The shipped `tiny_model` (LFM2.5-1.2B, ~728 MB, tool-call
-native) and `fallback_model` (LFM2.5-8B-A1B, MoE+Mamba-2 hybrid, ~6.7 GB) are
-kept as defaults. Image/video generation
-loads HuggingFace `diffusers` **in-process** (`lib/diffusion_backend.py`, #33)
-— it does NOT swap into the LLM slot (that was the broken #28 path: llama-server
-can't host diffusion). For a heavy video gen the LLM idle-unloads first.
+| Model        | VRAM      | When    | Used for                      |
+|--------------|-----------|---------|-------------------------------|
+| 🧠 35B       | ~14.3 GB  | always  | reasoning, code, chat, vision |
+| 🎨 SD 1.5    | ~3.7 GB   | on call | image (default)               |
+| 🎨 SDXL      | ~8–14 GB  | on call | image (preferred when loaded) |
+| 🎬 LTX-Video | ~10 GB    | on call | short video clips             |
+| 🤏 Tiny 1.2B | ~0.7 GB   | always  | overseer minify / scheduling  |
 
-```
-┌─────────────┬────────────┬──────────┬─────────────────────────┐
-│ Model       │ VRAM Used  │ When     │ Used For                │
-├─────────────┼────────────┼──────────┼─────────────────────────┤
-│ 🧠 Qwen3.6  │ 14.3 GB    │ Default  │ Reasoning, code, chat    │
-│ 🎨 SD 1.5   │ ~3.7 GB    │ gen-image│ Image generation (def.) │
-│ 🎨 SDXL     │ ~8 GB      │ gen-image│ Image generation (opt.)  │
-│ 🎬 LTX-Video│ ~10 GB     │ gen-video│ Short video clips        │
-└─────────────┴────────────┴──────────┴─────────────────────────┘
-```
+## Big — Qwen3.6-35B-A3B
 
-## Model Details
-
-### 🧠 Qwen3.6-35B-A3B (Default LLM)
 | Property | Value |
-|----------|-------|
-| **File** | `Qwen3.6-35B-A3B-UD-IQ3_S.gguf` |
-| **Size** | 13 GB |
-| **Arch** | Hybrid SSM/Attention (35B params, ~10 layers full-attention) |
-| **Context** | 262,144 tokens native |
-| **KV Cache** | ~5 KB/token at q4_0 → ~335 MB at 65K, ~1.3 GB at 256K |
-| **Why this model** | Tiny KV cache (hybrid SSM) means it fits 256K context in VRAM alongside weights. Pure attention models of this size need 2-3× more KV memory. |
-| **Backend** | llama-server on :8080 (proxy :8081); idle-unloads to free VRAM |
+|---|---|
+| File | `Qwen3.6-35B-A3B-UD-IQ3_S.gguf` |
+| Size | 13.6 GB |
+| Arch | Hybrid SSM/attention MoE (35B total / ~3B active) |
+| Context | 131,072 tokens (128K by default — fits in 16 GB with weights) |
+| KV cache | ~5 KB/token at q4_0 → ~640 MB at 128K |
+| Backend | `llama-server` on `:8080` (proxy `:8081`) |
+| Why this one | Tiny KV cache + MoE → fits 128K with weights in 16 GB |
 
-### 🎨 Stable Diffusion 1.5 / SDXL (Image Generation)
+Default is set in `cortexagent.conf`. Override with
+`CORTEXAGENT_MODEL=/path/to.gguf`.
+
+## Image — SDXL / SD 1.5
+
 | Property | Value |
-|----------|-------|
-| **Files** | `v1-5-pruned-emaonly.safetensors` (SD 1.5, ~4 GB, default), `sd_xl_base_1.0.safetensors` (SDXL, ~6.6 GB) |
-| **Loader** | `StableDiffusionPipeline.from_single_file` / `StableDiffusionXLPipeline.from_single_file` (diffusers, fp16) |
-| **Output** | **4K UHD 3840×2160** (default; native gen ~1024×576 → cv2 LANCZOS4 upscale, or `CORTEXAGENT_UPSCALER=realesrgan`) |
-| **Native gen** | SD 1.5 ~1024×576; SDXL ~1920×1088 (`NATIVE_MP` caps, /32) |
-| **VRAM** | SD 1.5 peak ~3.7 GB gen; SDXL ~8–14 GB; upscale is light |
-| **Use** | Generate 4K images from text prompts (SDXL preferred when complete; SD 1.5 fallback) |
+|---|---|
+| Files | `sd_xl_base_1.0.safetensors` (~6.6 GB) preferred; SD 1.5 fallback (~4 GB) |
+| Loader | `StableDiffusionPipeline.from_single_file` (diffusers, fp16) |
+| Output | 3840×2160 (generated at native ~1024×576 / 1920×1088, then LANCZOS4 upscale; `CORTEXAGENT_UPSCALER=realesrgan` for sharper) |
+| VRAM | SDXL 8–14 GB peak; SD 1.5 ~3.7 GB |
 
-### 🎬 LTX-Video (Video Generation)
+## Video — LTX-Video
+
 | Property | Value |
-|----------|-------|
-| **Source** | HF repo `Lightricks/LTX-Video` (downloaded to the HF cache on first `gen-video`, or set `CORTEXAGENT_VIDEO_MODEL` to a local path) |
-| **Loader** | `LTXPipeline.from_pretrained` (diffusers, bf16, group-offloaded to fit 16 GB) |
-| **Output** | **4K UHD 3840×2160** (default; native ~1024×576 ×161 frames → frame-upscale to 4K) |
-| **VRAM** | ~10 GB with group offloading |
-| **Use** | Generate short 4K video clips from text prompts |
+|---|---|
+| Source | HF `Lightricks/LTX-Video` (auto-downloaded on first `gen-video`; or `CORTEXAGENT_VIDEO_MODEL=…`) |
+| Loader | `LTXPipeline.from_pretrained` (bf16, group-offloaded) |
+| Output | 3840×2160 |
+| VRAM | ~10 GB |
 
-> **cuDNN:** on this GPU/driver (cuDNN 9.2 / driver 550) a standard SD 1.5 conv
-> raises `CUDNN_STATUS_NOT_INITIALIZED`, so cuDNN is **disabled by default**
-> (`CORTEXAGENT_DIFFUSION_CUDNN=0`); native conv runs at ~8 it/s @512².
+> **cuDNN off by default.** On this driver (cuDNN 9.2 / 550) a standard SD 1.5
+> conv raises `CUDNN_STATUS_NOT_INITIALIZED`, so `CORTEXAGENT_DIFFUSION_CUDNN=0`
+> is the default. Flip on only if you've verified cuDNN works on your build.
 
-## How Generation Works
+## How generation works
 
-Diffusion runs **in-process** — no LLM slot swap, no second server. The main
-LLM stays loaded; when VRAM is tight (e.g. LTX video), the LLM idle-unloads
-first, diffusion runs, then the LLM reloads on the next chat request (the
-reload-aware proxy buffers the request so the CLI never sees a 502).
+Diffusion runs in-process on the same CUDA device — no LLM swap, no second
+server. The big model stays loaded; diffusion allocates from headroom.
 
 ```
-Task Flow:                                    VRAM State:
-┌─────────────────────┐                     ┌──────────────┐
-│ LLM Reasoning (T-01) │──► Generate prompts │ 🧠 Qwen3.6   │
-│ LLM Code (T-02)     │──► Write code        │   loaded     │
-└─────────────────────┘                     └──────────────┘
-           │
-           ▼  gen-image / gen-video (in-process diffusers)
-┌─────────────────────┐                     ┌──────────────┐
-│ Image Gen (T-04)    │──► Generate 12 imgs │ 🎨 SD 1.5    │
-│ Image Gen (T-05)    │──► Generate assets  │   in-process │
-└─────────────────────┘                     └──────────────┘
-           │
-           ▼  next chat request → LLM still loaded (or reloads if it idle-unloaded)
-┌─────────────────────┐                     ┌──────────────┐
-│ Docker (T-06)       │──► Deploy          │ 🧠 Qwen3.6   │
-│ System Exec (T-07)  │──► Verify          │   resident   │
-└─────────────────────┘                     └──────────────┘
+LLM reasoning ──► prompt + plan ──► gen-image / gen-video
+   ▲                                       │
+   │                                       ▼
+   └── next chat request (LLM still resident)
 ```
+
+## Practical-reasoning profile (applies to big, tiny, AND diffusion prompts)
+
+Professional-to-professional, no beginner framing, direct conclusions, plain
+language. The big model reasons this way by default; the tiny overseer model
+gets a short operational variant; diffusion prompts stay terse and literal.
+
+### Big-model frame (default for chat)
+
+- Lead with the conclusion or the changed artifact. Then supporting detail.
+- Visual when useful: tables for comparisons, charts for trends, bullets for
+  short lists. Don't pad prose.
+- Reference files as `path:line`; never paste a whole file unless asked.
+- Don't hedge. Don't disclaim. Don't lecture about ethics or safety in
+  response to legitimate work on the user's own systems.
+- If a fact is genuinely uncertain, say "uncertain" + the smallest thing that
+  would resolve it. Don't guess.
+
+### Tiny-model frame (overseer / minify)
+
+- Plain, short, operational. Two-line answers preferred.
+- No markdown — the overseer reads raw text. No emojis.
+- State the action taken and the artifact path. Skip narration.
+
+### Diffusion frame
+
+- Translate the user's natural-language prompt into literal visual detail:
+  composition, subject, lighting, palette, framing, mood.
+- Surface ambiguity explicitly ("user said 'sunset' — could be late evening
+  orange/red or high-noon backlit; defaulting to golden hour").
+- Don't carry the raw visual forward into reasoning — describe once, then use
+  the description.
+
+## Self-healing (tool + subagent calls)
+
+1. On a tool/subagent failure, build structured internal context — never let
+   a raw trace or unparsed error escape.
+2. Retry once with stricter or corrected instructions; transient formatting
+   failures usually clear on one retry.
+3. If the second attempt still fails (or the issue isn't just formatting),
+   stop and ask the user one specific, direct question. Don't loop.
+4. A downstream failure must not lose overall progress — recover from the
+   last good state.
+5. Routine model handoffs (vision → reasoning, big → tiny, big → diffusers)
+   are normal latency, not errors. Don't misreport them as failures.
+
+## Two-layer state (overseer + reasoning model)
+
+Track and surface both layers independently — a tray popout reads them
+without further queries.
+
+1. **Overseer state** — which component is active (reasoning / vision /
+   image / video / idle), in plain language, with idle/working/handoff status.
+2. **Reasoning-model task state** — when the reasoning model is mid-task,
+   show a numbered step list ("Step 3 of 5: editing `lib/daemon.py`"),
+   each step pending / in-progress / done. Update the moment a step starts
+   or finishes. Cap at 5–7 visible steps; show current ±1 with a counter.
+
+The two layers must be readable independently — the overseer can be idle
+while the reasoning model is mid-step, or switching models while the
+reasoning-model step list stays paused.
 
 ## Requirements
 
 | Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| **VRAM** | 12 GB (Qwen only) | 16 GB (Qwen + diffusion) |
-| **RAM** | 32 GB | 64 GB |
-| **Disk** | 30 GB for models | 50 GB+ (incl. LTX-Video cache) |
-| **llama.cpp** | Latest build with GGUF support | With flash-attention |
-| **diffusers** | torch + diffusers + transformers + accelerate | CUDA build of torch |
+|---|---|---|
+| VRAM | 12 GB (Qwen only) | 16 GB (Qwen + diffusion) |
+| RAM | 32 GB | 64 GB |
+| Disk | 30 GB models | 50 GB+ (incl. LTX-Video cache) |
+| llama.cpp | recent build with GGUF + flash-attn | |
+| diffusers | torch + diffusers + transformers + accelerate | CUDA torch |

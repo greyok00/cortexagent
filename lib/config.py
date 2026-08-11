@@ -301,22 +301,13 @@ class Config:
             "CORTEXAGENT_LOG", "backend", "big_log",
             str(home / ".cortexagent-server.log")))
 
-        # ── Fallback model (VRAM-aware) ───────────────────────────────────
-        # At session-start the daemon probes free GPU VRAM (glitch-rejecting:
-        # max of 3 nvidia-smi reads ~2s apart, so a momentary browser/compositor
-        # spike can't force the fallback). If free < big_vram_min_gb on EVERY
-        # sample (a sustained GPU consumer — browser w/ HW accel, a game,
-        # diffusion, another model — is holding VRAM), the ~13.6 GB 35B won't
-        # fully fit (would spill to CPU → the slow 83–157 s responses), so it
-        # swaps in this small tool-calling fallback instead. Qwen3-4B Q4_K_M
-        # (~2.5 GB + ~0.8 GB KV at 8K) fits with room to spare and has native
-        # tool calls (ChatML, --jinja). Re-runs each session-start, so freeing
-        # VRAM between sessions picks the big model back automatically.
-        self.fallback_model = _env(
-            "CORTEXAGENT_FALLBACK_MODEL", "backend", "fallback_model",
-            str(self.models_dir / "qwen3-4b" / "Qwen_Qwen3-4B-Q4_K_M.gguf"))
-        self.fallback_ctx = _env_int(
-            "CORTEXAGENT_FALLBACK_CTX", "backend", "fallback_ctx", 8192)
+        # ── big_vram_min_gb (informational; no fallback swap happens) ─────
+        # Historical: a smaller fallback model was swapped in when free VRAM
+        # was below this threshold. Removed 2026-08-11 — the only model the
+        # daemon now serves on :8080 is the big one (with the tiny llama
+        # on :8082 powering the overseer). If the big 35B can't load (e.g.
+        # the GGUF is missing), the daemon logs the failure and leaves :8080
+        # down rather than swapping in a substitute.
         self.big_vram_min_gb = _env_int(
             "CORTEXAGENT_BIG_VRAM_MIN", "backend", "big_vram_min_gb", 14)
 

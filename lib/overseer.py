@@ -60,6 +60,7 @@ LOG_FILE = STATE_DIR / "logs" / "overseer.log"
 QUEUE_FILE = STATE_DIR / "overseer_queue.json"
 SCHEDULE_FILE = STATE_DIR / "overseer_schedule.json"
 PLAN_FILE = STATE_DIR / "overseer_plan.json"
+WORKFLOW_FILE = STATE_DIR / "workflow_state.json"
 
 # ── Config + model backend (no Ollama) ────────────────────────────────────────
 if str(REPO_ROOT) not in sys.path:
@@ -82,6 +83,31 @@ WARM_CAP = 2000
 HOT_CAP = 300
 COMPACT_THRESHOLD = 0.85
 COLD_DISTILL_INTERVAL = 3600  # 1 hour
+
+# Hot-memory thresholds (the actual overflow problem). When hot exceeds:
+#   SOFT (100%)        → run _auto_compact() once
+#   HARD (200%)        → run /clear on the active CLI session (drop hot to zero)
+#   CRITICAL (300%+)   → force /clear every tick until it drops
+# Sustained-overflow counter increments when hot > HOT_CAP across consecutive
+# ticks — after 5 sustained ticks (>2.5 min) we force /clear even at SOFT
+# because auto-compact is failing to free space.
+HOT_SOFT_PCT = 1.00
+HOT_HARD_PCT = 2.00
+HOT_CRITICAL_PCT = 3.00
+HOT_SUSTAINED_TICKS_FORCE = 5
+
+# HARD RULE (2026-08-11): no caps. The HOT_CAP/WARM_CAP constants are kept as
+# observability targets only — the engine never auto-compacts. The only
+# background memory work the overseer does is hot→warm sync (every line that
+# lives in hot should also live in warm). Byte thresholds below are advisory
+# only — they never trigger /clear or compaction.
+HOT_HARD_LIMIT_MB = 500
+HOT_WARM_LIMIT_MB = 2000
+
+# Cap tasks dispatched per workflow tick so a 50-task workflow doesn't
+# stall the overseer loop for hours. The next tick picks up where this
+# left off (depends_on gate).
+WORKFLOW_DISPATCH_MAX = 2
 
 # ── Overseer model (LFM2.5-1.2B on llama-server :8082) ──────
 # LFM2.5-1.2B has better reasoning than 0.5B for scheduling/minification tasks.
@@ -171,11 +197,51 @@ def _load_state() -> Dict:
         "health_events": [],
         "started_at": None,
         "total_ticks": 0,
+        # Two-layer state (see CLAUDE.md "Two-layer state tracking"):
+        #   overseer_state — plain-language activity tag for the tray popout
+        #   task_steps     — numbered list of steps the reasoning model is
+        #                    currently working through (capped at 7 visible,
+        #                    trimmed to current ±1 in the consumer)
+        "overseer_state": {"label": "idle", "since": None},
+        "task_steps": [],   # [{"id":1, "label":"...", "status":"done|in_progress|pending"}]
+        "current_step": None,
     })
 
 
 def _save_state(state: Dict) -> None:
     _save_json(STATE_FILE, state)
+
+
+# ── Two-layer state helpers ─────────────────────────────────────────────
+# Used by both this overseer and any external caller (the big LLM, the tray
+# popout, the webui) to publish what the system is doing in plain language
+# and what step it's on. Each helper takes `state` so the caller can keep
+# batching its own state changes without a separate write.
+
+def overseer_set_state(state: Dict, label: str) -> None:
+    """Publish the overseer's current activity as a plain-language tag.
+
+    Examples: "idle", "watching health checks", "compacting warm memory",
+    "distilling warm → cold", "running scheduled task 'nightly backup'",
+    "querying tiny LLM", "self-healing (retry #1)".
+
+    The tray popout reads this verbatim — keep it short and human.
+    """
+    state["overseer_state"] = {"label": label, "since": datetime.now().isoformat()}
+
+
+def task_steps_publish(state: Dict, steps: List[Dict], current: Optional[int]) -> None:
+    """Publish the reasoning model's task step list.
+
+    Args:
+        state: the overseer state dict (mutated in place)
+        steps: list of {"id": int, "label": str, "status": "pending"|"in_progress"|"done"}
+               Limited to 7 entries by the consumer; pass the full list and
+               let the consumer trim to current ±1 with an "X of Y" counter.
+        current: 1-indexed step that's currently in progress, or None if idle.
+    """
+    state["task_steps"] = list(steps)
+    state["current_step"] = current
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -216,8 +282,42 @@ def _keepalive_tiny_model() -> bool:
 
 def _query_tiny_llm(prompt: str, system: str = "",
                     max_tokens: int = 256) -> Optional[str]:
-    """Query the tiny LLM via llama-server's OpenAI endpoint."""
-    return tiny_llm.query(prompt, system=system, max_tokens=max_tokens)
+    """Query the tiny LLM via llama-server's OpenAI endpoint.
+
+    The overseer is the frame-of-mind gatekeeper for every tiny call:
+      1. Wrap whatever system prompt the caller (usually the big LLM via the
+         task queue) supplies under a stable practical-reasoning frame so
+         tiny always reasons short, operational, no markdown, no hedging —
+         even if the caller's own prompt drifted.
+      2. Self-heal: if the first call returns None/empty (server hiccup,
+         transient HTTP error, malformed JSON), retry once with stricter
+         instructions ("answer in plain text, one line, no preamble") before
+         giving up. Don't loop — one retry, then surface the failure to the
+         caller.
+    """
+    # Practical-reasoning frame wrapper — the caller's system prompt is
+    # appended after so caller-specific instructions still apply, but the
+    # operational tone is preserved.
+    frame = (
+        "You are the CortexAgent overseer's reasoning engine. Plain language, "
+        "short answers (one or two lines), no markdown, no emojis, no narration. "
+        "State the action taken and the artifact path. If uncertain, say so."
+    )
+    if system:
+        wrapped_system = frame + "\n\n" + system
+    else:
+        wrapped_system = frame
+
+    # First attempt
+    result = tiny_llm.query(prompt, system=wrapped_system, max_tokens=max_tokens)
+    if result:
+        return result
+
+    # Self-heal: one retry with a stricter framing
+    _log("tiny LLM returned empty — retrying once with stricter framing", "🔁", DIM)
+    strict = wrapped_system + "\n\nAnswer in plain text, one line, no preamble."
+    result = tiny_llm.query(prompt, system=strict, max_tokens=max_tokens)
+    return result  # may still be None — caller handles it
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -225,7 +325,7 @@ def _query_tiny_llm(prompt: str, system: str = "",
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _get_memory_stats() -> Dict:
-    """Get current memory counts from SQLite."""
+    """Get current memory counts from SQLite + byte sizes from NDJSON files."""
     try:
         sys.path.insert(0, str(REPO_ROOT))
         from memory.db import db
@@ -233,21 +333,41 @@ def _get_memory_stats() -> Dict:
         hot = reader.execute("SELECT COUNT(*) FROM Memory_Hot").fetchone()[0]
         warm = reader.execute("SELECT COUNT(*) FROM Memory_Warm").fetchone()[0]
         cold = reader.execute("SELECT COUNT(*) FROM Memory_Cold").fetchone()[0]
-        return {"hot": hot, "warm": warm, "cold": cold}
+        # Compute byte sizes from the NDJSON files (file of truth for clients).
+        hot_bytes = 0
+        warm_bytes = 0
+        try:
+            from lib.memory_thin import HOT_DIR, WARM_DIR
+            for p in HOT_DIR.glob("*.jsonl"):
+                hot_bytes += p.stat().st_size
+            for p in WARM_DIR.glob("*.warm.jsonl"):
+                warm_bytes += p.stat().st_size
+        except (ImportError, OSError):
+            pass
+        return {"hot": hot, "warm": warm, "cold": cold,
+                "hot_bytes": hot_bytes, "warm_bytes": warm_bytes}
     except Exception as e:
         _log(f"Memory stats error: {e}", "⚠️", YELLOW)
-        return {"hot": 0, "warm": 0, "cold": 0}
+        return {"hot": 0, "warm": 0, "cold": 0,
+                "hot_bytes": 0, "warm_bytes": 0}
 
 
 def _check_health(stats: Dict) -> List[str]:
-    """Check memory health and return alerts."""
+    """Check memory health and return alerts.
+
+    HARD RULE (2026-08-11): no caps. The HOT_CAP/WARM_CAP percentages are
+    OBSERVABILITY ONLY — they never trigger compaction or `/clear`. The
+    alerts are just informational one-liners the operator can read.
+    """
     alerts = []
     if stats["warm"] > WARM_CAP * COMPACT_THRESHOLD:
         pct = int(stats["warm"] / WARM_CAP * 100)
-        alerts.append(f"Warm memory at {pct}% ({stats['warm']}/{WARM_CAP})")
+        mb = stats.get("warm_bytes", 0) / (1024 * 1024)
+        alerts.append(f"Warm at {pct}% ({stats['warm']} rows, {mb:.1f}MB) — advisory only")
     if stats["hot"] > HOT_CAP * COMPACT_THRESHOLD:
         pct = int(stats["hot"] / HOT_CAP * 100)
-        alerts.append(f"Hot memory at {pct}% ({stats['hot']}/{HOT_CAP})")
+        mb = stats.get("hot_bytes", 0) / (1024 * 1024)
+        alerts.append(f"Hot at {pct}% ({stats['hot']} rows, {mb:.1f}MB) — advisory only")
     return alerts
 
 
@@ -274,6 +394,77 @@ def _check_memory_writes() -> List[str]:
 
 
 def _check_session_health() -> List[str]:
+    """Check if the main model proxy is responding.
+
+    502 from the proxy = proxy is UP but the big model is idle-unloaded — the
+    normal no-session state (the daemon loads big on demand), NOT an alert.
+    Only a genuinely unreachable proxy (connection refused / 5xx other than 502)
+    is a real problem.
+    """
+    alerts = []
+    proxy_port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{proxy_port}/health",
+                                     method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status not in (200, 502):
+                alerts.append(f"Proxy health check failed (HTTP {resp.status})")
+    except urllib.error.HTTPError as e:
+        if e.code != 502:  # 502 = backend (big model) idle-unloaded → expected
+            alerts.append(f"Proxy health check failed (HTTP {e.code})")
+    except Exception:
+        alerts.append(f"Proxy not reachable on port {proxy_port} — main model may be down")
+    return alerts
+
+
+# ── Minify stats reader ──────────────────────────────────────────────────────
+# The grammar proxy writes a cumulative snapshot to ~/.cortexagent/minify_stats.json
+# after every minified request (tmp+rename; same pattern as big_model_steps.json).
+# We poll it every tick and surface it under `state["minify"]` plus log a one-line
+# delta when the saved-token count climbs — so the savings are visible from
+# `overseer status`, the statusline, and the dashboard.
+MINIFY_STATS_FILE = STATE_DIR / "minify_stats.json"
+
+
+def _read_minify_stats() -> Dict:
+    """Return the proxy's persisted minify snapshot, or {} on any read error."""
+    try:
+        with MINIFY_STATS_FILE.open() as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            return d
+    except Exception:
+        pass
+    return {}
+
+
+def _merge_minify_into_state(state: Dict) -> None:
+    """Pull the proxy's minify snapshot into the overseer state under `minify`."""
+    snap = _read_minify_stats()
+    if not snap:
+        return
+    prev = state.get("minify") or {}
+    prev_tokens_saved = int(prev.get("tokens_saved", 0) or 0)
+    state["minify"] = {
+        "runs": int(snap.get("runs", 0) or 0),
+        "tokens_in": int(snap.get("tokens_in", 0) or 0),
+        "tokens_out": int(snap.get("tokens_out", 0) or 0),
+        "tokens_saved": int(snap.get("tokens_saved", 0) or 0),
+        "ratio_pct": float(snap.get("ratio_pct", 0.0) or 0.0),
+        "last_run_ts": float(snap.get("last_run_ts", 0.0) or 0.0),
+        "last_saved_pct": float(snap.get("last_saved_pct", 0.0) or 0.0),
+        "history_60s": list(snap.get("history_60s") or []),
+        "errors": int(snap.get("errors", 0) or 0),
+    }
+    # Surface a one-line delta in the tick log when the savings climb.
+    delta = state["minify"]["tokens_saved"] - prev_tokens_saved
+    if delta > 0:
+        _log(f"Minify: +{delta} tok saved this tick "
+             f"(lifetime {state['minify']['ratio_pct']:.0f}% across "
+             f"{state['minify']['runs']} runs)", "📐", DIM)
+
+
+
     """Check if the main model proxy is responding.
 
     502 from the proxy = proxy is UP but the big model is idle-unloaded — the
@@ -517,6 +708,227 @@ def _cold_distill() -> bool:
         return False
 
 
+def _spawn_subagent(prompt: str, model: str = "sonnet", timeout: int = 600) -> Dict:
+    """Spawn a Claude Code subagent via the Task/Agent CLI to handle a delegated
+    task. Returns {"ok": bool, "output": str, "error": str}.
+
+    Uses `claude -p <prompt>` in a non-interactive shell so the overseer can
+    delegate bounded work (research, sweeps, code edits) without blocking its
+    tick loop. Bounded by a timeout; failures fall through to the caller so
+    the queue can record them as failed and self-heal (don't loop).
+    """
+    try:
+        # -p / --print = non-interactive (prints response and exits). This is
+        # the canonical non-interactive mode for Claude Code. --bare keeps the
+        # subagent from re-reading CLAUDE.md / spawning hooks / polluting the
+        # parent's auto-memory. --dangerously-skip-permissions so subagents
+        # don't stall waiting for the user mid-batch (the user already
+        # implicitly authorized the work by queuing it).
+        cmd = [
+            "claude", "-p", prompt,
+            "--model", model,
+            "--output-format", "text",
+            "--bare",
+            "--dangerously-skip-permissions",
+        ]
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout
+        )
+        if proc.returncode == 0:
+            return {"ok": True, "output": proc.stdout, "error": ""}
+        return {"ok": False, "output": proc.stdout,
+                "error": proc.stderr or f"exit {proc.returncode}"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "output": "", "error": f"timeout after {timeout}s"}
+    except FileNotFoundError:
+        return {"ok": False, "output": "",
+                "error": "claude CLI not found on PATH"}
+    except Exception as e:
+        return {"ok": False, "output": "", "error": str(e)}
+
+
+def _dispatch_workflow(state: Dict) -> int:
+    """Walk the current workflow and execute any tasks whose dependencies are
+    satisfied. Maps workflow engines to the existing task pipeline:
+
+        LLM_REASONING / LLM_CODE → "subagent" task (Claude Code subagent)
+        SYSTEM_EXEC              → "command" task (shell)
+
+    Returns the number of tasks dispatched this call. Runs at most
+    `WORKFLOW_DISPATCH_MAX` tasks per tick to avoid blocking the overseer
+    loop on a big workflow.
+    """
+    try:
+        sys.path.insert(0, str(REPO_ROOT))
+        from engine import WorkflowEngine
+        from engine.types import TaskStatus
+        from engine.workflow import _load_workflow, _save_workflow  # module-level
+        plan_path = WORKFLOW_FILE
+        if not plan_path.exists():
+            return 0
+        plan = _load_workflow()
+        if not plan:
+            return 0
+
+        # Find ready tasks (PENDING + all deps COMPLETED), priority order.
+        completed = {t.id for t in plan.tasks if t.status.name == "COMPLETED"}
+        ready = [
+            t for t in plan.tasks
+            if t.status.name == "PENDING"
+            and all(d in completed for d in (t.depends_on or []))
+        ]
+        ready.sort(key=lambda t: t.priority)
+        if not ready:
+            return 0
+
+        overseer_set_state(state, f"dispatching workflow ({len(ready)} ready)")
+        dispatched = 0
+        for task in ready[:WORKFLOW_DISPATCH_MAX]:
+            if task.engine.name in ("LLM_REASONING", "LLM_CODE"):
+                # Hand to a Claude subagent. Bounded 10-minute timeout per task.
+                # Use sonnet for code, opus for reasoning if available.
+                model = "opus" if task.engine.name == "LLM_REASONING" else "sonnet"
+                # Inherit results of dependencies — feed them into the prompt so
+                # the subagent has the context to continue the chain.
+                dep_context = ""
+                for dep_id in (task.depends_on or []):
+                    dep = next((t for t in plan.tasks if t.id == dep_id), None)
+                    if dep and dep.result:
+                        dep_context += f"\n\n[{dep.name}]\n{dep.result}\n"
+                full_prompt = (
+                    f"Goal: {plan.goal}\n\nTask: {task.name}\n\n"
+                    f"{task.prompt}\n\n{dep_context}\n\n"
+                    f"Return only the result — no preamble."
+                )
+                _log(f"Workflow {task.id} ({task.engine.name}) → subagent ({model})",
+                     "🤖", MAGENTA)
+                res = _spawn_subagent(full_prompt, model=model, timeout=600)
+                if res["ok"]:
+                    task.status = TaskStatus.COMPLETED
+                    task.result = res["output"][:8000]  # cap stored result
+                    _log(f"Workflow {task.id} completed ({len(res['output'])} chars)",
+                         "✅", GREEN)
+                else:
+                    task.status = TaskStatus.FAILED
+                    task.error = res["error"][:500]
+                    _log(f"Workflow {task.id} failed: {res['error'][:120]}",
+                         "❌", RED)
+            elif task.engine.name == "SYSTEM_EXEC":
+                _log(f"Workflow {task.id} (SYSTEM_EXEC) → shell", "🐚", MAGENTA)
+                try:
+                    proc = subprocess.run(
+                        task.prompt, shell=True, capture_output=True, text=True,
+                        timeout=600,
+                    )
+                    if proc.returncode == 0:
+                        task.status = TaskStatus.COMPLETED
+                        task.result = (proc.stdout or "")[:8000]
+                        _log(f"Workflow {task.id} (exec) completed", "✅", GREEN)
+                    else:
+                        task.status = TaskStatus.FAILED
+                        task.error = (proc.stderr or "")[:500]
+                        _log(f"Workflow {task.id} (exec) failed: rc={proc.returncode}",
+                             "❌", RED)
+                except Exception as e:
+                    task.status = TaskStatus.FAILED
+                    task.error = str(e)[:500]
+                    _log(f"Workflow {task.id} (exec) crashed: {e}", "❌", RED)
+            else:
+                _log(f"Workflow {task.id}: unknown engine {task.engine.name}, skipping",
+                     "⚠️", YELLOW)
+                continue
+
+            dispatched += 1
+
+        if dispatched:
+            _save_workflow(plan)  # persist after batch
+        return dispatched
+    except Exception as e:
+        _log(f"Workflow dispatch error: {e}", "⚠️", YELLOW)
+        return 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  HOT-MEMORY REMEDIATION (overseer must ACT, not just alert)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Sustained-overflow counter. Persisted in state["hot_overflow_ticks"] so a
+# restart doesn't reset the count and immediately force /clear again.
+def _hot_remediation(state: Dict, stats: Dict) -> None:
+    """Hot→warm sync + byte-threshold advisories. HARD RULE (2026-08-11):
+
+    The 914% overflow alarm is GONE. There is no auto-compact. There is no
+    /clear. Hot grows unbounded; warm mirrors it. The only background work
+    we do here is ensuring every hot line is also in warm, and warning the
+    operator if byte-size exceeds the soft advisory thresholds.
+    """
+    hot_bytes = stats.get("hot_bytes", 0)
+    warm_bytes = stats.get("warm_bytes", 0)
+    sustained = int(state.get("hot_overflow_ticks", 0))
+
+    # 1. Hot→warm sync. Driven by the daemon now (it always mirrors), but we
+    #    re-check on every tick in case the daemon was down when a write
+    #    happened. Cheap linear scan of the last few entries only.
+    _hot_to_warm_sync(state)
+
+    # 2. Byte-threshold advisory only (no /clear, no compact).
+    hot_mb = hot_bytes / (1024 * 1024)
+    warm_mb = warm_bytes / (1024 * 1024)
+    if hot_mb > HOT_HARD_LIMIT_MB or warm_mb > HOT_WARM_LIMIT_MB:
+        state["hot_overflow_ticks"] = sustained + 1
+        overseer_set_state(
+            state,
+            f"memory size advisory: hot={hot_mb:.1f}MB warm={warm_mb:.1f}MB "
+            f"(advisory only; no action taken per hard rule)"
+        )
+        if sustained % 30 == 0:  # every 30 ticks (~15 min), log a one-liner
+            _log(f"Memory advisory: hot={hot_mb:.1f}MB warm={warm_mb:.1f}MB "
+                 f"(no caps, no /clear — this is informational only)", "📊", YELLOW)
+    else:
+        if sustained:
+            state["hot_overflow_ticks"] = 0
+
+
+def _hot_to_warm_sync(state: Dict) -> None:
+    """Mirror hot→warm. The daemon already does this on every write, but we
+    re-check on every overseer tick to catch any gaps. We only sync the tail
+    (from where warm left off) — older lines are already in warm.
+    """
+    try:
+        from lib.memory_thin import HOT_DIR, WARM_DIR
+        for platform in ("cortexagent", "claude", "openclaw_brain", "system"):
+            hot_file = HOT_DIR / f"{platform}.jsonl"
+            warm_file = WARM_DIR / f"{platform}.warm.jsonl"
+            if not hot_file.exists():
+                continue
+            try:
+                hot_size = hot_file.stat().st_size
+                warm_size = warm_file.stat().st_size if warm_file.exists() else 0
+                if warm_size >= hot_size:
+                    continue  # warm is caught up
+                # Append the tail of hot to warm (the gap).
+                with open(hot_file, "rb") as f:
+                    f.seek(max(0, warm_size - 1))  # re-read last byte in case of partial newline
+                    gap = f.read()
+                if gap:
+                    _atomic_append_bytes(warm_file, gap)
+            except OSError:
+                continue
+    except ImportError:
+        pass
+
+
+def _atomic_append_bytes(file_path, data: bytes) -> None:
+    """POSIX-atomic append raw bytes. Safe for ≤PIPE_BUF (4096B) per write."""
+    import os as _os
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = _os.open(file_path, _os.O_WRONLY | _os.O_APPEND | _os.O_CREAT, 0o644)
+    try:
+        _os.write(fd, data)
+    finally:
+        _os.close(fd)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  TASK QUEUE (from orchestrator)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -603,6 +1015,19 @@ def _execute_task(task: Dict) -> bool:
         if result:
             _log(f"LLM task completed ({len(result)} chars)", "✅", GREEN)
             return True
+        return False
+
+    elif task_type == "subagent":
+        # Delegate to a Claude Code subagent (full tool access, model per task).
+        # Optional keys: model (default "sonnet"), timeout (default 600s).
+        model = task.get("model", "sonnet")
+        timeout = int(task.get("timeout", 600))
+        result = _spawn_subagent(prompt, model=model, timeout=timeout)
+        if result["ok"]:
+            _log(f"Subagent task completed ({len(result['output'])} chars)",
+                 "✅", GREEN)
+            return True
+        _log(f"Subagent failed: {result['error'][:120]}", "❌", RED)
         return False
 
     elif task_type == "image" or task_type == "video":
@@ -912,7 +1337,18 @@ def _daemon_loop(interval: int) -> None:
             now = datetime.now().strftime("%H:%M:%S")
             _log(f"── Tick {tick} @ {now} ─────────────────────", "⏱️", DIM)
 
+            # Publish the tick's step list (5-7 visible, current ±1). The tray
+            # popout and webui read this verbatim — keep labels short.
+            task_steps_publish(state, [
+                {"id": 1, "label": "Memory health checks",       "status": "in_progress"},
+                {"id": 2, "label": "Watchdog (every 2nd tick)",  "status": "pending"},
+                {"id": 3, "label": "Minify stats merge",         "status": "pending"},
+                {"id": 4, "label": "Schedule + queue dispatch",  "status": "pending"},
+                {"id": 5, "label": "LLM health summary",         "status": "pending"},
+            ], current=1)
+
             # ── Health checks ──
+            overseer_set_state(state, "watching memory health")
             stats = _get_memory_stats()
             _log(f"Memory: {stats['hot']}H / {stats['warm']}W / {stats['cold']}C", "📊", DIM)
             alerts = _check_health(stats)
@@ -930,7 +1366,14 @@ def _daemon_loop(interval: int) -> None:
             # If cortexagent is closed but the daemon still tracks an active
             # session, reset + unload the big model so VRAM is freed.
             if tick % 2 == 0:
+                overseer_set_state(state, "watchdogging cortexagent session")
                 _watchdog_cortexagent()
+
+            # ── Minify stats (proxy writes to ~/.cortexagent/minify_stats.json) ──
+            # Pull the cumulative snapshot, surface a delta log line, and merge
+            # into state for the dashboard / statusline / CLI to read.
+            overseer_set_state(state, "merging minify stats")
+            _merge_minify_into_state(state)
 
             # DB integrity every 10th tick
             if tick % 10 == 0:
@@ -945,10 +1388,19 @@ def _daemon_loop(interval: int) -> None:
                 })
                 state["health_events"] = state["health_events"][-100:]
 
-                # Auto-compact if warm near cap
+                # Auto-compact gate — HARD RULE (2026-08-11): no auto-compact.
+                # The legacy threshold is kept as observation only; we never
+                # compact automatically. Warm grows unbounded.
                 if stats["warm"] > WARM_CAP * COMPACT_THRESHOLD:
-                    _auto_compact()
-                    state["last_compact"] = datetime.now().isoformat()
+                    overseer_set_state(
+                        state,
+                        f"warm at {int(stats['warm']/WARM_CAP*100)}% (advisory only; "
+                        f"no auto-compact per hard rule)"
+                    )
+
+            # Hot-memory remediation — hot→warm sync + byte-threshold advisory.
+            # The 914% alarm is GONE. There is no /clear. Hot grows unbounded.
+            _hot_remediation(state, stats)
 
             # ── Cold distill (hourly) ──
             last_distill = state.get("last_distill")
@@ -956,14 +1408,15 @@ def _daemon_loop(interval: int) -> None:
                 not last_distill or
                 (datetime.now() - datetime.fromisoformat(last_distill)).total_seconds() > COLD_DISTILL_INTERVAL
             ):
+                overseer_set_state(state, "distilling warm → cold")
                 _cold_distill()
                 state["last_distill"] = datetime.now().isoformat()
 
             # ── Schedule check ──
+            overseer_set_state(state, "checking schedule + queue")
             sched_count = len(_load_schedule())
             _log(f"Schedule: {sched_count} entries", "📅", DIM)
             _check_schedule()
-
             # ── Process queue ──
             q = _load_queue()
             pending = len([t for t in q if t["status"] == "queued"])
@@ -971,7 +1424,7 @@ def _daemon_loop(interval: int) -> None:
                 _log(f"Queue: {pending} pending tasks", "📦", DIM)
             _process_queue()
 
-            # ── Workflow engine check ──
+            # ── Workflow engine check + dispatch ──
             try:
                 sys.path.insert(0, str(REPO_ROOT))
                 from engine import WorkflowEngine
@@ -982,6 +1435,17 @@ def _daemon_loop(interval: int) -> None:
                     running_wf = wf_status.get("running", 0)
                     if pending_wf > 0 or running_wf > 0:
                         _log(f"Workflow: {pending_wf} pending, {running_wf} running", "⚙️", DIM)
+                # Actually dispatch ready tasks (depends_on gate).
+                # The original loop only read status — workflows stayed
+                # "pending" forever. Now the dispatcher walks the DAG and
+                # executes any task whose deps are COMPLETED.
+                # Run in a daemon thread so a 10-minute subagent invocation
+                # doesn't block the next tick (queue, health, watchdog).
+                if wf_status.get("pending", 0) > 0:
+                    threading.Thread(
+                        target=_dispatch_workflow, args=(state,),
+                        daemon=True,
+                    ).start()
             except Exception:
                 pass
 
@@ -995,6 +1459,7 @@ def _daemon_loop(interval: int) -> None:
 
             # ── LLM health summary (every 10th tick) ──
             if has_llm and tick % 10 == 0:
+                overseer_set_state(state, "querying tiny LLM for health summary")
                 prompt = (
                     f"Memory: {stats['hot']}H/{stats['warm']}W/{stats['cold']}C. "
                     f"Alerts: {len(alerts)}. Ticks: {tick}. "
@@ -1011,6 +1476,9 @@ def _daemon_loop(interval: int) -> None:
                 _log(f"Memory: {stats['hot']}H/{stats['warm']}W/{stats['cold']}C (~{est} tok)  "
                      f"Alerts: {len(alerts)}  Ticks: {tick}", "📊", DIM)
 
+            # Reset state for the next tick's readers
+            overseer_set_state(state, "idle")
+            task_steps_publish(state, [], None)
             _save_state(state)
 
         except Exception as e:
@@ -1166,6 +1634,15 @@ def _status() -> None:
         print(f"  Queue: {len(queue)} total ({pending} pending)")
         print(f"  Schedule: {len(schedule)} entries")
 
+        # Minify savings — surfacing in `overseer status` makes it visible at
+        # the CLI without the user opening the dashboard.
+        m = state.get("minify") or _read_minify_stats()
+        if m and m.get("runs", 0):
+            print(f"  Minify: {m['tokens_saved']:,} tok saved "
+                  f"({m['ratio_pct']:.0f}%) across {m['runs']} runs")
+        else:
+            print(f"  Minify: no runs yet")
+
         if plan and "error" not in plan:
             step = plan.get("current_step", 0)
             total = plan.get("total_steps", 0)
@@ -1247,6 +1724,27 @@ def _smoke() -> int:
 #  CLI
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _minify_status_cli(args: List[str]) -> None:
+    """Print live minify stats from the proxy snapshot. No daemon needed."""
+    snap = _read_minify_stats()
+    if not snap:
+        print("Minify: no data yet (proxy hasn't served a minified request)")
+        return
+    runs = int(snap.get("runs", 0) or 0)
+    print(f"  Minify: {runs} run(s)")
+    print(f"    tokens in:    {int(snap.get('tokens_in', 0) or 0):,}")
+    print(f"    tokens out:   {int(snap.get('tokens_out', 0) or 0):,}")
+    saved = int(snap.get("tokens_saved", 0) or 0)
+    ratio = float(snap.get("ratio_pct", 0.0) or 0.0)
+    print(f"    tokens saved: {saved:,}  ({ratio:.1f}%)")
+    print(f"    last run:     {float(snap.get('last_saved_pct', 0.0) or 0.0):.1f}% saved "
+          f"@ {snap.get('last_run_ts', 0)}")
+    history = snap.get("history_60s") or []
+    if history:
+        print(f"    60s samples:  {len(history)} "
+              f"(last {history[-1][1]:.1f}% saved)")
+
+
 def _parse_interval(args: List[str]) -> int:
     for i, arg in enumerate(args):
         if arg == "--interval" and i + 1 < len(args):
@@ -1271,6 +1769,9 @@ def main() -> int:
         return 0
     elif cmd == "status":
         _status()
+        return 0
+    elif cmd == "minify":
+        _minify_status_cli(sys.argv[2:])
         return 0
     elif cmd == "smoke":
         return _smoke()

@@ -40,16 +40,27 @@ def is_available(timeout: float = 3.0) -> bool:
         return False
 
 
+# Default system prompt for the tiny LLM. Injects the operational variant
+# of the practical-reasoning profile so every call from the overseer (or
+# any other caller) gets plain, short, two-line answers without the caller
+# having to repeat itself. Callers can still pass `system=` to override.
+_TINY_SYSTEM = (
+    "You are the CortexAgent overseer's reasoning engine. Plain language, "
+    "short answers (one or two lines), no markdown, no emojis, no narration. "
+    "State the action taken and the artifact path. If uncertain, say so."
+)
+
 def query(prompt: str, system: str = "", max_tokens: int = 256,
           temperature: float = 0.1, timeout: int = 30) -> Optional[str]:
     """Query the tiny model. Returns the text response, or None if unavailable.
 
     Mirrors the old Ollama call shape (prompt + system + max_tokens + temp) so
-    callers can switch with a one-line change.
+    callers can switch with a one-line change. When `system` is empty, the
+    default practical-reasoning frame is applied so every call gets short,
+    operational answers without callers having to repeat it.
     """
     messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
+    messages.append({"role": "system", "content": system or _TINY_SYSTEM})
     messages.append({"role": "user", "content": prompt})
     payload = {
         # llama-server ignores `model` when only one model is loaded; required by

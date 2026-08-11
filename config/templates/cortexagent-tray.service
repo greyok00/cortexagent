@@ -1,0 +1,33 @@
+[Unit]
+Description=CortexAgent system tray (linked to overseer)
+Documentation=https://github.com/greyok00/cortexagent
+# Linked: the tray OWNS the overseer (calls overseer.py start on launch,
+# overseer.py stop on Quit). systemd enforces startup ordering:
+#   Wants=  → if overseer is down when tray starts, systemd auto-starts it
+#   After=  → tray waits for overseer to be up before starting
+# We do NOT use PartOf= (which would also stop overseer when tray stops,
+# making tray restart cascading and noisy — the tray's own Quit handler
+# already stops the overseer cleanly).
+After=network.target cortexagent-overseer.service graphical-session.target
+Wants=cortexagent-overseer.service
+
+[Service]
+Type=simple
+# Tray with a CLI fallback. lib/tray uses pystray+Pillow if installed (GUI);
+# else it falls back to a headless stdin keeper that still owns the overseer.
+# Either way, -m lib.tray runs in this process as the tray owner.
+ExecStart={{PYTHON}} -m lib.tray
+WorkingDirectory={{REPO_ROOT}}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+Environment=CORTEXAGENT_REPO={{REPO_ROOT}}
+Environment=CORTEXAGENT_STATE_DIR=%h/.cortexagent
+# X11 single-seat default; for Wayland/multi-seat run instead:
+#   systemctl --user import-environment DISPLAY XAUTHORITY
+# and drop these two lines. Harmless on headless boxes (tray falls back).
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+
+[Install]
+WantedBy=graphical-session.target

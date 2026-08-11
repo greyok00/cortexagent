@@ -172,26 +172,39 @@ def _launch_cli() -> None:
             # macOS: open Terminal.
             subprocess.Popen(["open", "-a", "Terminal"] + cmd)
             return
-        # Linux: pick the first available terminal emulator.
+        # Linux: try real standard graphical terminals first (full-featured
+        # DE-native panes — readable font, full window, the actual user
+        # experience), then fall through to the legacy fallbacks.
+        # Each entry is (argv_prefix, needs_bash_wrap). gnome-terminal uses
+        # `--` then the cmd; konsole/xterm/alacritty/kitty use `-e <cmd>`;
+        # x-terminal-emulator is the Debian helper which can resolve to a
+        # half-broken wrapper, so it sits near the end of the list.
         candidates = [
-            (["x-terminal-emulator", "-e"], True),   # Debian; -e takes a command
-            (["gnome-terminal", "--"], False),        # -- then the cmd
-            (["konsole", "-e"], True),
-            (["xterm", "-e"], True),
+            (["mate-terminal", "--", "bash", "-lc"],      "wrap-bash"),
+            (["gnome-terminal", "--", "bash", "-lc"],     "wrap-bash"),
+            (["xfce4-terminal", "-e", "bash", "-lc"],     "wrap-bash"),
+            (["konsole", "-e", "bash", "-lc"],            "wrap-bash"),
+            (["tilix", "-e", "bash", "-lc"],              "wrap-bash"),
+            (["terminator", "-e", "bash", "-lc"],         "wrap-bash"),
+            (["alacritty", "-e", "bash", "-lc"],          "wrap-bash"),
+            (["kitty", "bash", "-lc"],                    "wrap-bash"),
+            (["wezterm", "bash", "-lc"],                  "wrap-bash"),
+            (["xterm", "-e", "bash", "-lc"],              "wrap-bash"),
+            (["x-terminal-emulator", "-e", "bash", "-lc"], "wrap-bash"),
         ]
-        # Wrap the command so a shell resolves `cortexagent`/PATH + stays open on exit.
         sh_cmd = " ".join(c.replace("'", "'\\''") for c in cmd)
-        wrap = f"bash -lc {sh_cmd!r}; exec bash"
-        for term_args, use_e in candidates:
+        for term_args, mode in candidates:
             term = term_args[0]
-            if shutil.which(term):
-                if term == "gnome-terminal":
-                    full = term_args + ["bash", "-lc", sh_cmd]
-                else:
-                    full = term_args + ["bash", "-lc", sh_cmd]
+            if not shutil.which(term):
+                continue
+            try:
+                inner = f"{sh_cmd}; exec bash"
+                full = term_args + [inner]
                 subprocess.Popen(full, start_new_session=True)
                 _log(f"opened {term}", "✅", GREEN)
                 return
+            except Exception as e:
+                _log(f"{term} failed ({e}) — trying next", "⚠️", YELLOW)
         # Last resort: run in the background in this process's session.
         _log("no terminal emulator found — running CLI in background", "⚠️", YELLOW)
         subprocess.Popen(cmd, start_new_session=True)
@@ -275,9 +288,6 @@ def _run_gui(quit_event: threading.Event) -> None:
             pass
         _log(msg, "ℹ️", CYAN if kind == "info" else (GREEN if kind == "ok" else RED))
 
-    def on_status(icon, item):
-        _toast(icon, _status_text().replace("\033[0m", "").replace(RST, ""), "info")
-
     def on_reload(icon, item):
         _toast(icon, _reload_models(), "ok")
 
@@ -319,7 +329,6 @@ def _run_gui(quit_event: threading.Event) -> None:
     menu = Menu(
         MI("CortexAgent", None, enabled=False),
         Menu.SEPARATOR,
-        MI("Status", on_status),
         MI("Reload models", on_reload),
         MI("Restart overseer", on_restart_ov),
         MI("Reload config", on_reload_cfg),

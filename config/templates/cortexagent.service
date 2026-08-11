@@ -1,6 +1,6 @@
 [Unit]
 Description=CortexAgent persistent backend daemon (llama.cpp models + grammar proxy)
-Documentation=https://github.com/cortexagent/cortexagent
+Documentation=https://github.com/greyok00/cortexagent
 # Start AFTER the overseer so the daemon finds the overseer's tiny already up
 # on :8082 and ADOPTS it (proc=None) instead of racing to start its own. This
 # keeps a single tiny owner (the overseer) — the daemon never owns/kills it.
