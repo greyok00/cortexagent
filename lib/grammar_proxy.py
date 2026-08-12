@@ -579,10 +579,12 @@ class ProxyHandler:
     def _read_request(self):
         """Read full HTTP request headers + body. Returns (head_bytes, body).
 
-        30s timeout prevents handler threads from blocking forever on a client
-        that connects but never sends data (the root cause of CLOSE-WAIT leaks).
+        5s client-side timeout prevents handler threads from blocking forever
+        on a client that connects but never sends data (the root cause of
+        CLOSE-WAIT leaks). Lower than the upstream timeout so the proxy
+        fails fast on stuck clients and the client can retry quickly.
         """
-        self.conn.settimeout(30)
+        self.conn.settimeout(5)
         buf = b""
         try:
             while b"\r\n\r\n" not in buf:
@@ -845,7 +847,10 @@ class ProxyHandler:
         """Forward headers + body and stream any further client bytes, then pipe response."""
         data = head_bytes + b"\r\n\r\n" + body
         dst = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        dst.settimeout(30)
+        # Upstream (llama-server) read timeout: 90s. Big-context responses
+        # at 128k can take longer than 30s to stream; 90s is the longest
+        # tolerable latency before the client should retry.
+        dst.settimeout(90)
         try:
             dst.connect(self.target)
             dst.sendall(data)
@@ -891,12 +896,14 @@ class ProxyHandler:
         Tears down when either the client or the server closes — matching the
         pre-strip behavior so streaming and keep-alive responses both drain.
 
-        Idle timeout (30s) prevents CLOSE-WAIT accumulation: if the client
+        Idle timeout (5s) prevents CLOSE-WAIT accumulation: if the client
         stops sending data after the backend has closed, the loop exits and
-        the socket is cleaned up.
+        the socket is cleaned up. Lower than the request timeout because
+        this is the drain-only path — the heavy lifting already happened
+        upstream.
         """
         dst = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        dst.settimeout(30)
+        dst.settimeout(5)
         _t0 = time.time()
         try:
             dst.connect(self.target)
