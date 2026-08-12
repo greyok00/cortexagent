@@ -538,7 +538,14 @@ def _handle(req: Dict) -> Dict:
             "big": {"port": _big.port, "healthy": _big.is_healthy(timeout=1), "running": _big.running,
                     "model": str(_big.model_path),
                     "alias": str(_big.alias) if hasattr(_big, "alias") else ""},
-            "tiny": {"port": _tiny.port, "healthy": _tiny.is_healthy(timeout=1), "running": _tiny.running},
+            "tiny": {"port": _tiny.port,
+                    "healthy": _tiny.is_healthy(timeout=1),
+                    # running = process exists OR port responds. _tiny.running
+                    # is a Popen-stored handle that can be stale after overseer
+                    # adoption or external spawns; health-check the port as
+                    # ground truth so the dashboard never reports a live model
+                    # as "running: false".
+                    "running": bool(_tiny.running) or _tiny.is_healthy(timeout=1)},
             "proxy": {"running": (lambda p: bool(p and p.poll() is None))(_proxy_proc)},
             "active_sessions": _active_sessions,
             "sessions": sessions,
@@ -624,9 +631,27 @@ def _handle(req: Dict) -> Dict:
             # opened (refcount leaks).
             with _lock:
                 _active_sessions = max(0, _active_sessions - 1)
+        # Tiny auto-reload: after the previous unload, pkill, or tray-close,
+        # the overseer-owned tiny on :8082 may be down. The big model is
+        # useless without the orchestrator (no scheduler, no memory
+        # distillation, no diffusion orchestration). Try to reload tiny here
+        # so the session starts in a balanced state. Overseer normally owns
+        # tiny — if it's down the overseer should have reloaded it; we try
+        # anyway as a safety net (the overseer can also adopt what we start).
+        tiny_ok = True
+        try:
+            if not _tiny.is_healthy():
+                _log("Tiny :8082 down on session-start — reloading",
+                     "🛡️", DIM)
+                tiny_ok = _start_tiny()
+        except Exception as _e:
+            tiny_ok = False
+            _log(f"Tiny reload attempt failed: {_e}", "⚠️", YELLOW)
         return {"ok": ok, "active_sessions": _active_sessions,
                 "big_healthy": _big.is_healthy(), "model": model_path,
-                "fallback": is_fallback}
+                "fallback": is_fallback,
+                "tiny_healthy": _tiny.is_healthy(),
+                "tiny_reloaded": tiny_ok and not _tiny_was_healthy}
 
     if cmd == "session-end":
         with _lock:
