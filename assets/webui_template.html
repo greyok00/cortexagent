@@ -384,6 +384,7 @@
     <span class="lbl">t/s</span><span class="num" id="tps-num">—</span><span class="avg" id="tps-avg"></span>
   </div>
   <span class="vram off" id="vram-chip" title="GPU VRAM active/total">🖥 —</span>
+  <button class="icon-btn tool-nav-btn" id="btn-refresh" title="Refresh dashboard now (R)">↻</button>
   <button class="icon-btn tool-nav-btn" id="btn-pane" title="Overseer pane">🛰</button>
   <span id="tool-status">ready</span>
 </div>
@@ -1173,10 +1174,39 @@ $('pane-close').onclick = () => document.body.classList.remove('pane-open');
 loadChats(); renderList(); renderChat(); autosize();
 await loadState();
 pollTps(); setInterval(pollTps, 2000);
-setInterval(loadState, 30000);
+// Faster polling — user wants the dashboard to feel live. Was 30s/20s/15s.
+setInterval(loadState, 5000);
 refreshOverseer();
-setInterval(() => refreshOverseer(true), 20000);
-loadStatus(); setInterval(loadStatus, 15000);
+setInterval(() => refreshOverseer(true), 5000);
+loadStatus(); setInterval(loadStatus, 5000);
+
+// ── Manual refresh button — refreshes ALL panels (state + overseer + status + tps) ──
+async function refreshAll() {
+  statusEl.textContent = 'refreshing…';
+  const btn = $('btn-refresh');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+  try {
+    await Promise.all([
+      loadState(),
+      refreshOverseer(true),
+      loadStatus(),
+      pollTps(),
+    ]);
+    statusEl.textContent = 'refreshed ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    statusEl.textContent = 'refresh failed: ' + e;
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+}
+$('btn-refresh').onclick = refreshAll;
+document.addEventListener('keydown', (e) => {
+  // R key triggers manual refresh when not typing in the chat input
+  if (e.key === 'r' && e.key.toLowerCase() === 'r' &&
+      document.activeElement?.id !== 'input' && !e.ctrlKey && !e.metaKey) {
+    refreshAll();
+  }
+});
 // Unified session bridge — TUI/overseer events stream in here.
 _ensureBridgeConnected();
 </script>
