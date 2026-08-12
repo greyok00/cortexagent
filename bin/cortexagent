@@ -49,6 +49,23 @@ if [ $# -gt 0 ] && { [ "$1" = "--restart" ] || [ "$1" = "restart" ]; }; then
     echo "⚠️  Big model load failed — :8080 down (run 'cortexagent' to load on session start)" >&2
     exit 1
   fi
+fi
+
+# ── --unload: free VRAM on demand ────────────────────────────────────────────
+# Sends `unload big` + `unload tiny` to the daemon, which kills the
+# llama-server processes and frees ~15 GB. The next `cortexagent` invocation
+# reloads big automatically. Pair this with the tray close action or use it
+# directly when nothing is using the agent but VRAM needs to be released
+# (e.g., for a game or another model).
+if [ $# -gt 0 ] && { [ "$1" = "--unload" ] || [ "$1" = "unload" ]; }; then
+  echo "🛑 Unloading big + tiny (freeing VRAM)..."
+  python3 -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from lib import control; \
+              r=control.send_request('unload', which='big', timeout=30); \
+              print('big:', r); \
+              r=control.send_request('unload', which='tiny', timeout=30); \
+              print('tiny:', r); \
+              sys.exit(0 if r.get('ok') else 1)" || { echo "❌ unload failed" >&2; exit 1; }
+  echo "✅ VRAM released — :8080 + :8082 down. Next 'cortexagent' reloads."
   exit 0
 fi
 
