@@ -57,6 +57,7 @@ _last_request = 0.0          # unix ts of last proxy activity / session event
 _active_sessions = 0         # CLI sessions currently active (refcount)
 _SHUTDOWN = False
 _proxy_proc: Optional[subprocess.Popen] = None
+_tiny_was_healthy = True     # edge-detector: trigger big-kill on tiny death (rising edge only)
 
 
 def _scan_active_sessions() -> List[Dict]:
@@ -501,6 +502,19 @@ def _idle_watcher() -> None:
                     _log(f"Idle {int(idle)}s > {CFG.idle_unload_sec}s — unloading big model",
                          "💤", YELLOW)
                     should_unload = True
+            # Tiny-death → big-kill (user rule: closing the system tray or any
+            # tiny failure must unload big so the GPU isn't held by an orphaned
+            # 13.7 GB process). tiny.is_healthy() probes :8082 with a 1s
+            # timeout — fast, non-blocking. The first transition into "tiny
+            # down" triggers an immediate unload; subsequent ticks stay quiet
+            # until tiny recovers.
+            global _tiny_was_healthy
+            tiny_healthy = _tiny.is_healthy(timeout=1)
+            if not tiny_healthy and _tiny_was_healthy and big_running:
+                _log(f"Tiny :{_tiny.port} DOWN — unloading big to free VRAM "
+                     f"(tiny-death → big-kill rule)", "🛑", YELLOW)
+                should_unload = True
+            _tiny_was_healthy = tiny_healthy
         if should_unload:
             _stop_big()  # re-acquires _big_lock — must be outside the with block
 

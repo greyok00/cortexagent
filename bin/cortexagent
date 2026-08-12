@@ -591,6 +591,19 @@ printf '\033]0;CortexAgent\007'
 # `clear`/flicker, hide cursor). Non-TTY / CORTEXAGENT_BOOT_ANIM=0 → static.
 python3 "${REPO_ROOT}/lib/banner.py" --model "$(basename "${MODEL}")" 2>/dev/null || true
 
+# ── Live status ticker (1 Hz) — runs alongside the Claude session ───────────
+# lib/status_ticker.py: background thread that polls the daemon control
+# socket + grammar proxy /metrics every second and overwrites a single
+# bottom line in place, so the user always sees fresh token/VRAM/minify
+# data without scrolling. Skipped for one-shot `-p` runs (no TTY to keep
+# the bar pinned) and when CORTEXAGENT_TICKER=0. Stopped on exit.
+_TICKER_PID=""
+if [ "${CORTEXAGENT_TICKER:-1}" = "1" ] && [ -z "${CORTEXAGENT_ONE_SHOT:-}" ] && [ -t 1 ]; then
+  python3 "${REPO_ROOT}/lib/status_ticker.py" >/dev/null 2>&1 &
+  _TICKER_PID=$!
+fi
+trap '[ -n "${_TICKER_PID}" ] && kill "${_TICKER_PID}" 2>/dev/null || true' EXIT
+
 # ── Launch Claude Code (with all our fixes, hooks, and memory) ───────────────
 # The hooks in the isolated config dir (SessionStart + UserPromptSubmit)
 # auto-inject memory on startup and save every prompt to CortexAgent via
