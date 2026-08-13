@@ -13,21 +13,25 @@ from __future__ import annotations
 import sys
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Optional, Union
 
 Audio = Union[str, Path, "numpy.ndarray"]
 
 _model = None  # lazy faster-whisper singleton
+_model_lock = threading.Lock()
 
 
 def _get_model():
     global _model
     if _model is None:
-        from faster_whisper import WhisperModel
-        from lib.config import CFG
-        _model = WhisperModel(CFG.stt_model, device=CFG.stt_device,
-                              compute_type="int8")
+        with _model_lock:
+            if _model is None:
+                from faster_whisper import WhisperModel
+                from lib.config import CFG
+                _model = WhisperModel(CFG.stt_model, device=CFG.stt_device,
+                                      compute_type="int8")
     return _model
 
 
@@ -57,6 +61,7 @@ def cleanup(text: str) -> str:
     if target == "off":
         return text
     port = CFG.tiny_model_port if target == "tiny" else CFG.big_model_port
+    model = "tiny" if target == "tiny" else "big"
     prompt = (
         "You are a transcription cleaner. Fix punctuation, capitalization, "
         "and expand abbreviations in the following speech-to-text transcript. "
@@ -66,7 +71,7 @@ def cleanup(text: str) -> str:
     import json
     import urllib.request
     body = json.dumps({
-        "model": "tiny",
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0,
     }).encode()
