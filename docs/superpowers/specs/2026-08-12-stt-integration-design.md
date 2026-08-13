@@ -33,6 +33,7 @@ reserved for the big model. Cleanup runs on the always-loaded tiny overseer
 | Architecture | Shared engine + two thin transports (Approach A) |
 | Capture modes | Hotkey (hold-to-talk) + Speak-to-capture (VAD) |
 | Tray | STT settings submenu with checkable toggles |
+| Mic | **Logi USB Headset** (card 0, mono 48kHz) — the default input |
 
 ## 3. Architecture
 
@@ -158,6 +159,7 @@ transcript, last error). Both modes can be on at once.
 [stt]
 model = small              # faster-whisper: base|small|medium|large
 device = cpu               # cpu only (GPU reserved for big model)
+mic_device = Logi USB Headset   # default input (card 0, mono 48kHz)
 hotkey = <ctrl>+<shift>+space
 speak_to_capture = true    # VAD always-listening mode
 vad_threshold = 0.02       # RMS energy threshold for speech onset
