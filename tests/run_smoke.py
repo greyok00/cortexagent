@@ -813,6 +813,56 @@ def test_adapters():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AREA: bridges (cortex CLI ↔ CortexAgent backend)
+# ═══════════════════════════════════════════════════════════════════════════
+def test_bridges() -> R:
+    """The bridge scripts the cortex CLI (Pi fork) calls: tool list/run and
+    schedule/queue/plan reads. Each must emit one JSON doc on stdout, exit 0."""
+    import json
+    import subprocess
+    fails = 0
+    for script, args, key in (
+        ("scripts/tool_bridge.py", ["list", "--stub"], "tools"),
+        ("scripts/schedule_bridge.py", ["list"], "schedule"),
+        ("scripts/schedule_bridge.py", ["queue"], "queue"),
+        ("scripts/schedule_bridge.py", ["plan"], "plan"),
+    ):
+        p = subprocess.run([sys.executable, script, *args], capture_output=True,
+                           text=True, timeout=60, cwd=str(REPO))
+        if p.returncode != 0:
+            print(f"❌ {script} {args}: exit {p.returncode}: {p.stderr[:200]}")
+            fails += 1
+            continue
+        try:
+            d = json.loads(p.stdout)
+        except json.JSONDecodeError as e:
+            print(f"❌ {script} {args}: bad JSON: {e}")
+            fails += 1
+            continue
+        if not d.get("ok") or key not in d:
+            print(f"❌ {script} {args}: missing ok/{key}: {str(d)[:200]}")
+            fails += 1
+    # tool run path: execute a real tool through the bridge
+    p = subprocess.run([sys.executable, "scripts/tool_bridge.py", "run",
+                        "run_command", '{"command": "echo bridge-ok"}'],
+                       capture_output=True, text=True, timeout=60, cwd=str(REPO))
+    if p.returncode != 0:
+        print(f"❌ tool_bridge run: exit {p.returncode}: {p.stderr[:200]}")
+        fails += 1
+    else:
+        try:
+            d = json.loads(p.stdout)
+            if not d.get("ok") or "bridge-ok" not in d.get("output", ""):
+                print(f"❌ tool_bridge run: {str(d)[:200]}")
+                fails += 1
+        except json.JSONDecodeError as e:
+            print(f"❌ tool_bridge run: bad JSON: {e}")
+            fails += 1
+    return R("bridge scripts (tool + schedule)", "bridges", fails == 0,
+             "all bridges OK" if fails == 0 else f"{fails} bridge failures")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # AREA: welcome (#27 — welcomeScreen / --welcome-screen)
 # ═══════════════════════════════════════════════════════════════════════════
 def test_welcome_screen_flag() -> R:
@@ -2175,6 +2225,7 @@ TESTS = {
             test_stt_vad_math, test_stt_oom_floor_unload, test_stt_webui_endpoint],
     "registry": [test_tool_registry],
     "adapters": [test_adapters],
+    "bridges": [test_bridges],
     "react": [test_react_loop, test_tuning_defaults],
     "domain": [test_domain_db],
     "ingest": [test_ingest_job_library],
