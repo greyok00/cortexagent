@@ -1131,6 +1131,23 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
              "⚠️", YELLOW)
         return False
 
+    elif task_type == "ingest":
+        # Run a per-domain ingestion script (cron), or ingest from task fields.
+        if command:
+            result = execute_tool("run_command", {"command": command, "timeout": 3600})
+        else:
+            result = execute_tool("ingest_domain", {
+                "domain": task.get("domain", ""),
+                "source": task.get("source", ""),
+                "text": task.get("text", ""),
+            })
+        if result.get("ok"):
+            _log(f"Ingest task completed: {(result.get('output') or '')[:120]}", "✅", GREEN)
+            return True
+        _log(f"Ingest task failed: {(result.get('output') or result.get('error', ''))[:200]}",
+             "❌", RED)
+        return False
+
     return False
 
 

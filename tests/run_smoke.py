@@ -1876,6 +1876,33 @@ def test_react_loop() -> R:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AREA: domain (step-3 domain knowledge DBs)
+# ═══════════════════════════════════════════════════════════════════════════
+def test_domain_db() -> R:
+    """Domain DBs: embed, ingest, hybrid search, dedup, ingest_domain tool."""
+    from lib import domain_ingest, domain_db
+    import tempfile, shutil
+    from pathlib import Path
+    tmp = Path(tempfile.mkdtemp())
+    old = domain_db.DOMAINS_DIR
+    domain_db.DOMAINS_DIR = tmp
+    try:
+        r = domain_ingest.ingest("osint", "s.txt", "blocked IP 10.0.0.5 beaconing " * 20)
+        if not r.get("ok") or r.get("chunks", 0) < 1:
+            return R("domain ingest", "domain", False, str(r))
+        r2 = domain_ingest.ingest("osint", "s.txt", "blocked IP 10.0.0.5 beaconing " * 20)
+        if r2.get("chunks", -1) != 0:
+            return R("domain dedup", "domain", False, str(r2))
+        hits = domain_db.search("osint", "blocked IP")
+        if not hits:
+            return R("domain search", "domain", False, "no hits")
+        return R("domain db", "domain", True, f"{len(hits)} hits, {r['chunks']} chunks")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        domain_db.DOMAINS_DIR = old
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
 LIVE_AREAS = {"models", "daemon", "proxy", "cli", "tray"}
@@ -1912,6 +1939,7 @@ TESTS = {
             test_stt_vad_math, test_stt_oom_floor_unload, test_stt_webui_endpoint],
     "registry": [test_tool_registry],
     "react": [test_react_loop],
+    "domain": [test_domain_db],
 }
 
 
