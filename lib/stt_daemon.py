@@ -371,7 +371,8 @@ def run() -> int:
     from lib.config import CFG
     stop_event = threading.Event()
     mode_events = {"hotkey": threading.Event(), "vad": threading.Event()}
-    mode_events["hotkey"].set()
+    # Hotkey hold-to-talk is OFF by default — the tray exposes only the
+    # speak-to-text (VAD) toggle. `set-mode hotkey` can still enable it.
     if CFG.stt_speak_to_capture:
         mode_events["vad"].set()
     threads = [

@@ -359,18 +359,16 @@ def _run_gui(quit_event: threading.Event) -> None:
         quit_event.set()
 
     def on_stt_toggle(icon, item):
-        mode = "vad" if "Speak" in item.text else "hotkey"
+        # Single speak-to-text (VAD) on/off toggle. The hotkey hold-to-talk
+        # mode is not exposed here — `set-mode hotkey` via the CLI still works.
         cur = _stt_state().get("modes", {})
-        want = not cur.get(mode, False)
-        new = {"hotkey": cur.get("hotkey", False), "vad": cur.get("vad", False)}
-        new[mode] = want
-        target = "both" if new["hotkey"] and new["vad"] else (
-            "hotkey" if new["hotkey"] else ("vad" if new["vad"] else "off"))
+        want = not cur.get("vad", False)
+        target = "vad" if want else "off"
         out = _stt_control("set-mode", target)
         if "not running" in out:
             _stt_control("start")
             out = _stt_control("set-mode", target)
-        _toast(icon, f"STT {mode}: {'on' if want else 'off'} — " + out, "ok")
+        _toast(icon, f"Speak to text: {'on' if want else 'off'} — " + out, "ok")
 
     def on_stt_test(icon, item):
         _toast(icon, "recording 2s…", "info")
@@ -382,10 +380,8 @@ def _run_gui(quit_event: threading.Event) -> None:
         _toast(icon, r.stdout.strip() or r.stderr.strip(), "ok")
 
     stt_menu = Menu(
-        MI("Speak to capture", on_stt_toggle,
+        MI("Speak to text", on_stt_toggle,
            checked=lambda item: _stt_state().get("modes", {}).get("vad", False)),
-        MI("Hotkey mode", on_stt_toggle,
-           checked=lambda item: _stt_state().get("modes", {}).get("hotkey", False)),
         Menu.SEPARATOR,
         MI("Model: small", None, enabled=False),
         MI("Cleanup: tiny", None, enabled=False),
