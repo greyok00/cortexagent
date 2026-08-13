@@ -142,6 +142,37 @@ def _parse_text_tool_calls(content: str) -> list:
         if not isinstance(args, dict):
             args = {}
         return [{"id": "call_text_0", "name": name, "arguments": args}]
+    # <function_call>...</function_call> tag format (Meir Michanie's
+    # ollama_tools technique — works with ANY model, no native tool support
+    # needed). Inner content is a JSON list of OpenAI-ish call objects:
+    #   <function_call>[{"function": {"name": "x", "arguments": {...}}}]</function_call>
+    m = re.search(r"<function_call>(.*?)</function_call>", text, re.S)
+    if m:
+        inner = m.group(1).strip()
+        try:
+            obj = json.loads(inner)
+        except Exception:
+            obj = None
+        items = obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])
+        calls = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            fn = item.get("function") if isinstance(item.get("function"), dict) else item
+            name = fn.get("name", "")
+            args = fn.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args) if args.strip() else {}
+                except Exception:
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+            if isinstance(name, str) and name:
+                calls.append({"id": f"call_tag_{len(calls)}",
+                              "name": name, "arguments": args})
+        if calls:
+            return calls
     # JSON shape: find the first balanced {...} object.
     start = text.find("{")
     if start == -1:
@@ -268,6 +299,39 @@ def _test() -> int:
     if len(calls) != 1 or calls[0]["name"] != "run_command" \
             or calls[0]["arguments"] != {"command": "echo hi"}:
         print(f"❌ ReAct Action parse: {calls}")
+        fails += 1
+    # <function_call> tag format (ollama_tools technique) — list of calls
+    calls = _parse_text_tool_calls(
+        'I need the date. <function_call>[{"function": {"name": "get_current_date", '
+        '"arguments": {}}}]</function_call>')
+    if len(calls) != 1 or calls[0]["name"] != "get_current_date" \
+            or calls[0]["arguments"] != {}:
+        print(f"❌ function_call tag parse: {calls}")
+        fails += 1
+    # <function_call> with string arguments + multiple calls
+    calls = _parse_text_tool_calls(
+        '<function_call>[{"function": {"name": "run_command", '
+        '"arguments": "{\\"command\\": \\"echo hi\\"}"}}, '
+        '{"function": {"name": "rag_query", "arguments": {"domain": "osint", '
+        '"query": "IP"}}}]</function_call>')
+    if len(calls) != 2 or calls[0]["name"] != "run_command" \
+            or calls[0]["arguments"] != {"command": "echo hi"} \
+            or calls[1]["name"] != "rag_query":
+        print(f"❌ function_call multi parse: {calls}")
+        fails += 1
+    # <function_call> with a single object (not wrapped in a list)
+    calls = _parse_text_tool_calls(
+        '<function_call>{"function": {"name": "do_math", '
+        '"arguments": {"a": 2, "op": "+", "b": 3}}}</function_call>')
+    if len(calls) != 1 or calls[0]["name"] != "do_math" \
+            or calls[0]["arguments"] != {"a": 2, "op": "+", "b": 3}:
+        print(f"❌ function_call single-object parse: {calls}")
+        fails += 1
+    # Malformed <function_call> (bad JSON inside) → falls through to generic scan
+    calls = _parse_text_tool_calls(
+        '<function_call>[{"function": {"name": "x", "arguments": {bad}}]</function_call>')
+    if calls != []:
+        print(f"❌ malformed function_call parsed: {calls}")
         fails += 1
     # Plain answer must NOT be parsed as a tool call.
     calls = _parse_text_tool_calls("The answer is 4. No tools needed.")
