@@ -261,6 +261,43 @@ def _ingest_domain(domain: str, source: str, text: str) -> Dict[str, Any]:
     return {"ok": False, "output": "", "error": r.get("error", "ingest failed")}
 
 
+def _describe_image(image: str, prompt: str = "Describe this image in detail.") -> Dict[str, Any]:
+    """Describe an image or answer a VQA question about it (Moondream, CPU)."""
+    try:
+        from lib.image_adapter import describe
+        text = describe(image, prompt)
+        return {"ok": bool(text), "output": text, "error": ""}
+    except Exception as e:
+        return {"ok": False, "output": "", "error": f"describe_image failed: {e}"}
+
+
+def _transcribe_audio(file: str) -> Dict[str, Any]:
+    """Transcribe an audio file to text (faster-whisper, CPU)."""
+    from pathlib import Path
+    if not Path(file).is_file():
+        return {"ok": False, "output": "", "error": f"transcribe_audio failed: file not found: {file}"}
+    try:
+        from lib import stt
+        text = stt.transcribe(file)
+        return {"ok": bool(text), "output": text, "error": ""}
+    except Exception as e:
+        return {"ok": False, "output": "", "error": f"transcribe_audio failed: {e}"}
+
+
+def _parse_document(file: str) -> Dict[str, Any]:
+    """Extract text from a document (PDF/DOCX/PPTX/XLSX/scanned)."""
+    try:
+        from lib.document_adapter import parse_document
+        r = parse_document(file)
+        if r.get("ok"):
+            text = r.get("text", "")
+            return {"ok": True, "output": text or "(no text layer — OCR unavailable)",
+                    "error": r.get("error", "")}
+        return {"ok": False, "output": "", "error": f"parse_document failed: {r.get('error', 'parse failed')}"}
+    except Exception as e:
+        return {"ok": False, "output": "", "error": f"parse_document failed: {e}"}
+
+
 def _not_implemented(name: str) -> Callable:
     def _stub(**kwargs: Any) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": f"{name}: not implemented yet"}
@@ -315,20 +352,19 @@ def _register_all() -> None:
          "query": {"type": "string", "description": "search query"},
          "limit": {"type": "integer", "description": "max results (default 10)"}},
         ["domain", "query"]), _rag_query)
-    # Stubs — real handlers land in later steps (adapters spec, domain-db spec).
     register_tool("describe_image", _schema(
         "Describe an image or answer a question about it (returns text)",
         {"image": {"type": "string", "description": "path to the image file"},
          "prompt": {"type": "string", "description": "caption request or VQA question"}},
-        ["image"]), _not_implemented("describe_image"))
+        ["image"]), _describe_image)
     register_tool("transcribe_audio", _schema(
         "Transcribe an audio file to text (faster-whisper, CPU)",
         {"file": {"type": "string", "description": "path to the audio file"}},
-        ["file"]), _not_implemented("transcribe_audio"))
+        ["file"]), _transcribe_audio)
     register_tool("parse_document", _schema(
         "Extract text from a document (PDF/DOCX/PPTX/XLSX/scanned)",
         {"file": {"type": "string", "description": "path to the document"}},
-        ["file"]), _not_implemented("parse_document"))
+        ["file"]), _parse_document)
     register_tool("ingest_domain", _schema(
         "Ingest text into a domain knowledge base",
         {"domain": {"type": "string", "enum": ["business", "dfir", "law", "osint", "programming"]},
@@ -390,12 +426,20 @@ def _smoke() -> int:
     else:
         print("✅ rag_query returns well-formed result (may be empty)")
 
-    for name in ("describe_image", "transcribe_audio", "parse_document"):
-        r = execute_tool(name, {})
-        if r.get("ok") or "not implemented" not in r.get("error", ""):
-            print(f"❌ stub {name}: {r}")
-            fails += 1
-    print("✅ stubs return not-implemented")
+    # ── multimodal adapters (step 4) ────────────────────────────────────────
+    r = execute_tool("describe_image", {"image": "/nonexistent.png"})
+    if r.get("ok") or "failed" not in r.get("error", ""):
+        print(f"❌ describe_image error path: {r}")
+        fails += 1
+    r = execute_tool("transcribe_audio", {"file": "/nonexistent.wav"})
+    if r.get("ok") or "failed" not in r.get("error", ""):
+        print(f"❌ transcribe_audio error path: {r}")
+        fails += 1
+    r = execute_tool("parse_document", {"file": "/nonexistent.pdf"})
+    if r.get("ok") or "failed" not in r.get("error", ""):
+        print(f"❌ parse_document error path: {r}")
+        fails += 1
+    print("✅ adapters return clean errors")
 
     r = execute_tool("no_such_tool", {})
     if r.get("ok") or "unknown tool" not in r.get("error", ""):
