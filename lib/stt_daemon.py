@@ -25,6 +25,44 @@ import numpy as np
 SAMPLE_RATE = 16000
 CHANNELS = 1
 
+STATE_FILE = Path.home() / ".cortexagent" / "state" / "stt_daemon.json"
+SOCKET_PATH = Path.home() / ".cortexagent" / "state" / "stt.sock"
+
+
+def _write_state(**updates) -> None:
+    import json
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    state = {}
+    if STATE_FILE.exists():
+        try:
+            state = json.loads(STATE_FILE.read_text())
+        except Exception:
+            state = {}
+    state.update(updates)
+    STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+def _read_state() -> dict:
+    import json
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def _send_control(command: str, mode: str | None = None) -> dict:
+    import json
+    import socket
+    payload = {"command": command}
+    if mode:
+        payload["mode"] = mode
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(3)
+        s.connect(str(SOCKET_PATH))
+        s.sendall(json.dumps(payload).encode())
+        resp = s.recv(4096).decode()
+    return json.loads(resp) if resp else {"ok": False, "reason": "no response"}
+
 
 def _mic_device() -> str:
     from lib.config import CFG
@@ -179,6 +217,51 @@ def vad_capture(on_clip, stop_event=None, block_sec: float = 0.1) -> None:
                         on_clip(clip)
 
 
+def _socket_server(stop_event) -> None:
+    import json
+    import socket
+    import threading
+    SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        SOCKET_PATH.unlink()
+    except FileNotFoundError:
+        pass
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(str(SOCKET_PATH))
+    srv.listen(4)
+    modes = {"hotkey": False, "vad": False}
+
+    while not stop_event.is_set():
+        try:
+            conn, _ = srv.accept()
+        except OSError:
+            break
+        with conn:
+            data = conn.recv(4096).decode()
+            try:
+                req = json.loads(data)
+            except Exception:
+                conn.sendall(b'{"ok": false, "reason": "bad json"}')
+                continue
+            cmd = req.get("command")
+            if cmd == "set-mode":
+                mode = req.get("mode")
+                if mode in ("hotkey", "vad", "both", "off"):
+                    modes["hotkey"] = mode in ("hotkey", "both")
+                    modes["vad"] = mode in ("vad", "both")
+                    _write_state(running=True, modes=dict(modes))
+                    conn.sendall(b'{"ok": true}')
+                else:
+                    conn.sendall(b'{"ok": false, "reason": "bad mode"}')
+            elif cmd == "stop":
+                _write_state(running=False, modes=dict(modes))
+                conn.sendall(b'{"ok": true}')
+                stop_event.set()
+            else:
+                conn.sendall(b'{"ok": false, "reason": "unknown command"}')
+    srv.close()
+
+
 def _test() -> int:
     print("🎙️ recording 2s…", flush=True)
     clip = record_clip(2.0)
@@ -188,14 +271,64 @@ def _test() -> int:
     return 0 if text.strip() else 1
 
 
+def run() -> int:
+    import os
+    import threading
+    from lib.config import CFG
+    stop_event = threading.Event()
+    threads = [
+        threading.Thread(target=_socket_server, args=(stop_event,),
+                         daemon=True, name="stt-socket"),
+        threading.Thread(target=run_hotkey, daemon=True, name="stt-hotkey"),
+    ]
+    if CFG.stt_speak_to_capture:
+        threads.append(threading.Thread(
+            target=vad_capture, args=(_handle_clip, stop_event),
+            daemon=True, name="stt-vad"))
+    for t in threads:
+        t.start()
+    _write_state(running=True, pid=os.getpid(),
+                 modes={"hotkey": True, "vad": CFG.stt_speak_to_capture})
+    try:
+        stop_event.wait()  # released by the socket server on "stop"
+    except KeyboardInterrupt:
+        pass
+    _write_state(running=False, modes={"hotkey": False, "vad": False})
+    return 0
+
+
+def control(command: str, mode: str | None = None) -> int:
+    import json
+    if command == "status":
+        print(json.dumps(_read_state(), indent=2))
+        return 0
+    if not SOCKET_PATH.exists():
+        print("STT daemon not running — start it with 'cortexagent voice start'")
+        return 1
+    resp = _send_control(command, mode)
+    print(json.dumps(resp, indent=2))
+    return 0 if resp.get("ok") else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="CortexAgent STT daemon")
     ap.add_argument("--test", action="store_true", help="record 2s + transcribe (no typing)")
+    ap.add_argument("command", nargs="?", default=None,
+                    help="start|stop|status|set-mode")
+    ap.add_argument("mode", nargs="?", default=None, help="hotkey|vad|both|off")
     args = ap.parse_args()
     if args.test:
         return _test()
-    run_hotkey()
-    return 0
+    if args.command == "start":
+        import subprocess
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve())],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        time.sleep(0.5)
+        return control("status")
+    if args.command in ("stop", "status", "set-mode"):
+        return control(args.command, args.mode)
+    return run()
 
 
 if __name__ == "__main__":
