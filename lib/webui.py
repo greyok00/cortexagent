@@ -827,6 +827,26 @@ class WebUIHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json(500, {"ok": False, "reason": str(e)})
 
+    def _handle_stt(self) -> None:
+        """POST /api/stt — raw audio body → {ok, text}. Transcribes + cleans."""
+        import tempfile
+        from lib import stt
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > 50_000_000:
+            self._send_json(400, {"ok": False, "reason": "invalid audio size"})
+            return
+        audio = self.rfile.read(length)
+        tmp = Path(tempfile.gettempdir()) / f"stt_{int(time.time())}.webm"
+        tmp.write_bytes(audio)
+        try:
+            text = stt.transcribe_and_cleanup(tmp)
+        except Exception as e:
+            self._send_json(500, {"ok": False, "reason": str(e)})
+            return
+        finally:
+            tmp.unlink(missing_ok=True)
+        self._send_json(200, {"ok": True, "text": text})
+
     def _handle_tray_media(self, path: str) -> None:
         """Serve files from the upload dir AND generated media."""
         rel = path[len("/media/"):]
@@ -1193,6 +1213,11 @@ class WebUIHandler(BaseHTTPRequestHandler):
             if not self._check_auth_or_401():
                 return
             self._handle_tray_upload(parsed.path)
+            return
+        if parsed.path == "/api/stt":
+            if not self._check_auth_or_401():
+                return
+            self._handle_stt()
             return
         if parsed.path in ("/api/chat", "/api/image", "/api/video", "/api/load"):
             if not self._check_auth_or_401():
