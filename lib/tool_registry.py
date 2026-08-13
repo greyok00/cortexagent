@@ -21,6 +21,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+MAX_TOOL_OUTPUT = 100_000  # chars — cap tool output to protect the model's context
+
 
 # ── Registry ────────────────────────────────────────────────────────────────
 TOOLS: Dict[str, Dict[str, Any]] = {}
@@ -69,6 +71,8 @@ def _run_command(command: str, timeout: int = 3600) -> Dict[str, Any]:
         output = result.stdout
         if result.stderr:
             output += ("\n" if output else "") + result.stderr
+        if len(output) > MAX_TOOL_OUTPUT:
+            output = output[:MAX_TOOL_OUTPUT] + f"\n…[truncated {len(output) - MAX_TOOL_OUTPUT} chars]"
         if result.returncode == 0:
             return {"ok": True, "output": output, "error": ""}
         return {"ok": False, "output": output, "error": f"exit {result.returncode}"}
