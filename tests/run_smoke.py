@@ -1917,6 +1917,36 @@ def test_domain_db() -> R:
         domain_db.DOMAINS_DIR = old
 
 
+# AREA: ingest (step-5 ingestion job library)
+# ═══════════════════════════════════════════════════════════════════════════
+def test_ingest_job_library() -> R:
+    """Ingestion jobs: shared helper ingests a dir, dedups, survives bad domains."""
+    from scripts import ingest_common
+    import tempfile, shutil
+    from pathlib import Path
+    from lib import domain_db
+    tmp = Path(tempfile.mkdtemp())
+    old = domain_db.DOMAINS_DIR
+    domain_db.DOMAINS_DIR = tmp
+    try:
+        src = tmp / "sources" / "law"
+        src.mkdir(parents=True, exist_ok=True)
+        (src / "memo.txt").write_text("Statute 18 USC 1030: unauthorized access. " * 20)
+        n = ingest_common.ingest_dir("law", src)
+        if n < 1:
+            return R("ingest job", "ingest", False, f"stored {n} chunks")
+        hits = domain_db.search("law", "unauthorized access")
+        if not hits:
+            return R("ingest job search", "ingest", False, "no hits")
+        n2 = ingest_common.ingest_dir("law", src)
+        if n2 != 0:
+            return R("ingest job dedup", "ingest", False, f"{n2} chunks on re-run")
+        return R("ingest job library", "ingest", True, f"{n} chunks, {len(hits)} hits")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        domain_db.DOMAINS_DIR = old
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1956,6 +1986,7 @@ TESTS = {
     "adapters": [test_adapters],
     "react": [test_react_loop],
     "domain": [test_domain_db],
+    "ingest": [test_ingest_job_library],
 }
 
 

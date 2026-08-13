@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/ingest_osint.py — ingest OSINT source files into the osint domain DB."""
+"""scripts/ingest_law.py — ingest law source files into the law domain DB."""
 from __future__ import annotations
 
 import sys
@@ -13,7 +13,7 @@ from scripts.ingest_common import ingest_dir, source_dir  # noqa: E402
 
 
 def main() -> int:
-    ingest_dir("osint", source_dir("osint"))
+    ingest_dir("law", source_dir("law"))
     return 0
 
 
