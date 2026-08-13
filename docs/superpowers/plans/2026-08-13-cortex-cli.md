@@ -18,6 +18,9 @@
 - **Auto-switch reuses `pre_flight_gate.classify_intent`** — do not write a new classifier.
 - **`lib/tool_registry.py` is the shared backbone** — `ensure_registered()` is idempotent, importable directly.
 - **CortexAgent is untouched** — daemon/overseer/webui/tray/STT/browser/media/RAG all stay as-is.
+- **Daemon + overseer must work and be fully integrated** — the daemon manages the big model (`:8080`), the overseer manages the tiny (`:8082`) + scheduler. The cortex CLI connects to both; the task strip reads the overseer's schedule.
+- **CPU offload as much as possible** — skills/tools run on CPU as Python modules, called directly (no proxy/MCP round-trips where avoidable). Only the LLM + adapters that genuinely need VRAM stay on GPU.
+- **Low-resource target** — designed to run on lower-resource laptops; efficiency is a feature, not an afterthought.
 - **Localhost-only bindings** — never `0.0.0.0`.
 - **No personal info leaks** — use `Path.home()` / env vars.
 
@@ -82,11 +85,28 @@ cd cortex && npm run build && ./bin/cortex.js --version
 
 Expected: prints the cortex version (or the Pi version with the cortex name). The chat TUI opens when run without args.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Wire the fork into `bin/cortexagent` as the default agent**
+
+Edit `~/cortexagent/bin/cortexagent` line ~270:
+```bash
+AGENT_CLI="${CORTEXAGENT_CLI:-claude}"
+```
+→
+```bash
+AGENT_CLI="${CORTEXAGENT_CLI:-cortex}"
+```
+
+Claude stays installed — we just stop launching it from the cortexagent command. The fork inherits the same wiring `claude-local` has today: local model routing, isolated config dir, banner. Verify:
+```bash
+cd ~/cortexagent && CORTEXAGENT_CLI=~/cortexagent/cortex/bin/cortex.js ./bin/cortexagent
+```
+Expected: the cortex chat TUI opens (not Claude).
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: fork Pi, rebrand as cortex"
+git commit -m "feat: fork Pi, rebrand as cortex, wire into cortexagent"
 ```
 
 ---
@@ -511,8 +531,31 @@ Expected: PASS.
 
 - [ ] **Step 5: Wire the widgets**
 
+Create `cortex/scripts/schedule_bridge.py` (reads the overseer's schedule):
+```python
+#!/usr/bin/env python3
+"""schedule_bridge.py — list the overseer's scheduled tasks for the task strip."""
+import json
+import sys
+
+sys.path.insert(0, "/home/grey/cortexagent")
+from lib.overseer import schedule_list  # noqa: E402
+
+def main() -> int:
+    try:
+        print(json.dumps(schedule_list()))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
 In `cortex/extensions/ui.ts`, add the factory:
 ```ts
+import { execFileSync } from "node:child_process";
+
 export default function (pi: ExtensionAPI) {
   let mode = "chat";
   let autoYes = false;
@@ -522,7 +565,19 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setWidget("cortex-stats", formatStats(usage, mode, autoYes));
   });
   pi.on("session_start", async (_e, ctx) => {
-    ctx.ui.setWidget("cortex-tasks", ["No scheduled tasks"]);
+    // Task strip reads the overseer's schedule directly (no proxy/MCP).
+    try {
+      const out = execFileSync("python3", ["scripts/schedule_bridge.py"], {
+        encoding: "utf-8",
+      });
+      const sched = JSON.parse(out);
+      const lines = (Array.isArray(sched) ? sched : []).map(
+        (s: any) => `${s.name}: ${s.schedule_type}`
+      );
+      ctx.ui.setWidget("cortex-tasks", lines.length ? lines : ["No scheduled tasks"]);
+    } catch {
+      ctx.ui.setWidget("cortex-tasks", ["No scheduled tasks"]);
+    }
   });
 }
 ```
