@@ -774,6 +774,29 @@ def test_regression_cortexllm_apis() -> R:
              "all present" if not bad else f"missing/failed: {bad}")
 
 
+def test_tool_registry() -> R:
+    """Tool registry: schemas valid, run_command works, stubs not-implemented."""
+    from lib.tool_registry import list_tools, execute_tool
+    tools = list_tools()
+    if not tools:
+        return R("tool registry schemas", "registry", False, "empty")
+    bad = []
+    for t in tools:
+        f = t.get("function", {})
+        if (t.get("type") != "function" or not f.get("name")
+                or not f.get("description") or not f.get("parameters")):
+            bad.append(f.get("name", "?"))
+    if bad:
+        return R("tool registry schemas", "registry", False, f"bad: {bad}")
+    r = execute_tool("run_command", {"command": "echo registry-ok"})
+    if not r.get("ok") or "registry-ok" not in r.get("output", ""):
+        return R("tool registry run_command", "registry", False, str(r))
+    r = execute_tool("describe_image", {})
+    if r.get("ok") or "not implemented" not in r.get("error", ""):
+        return R("tool registry stubs", "registry", False, str(r))
+    return R("tool registry", "registry", True, f"{len(tools)} tools")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # AREA: welcome (#27 — welcomeScreen / --welcome-screen)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1846,6 +1869,7 @@ TESTS = {
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
             test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
             test_stt_vad_math, test_stt_webui_endpoint],
+    "registry": [test_tool_registry],
 }
 
 
