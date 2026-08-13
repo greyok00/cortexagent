@@ -167,6 +167,8 @@
   #tool-status { font-size: 12px; color: var(--text-secondary); white-space: nowrap; min-width: 76px; text-align: right; }
   .icon-btn { padding: 8px; border-radius: 8px; color: var(--text-secondary); background: transparent; border: none; }
   .icon-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+  .icon-btn.recording { color: #ff4d4d; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
   .tool-nav-btn { display: none; }
 
   /* ── Sessions sidebar (glass) ── */
@@ -400,6 +402,7 @@
   <div class="composer">
     <div class="wrap">
       <button class="icon-btn" id="attach" title="Attach a file">📎</button>
+      <button class="icon-btn" id="mic" title="Hold to speak">🎙️</button>
       <input type="file" id="file-input" multiple hidden>
       <textarea id="input" rows="1" placeholder="Message the cortex…"></textarea>
       <button class="send-btn" id="send" title="Send">➤</button>
@@ -928,6 +931,44 @@ input.addEventListener('keydown', e => {
 function autosize() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 200) + 'px'; }
 input.addEventListener('input', autosize);
 
+// ── STT: hold-to-record mic button ─────────────────────────────────────
+const micBtn = document.getElementById('mic');
+let mediaRecorder = null, micChunks = [], micActive = false;
+
+async function startMic() {
+  if (micActive) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    micChunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data.size) micChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(micChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      stream.getTracks().forEach(t => t.stop());
+      micBtn.classList.remove('recording');
+      micBtn.textContent = '🎙️';
+      try {
+        const res = await api('/api/stt', { method: 'POST', body: blob });
+        if (res && res.text) {
+          const input = document.getElementById('input');
+          input.value = (input.value ? input.value + ' ' : '') + res.text;
+          input.focus();
+        }
+      } catch (e) { console.error('stt error', e); }
+    };
+    mediaRecorder.start();
+    micActive = true;
+    micBtn.classList.add('recording');
+    micBtn.textContent = '🔴';
+  } catch (e) { console.error('mic error', e); }
+}
+function stopMic() {
+  if (mediaRecorder && micActive) { mediaRecorder.stop(); micActive = false; }
+}
+micBtn.addEventListener('mousedown', startMic);
+micBtn.addEventListener('mouseup', stopMic);
+micBtn.addEventListener('mouseleave', stopMic);
+
 // ── File attach ────────────────────────────────────────────────────────
 attachBtn.onclick = () => fileInput.click();
 fileInput.onchange = async () => {
@@ -984,7 +1025,7 @@ function logPre(lines) { return `<pre style="background:rgba(0,0,0,0.5);border:1
 // 5 business-readable cards. We dropped the picker and the 14-card sprawl —
 // business users want to see what's healthy, what it's doing, what's queued,
 // what's running, and recent activity. That's it.
-const PANE_CARDS = ['health', 'activity', 'tasks', 'sessions', 'logs'];
+const PANE_CARDS = ['health', 'activity', 'tasks', 'sessions', 'canary', 'logs'];
 
 function makeCards(j) {
   const ov = j.overseer || {}, dm = j.daemon || {}, vr = j.vram || {};
@@ -1047,11 +1088,30 @@ function makeCards(j) {
   // ── 5. Recent activity (merged overseer + daemon logs) ─────────────────
   const logsInner = `<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px">overseer.log</div>${logPre(j.logs?.overseer)}<div style="font-size:11px;color:var(--text-tertiary);margin:8px 0 4px">daemon.log</div>${logPre(j.logs?.daemon)}`;
 
+  // ── 6. Canary hits (file-format tripwires — fires when a PNG/PDF canary
+  // is opened in a viewer that resolves the embedded beacon URL) ─────────
+  const hits = j.canary_hits || [];
+  const hitsRows = hits.length === 0
+    ? '<div class="empty">no canary hits yet — open a canary file to fire one</div>'
+    : hits.slice(0, 20).map(h => {
+        const ts = esc(h.ts || '?');
+        const fid = esc(h.file_id || '?');
+        const ip = esc(h.src_ip || '?');
+        const ua = esc((h.ua || '').slice(0, 60));
+        const matched = h.matched_osint || [];
+        const matchPill = matched.length
+          ? ' ' + pill('matched: ' + esc(matched.map(m => m.label || m.name || '?').join(', ')), 'warn')
+          : '';
+        return `<div class="row"><span class="k">${ts}${matchPill}</span><span class="v" style="font-size:12px"><b>${fid}</b> · ${ip}<br><span style="color:var(--text-tertiary);font-size:11px">${ua}</span></span></div>`;
+      }).join('');
+  const canaryInner = `<div class="row"><span class="k" style="font-weight:600">Beacons (${hits.length})</span><a class="v" href="http://127.0.0.1:8092/hits.html" target="_blank" style="color:var(--accent);font-size:12px">open tracker →</a></div>${hitsRows}<div class="row" style="margin-top:8px;font-size:11px;color:var(--text-tertiary)">PNG/PDF canaries fire when opened in viewers that resolve embedded URLs. See <code>~/honeypot/</code>.</div>`;
+
   return {
     health:   card('System health', rows(healthRows)),
     activity: card('Activity', rows(activityRows) + bar),
     tasks:    card('Tasks', tasksInner),
     sessions: card('CortexAgent sessions (' + procs.length + ')', procRows),
+    canary:   card('🐦 canary hits', canaryInner),
     logs:     card('Recent activity', logsInner),
   };
 }
