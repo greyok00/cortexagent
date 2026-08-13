@@ -69,6 +69,14 @@ if [ $# -gt 0 ] && { [ "$1" = "--unload" ] || [ "$1" = "unload" ]; }; then
   exit 0
 fi
 
+# ── voice: STT daemon control ─────────────────────────────────────────────
+# cortexagent voice start|stop|status|set-mode <hotkey|vad|both|off>
+if [ $# -gt 0 ] && [ "$1" = "voice" ]; then
+  shift
+  /usr/bin/python3 "$REPO_ROOT/lib/stt_daemon.py" "$@"
+  exit $?
+fi
+
 # ── Source the LOCKED model settings (lib/config.py LOCKED_KEYS) ──────────────
 # This pins ctx/ub/ngl/fa/ctk/ctv/kv-offload/np to the tuned-for-16GB values so
 # a stray env var / conf edit can't silently OOM the card again (the original
