@@ -106,6 +106,25 @@ MCP support stays in the codebase but is **disabled by default**. Fully offline
 mode works first. MCP is optional — if it works later, enable it. Minification
 + readme explanation is handled in another session (not this build).
 
+## Shared backbone (from the harness session — handoff 49af20f)
+
+The other session's harness work (10 commits, `7118891 → 75fce5b`) is the
+shared backbone the cortex CLI builds on. Its 7 handoff notes are binding:
+
+1. **Skill format is already defined** — `NAME`/`DESCRIPTION`/`SCHEMA`/
+   `run(args)` in `lib/skills.py`. The cortex CLI's `skills.ts` bridge calls
+   these directly — **do not invent a new format**.
+2. **`<function_call>` tags are the model contract** — both `:8080` and
+   `:8082` emit them. The cortex CLI's tool loop parses that format (same as
+   `lib/react_loop.py`).
+3. **Stub mode is available** — `list_tools(stub=True)` + backend schema
+   resolution, for cheap tool-surface listing.
+4. **Auto-switch reuses `pre_flight_gate.classify_intent`** — tiny vs big.
+5. **MCP stays off** — minification + README are done; enabling later is safe.
+6. **`lib/beautify.py` is reusable** for output formatting.
+7. **`lib/tool_registry.py` is the shared backbone** — `ensure_registered()`
+   is idempotent and importable directly.
+
 ## Data flow
 
 ```
