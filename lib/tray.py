@@ -102,6 +102,29 @@ def _overseer_restart() -> bool:
     return _overseer_start()
 
 
+# ── STT daemon helpers ────────────────────────────────────────────────────────
+
+def _stt_state() -> dict:
+    import json
+    from pathlib import Path
+    p = Path.home() / ".cortexagent" / "state" / "stt_daemon.json"
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+
+def _stt_control(cmd: str, mode: str | None = None) -> str:
+    import subprocess
+    from pathlib import Path
+    repo = Path(__file__).resolve().parent.parent
+    args = [sys.executable, str(repo / "lib" / "stt_daemon.py"), cmd]
+    if mode:
+        args.append(mode)
+    r = subprocess.run(args, capture_output=True, text=True, timeout=10)
+    return r.stdout.strip() or r.stderr.strip()
+
+
 # ── Model + config actions (via the daemon control socket) ───────────────────
 
 def _run_cli(*args: str, timeout: int = 120) -> tuple[int, str]:
@@ -310,10 +333,19 @@ def _run_gui(quit_event: threading.Event) -> None:
         """Tray click → popout overseer dashboard (NOT the :8090 webui).
         Opens a small Tk window with overseer state + big-model steps +
         rotating idle tip. See lib/tray_dashboard.py.
+
+        Force-reloads lib.tray_dashboard so file edits land without a
+        tray-daemon restart (otherwise sys.modules serves stale code).
         """
         try:
-            from lib import tray_dashboard
-            t = threading.Thread(target=tray_dashboard.open_dashboard,
+            import importlib
+            import lib.tray_dashboard  # noqa: F401  (ensure registered)
+            from lib import tray_dashboard as _td
+            try:
+                _td = importlib.reload(_td)
+            except Exception as reload_err:
+                _log(f"dashboard reload failed: {reload_err}", "⚠️", YELLOW)
+            t = threading.Thread(target=_td.open_dashboard,
                                   daemon=True, name="tray-dashboard")
             t.start()
             _log("opened overseer dashboard", "📊", CYAN)
@@ -326,6 +358,36 @@ def _run_gui(quit_event: threading.Event) -> None:
         icon.stop()
         quit_event.set()
 
+    def on_stt_toggle(icon, item):
+        mode = "vad" if "Speak" in item.text else "hotkey"
+        cur = _stt_state().get("modes", {})
+        want = not cur.get(mode, False)
+        new = {"hotkey": cur.get("hotkey", False), "vad": cur.get("vad", False)}
+        new[mode] = want
+        target = "both" if new["hotkey"] and new["vad"] else (
+            "hotkey" if new["hotkey"] else ("vad" if new["vad"] else "off"))
+        _toast(icon, f"STT {mode}: {'on' if want else 'off'} — " + _stt_control("set-mode", target), "ok")
+
+    def on_stt_test(icon, item):
+        _toast(icon, "recording 2s…", "info")
+        import subprocess
+        from pathlib import Path
+        repo = Path(__file__).resolve().parent.parent
+        r = subprocess.run([sys.executable, str(repo / "lib" / "stt_daemon.py"), "--test"],
+                           capture_output=True, text=True, timeout=30)
+        _toast(icon, r.stdout.strip() or r.stderr.strip(), "ok")
+
+    stt_menu = Menu(
+        MI("Speak to capture", on_stt_toggle,
+           checked=lambda item: _stt_state().get("modes", {}).get("vad", False)),
+        MI("Hotkey mode", on_stt_toggle,
+           checked=lambda item: _stt_state().get("modes", {}).get("hotkey", False)),
+        Menu.SEPARATOR,
+        MI("Model: small", None, enabled=False),
+        MI("Cleanup: tiny", None, enabled=False),
+        MI("Test mic", on_stt_test),
+    )
+
     menu = Menu(
         MI("CortexAgent", None, enabled=False),
         Menu.SEPARATOR,
@@ -336,6 +398,8 @@ def _run_gui(quit_event: threading.Event) -> None:
         MI("Launch CLI", on_cli),
         MI("Overseer dashboard", on_dashboard),
         MI("Open webui (8090)", on_open_webui),
+        Menu.SEPARATOR,
+        MI("STT", stt_menu),
         Menu.SEPARATOR,
         MI("Quit", on_quit),
     )
