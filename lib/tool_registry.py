@@ -232,6 +232,14 @@ def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
             pass  # vector index optional — keyword search still works
     except Exception as e:
         return {"ok": False, "output": "", "error": f"rag_query failed: {e}"}
+    # Domain-DB half (step 3) — FTS5 + vec0 hybrid, RRF-merged internally.
+    try:
+        from lib.domain_db import search as _db_search
+        for hit in _db_search(domain, query, limit=limit):
+            results.append({"tier": "domain", "source": hit.get("source", domain),
+                            "text": hit.get("chunk", "")})
+    except Exception:
+        pass  # domain DB optional — memory search still works
     lines = []
     for i, r in enumerate(results[:limit], 1):
         text = r["text"].strip().replace("\n", " ")[:500]
@@ -239,6 +247,17 @@ def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
     if not lines:
         return {"ok": True, "output": "(no results)", "error": ""}
     return {"ok": True, "output": "\n".join(lines), "error": ""}
+
+
+def _ingest_domain(domain: str, source: str, text: str) -> Dict[str, Any]:
+    """Ingest text into a domain knowledge base (chunk → embed → store)."""
+    from lib.domain_ingest import ingest
+    r = ingest(domain, source, text)
+    if r.get("ok"):
+        return {"ok": True,
+                "output": f"ingested {r.get('chunks', 0)} chunks into {domain}",
+                "error": ""}
+    return {"ok": False, "output": "", "error": r.get("error", "ingest failed")}
 
 
 def _not_implemented(name: str) -> Callable:
@@ -314,7 +333,7 @@ def _register_all() -> None:
         {"domain": {"type": "string", "enum": ["business", "dfir", "law", "osint", "programming"]},
          "source": {"type": "string", "description": "file path / URL / title"},
          "text": {"type": "string", "description": "content to ingest"}},
-        ["domain", "source", "text"]), _not_implemented("ingest_domain"))
+        ["domain", "source", "text"]), _ingest_domain)
 
 
 _register_all()
@@ -370,7 +389,7 @@ def _smoke() -> int:
     else:
         print("✅ rag_query returns well-formed result (may be empty)")
 
-    for name in ("describe_image", "transcribe_audio", "parse_document", "ingest_domain"):
+    for name in ("describe_image", "transcribe_audio", "parse_document"):
         r = execute_tool(name, {})
         if r.get("ok") or "not implemented" not in r.get("error", ""):
             print(f"❌ stub {name}: {r}")
@@ -402,6 +421,25 @@ def _smoke() -> int:
         print(f"❌ rag_query empty-query guard: {r}")
         fails += 1
     print("✅ guardrails enforced")
+
+    # ── domain DBs (step 3) ────────────────────────────────────────────────
+    r = execute_tool("ingest_domain",
+                     {"domain": "dfir", "source": "smoke.txt", "text": "blocked IP 10.0.0.5 beaconing"})
+    if not r.get("ok"):
+        print(f"❌ ingest_domain: {r}")
+        fails += 1
+    else:
+        print("✅ ingest_domain works")
+    r = execute_tool("rag_query", {"domain": "dfir", "query": "blocked IP", "limit": 3})
+    if not r.get("ok"):
+        print(f"❌ rag_query composite: {r}")
+        fails += 1
+    else:
+        print("✅ rag_query domain half works")
+    r = execute_tool("ingest_domain", {"domain": "nope", "source": "s", "text": "t"})
+    if r.get("ok") or "unknown domain" not in r.get("error", ""):
+        print(f"❌ ingest_domain bad domain: {r}")
+        fails += 1
 
     print("✅ tool_registry smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
