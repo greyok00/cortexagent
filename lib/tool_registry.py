@@ -87,6 +87,76 @@ def _query_llm(prompt: str, system: str = "", max_tokens: int = 256) -> Dict[str
     return {"ok": False, "output": "", "error": "tiny LLM unavailable"}
 
 
+def _spawn_subagent(prompt: str, model: str = "sonnet", timeout: int = 600) -> Dict[str, Any]:
+    """Delegate to a Claude Code subagent (full tool access)."""
+    from lib.overseer import _spawn_subagent as _spawn
+    return _spawn(prompt, model=model, timeout=timeout)
+
+
+def _generate_image(prompt: str) -> Dict[str, Any]:
+    """Generate an image via the media pipeline (diffusers, in-process)."""
+    from lib.media_pipeline import MediaPipeline
+    result = MediaPipeline().submit(prompt, model_type="image")
+    if result.get("status") == "completed":
+        return {"ok": True, "output": json.dumps(result, ensure_ascii=False), "error": ""}
+    return {"ok": False, "output": "", "error": result.get("status", "unknown")}
+
+
+def _generate_video(prompt: str) -> Dict[str, Any]:
+    """Generate a video via the media pipeline."""
+    from lib.media_pipeline import MediaPipeline
+    result = MediaPipeline().submit(prompt, model_type="video")
+    if result.get("status") == "completed":
+        return {"ok": True, "output": json.dumps(result, ensure_ascii=False), "error": ""}
+    return {"ok": False, "output": "", "error": result.get("status", "unknown")}
+
+
+def _generate_media(prompt: str) -> Dict[str, Any]:
+    """Auto-detect image vs video vs text via the media pipeline."""
+    from lib.media_pipeline import MediaPipeline
+    result = MediaPipeline().submit(prompt, model_type="auto")
+    if result.get("status") == "completed":
+        return {"ok": True, "output": json.dumps(result, ensure_ascii=False), "error": ""}
+    return {"ok": False, "output": "", "error": result.get("status", "unknown")}
+
+
+def _web_search(query: str, limit: int = 5) -> Dict[str, Any]:
+    """Search the web. Tries firecrawl if configured, else DuckDuckGo HTML."""
+    import os
+    import re
+    import urllib.parse
+    import urllib.request
+    if os.environ.get("FIRECRAWL_API_KEY"):
+        try:
+            from lib.firecrawl_proxy import _call_firecrawl
+            ok, payload = _call_firecrawl("search", {"query": query, "limit": limit})
+            if ok:
+                return {"ok": True,
+                        "output": json.dumps(payload, ensure_ascii=False)[:8000],
+                        "error": ""}
+        except Exception:
+            pass  # fall through to DuckDuckGo
+    try:
+        url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query)
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            html = r.read().decode("utf-8", "replace")
+        links = re.findall(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html)
+        snips = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.S)
+        lines = []
+        for i, (href, title) in enumerate(links[:limit], 1):
+            title = re.sub(r"<[^>]+>", "", title).strip()
+            snip = ""
+            if i - 1 < len(snips):
+                snip = re.sub(r"<[^>]+>", "", snips[i - 1]).strip()
+            lines.append(f"{i}. {title}\n   {href}\n   {snip}")
+        if not lines:
+            return {"ok": True, "output": "(no results)", "error": ""}
+        return {"ok": True, "output": "\n".join(lines), "error": ""}
+    except Exception as e:
+        return {"ok": False, "output": "", "error": f"web_search failed: {e}"}
+
+
 def _not_implemented(name: str) -> Callable:
     def _stub(**kwargs: Any) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": f"{name}: not implemented yet"}
@@ -112,6 +182,29 @@ def _register_all() -> None:
          "system": {"type": "string", "description": "system prompt (optional)"},
          "max_tokens": {"type": "integer", "description": "max output tokens (default 256)"}},
         ["prompt"]), _query_llm)
+    register_tool("spawn_subagent", _schema(
+        "Delegate to a Claude Code subagent (full tool access)",
+        {"prompt": {"type": "string", "description": "task for the subagent"},
+         "model": {"type": "string", "description": "model (default sonnet)"},
+         "timeout": {"type": "integer", "description": "timeout seconds (default 600)"}},
+        ["prompt"]), _spawn_subagent)
+    register_tool("generate_image", _schema(
+        "Generate an image via the media pipeline (diffusers)",
+        {"prompt": {"type": "string", "description": "image prompt"}},
+        ["prompt"]), _generate_image)
+    register_tool("generate_video", _schema(
+        "Generate a video via the media pipeline (diffusers)",
+        {"prompt": {"type": "string", "description": "video prompt"}},
+        ["prompt"]), _generate_video)
+    register_tool("generate_media", _schema(
+        "Auto-detect image vs video vs text via the media pipeline",
+        {"prompt": {"type": "string", "description": "media prompt"}},
+        ["prompt"]), _generate_media)
+    register_tool("web_search", _schema(
+        "Search the web (firecrawl if configured, else DuckDuckGo)",
+        {"query": {"type": "string", "description": "search query"},
+         "limit": {"type": "integer", "description": "max results (default 5)"}},
+        ["query"]), _web_search)
     # Stubs — real handlers land in later steps (adapters spec, domain-db spec).
     register_tool("describe_image", _schema(
         "Describe an image or answer a question about it (returns text)",
@@ -167,6 +260,14 @@ def _smoke() -> int:
         print("✅ query_llm works (tiny up)")
     else:
         print("⚠️ query_llm graceful (tiny down): " + r.get("error", ""))
+
+    names = [t.get("function", {}).get("name") for t in list_tools()]
+    for want in ("spawn_subagent", "generate_image", "generate_video",
+                 "generate_media", "web_search"):
+        if want not in names:
+            print(f"❌ missing tool: {want}")
+            fails += 1
+    print("✅ step-2 tools registered")
 
     for name in ("describe_image", "transcribe_audio", "parse_document", "ingest_domain"):
         r = execute_tool(name, {})
