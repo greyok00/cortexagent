@@ -366,7 +366,11 @@ def _run_gui(quit_event: threading.Event) -> None:
         new[mode] = want
         target = "both" if new["hotkey"] and new["vad"] else (
             "hotkey" if new["hotkey"] else ("vad" if new["vad"] else "off"))
-        _toast(icon, f"STT {mode}: {'on' if want else 'off'} — " + _stt_control("set-mode", target), "ok")
+        out = _stt_control("set-mode", target)
+        if "not running" in out:
+            _stt_control("start")
+            out = _stt_control("set-mode", target)
+        _toast(icon, f"STT {mode}: {'on' if want else 'off'} — " + out, "ok")
 
     def on_stt_test(icon, item):
         _toast(icon, "recording 2s…", "info")
