@@ -27,7 +27,7 @@ from lib import tiny_llm, tool_registry, react_loop  # noqa: E402
 
 TOOL_PROMPT = "What is the current time? Use the run_command tool to check."
 SOCRATIC_PROMPT = "We got a strange alert. What should we investigate?"
-LOOP_PROMPT = "Summarize the OSINT case files."
+LOOP_PROMPT = "Run the command echo hello and report the output."
 
 
 def _score_tool_calls() -> dict:
