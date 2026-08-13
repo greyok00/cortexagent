@@ -24,13 +24,13 @@ from lib import domain_ingest, domain_db, react_loop, tool_registry  # noqa: E40
 
 SCENARIOS = [
     ("rag_query domain search",
-     "Summarize the OSINT case files",
+     "Use the rag_query tool to search the domain for the blocked IP 10.0.0.5.",
      "osint", "blocked IP 10.0.0.5 beaconing outbound every 30s"),
     ("ingest → search round-trip",
-     "File this note under dfir and confirm it is searchable",
+     "Store this note in the domain database and confirm it is searchable.",
      "dfir", "Suspicious process svchost.exe spawned from C:\\Temp\\x.exe"),
     ("socratic classification",
-     "What should we do about this?",
+     "We got a strange alert. What should we investigate?",
      None, None),
 ]
 
