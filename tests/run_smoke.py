@@ -1995,6 +1995,123 @@ def test_integration_offline() -> R:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AREA: harness (MCP client, browser tools, skills, beautify, wiring)
+# ═══════════════════════════════════════════════════════════════════════════
+_FAKE_MCP_SERVER = '''#!/usr/bin/env python3
+import json, sys
+def send(o):
+    sys.stdout.write(json.dumps(o) + "\\n"); sys.stdout.flush()
+TOOLS = [
+    {"name": "echo", "description": "Echo the message back",
+     "inputSchema": {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}},
+    {"name": "add", "description": "Add two numbers",
+     "inputSchema": {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]}},
+]
+for line in sys.stdin:
+    req = json.loads(line)
+    m, i, p = req.get("method"), req.get("id"), req.get("params", {})
+    if m == "initialize":
+        send({"jsonrpc": "2.0", "id": i, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "fake", "version": "1.0"}}})
+    elif m == "notifications/initialized":
+        pass
+    elif m == "tools/list":
+        send({"jsonrpc": "2.0", "id": i, "result": {"tools": TOOLS}})
+    elif m == "tools/call":
+        n, a = p.get("name"), p.get("arguments", {})
+        if n == "echo":
+            send({"jsonrpc": "2.0", "id": i, "result": {"content": [{"type": "text", "text": "echo: " + str(a.get("message"))}]}})
+        elif n == "add":
+            send({"jsonrpc": "2.0", "id": i, "result": {"content": [{"type": "text", "text": str(a.get("a", 0) + a.get("b", 0))}]}})
+        else:
+            send({"jsonrpc": "2.0", "id": i, "error": {"code": -32601, "message": "unknown"}})
+'''
+
+
+def test_harness_mcp_client() -> R:
+    """mcp_client registers + calls tools from a fake stdio MCP server."""
+    import tempfile, shutil
+    tmp = Path(tempfile.mkdtemp())
+    fake = tmp / "fake_mcp.py"
+    fake.write_text(_FAKE_MCP_SERVER)
+    cfg = tmp / "mcp.json"
+    cfg.write_text(json.dumps({"mcpServers": {"fake": {"command": sys.executable,
+                                                       "args": [str(fake)]}}}))
+    old = os.environ.get("CORTEXAGENT_MCP_CONFIG")
+    os.environ["CORTEXAGENT_MCP_CONFIG"] = str(cfg)
+    try:
+        import lib.mcp_client as mc
+        mc.MCP_CONFIG = cfg
+        n = mc.register_mcp_tools()
+        if n < 2:
+            return R("mcp_client register", "harness", False, f"registered {n}")
+        from lib.tool_registry import execute_tool
+        r = execute_tool("mcp_fake_echo", {"message": "hi"})
+        if not r.get("ok") or r.get("output") != "echo: hi":
+            return R("mcp_client call", "harness", False, str(r))
+        mc.close_all()
+        return R("mcp_client register+call", "harness", True, f"{n} tools")
+    finally:
+        if old is None:
+            os.environ.pop("CORTEXAGENT_MCP_CONFIG", None)
+        else:
+            os.environ["CORTEXAGENT_MCP_CONFIG"] = old
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_harness_browser_tools() -> R:
+    """browser_tools registers the 9 brave_* tools (no CDP call)."""
+    from lib.browser_tools import register_browser_tools
+    from lib.tool_registry import list_tools
+    n = register_browser_tools()
+    names = [t["function"]["name"] for t in list_tools()]
+    brave = [x for x in names if x.startswith("brave_")]
+    if len(brave) < 9:
+        return R("browser_tools register", "harness", False, f"{len(brave)} brave tools")
+    return R("browser_tools register", "harness", True, f"{len(brave)} brave tools")
+
+
+def test_harness_skills() -> R:
+    """skills registers a runtime skill and calls it."""
+    from lib.skills import register_skill, register_skill_tools, run_skill
+    register_skill("smoke_skill", "Smoke test skill",
+                   {"type": "object", "properties": {"x": {"type": "integer"}},
+                    "required": ["x"]},
+                   lambda x: {"ok": True, "output": f"x={x}", "error": ""})
+    register_skill_tools()
+    r = run_skill("smoke_skill", {"x": 42})
+    if not r.get("ok") or r.get("output") != "x=42":
+        return R("skills run", "harness", False, str(r))
+    return R("skills register+run", "harness", True, "x=42")
+
+
+def test_harness_beautify() -> R:
+    """beautify converts CSV to a table and leaves prose alone."""
+    from lib.beautify import beautify
+    t = beautify("name,score\nalice,10\nbob,20")
+    if "| name" not in t or "| alice" not in t:
+        return R("beautify csv", "harness", False, t)
+    p = beautify("The investigation is complete.")
+    if p != "The investigation is complete.":
+        return R("beautify prose", "harness", False, p)
+    return R("beautify csv+prose", "harness", True, "ok")
+
+
+def test_harness_wiring() -> R:
+    """ensure_registered is idempotent and the tool cap keeps core tools."""
+    from lib.harness_tools import ensure_registered
+    from lib.tool_registry import list_tools
+    import lib.react_loop as rl
+    n1 = ensure_registered()
+    n2 = ensure_registered()
+    if n2 != 0:
+        return R("harness idempotent", "harness", False, f"second call added {n2}")
+    names = [t["function"]["name"] for t in list_tools(limit=rl.MAX_TOOLS)]
+    if "run_command" not in names:
+        return R("harness tool cap", "harness", False, "run_command dropped")
+    return R("harness wiring", "harness", True, f"idempotent, cap={rl.MAX_TOOLS}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
 LIVE_AREAS = {"models", "daemon", "proxy", "cli", "tray"}
@@ -2035,6 +2152,9 @@ TESTS = {
     "domain": [test_domain_db],
     "ingest": [test_ingest_job_library],
     "integration": [test_integration_offline],
+    "harness": [test_harness_mcp_client, test_harness_browser_tools,
+                test_harness_skills, test_harness_beautify,
+                test_harness_wiring],
 }
 
 
