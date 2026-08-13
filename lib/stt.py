@@ -135,7 +135,12 @@ def unload_if_idle() -> None:
 
 
 def transcribe(audio: Audio) -> str:
-    """Transcribe audio (path or numpy float32 array) to raw text."""
+    """Transcribe audio (path or numpy float32 array) to raw text.
+
+    English-only (``language="en"``) per user directive — dictation must never
+    emit other languages. It also skips the language-detection pass, so it's
+    faster than auto-detect.
+    """
     model = _get_model()
     # Adaptive beam: on CUDA the GPU parallelizes beam search — width 5
     # costs nothing and is more accurate. On CPU the search is serial, so
@@ -144,7 +149,7 @@ def transcribe(audio: Audio) -> str:
     # float32 numpy arrays (no sampling_rate kwarg — that's an
     # openai-whisper/whisper.cpp param).
     beam = 5 if _model_device == "cuda" else 1
-    segments, _info = model.transcribe(audio, beam_size=beam)
+    segments, _info = model.transcribe(audio, beam_size=beam, language="en")
     return "".join(seg.text for seg in segments).strip()
 
 
