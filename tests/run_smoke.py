@@ -1745,6 +1745,19 @@ def test_stt_config_defaults() -> R:
     return R("stt config defaults", "stt", True, "all 9 defaults green")
 
 
+def test_stt_transcribe_sample() -> R:
+    """faster-whisper transcribe() on a generated sample (Task 2)."""
+    from lib import stt
+    wav = os.path.join(tempfile.gettempdir(), "stt_sample.wav")
+    subprocess.run(["espeak-ng", "-v", "en-us", "-w", wav,
+                    "fix the proxy token accounting bug"], check=True)
+    text = stt.transcribe(wav)
+    if not (text and text.strip()):
+        return R("stt transcribe sample", "stt", False,
+                 f"transcribe returned empty: {text!r}")
+    return R("stt transcribe sample", "stt", True, f"sample → {text!r}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1777,7 +1790,7 @@ TESTS = {
                   test_fallback_vram_probe_glitchrejection,
                   test_no_fallback_two_models_only],
     "tui": [test_tui_response_model, test_tui_smoke],
-    "stt": [test_stt_config_defaults],
+    "stt": [test_stt_config_defaults, test_stt_transcribe_sample],
 }
 
 
