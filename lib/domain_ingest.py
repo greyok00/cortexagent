@@ -11,6 +11,7 @@ Usage:
 """
 from __future__ import annotations
 
+import sqlite3
 import sys
 from pathlib import Path
 from typing import List
@@ -56,23 +57,23 @@ def ingest(domain: str, source: str, text: str) -> dict:
     if not chunks:
         return {"ok": True, "chunks": 0, "error": ""}
     con = domain_db._connect(domain)
-    domain_db._init_schema(con)
-    vec = domain_db._vec_available(con)
-    embs = None
-    if vec:
-        try:
-            from lib.domain_embed import DomainEmbedder
-            embs = DomainEmbedder().embed_batch(chunks)
-        except Exception:
-            embs = None  # FTS5-only fallback
-    stored = 0
     try:
+        domain_db._init_schema(con)
+        vec = domain_db._vec_available(con)
+        embs = None
+        if vec:
+            try:
+                from lib.domain_embed import DomainEmbedder
+                embs = DomainEmbedder().embed_batch(chunks)
+            except Exception:
+                embs = None  # FTS5-only fallback
+        stored = 0
         for i, chunk in enumerate(chunks):
             try:
                 domain_db._store_chunk(con, source, i, chunk,
-                                       embs[i] if embs else None)
+                                       embs[i] if embs and i < len(embs) else None)
                 stored += 1
-            except Exception:
+            except sqlite3.IntegrityError:
                 pass  # duplicate chunk (content-hash UNIQUE) — skip
     finally:
         con.close()
