@@ -30,6 +30,9 @@ SOCRATIC_KEYWORDS = (
     "osint", "security", "triage", "investigate", "analyze", "legal",
     "business", "what would falsify", "hypothesis", "assumption",
     "forensic", "dfir", "threat", "malware", "incident",
+    "intrusion", "exfiltration", "lateral movement", "phishing", "ransomware",
+    "indicator of compromise", "ioc", "breach", "anomaly", "suspicious",
+    "correlation", "timeline", "attribution", "false positive", "false negative",
 )
 _DIRECT_INTENTS = {"conversation", "memory_operation", "scheduling", "task_management"}
 _REACT_INTENTS = {"command_execution", "file_operation", "information_retrieval",
@@ -67,12 +70,12 @@ def classify_mode(prompt: str) -> str:
     intent = classify_intent(prompt)
     if intent in _DIRECT_INTENTS:
         return "direct"
+    low = prompt.lower()
+    if any(kw in low for kw in SOCRATIC_KEYWORDS):
+        return "socratic"
     if intent in _REACT_INTENTS:
         return "react"
     if intent == "ambiguous" or is_ambiguous(prompt):
-        return "socratic"
-    low = prompt.lower()
-    if any(kw in low for kw in SOCRATIC_KEYWORDS):
         return "socratic"
     return "react"
 
