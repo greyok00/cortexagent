@@ -77,6 +77,21 @@ def _publish(state: Optional[Dict], steps: List[Dict], current: Optional[int]) -
     task_steps_publish(state, steps, current)
 
 
+def _execute_with_timeout(name: str, args: Dict[str, Any],
+                          timeout: int) -> Dict[str, Any]:
+    """Run execute_tool with a hard timeout so a hung tool can't freeze the loop."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from lib.tool_registry import execute_tool
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = ex.submit(execute_tool, name, args)
+        return future.result(timeout=timeout)
+    except TimeoutError:
+        ex.shutdown(wait=False)
+        return {"ok": False, "output": "",
+                "error": f"tool {name} timed out after {timeout}s"}
+
+
 def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
     """Run a ReAct/Socratic session for a queued llm task.
 
@@ -95,7 +110,7 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
         result = tiny_llm.query(prompt, system=system or _DIRECT_SYSTEM, max_tokens=256)
         if result is None:
             return {"ok": False, "output": "", "error": "tiny model unavailable"}
-        return {"ok": True, "output": result}
+        return {"ok": True, "output": result, "error": ""}
 
     if mode == "socratic":
         # Clarifying questions returned as output; no tools called until the
@@ -103,7 +118,7 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
         result = tiny_llm.query(prompt, system=system or _SOCRATIC_SYSTEM, max_tokens=512)
         if result is None:
             return {"ok": False, "output": "", "error": "tiny model unavailable"}
-        return {"ok": True, "output": result}
+        return {"ok": True, "output": result, "error": ""}
 
     # ── react mode ─────────────────────────────────────────────────────────
     from lib.tool_registry import list_tools, execute_tool
@@ -123,7 +138,7 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
             return {"ok": False, "output": "", "error": "tiny model unavailable"}
         if response["kind"] == "text":
             _publish(state, steps, None)
-            return {"ok": True, "output": response["content"]}
+            return {"ok": True, "output": response["content"], "error": ""}
         calls = response["calls"]
         if not calls:
             # Malformed tool_calls — one retry with stricter framing, then fail.
@@ -142,7 +157,7 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
             label = f"Action: {name}({json.dumps(args, ensure_ascii=False)[:60]})"
             steps.append({"id": step, "label": label, "status": "in_progress"})
             _publish(state, steps, step)
-            result = execute_tool(name, args)
+            result = _execute_with_timeout(name, args, TOOL_TIMEOUT)
             obs = (result.get("output") or result.get("error")
                    or "(no output)")[:4000]
             messages.append({"role": "tool",
@@ -153,7 +168,8 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
     # max_steps hit
     _publish(state, steps, None)
     return {"ok": True,
-            "output": "Reached step limit — rephrase or narrow the task."}
+            "output": "Reached step limit — rephrase or narrow the task.",
+            "error": ""}
 
 
 def _smoke() -> int:
