@@ -1783,6 +1783,20 @@ def test_stt_transcribe_and_cleanup() -> R:
     return R("stt transcribe+cleanup", "stt", True, f"pipeline → {text!r}")
 
 
+def test_stt_vad_math() -> R:
+    """VAD RMS math on synthetic audio (Task 6)."""
+    import numpy as np
+    from lib import stt_daemon
+    silence = np.zeros(1600, dtype=np.float32)
+    tone = (0.1 * np.sin(2 * np.pi * 440 * np.arange(1600) / 16000)).astype(np.float32)
+    s_rms = stt_daemon.rms(silence)
+    t_rms = stt_daemon.rms(tone)
+    if not (s_rms < 0.001 and t_rms > 0.05):
+        return R("stt vad math", "stt", False,
+                 f"silence={s_rms:.4f} tone={t_rms:.4f}")
+    return R("stt vad math", "stt", True, f"silence={s_rms:.4f} tone={t_rms:.4f}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1816,7 +1830,8 @@ TESTS = {
                   test_no_fallback_two_models_only],
     "tui": [test_tui_response_model, test_tui_smoke],
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
-            test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup],
+            test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
+            test_stt_vad_math],
 }
 
 
