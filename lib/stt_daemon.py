@@ -102,14 +102,17 @@ class HotkeyListener:
     """Hold-to-talk: fires on_start when the combo is fully pressed, on_stop
     when any key in the combo releases."""
 
-    def __init__(self, combo: set, on_start, on_stop):
+    def __init__(self, combo: set, on_start, on_stop, mode_event=None):
         self.combo = combo
         self.on_start = on_start
         self.on_stop = on_stop
+        self.mode_event = mode_event
         self.pressed: set = set()
         self.active = False
 
     def on_press(self, key):
+        if self.mode_event is not None and not self.mode_event.is_set():
+            return
         name = _key_name(key)
         if name in self.combo:
             self.pressed.add(name)
@@ -118,6 +121,8 @@ class HotkeyListener:
                 self.on_start()
 
     def on_release(self, key):
+        if self.mode_event is not None and not self.mode_event.is_set():
+            return
         name = _key_name(key)
         if name in self.combo:
             self.pressed.discard(name)
@@ -139,11 +144,12 @@ def _handle_clip(clip: np.ndarray) -> None:
         type_text(text)
 
 
-def run_hotkey() -> None:
+def run_hotkey(mode_event=None) -> None:
     from pynput import keyboard
     from lib.config import CFG
     combo = _parse_hotkey(CFG.stt_hotkey)
-    listener = HotkeyListener(combo, on_start=_start_recording, on_stop=_stop_recording)
+    listener = HotkeyListener(combo, on_start=_start_recording, on_stop=_stop_recording,
+                              mode_event=mode_event)
     with keyboard.Listener(on_press=listener.on_press,
                            on_release=listener.on_release) as kl:
         kl.join()
@@ -186,7 +192,7 @@ def rms(samples: np.ndarray) -> float:
     return float(np.sqrt(np.mean(samples ** 2)))
 
 
-def vad_capture(on_clip, stop_event=None, block_sec: float = 0.1) -> None:
+def vad_capture(on_clip, stop_event=None, mode_event=None, block_sec: float = 0.1) -> None:
     """Continuously listen; call on_clip(clip) when a speech segment ends.
 
     Speech onset: RMS > threshold. Speech end: `vad_silence_sec` of trailing
@@ -205,6 +211,11 @@ def vad_capture(on_clip, stop_event=None, block_sec: float = 0.1) -> None:
                         blocksize=block) as stream:
         while not (stop_event and stop_event.is_set()):
             data, _ = stream.read(block)
+            if mode_event is not None and not mode_event.is_set():
+                in_speech = False
+                speech = []
+                silence_blocks = 0
+                continue
             if rms(data[:, 0]) > threshold:
                 if not in_speech:
                     in_speech = True
@@ -221,7 +232,7 @@ def vad_capture(on_clip, stop_event=None, block_sec: float = 0.1) -> None:
                         on_clip(clip)
 
 
-def _socket_server(stop_event) -> None:
+def _socket_server(stop_event, mode_events) -> None:
     import json
     import socket
     import threading
@@ -233,7 +244,8 @@ def _socket_server(stop_event) -> None:
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     srv.bind(str(SOCKET_PATH))
     srv.listen(4)
-    modes = {"hotkey": False, "vad": False}
+    modes = {"hotkey": mode_events["hotkey"].is_set(),
+             "vad": mode_events["vad"].is_set()}
 
     while not stop_event.is_set():
         try:
@@ -253,6 +265,14 @@ def _socket_server(stop_event) -> None:
                 if mode in ("hotkey", "vad", "both", "off"):
                     modes["hotkey"] = mode in ("hotkey", "both")
                     modes["vad"] = mode in ("vad", "both")
+                    if modes["hotkey"]:
+                        mode_events["hotkey"].set()
+                    else:
+                        mode_events["hotkey"].clear()
+                    if modes["vad"]:
+                        mode_events["vad"].set()
+                    else:
+                        mode_events["vad"].clear()
                     _write_state(running=True, modes=dict(modes))
                     conn.sendall(b'{"ok": true}')
                 else:
@@ -280,19 +300,25 @@ def run() -> int:
     import threading
     from lib.config import CFG
     stop_event = threading.Event()
-    threads = [
-        threading.Thread(target=_socket_server, args=(stop_event,),
-                         daemon=True, name="stt-socket"),
-        threading.Thread(target=run_hotkey, daemon=True, name="stt-hotkey"),
-    ]
+    mode_events = {"hotkey": threading.Event(), "vad": threading.Event()}
+    mode_events["hotkey"].set()
     if CFG.stt_speak_to_capture:
-        threads.append(threading.Thread(
-            target=vad_capture, args=(_handle_clip, stop_event),
-            daemon=True, name="stt-vad"))
+        mode_events["vad"].set()
+    threads = [
+        threading.Thread(target=_socket_server, args=(stop_event, mode_events),
+                         daemon=True, name="stt-socket"),
+        threading.Thread(target=run_hotkey, args=(mode_events["hotkey"],),
+                         daemon=True, name="stt-hotkey"),
+        threading.Thread(target=vad_capture,
+                         args=(_handle_clip, stop_event),
+                         kwargs={"mode_event": mode_events["vad"]},
+                         daemon=True, name="stt-vad"),
+    ]
     for t in threads:
         t.start()
     _write_state(running=True, pid=os.getpid(),
-                 modes={"hotkey": True, "vad": CFG.stt_speak_to_capture})
+                 modes={"hotkey": mode_events["hotkey"].is_set(),
+                        "vad": mode_events["vad"].is_set()})
     try:
         stop_event.wait()  # released by the socket server on "stop"
     except KeyboardInterrupt:
