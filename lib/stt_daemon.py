@@ -56,11 +56,15 @@ def _send_control(command: str, mode: str | None = None) -> dict:
     payload = {"command": command}
     if mode:
         payload["mode"] = mode
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-        s.settimeout(3)
-        s.connect(str(SOCKET_PATH))
-        s.sendall(json.dumps(payload).encode())
-        resp = s.recv(4096).decode()
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(3)
+            s.connect(str(SOCKET_PATH))
+            s.sendall(json.dumps(payload).encode())
+            resp = s.recv(4096).decode()
+    except (ConnectionRefusedError, FileNotFoundError):
+        # Stale socket from a previous run — no daemon listening.
+        return {"ok": False, "reason": "STT daemon not running"}
     return json.loads(resp) if resp else {"ok": False, "reason": "no response"}
 
 
