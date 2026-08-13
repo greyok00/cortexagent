@@ -1890,6 +1890,20 @@ def test_react_loop() -> R:
     return R("react_loop", "react", True, "modes + direct run OK")
 
 
+def test_tuning_defaults() -> R:
+    """Tuning defaults hold: RRF k=60, max_steps=8, rag_query limit=10."""
+    from lib import domain_db, react_loop, tool_registry
+    if domain_db.RRF_K != 60:
+        return R("tuning RRF k", "react", False, f"k={domain_db.RRF_K}")
+    if react_loop.MAX_STEPS != 8:
+        return R("tuning max_steps", "react", False, f"{react_loop.MAX_STEPS}")
+    import inspect
+    src = inspect.getsource(tool_registry._rag_query)
+    if "limit: int = 10" not in src:
+        return R("tuning rag_query limit", "react", False, "limit != 10")
+    return R("tuning defaults", "react", True, "k=60, steps=8, limit=10")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # AREA: domain (step-3 domain knowledge DBs)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2017,7 +2031,7 @@ TESTS = {
             test_stt_vad_math, test_stt_oom_floor_unload, test_stt_webui_endpoint],
     "registry": [test_tool_registry],
     "adapters": [test_adapters],
-    "react": [test_react_loop],
+    "react": [test_react_loop, test_tuning_defaults],
     "domain": [test_domain_db],
     "ingest": [test_ingest_job_library],
     "integration": [test_integration_offline],
