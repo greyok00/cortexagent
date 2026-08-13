@@ -157,6 +157,36 @@ Optional diffusion env: `CORTEXAGENT_VIDEO_MODEL`,
 `CORTEXAGENT_DIFFUSION_CUDNN` (default `0` — see
 `lib/diffusion_backend.py`).
 
+## MCP servers (optional — off by default)
+
+CortexAgent ships a full MCP client (`lib/mcp_client.py`) that can register
+any MCP server's tools as `mcp_<server>_<tool>` in the overseer's tool
+registry. **It is a core feature, but it is disabled by default**: this
+install runs fully offline / air-gapped, and MCP servers are network
+services that don't work without connectivity.
+
+| Env | Default | Meaning |
+|---|---|---|
+| `CORTEXAGENT_MCP_SERVERS` | *(unset)* | Comma-separated allowlist of server names to load. Unset = **no MCP tools load at all**. |
+| `CORTEXAGENT_MAX_TOOLS` | `16` | Cap on the tool surface the tiny overseer sees. Raise to fit MCP tools. |
+| `CORTEXAGENT_TOOL_STUBS` | `1` | Stub-mode minification (below). `0` disables. |
+| `CORTEXAGENT_HARNESS_TOOLS` | `1` | `0` disables the whole harness surface (browser/skills/MCP). |
+
+Servers are configured in `~/.mcp.json` (standard `mcpServers` format) and
+`~/.cortexagent/config/lazy_mcp_servers.json`. The config stays in place as
+the option — flip `CORTEXAGENT_MCP_SERVERS` on and the tools load.
+
+**Stub-mode minification.** The full tool schemas of every MCP server total
+~30,000 tokens — far beyond the tiny overseer's 2,048-token context. Stub
+mode (`CORTEXAGENT_TOOL_STUBS=1`, the default) shrinks the surface: the
+model sees only each tool's **name + one-line description** (~35 tokens vs
+~180 full), and `execute_tool` resolves the full schema on the backend —
+missing required arguments come back as a `missing required args: <params>`
+error the model retries against. The whole 168-tool MCP surface drops from
+~30,000 to ~6,000 tokens (80% smaller); the default 16-tool surface from
+~1,000 to ~380 (64% smaller). The registry is the indexed database; the
+stub is the variable name.
+
 ## CLI output rules
 
 The CLI runs in plain mode by default. The dashboard is the webui.
@@ -212,7 +242,7 @@ proxy imports it directly.
 | Tool-result compression | Available | Runs after every tool turn. |
 | Format support | Anthropic, OpenAI, Ollama | Proxy uses OpenAI format. |
 | Async proxy | `slimtoken-proxy` standalone | Built into `:8081`. |
-| MCP server | 8 tools | Exposed to Claude Code sessions. |
+| MCP server | 8 tools | Removed from `~/.mcp.json` — redundant, slimtoken is built in. |
 | CLI | `python3 -m slimtoken` | Available. The proxy path is preferred. |
 
 ## Project layout
