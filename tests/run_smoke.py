@@ -775,7 +775,7 @@ def test_regression_cortexllm_apis() -> R:
 
 
 def test_tool_registry() -> R:
-    """Tool registry: schemas valid, run_command works, stubs not-implemented."""
+    """Tool registry: schemas valid, run_command works, adapters return clean errors."""
     from lib.tool_registry import list_tools, execute_tool
     tools = list_tools()
     if not tools:
@@ -791,10 +791,25 @@ def test_tool_registry() -> R:
     r = execute_tool("run_command", {"command": "echo registry-ok"})
     if not r.get("ok") or "registry-ok" not in r.get("output", ""):
         return R("tool registry run_command", "registry", False, str(r))
-    r = execute_tool("describe_image", {})
-    if r.get("ok") or "not implemented" not in r.get("error", ""):
+    r = execute_tool("describe_image", {"image": "/nonexistent.png"})
+    if r.get("ok") or "failed" not in r.get("error", ""):
         return R("tool registry stubs", "registry", False, str(r))
     return R("tool registry", "registry", True, f"{len(tools)} tools")
+
+
+def test_adapters():
+    """Adapter tools return clean errors on bad input (model tests live in each adapter's --smoke)."""
+    from lib.tool_registry import execute_tool
+    fails = 0
+    for name, args in (("describe_image", {"image": "/nonexistent.png"}),
+                       ("transcribe_audio", {"file": "/nonexistent.wav"}),
+                       ("parse_document", {"file": "/nonexistent.pdf"})):
+        r = execute_tool(name, args)
+        if r.get("ok") or "failed" not in r.get("error", ""):
+            print(f"❌ {name} error path: {r}")
+            fails += 1
+    return R("adapter tools error paths", "adapters", fails == 0,
+             "clean errors" if fails == 0 else f"{fails} bad error paths")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1938,6 +1953,7 @@ TESTS = {
             test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
             test_stt_vad_math, test_stt_oom_floor_unload, test_stt_webui_endpoint],
     "registry": [test_tool_registry],
+    "adapters": [test_adapters],
     "react": [test_react_loop],
     "domain": [test_domain_db],
 }
