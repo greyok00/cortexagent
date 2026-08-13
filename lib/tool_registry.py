@@ -262,7 +262,7 @@ def _ingest_domain(domain: str, source: str, text: str) -> Dict[str, Any]:
 
 
 def _describe_image(image: str, prompt: str = "Describe this image in detail.") -> Dict[str, Any]:
-    """Describe an image or answer a VQA question about it (Moondream, CPU)."""
+    """Describe an image or answer a VQA question about it (Moondream, GPU-when-budget-allows)."""
     try:
         from lib.image_adapter import describe
         text = describe(image, prompt)
