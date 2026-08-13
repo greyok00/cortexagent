@@ -198,14 +198,23 @@ def _web_search(query: str, limit: int = 5) -> Dict[str, Any]:
 
 
 def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
-    """Composite RAG: CortexLLM memory (hot/warm/cold) + vector index.
+    """Composite RAG: domain DB (FTS5 + vec0) + CortexLLM memory.
 
-    Domain-DB half (SQLite FTS5 + vec0) lands in step 3 of the orchestration
-    spec; until then it returns empty gracefully.
+    Domain-DB hits are appended FIRST so they survive the results[:limit]
+    truncation below — the memory half can return up to ~3×limit results and
+    would otherwise crowd out the domain hits (the point of the domain layer).
     """
     if not query or not query.strip():
         return {"ok": True, "output": "(no results)", "error": ""}
     results: List[Dict[str, str]] = []
+    # Domain-DB half (step 3) — FTS5 + vec0 hybrid, RRF-merged internally.
+    try:
+        from lib.domain_db import search as _db_search
+        for hit in _db_search(domain, query, limit=limit):
+            results.append({"tier": "domain", "source": hit.get("source", domain),
+                            "text": hit.get("chunk", "")})
+    except Exception:
+        pass  # domain DB optional — memory search still works
     try:
         from cortexllm.engine import search as _search, cold_get as _cold_get
         for tier in ("hot", "warm"):
@@ -232,14 +241,6 @@ def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
             pass  # vector index optional — keyword search still works
     except Exception as e:
         return {"ok": False, "output": "", "error": f"rag_query failed: {e}"}
-    # Domain-DB half (step 3) — FTS5 + vec0 hybrid, RRF-merged internally.
-    try:
-        from lib.domain_db import search as _db_search
-        for hit in _db_search(domain, query, limit=limit):
-            results.append({"tier": "domain", "source": hit.get("source", domain),
-                            "text": hit.get("chunk", "")})
-    except Exception:
-        pass  # domain DB optional — memory search still works
     lines = []
     for i, r in enumerate(results[:limit], 1):
         text = r["text"].strip().replace("\n", " ")[:500]

@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """lib/domain_ingest.py — chunk → embed → store for the domain knowledge layer.
 
-Ingests a source's text into a domain DB: split into ~500-token chunks with
-50-token overlap, batch-embed via all-MiniLM-L6-v2, store with content-hash
+Ingests a source's text into a domain DB: split into ~200-word chunks with
+50-word overlap, batch-embed via all-MiniLM-L6-v2, store with content-hash
 dedup (idempotent re-ingest). Source is tracked per chunk so results can be
 cited back to origin.
+
+Chunk size is 200 words (~212 tokens) so each chunk fits the embedder's
+256-token context (MAX_SEQ in lib/domain_embed.py) without truncation —
+a larger chunk would be cut to 256 tokens and its embedding would cover
+only part of the chunk.
 
 Usage:
   python3 lib/domain_ingest.py --smoke
@@ -22,7 +27,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from lib import domain_db  # noqa: E402
 
-CHUNK_TOKENS = 500
+CHUNK_TOKENS = 200  # ~212 tokens — fits the embedder's 256-token context (MAX_SEQ)
 OVERLAP = 50
 
 
