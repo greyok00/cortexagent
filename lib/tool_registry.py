@@ -157,6 +157,48 @@ def _web_search(query: str, limit: int = 5) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": f"web_search failed: {e}"}
 
 
+def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
+    """Composite RAG: CortexLLM memory (hot/warm/cold) + vector index.
+
+    Domain-DB half (SQLite FTS5 + vec0) lands in step 3 of the orchestration
+    spec; until then it returns empty gracefully.
+    """
+    results: List[Dict[str, str]] = []
+    try:
+        from cortexllm.engine import search as _search, cold_get as _cold_get
+        for tier in ("hot", "warm"):
+            for hit in _search(query, tier=tier, platform="cortexagent", limit=limit):
+                results.append({"tier": tier, "source": "memory",
+                                "text": hit.get("content", "")})
+        cold = _cold_get(domain)
+        for entry in cold.get("entries", []):
+            text = entry.get("knowledge", "")
+            if isinstance(text, dict):
+                text = json.dumps(text, ensure_ascii=False)
+            if query.lower() in str(text).lower():
+                results.append({"tier": "cold", "source": domain, "text": str(text)})
+        try:
+            from lib.config import CFG
+            legacy_dir = CFG.cortexllm_dir / "legacy"
+            if legacy_dir.is_dir() and str(legacy_dir) not in sys.path:
+                sys.path.insert(0, str(legacy_dir))
+            from cortexllm_vector import VectorStore
+            for hit in VectorStore().search(query, limit=limit):
+                results.append({"tier": "vector", "source": "vector",
+                                "text": hit.get("content", "")})
+        except Exception:
+            pass  # vector index optional — keyword search still works
+    except Exception as e:
+        return {"ok": False, "output": "", "error": f"rag_query failed: {e}"}
+    lines = []
+    for i, r in enumerate(results[:limit], 1):
+        text = r["text"].strip().replace("\n", " ")[:500]
+        lines.append(f"[{i}] ({r['tier']}/{r['source']}) {text}")
+    if not lines:
+        return {"ok": True, "output": "(no results)", "error": ""}
+    return {"ok": True, "output": "\n".join(lines), "error": ""}
+
+
 def _not_implemented(name: str) -> Callable:
     def _stub(**kwargs: Any) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": f"{name}: not implemented yet"}
@@ -205,6 +247,12 @@ def _register_all() -> None:
         {"query": {"type": "string", "description": "search query"},
          "limit": {"type": "integer", "description": "max results (default 5)"}},
         ["query"]), _web_search)
+    register_tool("rag_query", _schema(
+        "Search CortexLLM memory + domain knowledge for a query",
+        {"domain": {"type": "string", "description": "domain category (e.g. dfir, osint)"},
+         "query": {"type": "string", "description": "search query"},
+         "limit": {"type": "integer", "description": "max results (default 10)"}},
+        ["domain", "query"]), _rag_query)
     # Stubs — real handlers land in later steps (adapters spec, domain-db spec).
     register_tool("describe_image", _schema(
         "Describe an image or answer a question about it (returns text)",
@@ -268,6 +316,13 @@ def _smoke() -> int:
             print(f"❌ missing tool: {want}")
             fails += 1
     print("✅ step-2 tools registered")
+
+    r = execute_tool("rag_query", {"domain": "dfir", "query": "blocked ip", "limit": 3})
+    if "ok" not in r:
+        print(f"❌ rag_query malformed: {r}")
+        fails += 1
+    else:
+        print("✅ rag_query returns well-formed result (may be empty)")
 
     for name in ("describe_image", "transcribe_audio", "parse_document", "ingest_domain"):
         r = execute_tool(name, {})
