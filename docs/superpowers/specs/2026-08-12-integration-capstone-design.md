@@ -124,7 +124,7 @@ of which model serves it.
 | Knob | Where | Tune |
 |---|---|---|
 | RRF `k` | `lib/domain_db.py` | 60 default; tune on real queries |
-| Chunk size / overlap | `lib/domain_ingest.py` | 500/50 default; tune per domain |
+| Chunk size / overlap | `lib/domain_ingest.py` | 200/50 default (fits the embedder's 256-token context); tune per domain |
 | `max_steps` | `lib/react_loop.py` | 8 default; raise for investigative tasks |
 | Tool schema descriptions | `lib/tool_registry.py` | Sharpen so the model picks the right tool |
 | Socratic keyword list | `lib/react_loop.py` | Extend with real investigative terms |
