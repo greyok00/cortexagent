@@ -85,7 +85,7 @@ Task queue (scheduler) ──► ReAct/Socratic loop (overseer model :8082)
 | 2 | **ReAct/Socratic loop** | Tiny LLM driver, `task_steps` publishing | Proves orchestration shape with real tools |
 | 3 | **Domain DBs + ingestion** — SQLite FTS5 + sqlite-vec per domain | Scheduler (cron) | Data foundation; ingestion runs in background |
 | 4 | **Adapters** — Moondream/Florence, Whisper, Docling → text | Tool registry | Self-contained CPU tools |
-| 5 | **Domain-DB search in `rag_query` + ingestion jobs** | Domain DBs + registry | Capstone — needs step 3's data |
+| 5 | **Integration capstone** — ingestion job library, e2e pipeline, overseer model swap (pre-approved) | Domain DBs + registry + loop | Capstone — proves the pieces work together |
 
 Each step is its own spec → plan → implementation cycle. This spec covers
 **step 1** in detail; later steps get their own specs.
