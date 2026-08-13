@@ -949,9 +949,10 @@ async function startMic() {
       micBtn.textContent = '🎙️';
       try {
         const res = await api('/api/stt', { method: 'POST', body: blob });
-        if (res && res.text) {
+        const j = await res.json();
+        if (j && j.text) {
           const input = document.getElementById('input');
-          input.value = (input.value ? input.value + ' ' : '') + res.text;
+          input.value = (input.value ? input.value + ' ' : '') + j.text;
           input.focus();
         }
       } catch (e) { console.error('stt error', e); }
