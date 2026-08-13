@@ -355,9 +355,17 @@ class Config:
         self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "GreyOK00")
 
         # ── STT (speech-to-text) ────────────────────────────────────────────
-        # Local-only, CPU. Default mic = the Logi USB Headset (card 0).
-        self.stt_model = _env("CORTEXAGENT_STT_MODEL", "stt", "model", "small")
-        self.stt_device = _env("CORTEXAGENT_STT_DEVICE", "stt", "device", "cpu")
+        # Local-only. Default mic = the Logi USB Headset (card 0).
+        # stt_device=auto uses CUDA when free VRAM allows it (blazing-fast
+        # dictation) and falls back to CPU when the GPU is busy; the whisper
+        # model also unloads after 120s idle so the big model keeps its VRAM.
+        # Set CORTEXAGENT_STT_DEVICE=cpu to force CPU-only (keeps the GPU
+        # fully free, "mostly cpu" mode).
+        # stt_model=base = the speed/accuracy sweet spot (2.5x faster than
+        # small on CPU, near-small accuracy, cached offline). Override with
+        # CORTEXAGENT_STT_MODEL=tiny (fastest) or =small (most accurate).
+        self.stt_model = _env("CORTEXAGENT_STT_MODEL", "stt", "model", "base")
+        self.stt_device = _env("CORTEXAGENT_STT_DEVICE", "stt", "device", "auto")
         self.stt_mic_device = _env(
             "CORTEXAGENT_STT_MIC", "stt", "mic_device", "Logi USB Headset")
         self.stt_hotkey = _env(
@@ -368,8 +376,11 @@ class Config:
             "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.02)
         self.stt_vad_silence_sec = _env_float(
             "CORTEXAGENT_STT_VAD_SILENCE", "stt", "vad_silence_sec", 0.8)
+        # Cleanup (grammar-fix via the tiny LLM) adds ~10s per clip — off by
+        # default so dictation types fast; set CORTEXAGENT_STT_CLEANUP=true
+        # to re-enable polished text.
         self.stt_cleanup = _env_bool(
-            "CORTEXAGENT_STT_CLEANUP", "stt", "cleanup", True)
+            "CORTEXAGENT_STT_CLEANUP", "stt", "cleanup", False)
         self.stt_cleanup_target = _env(
             "CORTEXAGENT_STT_CLEANUP_TARGET", "stt", "cleanup_target", "tiny")
 

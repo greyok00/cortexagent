@@ -1756,14 +1756,14 @@ def test_tui_smoke() -> R:
 def test_stt_config_defaults() -> R:
     """[stt] config section defaults (Task 1)."""
     from lib.config import CFG
-    assert CFG.stt_model == "small"
-    assert CFG.stt_device == "cpu"
+    assert CFG.stt_model == "base"  # speed/accuracy sweet spot, cached offline
+    assert CFG.stt_device == "auto"  # CUDA when free, CPU fallback (blazing fast)
     assert CFG.stt_mic_device == "Logi USB Headset"
     assert CFG.stt_hotkey == "<ctrl>+<shift>+space"
     assert CFG.stt_speak_to_capture is True
     assert CFG.stt_vad_threshold == 0.02
     assert CFG.stt_vad_silence_sec == 0.8
-    assert CFG.stt_cleanup is True
+    assert CFG.stt_cleanup is False  # LLM cleanup adds ~10s/clip — off by default
     assert CFG.stt_cleanup_target == "tiny"
     return R("stt config defaults", "stt", True, "all 9 defaults green")
 
@@ -1818,6 +1818,25 @@ def test_stt_vad_math() -> R:
         return R("stt vad math", "stt", False,
                  f"silence={s_rms:.4f} tone={t_rms:.4f}")
     return R("stt vad math", "stt", True, f"silence={s_rms:.4f} tone={t_rms:.4f}")
+
+
+def test_stt_idle_unload() -> R:
+    """unload_if_idle() frees a stale CUDA model, keeps a freshly-used one."""
+    from lib import stt
+    # Simulate a loaded model with a fresh last-use — must stay loaded.
+    stt._model = object()
+    stt._model_last_used = stt.time.time()
+    stt.unload_if_idle()
+    fresh_kept = stt._model is not None
+    # Simulate it going stale past the idle threshold — must be freed.
+    stt._model_last_used = 0.0
+    stt.unload_if_idle()
+    stale_freed = stt._model is None
+    stt._model = None  # restore clean state
+    if not (fresh_kept and stale_freed):
+        return R("stt idle unload", "stt", False,
+                 f"fresh_kept={fresh_kept} stale_freed={stale_freed}")
+    return R("stt idle unload", "stt", True, "fresh kept, stale freed")
 
 
 def test_stt_webui_endpoint() -> R:
@@ -1886,7 +1905,7 @@ TESTS = {
     "tui": [test_tui_response_model, test_tui_smoke],
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
             test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
-            test_stt_vad_math, test_stt_webui_endpoint],
+            test_stt_vad_math, test_stt_idle_unload, test_stt_webui_endpoint],
     "registry": [test_tool_registry],
     "react": [test_react_loop],
 }
