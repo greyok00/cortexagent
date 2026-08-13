@@ -1046,12 +1046,15 @@ def queue_remove(task_id: str) -> bool:
     return False
 
 
-def _execute_task(task: Dict) -> bool:
+def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
     """Execute a single task. Returns True on success.
 
     Step-1 refactor: thin wrapper over the tool registry (lib/tool_registry.py).
     The queue/scheduler/state machinery is untouched — this still returns bool
     so the queue's completed/failed bookkeeping is unchanged.
+
+    ``state`` (optional) is the live overseer state dict; the llm branch
+    threads it into ``run_react`` so ReAct steps publish to the tray/webui.
     """
     task_type = task.get("type", "command")
     prompt = task.get("prompt", "")
@@ -1074,7 +1077,7 @@ def _execute_task(task: Dict) -> bool:
     elif task_type == "llm":
         # ReAct/Socratic loop (step 2) — the tiny model drives tools.
         from lib.react_loop import run_react
-        result = run_react(task)
+        result = run_react(task, state=state)
         if result.get("ok"):
             _log(f"LLM task completed ({len(result.get('output', ''))} chars)",
                  "✅", GREEN)
@@ -1114,12 +1117,15 @@ def _execute_task(task: Dict) -> bool:
         # Auto-detect: let MediaPipeline decide image vs video vs text
         result = execute_tool("generate_media", {"prompt": prompt})
         if result.get("ok"):
-            mtype = "?"
-            try:
-                mtype = json.loads(result.get("output", "{}")).get("type", "?")
-            except Exception:
-                pass
-            _log(f"Media task completed ({mtype})", "✅", GREEN)
+            # Output is "queued media task T-<id> (background)" — extract the
+            # task id from the string (the old json.loads always failed here).
+            out = result.get("output", "")
+            task_id = out
+            for tok in out.split():
+                if tok.startswith("T-"):
+                    task_id = tok
+                    break
+            _log(f"Media task queued ({task_id})", "✅", GREEN)
             return True
         _log(f"Media task auto: {result.get('error', 'unknown')}",
              "⚠️", YELLOW)
@@ -1128,13 +1134,16 @@ def _execute_task(task: Dict) -> bool:
     return False
 
 
-def _process_queue() -> None:
+def _process_queue(state: Optional[Dict] = None) -> None:
     """Process all queued tasks sequentially.
 
     M9 fix (2026-08-11): guarded by ``_queue_dispatch_lock`` so a second
     caller (e.g. a scheduled task triggering during an in-progress dispatch)
     can't double-dispatch the same queued item. Without this, overlapping
     threads both see ``status="queued"`` and both invoke ``_execute_task``.
+
+    ``state`` (optional) is the live overseer state dict threaded from the
+    tick loop; it is passed to ``_execute_task`` so ReAct steps publish live.
     """
     if not _queue_dispatch_lock.acquire(blocking=False):
         # Another dispatch is in progress; let it finish and the next tick
@@ -1161,7 +1170,7 @@ def _process_queue() -> None:
             )
 
             try:
-                success = _execute_task(task)
+                success = _execute_task(task, state)
             except Exception as e:
                 # A crash in _execute_task (e.g. MediaPipeline raising) must not
                 # leave the task stuck in "running" forever — mark it failed.
@@ -1571,7 +1580,7 @@ def _daemon_loop(interval: int) -> None:
             pending = len([t for t in q if t["status"] == "queued"])
             if pending:
                 _log(f"Queue: {pending} pending tasks", "📦", DIM)
-            _process_queue()
+            _process_queue(state)
 
             # ── Workflow engine check + dispatch ──
             try:
