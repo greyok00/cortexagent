@@ -1047,7 +1047,12 @@ def queue_remove(task_id: str) -> bool:
 
 
 def _execute_task(task: Dict) -> bool:
-    """Execute a single task. Returns True on success."""
+    """Execute a single task. Returns True on success.
+
+    Step-1 refactor: thin wrapper over the tool registry (lib/tool_registry.py).
+    The queue/scheduler/state machinery is untouched — this still returns bool
+    so the queue's completed/failed bookkeeping is unchanged.
+    """
     task_type = task.get("type", "command")
     prompt = task.get("prompt", "")
     command = task.get("command", "")
@@ -1055,28 +1060,29 @@ def _execute_task(task: Dict) -> bool:
 
     _log(f"Running {task_type} task...", "▶️", MAGENTA)
 
+    from lib.tool_registry import execute_tool
+
     if task_type == "command":
-        try:
-            result = subprocess.run(
-                command, shell=True, capture_output=True, text=True, timeout=3600
-            )
-            if result.returncode == 0:
-                _log(f"Command succeeded: {command[:60]}", "✅", GREEN)
-                return True
-            else:
-                _log(f"Command failed: {result.stderr[:200]}", "❌", RED)
-                return False
-        except Exception as e:
-            _log(f"Command error: {e}", "❌", RED)
-            return False
+        result = execute_tool("run_command", {"command": command})
+        if result.get("ok"):
+            _log(f"Command succeeded: {command[:60]}", "✅", GREEN)
+            return True
+        _log(f"Command failed: {(result.get('output') or result.get('error', ''))[:200]}",
+             "❌", RED)
+        return False
 
     elif task_type == "llm":
         # Use tiny LLM for lightweight inference tasks
         system = task.get("system", "")
         max_tokens = task.get("max_tokens", 256)
-        result = _query_tiny_llm(prompt, system, max_tokens)
-        if result:
-            _log(f"LLM task completed ({len(result)} chars)", "✅", GREEN)
+        result = execute_tool("query_llm", {
+            "prompt": prompt,
+            "system": system,
+            "max_tokens": max_tokens,
+        })
+        if result.get("ok"):
+            _log(f"LLM task completed ({len(result.get('output', ''))} chars)",
+                 "✅", GREEN)
             return True
         return False
 
@@ -1085,35 +1091,41 @@ def _execute_task(task: Dict) -> bool:
         # Optional keys: model (default "sonnet"), timeout (default 600s).
         model = task.get("model", "sonnet")
         timeout = int(task.get("timeout", 600))
-        result = _spawn_subagent(prompt, model=model, timeout=timeout)
-        if result["ok"]:
-            _log(f"Subagent task completed ({len(result['output'])} chars)",
+        result = execute_tool("spawn_subagent", {
+            "prompt": prompt,
+            "model": model,
+            "timeout": timeout,
+        })
+        if result.get("ok"):
+            _log(f"Subagent task completed ({len(result.get('output', ''))} chars)",
                  "✅", GREEN)
             return True
-        _log(f"Subagent failed: {result['error'][:120]}", "❌", RED)
+        _log(f"Subagent failed: {result.get('error', '')[:120]}", "❌", RED)
         return False
 
     elif task_type == "image" or task_type == "video":
         # Route to media pipeline (background model swap)
-        from lib.media_pipeline import MediaPipeline
-        pipeline = MediaPipeline()
-        result = pipeline.submit(prompt, model_type=task_type)
-        if result.get("status") == "completed":
+        tool = "generate_image" if task_type == "image" else "generate_video"
+        result = execute_tool(tool, {"prompt": prompt})
+        if result.get("ok"):
             _log(f"Media task completed ({task_type})", "✅", GREEN)
             return True
-        _log(f"Media task {task_type}: {result.get('status', 'unknown')}",
+        _log(f"Media task {task_type}: {result.get('error', 'unknown')}",
              "⚠️", YELLOW)
         return False
 
     elif task_type == "media":
         # Auto-detect: let MediaPipeline decide image vs video vs text
-        from lib.media_pipeline import MediaPipeline
-        pipeline = MediaPipeline()
-        result = pipeline.submit(prompt, model_type="auto")
-        if result.get("status") == "completed":
-            _log(f"Media task completed ({result.get('type', '?')})", "✅", GREEN)
+        result = execute_tool("generate_media", {"prompt": prompt})
+        if result.get("ok"):
+            mtype = "?"
+            try:
+                mtype = json.loads(result.get("output", "{}")).get("type", "?")
+            except Exception:
+                pass
+            _log(f"Media task completed ({mtype})", "✅", GREEN)
             return True
-        _log(f"Media task auto: {result.get('status', 'unknown')}",
+        _log(f"Media task auto: {result.get('error', 'unknown')}",
              "⚠️", YELLOW)
         return False
 
