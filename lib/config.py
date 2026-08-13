@@ -384,6 +384,16 @@ class Config:
         self.stt_cleanup_target = _env(
             "CORTEXAGENT_STT_CLEANUP_TARGET", "stt", "cleanup_target", "tiny")
 
+        # ── VRAM budget ─────────────────────────────────────────────────────
+        # The GPU is shared: big model + overseer + faster-whisper are required
+        # residents. Everything else (adapters, RAG embedding) may use the
+        # remaining free VRAM minus a locked buffer that is never touched —
+        # crash protection so the desktop never OOMs. Adapters check
+        # lib/vram.can_fit() before loading on GPU and fall back to CPU when
+        # the budget is too small.
+        self.vram_buffer_mb = _env_int(
+            "CORTEXAGENT_VRAM_BUFFER_MB", "vram", "buffer_mb", 512)
+
     # ── Helpers ────────────────────────────────────────────────────────────
     def ensure_dirs(self) -> None:
         """Create runtime dirs. Safe to call repeatedly."""
