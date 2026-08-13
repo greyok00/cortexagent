@@ -12,6 +12,8 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -63,23 +65,44 @@ def execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
 
 # ── Handlers ────────────────────────────────────────────────────────────────
 def _run_command(command: str, timeout: int = 3600) -> Dict[str, Any]:
-    """Run a shell command, return stdout/stderr."""
+    """Run a shell command, return stdout/stderr.
+
+    Guardrails (step 2): (1) arg validation — command must be a non-empty
+    string, timeout coerced to int; (2) process-group kill — the shell runs
+    in its own session (start_new_session=True) so a timeout kills the whole
+    group (killpg), not just the direct child, preventing orphaned
+    shell-spawned children.
+    """
+    if not isinstance(command, str) or not command.strip():
+        return {"ok": False, "output": "", "error": "command must be a non-empty string"}
     try:
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=timeout
-        )
-        output = result.stdout
-        if result.stderr:
-            output += ("\n" if output else "") + result.stderr
-        if len(output) > MAX_TOOL_OUTPUT:
-            output = output[:MAX_TOOL_OUTPUT] + f"\n…[truncated {len(output) - MAX_TOOL_OUTPUT} chars]"
-        if result.returncode == 0:
-            return {"ok": True, "output": output, "error": ""}
-        return {"ok": False, "output": output, "error": f"exit {result.returncode}"}
+        timeout = int(timeout)
+    except (TypeError, ValueError):
+        return {"ok": False, "output": "", "error": "timeout must be an integer"}
+    if timeout < 1:
+        timeout = 3600
+    proc = subprocess.Popen(
+        command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        return {"ok": False, "output": "", "error": f"timeout after {timeout}s"}
-    except Exception as e:
-        return {"ok": False, "output": "", "error": str(e)}
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception:
+            proc.kill()
+        stdout, stderr = proc.communicate()
+        return {"ok": False, "output": (stdout or "") + (stderr or ""),
+                "error": f"timeout after {timeout}s (process group killed)"}
+    output = stdout
+    if stderr:
+        output += ("\n" if output else "") + stderr
+    if len(output) > MAX_TOOL_OUTPUT:
+        output = output[:MAX_TOOL_OUTPUT] + f"\n…[truncated {len(output) - MAX_TOOL_OUTPUT} chars]"
+    if proc.returncode == 0:
+        return {"ok": True, "output": output, "error": ""}
+    return {"ok": False, "output": output, "error": f"exit {proc.returncode}"}
 
 
 def _query_llm(prompt: str, system: str = "", max_tokens: int = 256) -> Dict[str, Any]:
@@ -91,37 +114,50 @@ def _query_llm(prompt: str, system: str = "", max_tokens: int = 256) -> Dict[str
     return {"ok": False, "output": "", "error": "tiny LLM unavailable"}
 
 
+_ALLOWED_SUBAGENT_MODELS = {"sonnet", "opus", "haiku"}
+_MAX_SUBAGENT_TIMEOUT = 1800
+
+
 def _spawn_subagent(prompt: str, model: str = "sonnet", timeout: int = 600) -> Dict[str, Any]:
-    """Delegate to a Claude Code subagent (full tool access)."""
+    """Delegate to a Claude Code subagent (full tool access).
+
+    Guardrails (step 2): model must be in the allowlist (this tool runs
+    `claude -p --dangerously-skip-permissions` — the highest-severity combo
+    if prompt-injected); timeout coerced to int and capped at 1800s.
+    """
+    if not isinstance(prompt, str) or not prompt.strip():
+        return {"ok": False, "output": "", "error": "prompt must be a non-empty string"}
+    if model not in _ALLOWED_SUBAGENT_MODELS:
+        return {"ok": False, "output": "",
+                "error": f"model must be one of {sorted(_ALLOWED_SUBAGENT_MODELS)}"}
+    try:
+        timeout = int(timeout)
+    except (TypeError, ValueError):
+        return {"ok": False, "output": "", "error": "timeout must be an integer"}
+    timeout = min(max(timeout, 1), _MAX_SUBAGENT_TIMEOUT)
     from lib.overseer import _spawn_subagent as _spawn
     return _spawn(prompt, model=model, timeout=timeout)
 
 
 def _generate_image(prompt: str) -> Dict[str, Any]:
-    """Generate an image via the media pipeline (diffusers, in-process)."""
+    """Generate an image via the media pipeline (diffusers, background)."""
     from lib.media_pipeline import MediaPipeline
-    result = MediaPipeline().submit(prompt, model_type="image")
-    if result.get("status") == "completed":
-        return {"ok": True, "output": json.dumps(result, ensure_ascii=False), "error": ""}
-    return {"ok": False, "output": "", "error": result.get("status", "unknown")}
+    task_id = MediaPipeline().submit_async(prompt, model_type="image")
+    return {"ok": True, "output": f"queued media task {task_id} (background)", "error": ""}
 
 
 def _generate_video(prompt: str) -> Dict[str, Any]:
-    """Generate a video via the media pipeline."""
+    """Generate a video via the media pipeline (diffusers, background)."""
     from lib.media_pipeline import MediaPipeline
-    result = MediaPipeline().submit(prompt, model_type="video")
-    if result.get("status") == "completed":
-        return {"ok": True, "output": json.dumps(result, ensure_ascii=False), "error": ""}
-    return {"ok": False, "output": "", "error": result.get("status", "unknown")}
+    task_id = MediaPipeline().submit_async(prompt, model_type="video")
+    return {"ok": True, "output": f"queued media task {task_id} (background)", "error": ""}
 
 
 def _generate_media(prompt: str) -> Dict[str, Any]:
-    """Auto-detect image vs video vs text via the media pipeline."""
+    """Auto-detect image vs video vs text via the media pipeline (background)."""
     from lib.media_pipeline import MediaPipeline
-    result = MediaPipeline().submit(prompt, model_type="auto")
-    if result.get("status") == "completed":
-        return {"ok": True, "output": json.dumps(result, ensure_ascii=False), "error": ""}
-    return {"ok": False, "output": "", "error": result.get("status", "unknown")}
+    task_id = MediaPipeline().submit_async(prompt, model_type="auto")
+    return {"ok": True, "output": f"queued media task {task_id} (background)", "error": ""}
 
 
 def _web_search(query: str, limit: int = 5) -> Dict[str, Any]:
@@ -167,6 +203,8 @@ def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
     Domain-DB half (SQLite FTS5 + vec0) lands in step 3 of the orchestration
     spec; until then it returns empty gracefully.
     """
+    if not query or not query.strip():
+        return {"ok": True, "output": "(no results)", "error": ""}
     results: List[Dict[str, str]] = []
     try:
         from cortexllm.engine import search as _search, cold_get as _cold_get
@@ -345,6 +383,25 @@ def _smoke() -> int:
         fails += 1
     else:
         print("✅ unknown tool handled")
+
+    # ── guardrails (step 2) ────────────────────────────────────────────────
+    r = execute_tool("run_command", {"command": "echo guard-ok", "timeout": "5"})
+    if not r.get("ok") or "guard-ok" not in r.get("output", ""):
+        print(f"❌ run_command timeout coercion: {r}")
+        fails += 1
+    r = execute_tool("run_command", {"command": ""})
+    if r.get("ok") or "non-empty" not in r.get("error", ""):
+        print(f"❌ run_command empty-command guard: {r}")
+        fails += 1
+    r = execute_tool("spawn_subagent", {"prompt": "x", "model": "gpt-4"})
+    if r.get("ok") or "model" not in r.get("error", ""):
+        print(f"❌ spawn_subagent model allowlist: {r}")
+        fails += 1
+    r = execute_tool("rag_query", {"domain": "dfir", "query": "   "})
+    if not r.get("ok") or "(no results)" not in r.get("output", ""):
+        print(f"❌ rag_query empty-query guard: {r}")
+        fails += 1
+    print("✅ guardrails enforced")
 
     print("✅ tool_registry smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
