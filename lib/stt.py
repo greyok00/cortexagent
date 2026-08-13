@@ -42,6 +42,44 @@ def transcribe(audio: Audio) -> str:
     return "".join(seg.text for seg in segments).strip()
 
 
+def cleanup(text: str) -> str:
+    """Clean a transcript via the tiny overseer (:8082). Falls back to raw.
+
+    Never raises and never blocks: any failure (model down, timeout, bad
+    response) returns the input unchanged.
+    """
+    from lib.config import CFG
+    if not text.strip() or not CFG.stt_cleanup:
+        return text
+    target = CFG.stt_cleanup_target
+    if target == "off":
+        return text
+    port = CFG.tiny_model_port if target == "tiny" else CFG.big_model_port
+    prompt = (
+        "You are a transcription cleaner. Fix punctuation, capitalization, "
+        "and expand abbreviations in the following speech-to-text transcript. "
+        "Output ONLY the cleaned text, nothing else.\n\n"
+        f"Transcript: {text}"
+    )
+    import json
+    import urllib.request
+    body = json.dumps({
+        "model": "tiny",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0,
+    }).encode()
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/v1/chat/completions",
+        data=body, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read().decode())
+        cleaned = data["choices"][0]["message"]["content"].strip()
+        return cleaned or text
+    except Exception:
+        return text  # fallback — STT never blocks on the model
+
+
 def _test() -> int:
     wav = Path(tempfile.gettempdir()) / "stt_sample.wav"
     subprocess.run(["espeak-ng", "-v", "en-us", "-w", str(wav),

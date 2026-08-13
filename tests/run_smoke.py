@@ -1758,6 +1758,18 @@ def test_stt_transcribe_sample() -> R:
     return R("stt transcribe sample", "stt", True, f"sample → {text!r}")
 
 
+def test_stt_cleanup_fallback() -> R:
+    """cleanup() returns non-empty text; falls back to raw when :8082 is down (Task 3)."""
+    from lib import stt
+    # :8082 is not guaranteed up in the smoke run — cleanup must fall back to raw.
+    raw = "fix the proxy t s bug and reload it"
+    out = stt.cleanup(raw)
+    if not (isinstance(out, str) and out.strip()):
+        return R("stt cleanup fallback", "stt", False,
+                 f"cleanup returned empty: {out!r}")
+    return R("stt cleanup fallback", "stt", True, f"cleanup → {out!r}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1790,7 +1802,8 @@ TESTS = {
                   test_fallback_vram_probe_glitchrejection,
                   test_no_fallback_two_models_only],
     "tui": [test_tui_response_model, test_tui_smoke],
-    "stt": [test_stt_config_defaults, test_stt_transcribe_sample],
+    "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
+            test_stt_cleanup_fallback],
 }
 
 
