@@ -30,21 +30,38 @@ MAX_TOOL_OUTPUT = 100_000  # chars — cap tool output to protect the model's co
 TOOLS: Dict[str, Dict[str, Any]] = {}
 
 
-def register_tool(name: str, schema: Dict[str, Any], handler: Callable) -> None:
-    """Add a tool at runtime. Later steps (adapters, RAG) register here."""
-    TOOLS[name] = {"schema": schema, "handler": handler}
+def register_tool(name: str, schema: Dict[str, Any], handler: Callable,
+                  priority: int = 0) -> None:
+    """Add a tool at runtime. Later steps (adapters, RAG) register here.
+
+    ``priority`` orders the tool surface: lower sorts first. Core tools
+    register at 0; harness tools (browser/skills/MCP) at 1 so the core
+    surface always survives the react loop's tool cap.
+    """
+    TOOLS[name] = {"schema": schema, "handler": handler, "priority": priority}
 
 
-def list_tools() -> List[Dict[str, Any]]:
-    """OpenAI function-schema list — what the model sees for tool_calls."""
-    return [
+def list_tools(limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """OpenAI function-schema list — what the model sees for tool_calls.
+
+    ``limit`` caps the number of tools returned (sorted by priority, then
+    name). The react loop uses this to keep the tool surface inside the tiny
+    model's context window — the full registry can hold hundreds of MCP
+    tools, but the model only sees the top ``limit`` (core + browser first,
+    then MCP/skills).
+    """
+    tools = [
         {"type": "function", "function": {
             "name": name,
             "description": t["schema"]["description"],
             "parameters": t["schema"]["parameters"],
         }}
-        for name, t in sorted(TOOLS.items())
+        for name, t in sorted(TOOLS.items(),
+                              key=lambda kv: (kv[1].get("priority", 0), kv[0]))
     ]
+    if limit is not None:
+        tools = tools[:limit]
+    return tools
 
 
 def execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:

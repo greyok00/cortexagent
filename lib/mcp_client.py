@@ -230,7 +230,7 @@ def register_mcp_tools() -> int:
             register_tool(full, _schema(
                 t.get("description", f"MCP tool {tname} on {name}"),
                 props, required),
-                _make_handler(server, tname))
+                _make_handler(server, tname), priority=1)
             count += 1
     return count
 

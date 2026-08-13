@@ -187,7 +187,8 @@ def register_browser_tools() -> int:
     for name, desc, props, required in _TOOL_DEFS:
         if name in TOOLS:
             continue
-        register_tool(name, _schema(desc, props, required), _HANDLERS[name])
+        register_tool(name, _schema(desc, props, required), _HANDLERS[name],
+                      priority=1)
         count += 1
     return count
 

@@ -121,7 +121,7 @@ def register_skill_tools() -> int:
             "description": s["description"],
             "parameters": {"type": "object", "properties": props,
                            "required": required}},
-            _make_handler(name))
+            _make_handler(name), priority=1)
         count += 1
     return count
 
