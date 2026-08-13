@@ -831,14 +831,18 @@ class WebUIHandler(BaseHTTPRequestHandler):
         """POST /api/stt — raw audio body → {ok, text}. Transcribes + cleans."""
         import tempfile
         from lib import stt
-        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            self._send_json(400, {"ok": False, "reason": "bad Content-Length"})
+            return
         if length <= 0 or length > 50_000_000:
             self._send_json(400, {"ok": False, "reason": "invalid audio size"})
             return
         audio = self.rfile.read(length)
-        tmp = Path(tempfile.gettempdir()) / f"stt_{int(time.time())}.webm"
-        tmp.write_bytes(audio)
+        tmp = Path(tempfile.gettempdir()) / f"stt_{uuid.uuid4().hex}.webm"
         try:
+            tmp.write_bytes(audio)
             text = stt.transcribe_and_cleanup(tmp)
         except Exception as e:
             self._send_json(500, {"ok": False, "reason": str(e)})
