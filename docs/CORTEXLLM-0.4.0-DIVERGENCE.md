@@ -181,8 +181,12 @@ for compatibility, but the smoke gate's slimtoken import will pass on
 
 The user re-confirmed: two models total, big (13.7 GB
 `Qwen3.6-35B-A3B-UD-IQ3_S`, multimodal, uncensored) on `:8080` and
-overseer MoE (≤2 GB) on `:8082`. Nothing between 2 GB and 12 GB. No
-fallback, no third model, no separate vision server.
+overseer `LFM2.5-1.2B-Instruct` (dense, Q4_K_M ~0.73 GB, safety-tuned default)
+on `:8082`. Abliterated candidates (DeepSeek-R1-Distill-Qwen-1.5B,
+Qwen2.5-1.5B-Instruct-abliterated) tested 2026-08-13 and REJECTED —
+mradermacher abliteration broke their chat templates (degenerate output) and
+native tool calls; a better tool-call model is being sourced separately. Nothing between 2 GB and 12 GB. No fallback, no
+third model, no separate vision server.
 
 | Action | Status | Notes |
 |---|---|---|
