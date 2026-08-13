@@ -137,6 +137,48 @@ def _stop_recording() -> None:
         _handle_clip(clip)
 
 
+def rms(samples: np.ndarray) -> float:
+    """Root-mean-square energy of a float32 sample buffer."""
+    if samples.size == 0:
+        return 0.0
+    return float(np.sqrt(np.mean(samples ** 2)))
+
+
+def vad_capture(on_clip, stop_event=None, block_sec: float = 0.1) -> None:
+    """Continuously listen; call on_clip(clip) when a speech segment ends.
+
+    Speech onset: RMS > threshold. Speech end: `vad_silence_sec` of trailing
+    silence. Debounce: a clip shorter than 0.3s is dropped (mic clicks).
+    """
+    import sounddevice as sd
+    from lib.config import CFG
+    threshold = CFG.stt_vad_threshold
+    silence_limit = max(1, int(CFG.stt_vad_silence_sec / block_sec))
+    block = int(SAMPLE_RATE * block_sec)
+    speech: list = []
+    in_speech = False
+    silence_blocks = 0
+    with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS,
+                        dtype="float32", device=_mic_device(),
+                        blocksize=block) as stream:
+        while not (stop_event and stop_event.is_set()):
+            data, _ = stream.read(block)
+            if rms(data[:, 0]) > threshold:
+                if not in_speech:
+                    in_speech = True
+                    speech = []
+                speech.append(data.copy())
+                silence_blocks = 0
+            elif in_speech:
+                silence_blocks += 1
+                speech.append(data.copy())
+                if silence_blocks >= silence_limit:
+                    clip = np.concatenate(speech)[:, 0]
+                    in_speech = False
+                    if len(clip) >= int(SAMPLE_RATE * 0.3):
+                        on_clip(clip)
+
+
 def _test() -> int:
     print("🎙️ recording 2s…", flush=True)
     clip = record_clip(2.0)
