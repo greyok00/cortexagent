@@ -376,3 +376,36 @@ Per the brief §11, these are non-blocking. Status as of v0.4.0:
 - **`memory/mcp_server.py` (in-tree)** — knows `platform="cortexagent"`.
 - **systemd units, `install.sh`, `bin/cortexagent`** — CortexAgent-specific.
 - **`engine/dag.py` + `engine/workflow.py`** — template-specific (see notes).
+
+---
+
+## 2026-08-12 — SlimToken orchestration layer stays in cortexagent
+
+Design decision (user-confirmed): the **SlimToken orchestration layer** —
+tool registry, ReAct/Socratic loop, multimodal adapters, domain DBs — lives
+in **cortexagent**, not cortexllm or slimtoken. It is overseer-specific.
+
+**Why it stays here:**
+- The overseer daemon that drives it (`lib/overseer.py`) is cortexagent code.
+- The task queue / scheduler / state machinery it remaps are cortexagent code.
+- cortexllm and slimtoken are **dependencies**, not hosts. The orchestration
+  imports them one-directionally:
+  `cortexagent (orchestration) → imports cortexllm (memory search) + slimtoken (minify)`.
+- Putting the registry inside cortexllm would make the memory engine import
+  its own consumer — wrong direction.
+
+**Two-memory split (user-confirmed):**
+- **CortexLLM** = conversation history + commands + overseer state (small, hot).
+- **Domain DBs** = domain-specific knowledge (SQLite FTS5 + sqlite-vec per
+  domain: business, dfir, law, osint, programming) — bulk, fast, new layer.
+- `rag_query(domain, query)` is a **composite tool**: searches CortexLLM
+  memory (real in step 1) + the domain DB (lands in step 3).
+
+**What cortexllm / slimtoken need to do:** nothing. They stay as-is. The
+orchestration imports their existing APIs (`cortexllm.engine.search`,
+`cortexllm_vector`, `slimtoken.pipeline.minify_request`).
+
+**Spec:** `docs/superpowers/specs/2026-08-12-slimtoken-orchestration-design.md`
+(commit `fd648d7`). Build order: 1) tool registry + `rag_query` CortexLLM half,
+2) ReAct/Socratic loop, 3) domain DBs + ingestion, 4) adapters, 5) domain-DB
+search in `rag_query`.
