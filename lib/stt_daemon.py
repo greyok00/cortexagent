@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import queue
 import subprocess
 import sys
 import time
@@ -176,12 +177,46 @@ def _parse_hotkey(hotkey: str) -> set:
     return {part.strip().lower() for part in hotkey.split("+") if part.strip()}
 
 
-def _handle_clip(clip: np.ndarray) -> None:
-    """Transcribe + cleanup + type a recorded clip."""
+_clip_queue: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=8)
+
+
+def _transcribe_worker() -> None:
+    """Transcribe queued clips and type them at the cursor.
+
+    Runs in its own thread so a slow transcription never blocks the VAD
+    capture loop — otherwise everything spoken while transcribing is
+    dropped (the mic stream isn't read during the synchronous call).
+    While the queue is quiet, double as the VRAM idle-monitor: periodically
+    let the STT engine free its CUDA model so the big model keeps its memory.
+    """
     from lib import stt
-    text = stt.transcribe_and_cleanup(clip)
-    if text:
-        type_text(text)
+    while True:
+        try:
+            clip = _clip_queue.get(timeout=5.0)
+        except queue.Empty:
+            stt.unload_if_idle()
+            continue
+        try:
+            text = stt.transcribe_and_cleanup(clip)
+            if text:
+                type_text(text)
+        except Exception as e:
+            print(f"⚠️ transcribe failed: {e}", flush=True)
+        finally:
+            _clip_queue.task_done()
+
+
+def _handle_clip(clip: np.ndarray) -> None:
+    """Queue a recorded clip for transcription (non-blocking)."""
+    try:
+        _clip_queue.put_nowait(clip)
+    except queue.Full:
+        # Backlog — drop the oldest so we never fall behind the mic.
+        try:
+            _clip_queue.get_nowait()
+        except queue.Empty:
+            pass
+        _clip_queue.put_nowait(clip)
 
 
 def run_hotkey(mode_event=None, stop_event=None) -> None:
@@ -384,6 +419,8 @@ def run() -> int:
                          args=(_handle_clip, stop_event),
                          kwargs={"mode_event": mode_events["vad"]},
                          daemon=True, name="stt-vad"),
+        threading.Thread(target=_transcribe_worker,
+                         daemon=True, name="stt-transcribe"),
     ]
     for t in threads:
         t.start()
@@ -398,7 +435,12 @@ def run() -> int:
     # exits — killing PortAudio/PipeWire mid-callback segfaults on shutdown.
     for t in threads:
         t.join(timeout=2)
-    _write_state(running=False, modes={"hotkey": False, "vad": False})
+    # Only clear "running" if the state file still points at THIS process.
+    # A rapid stop→start (the tray toggle, idempotent start) can spawn a
+    # fresh daemon while this one is draining its audio threads — its
+    # shutdown write must not clobber the new daemon's running:true state.
+    if _read_state().get("pid") == os.getpid():
+        _write_state(running=False, modes={"hotkey": False, "vad": False})
     return 0
 
 
