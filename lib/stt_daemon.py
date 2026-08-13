@@ -20,6 +20,13 @@ import sys
 import time
 from pathlib import Path
 
+# Bootstrap: make the repo root importable when spawned as a plain script
+# (`python3 lib/stt_daemon.py`), not `-m`. The shell provides it via
+# PYTHONPATH, but systemd-spawned processes (the tray) don't — without
+# this, `from lib.config import CFG` raises ModuleNotFoundError and the
+# daemon dies on start.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import numpy as np
 
 SAMPLE_RATE = 16000
@@ -68,9 +75,22 @@ def _send_control(command: str, mode: str | None = None) -> dict:
     return json.loads(resp) if resp else {"ok": False, "reason": "no response"}
 
 
-def _mic_device() -> str:
+def _mic_device():
+    """Configured mic device, or None (sounddevice default) if it's gone.
+
+    A stale device name (e.g. a headset that was unplugged) must not kill
+    the daemon — fall back to the system default input.
+    """
+    import sounddevice as sd
     from lib.config import CFG
-    return CFG.stt_mic_device
+    name = CFG.stt_mic_device
+    if not name:
+        return None
+    try:
+        sd.query_devices(name, kind="input")
+        return name
+    except Exception:
+        return None
 
 
 def record_clip(seconds: float = 2.0) -> np.ndarray:
