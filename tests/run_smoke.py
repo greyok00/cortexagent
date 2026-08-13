@@ -1797,6 +1797,20 @@ def test_stt_vad_math() -> R:
     return R("stt vad math", "stt", True, f"silence={s_rms:.4f} tone={t_rms:.4f}")
 
 
+def test_stt_webui_endpoint() -> R:
+    """POST /api/stt webui endpoint pipeline (Task 8)."""
+    import subprocess, tempfile, os, json
+    from lib import stt
+    wav = os.path.join(tempfile.gettempdir(), "stt_sample.wav")
+    subprocess.run(["espeak-ng", "-v", "en-us", "-w", wav,
+                    "fix the proxy token accounting bug"], check=True)
+    text = stt.transcribe_and_cleanup(wav)
+    if not (text and text.strip()):
+        return R("stt webui endpoint", "stt", False,
+                 f"pipeline returned empty: {text!r}")
+    return R("stt webui endpoint", "stt", True, f"webui pipeline → {text!r}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1831,7 +1845,7 @@ TESTS = {
     "tui": [test_tui_response_model, test_tui_smoke],
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
             test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
-            test_stt_vad_math],
+            test_stt_vad_math, test_stt_webui_endpoint],
 }
 
 
