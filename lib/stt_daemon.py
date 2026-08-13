@@ -75,6 +75,26 @@ def _send_control(command: str, mode: str | None = None) -> dict:
     return json.loads(resp) if resp else {"ok": False, "reason": "no response"}
 
 
+def _daemon_alive() -> bool:
+    """True if a daemon is actually listening on the control socket.
+
+    Distinguishes a live daemon from a stale socket file left by a crash.
+    Sends a real ``ping`` so the server replies — a bare connect-and-close
+    would make the server's ``recv`` return b'' and (before the resilient
+    handler) crash its socket thread with BrokenPipeError.
+    """
+    import socket
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            s.connect(str(SOCKET_PATH))
+            s.sendall(b'{"command": "ping"}')
+            resp = s.recv(4096).decode()
+            return '"ok": true' in resp
+    except (ConnectionRefusedError, FileNotFoundError, OSError):
+        return False
+
+
 def _mic_device():
     """Configured mic device, or None (sounddevice default) if it's gone.
 
@@ -164,7 +184,7 @@ def _handle_clip(clip: np.ndarray) -> None:
         type_text(text)
 
 
-def run_hotkey(mode_event=None) -> None:
+def run_hotkey(mode_event=None, stop_event=None) -> None:
     from pynput import keyboard
     from lib.config import CFG
     combo = _parse_hotkey(CFG.stt_hotkey)
@@ -172,7 +192,11 @@ def run_hotkey(mode_event=None) -> None:
                               mode_event=mode_event)
     with keyboard.Listener(on_press=listener.on_press,
                            on_release=listener.on_release) as kl:
-        kl.join()
+        # Poll for shutdown so the listener is stopped cleanly instead of
+        # being killed mid-callback when the process exits (which segfaults).
+        while not (stop_event and stop_event.is_set()):
+            kl.join(timeout=0.5)
+        kl.stop()
 
 
 _recorder = {"stream": None, "frames": []}
@@ -252,6 +276,18 @@ def vad_capture(on_clip, stop_event=None, mode_event=None, block_sec: float = 0.
                         on_clip(clip)
 
 
+def _safe_send(conn, payload: bytes) -> None:
+    """Send a reply, swallowing the error if the client already closed.
+
+    A client that connects and disconnects mid-handshake (health probes,
+    timeouts) must never kill the socket server thread with BrokenPipeError.
+    """
+    try:
+        conn.sendall(payload)
+    except OSError:
+        pass
+
+
 def _socket_server(stop_event, mode_events) -> None:
     import json
     import socket
@@ -262,7 +298,12 @@ def _socket_server(stop_event, mode_events) -> None:
     except FileNotFoundError:
         pass
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    srv.bind(str(SOCKET_PATH))
+    try:
+        srv.bind(str(SOCKET_PATH))
+    except OSError:
+        # Another daemon already owns the socket — don't linger as a zombie.
+        stop_event.set()
+        return
     srv.listen(4)
     modes = {"hotkey": mode_events["hotkey"].is_set(),
              "vad": mode_events["vad"].is_set()}
@@ -272,37 +313,46 @@ def _socket_server(stop_event, mode_events) -> None:
             conn, _ = srv.accept()
         except OSError:
             break
-        with conn:
-            data = conn.recv(4096).decode()
-            try:
-                req = json.loads(data)
-            except Exception:
-                conn.sendall(b'{"ok": false, "reason": "bad json"}')
-                continue
-            cmd = req.get("command")
-            if cmd == "set-mode":
-                mode = req.get("mode")
-                if mode in ("hotkey", "vad", "both", "off"):
-                    modes["hotkey"] = mode in ("hotkey", "both")
-                    modes["vad"] = mode in ("vad", "both")
-                    if modes["hotkey"]:
-                        mode_events["hotkey"].set()
+        try:
+            with conn:
+                data = conn.recv(4096).decode()
+                if not data:
+                    # Health probe / connect-and-close — nothing to answer.
+                    continue
+                try:
+                    req = json.loads(data)
+                except Exception:
+                    _safe_send(conn, b'{"ok": false, "reason": "bad json"}')
+                    continue
+                cmd = req.get("command")
+                if cmd == "ping":
+                    _safe_send(conn, b'{"ok": true}')
+                elif cmd == "set-mode":
+                    mode = req.get("mode")
+                    if mode in ("hotkey", "vad", "both", "off"):
+                        modes["hotkey"] = mode in ("hotkey", "both")
+                        modes["vad"] = mode in ("vad", "both")
+                        if modes["hotkey"]:
+                            mode_events["hotkey"].set()
+                        else:
+                            mode_events["hotkey"].clear()
+                        if modes["vad"]:
+                            mode_events["vad"].set()
+                        else:
+                            mode_events["vad"].clear()
+                        _write_state(running=True, modes=dict(modes))
+                        _safe_send(conn, b'{"ok": true}')
                     else:
-                        mode_events["hotkey"].clear()
-                    if modes["vad"]:
-                        mode_events["vad"].set()
-                    else:
-                        mode_events["vad"].clear()
-                    _write_state(running=True, modes=dict(modes))
-                    conn.sendall(b'{"ok": true}')
+                        _safe_send(conn, b'{"ok": false, "reason": "bad mode"}')
+                elif cmd == "stop":
+                    _write_state(running=False, modes=dict(modes))
+                    _safe_send(conn, b'{"ok": true}')
+                    stop_event.set()
                 else:
-                    conn.sendall(b'{"ok": false, "reason": "bad mode"}')
-            elif cmd == "stop":
-                _write_state(running=False, modes=dict(modes))
-                conn.sendall(b'{"ok": true}')
-                stop_event.set()
-            else:
-                conn.sendall(b'{"ok": false, "reason": "unknown command"}')
+                    _safe_send(conn, b'{"ok": false, "reason": "unknown command"}')
+        except Exception:
+            # A single bad client must never kill the control socket.
+            continue
     srv.close()
 
 
@@ -327,7 +377,7 @@ def run() -> int:
     threads = [
         threading.Thread(target=_socket_server, args=(stop_event, mode_events),
                          daemon=True, name="stt-socket"),
-        threading.Thread(target=run_hotkey, args=(mode_events["hotkey"],),
+        threading.Thread(target=run_hotkey, args=(mode_events["hotkey"], stop_event),
                          daemon=True, name="stt-hotkey"),
         threading.Thread(target=vad_capture,
                          args=(_handle_clip, stop_event),
@@ -343,6 +393,10 @@ def run() -> int:
         stop_event.wait()  # released by the socket server on "stop"
     except KeyboardInterrupt:
         pass
+    # Let the audio threads close their streams cleanly before the process
+    # exits — killing PortAudio/PipeWire mid-callback segfaults on shutdown.
+    for t in threads:
+        t.join(timeout=2)
     _write_state(running=False, modes={"hotkey": False, "vad": False})
     return 0
 
@@ -371,6 +425,8 @@ def main() -> int:
         return _test()
     if args.command == "start":
         import subprocess
+        if _daemon_alive():
+            return control("status")  # already running — don't spawn a duplicate
         subprocess.Popen([sys.executable, str(Path(__file__).resolve())],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
