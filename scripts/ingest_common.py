@@ -40,7 +40,12 @@ def ingest_dir(domain: str, src_dir: Path) -> int:
             text = f.read_text(errors="replace")
             r = domain_ingest.ingest(domain, str(f), text)
             total += r.get("chunks", 0)
-            print(f"  {f.name}: {r.get('chunks', 0)} chunks")
+            if not r.get("ok"):
+                # e.g. unknown domain — surface the error so a cron job pointed
+                # at a misspelled domain isn't silently storing 0 chunks.
+                print(f"  {f.name}: {r.get('error', 'ingest failed')}", file=sys.stderr)
+            else:
+                print(f"  {f.name}: {r.get('chunks', 0)} chunks")
         except Exception as e:
             print(f"  {f.name}: ERROR {e}", file=sys.stderr)
     print(f"{domain} ingest done — {total} chunks stored")
