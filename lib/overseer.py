@@ -1072,18 +1072,14 @@ def _execute_task(task: Dict) -> bool:
         return False
 
     elif task_type == "llm":
-        # Use tiny LLM for lightweight inference tasks
-        system = task.get("system", "")
-        max_tokens = task.get("max_tokens", 256)
-        result = execute_tool("query_llm", {
-            "prompt": prompt,
-            "system": system,
-            "max_tokens": max_tokens,
-        })
+        # ReAct/Socratic loop (step 2) — the tiny model drives tools.
+        from lib.react_loop import run_react
+        result = run_react(task)
         if result.get("ok"):
             _log(f"LLM task completed ({len(result.get('output', ''))} chars)",
                  "✅", GREEN)
             return True
+        _log(f"LLM task failed: {result.get('error', '')[:120]}", "❌", RED)
         return False
 
     elif task_type == "subagent":

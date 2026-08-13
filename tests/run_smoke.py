@@ -1835,6 +1835,24 @@ def test_stt_webui_endpoint() -> R:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AREA: react (step-2 ReAct/Socratic loop)
+# ═══════════════════════════════════════════════════════════════════════════
+def test_react_loop() -> R:
+    """react_loop: mode selection + direct-mode run (tiny up)."""
+    from lib.react_loop import classify_mode, run_react
+    if classify_mode("hello there") != "direct":
+        return R("react_loop mode direct", "react", False, "conversation not direct")
+    if classify_mode("fix it") != "socratic":
+        return R("react_loop mode socratic", "react", False, "ambiguous not socratic")
+    if classify_mode("run echo hello") != "react":
+        return R("react_loop mode react", "react", False, "command not react")
+    r = run_react({"prompt": "hello"})
+    if not r.get("ok") or not r.get("output"):
+        return R("react_loop direct run", "react", False, str(r))
+    return R("react_loop", "react", True, "modes + direct run OK")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
 LIVE_AREAS = {"models", "daemon", "proxy", "cli", "tray"}
@@ -1870,6 +1888,7 @@ TESTS = {
             test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
             test_stt_vad_math, test_stt_webui_endpoint],
     "registry": [test_tool_registry],
+    "react": [test_react_loop],
 }
 
 
