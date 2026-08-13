@@ -317,6 +317,10 @@ def _smoke() -> int:
             fails += 1
     print("✅ step-2 tools registered")
 
+    names = [t.get("function", {}).get("name") for t in list_tools()]
+    if "rag_query" not in names:
+        print("❌ missing tool: rag_query")
+        fails += 1
     r = execute_tool("rag_query", {"domain": "dfir", "query": "blocked ip", "limit": 3})
     if "ok" not in r:
         print(f"❌ rag_query malformed: {r}")
