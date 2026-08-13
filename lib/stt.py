@@ -80,6 +80,12 @@ def cleanup(text: str) -> str:
         return text  # fallback — STT never blocks on the model
 
 
+def transcribe_and_cleanup(audio: Audio) -> str:
+    """Full pipeline: transcribe → cleanup. Never raises."""
+    raw = transcribe(audio)
+    return cleanup(raw)
+
+
 def _test() -> int:
     wav = Path(tempfile.gettempdir()) / "stt_sample.wav"
     subprocess.run(["espeak-ng", "-v", "en-us", "-w", str(wav),

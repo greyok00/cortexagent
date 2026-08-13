@@ -1770,6 +1770,19 @@ def test_stt_cleanup_fallback() -> R:
     return R("stt cleanup fallback", "stt", True, f"cleanup → {out!r}")
 
 
+def test_stt_transcribe_and_cleanup() -> R:
+    """transcribe_and_cleanup() full pipeline on a generated sample (Task 4)."""
+    from lib import stt
+    wav = os.path.join(tempfile.gettempdir(), "stt_sample.wav")
+    subprocess.run(["espeak-ng", "-v", "en-us", "-w", wav,
+                    "fix the proxy token accounting bug"], check=True)
+    text = stt.transcribe_and_cleanup(wav)
+    if not (text and text.strip()):
+        return R("stt transcribe+cleanup", "stt", False,
+                 f"pipeline returned empty: {text!r}")
+    return R("stt transcribe+cleanup", "stt", True, f"pipeline → {text!r}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1803,7 +1816,7 @@ TESTS = {
                   test_no_fallback_two_models_only],
     "tui": [test_tui_response_model, test_tui_smoke],
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
-            test_stt_cleanup_fallback],
+            test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup],
 }
 
 
