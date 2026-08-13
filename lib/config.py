@@ -98,6 +98,18 @@ def _env_int(name: str, conf_section: str, conf_key: str,
         return default
 
 
+def _env_float(name: str, conf_section: str, conf_key: str,
+               default: Optional[float] = None) -> Optional[float]:
+    """Resolve a float: env var → conf [section] key → default."""
+    val = _env(name, conf_section, conf_key, None)
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 # ── Locked model settings (Phase C) ──────────────────────────────────────────
 # These pinned values OVERRIDE env vars + the conf for the big-model llama-server
 # args, so a stray CORTEXAGENT_CTX / conf edit / launcher default can't silently
@@ -341,6 +353,25 @@ class Config:
         # ── Branding (configurable; default neutral for distribution) ───────
         self.brand = _env("CORTEXAGENT_BRAND", "branding", "name", "CortexAgent")
         self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "GreyOK00")
+
+        # ── STT (speech-to-text) ────────────────────────────────────────────
+        # Local-only, CPU. Default mic = the Logi USB Headset (card 0).
+        self.stt_model = _env("CORTEXAGENT_STT_MODEL", "stt", "model", "small")
+        self.stt_device = _env("CORTEXAGENT_STT_DEVICE", "stt", "device", "cpu")
+        self.stt_mic_device = _env(
+            "CORTEXAGENT_STT_MIC", "stt", "mic_device", "Logi USB Headset")
+        self.stt_hotkey = _env(
+            "CORTEXAGENT_STT_HOTKEY", "stt", "hotkey", "<ctrl>+<shift>+space")
+        self.stt_speak_to_capture = _env_bool(
+            "CORTEXAGENT_STT_SPEAK", "stt", "speak_to_capture", True)
+        self.stt_vad_threshold = _env_float(
+            "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.02)
+        self.stt_vad_silence_sec = _env_float(
+            "CORTEXAGENT_STT_VAD_SILENCE", "stt", "vad_silence_sec", 0.8)
+        self.stt_cleanup = _env_bool(
+            "CORTEXAGENT_STT_CLEANUP", "stt", "cleanup", True)
+        self.stt_cleanup_target = _env(
+            "CORTEXAGENT_STT_CLEANUP_TARGET", "stt", "cleanup_target", "tiny")
 
     # ── Helpers ────────────────────────────────────────────────────────────
     def ensure_dirs(self) -> None:

@@ -1730,6 +1730,21 @@ def test_tui_smoke() -> R:
     return R("tui smoke", "tui", True, tail)
 
 
+def test_stt_config_defaults() -> R:
+    """[stt] config section defaults (Task 1)."""
+    from lib.config import CFG
+    assert CFG.stt_model == "small"
+    assert CFG.stt_device == "cpu"
+    assert CFG.stt_mic_device == "Logi USB Headset"
+    assert CFG.stt_hotkey == "<ctrl>+<shift>+space"
+    assert CFG.stt_speak_to_capture is True
+    assert CFG.stt_vad_threshold == 0.02
+    assert CFG.stt_vad_silence_sec == 0.8
+    assert CFG.stt_cleanup is True
+    assert CFG.stt_cleanup_target == "tiny"
+    return R("stt config defaults", "stt", True, "all 9 defaults green")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1762,6 +1777,7 @@ TESTS = {
                   test_fallback_vram_probe_glitchrejection,
                   test_no_fallback_two_models_only],
     "tui": [test_tui_response_model, test_tui_smoke],
+    "stt": [test_stt_config_defaults],
 }
 
 
