@@ -38,7 +38,9 @@ def transcribe(audio: Audio) -> str:
     if isinstance(audio, (str, Path)):
         segments, _info = model.transcribe(str(audio), beam_size=5)
     else:
-        segments, _info = model.transcribe(audio, sampling_rate=16000, beam_size=5)
+        # faster-whisper expects 16kHz mono float32 numpy arrays (no
+        # sampling_rate kwarg — that's an openai-whisper/whisper.cpp param).
+        segments, _info = model.transcribe(audio, beam_size=5)
     return "".join(seg.text for seg in segments).strip()
 
 
