@@ -1820,23 +1820,27 @@ def test_stt_vad_math() -> R:
     return R("stt vad math", "stt", True, f"silence={s_rms:.4f} tone={t_rms:.4f}")
 
 
-def test_stt_idle_unload() -> R:
-    """unload_if_idle() frees a stale CUDA model, keeps a freshly-used one."""
+def test_stt_oom_floor_unload() -> R:
+    """unload_if_idle() keeps whisper resident; frees only on OOM-floor VRAM."""
     from lib import stt
-    # Simulate a loaded model with a fresh last-use — must stay loaded.
+    orig_free = stt._free_vram_mib
+    # Simulate a loaded CUDA model with plenty of free VRAM — must stay
+    # resident (no idle unload, no big-model-up unload).
     stt._model = object()
-    stt._model_last_used = stt.time.time()
+    stt._model_device = "cuda"
+    stt._free_vram_mib = lambda: 14000
     stt.unload_if_idle()
-    fresh_kept = stt._model is not None
-    # Simulate it going stale past the idle threshold — must be freed.
-    stt._model_last_used = 0.0
+    roomy_kept = stt._model is not None
+    # Free VRAM under the OOM floor — must be freed to protect the big model.
+    stt._free_vram_mib = lambda: 300
     stt.unload_if_idle()
-    stale_freed = stt._model is None
+    oom_freed = stt._model is None
     stt._model = None  # restore clean state
-    if not (fresh_kept and stale_freed):
-        return R("stt idle unload", "stt", False,
-                 f"fresh_kept={fresh_kept} stale_freed={stale_freed}")
-    return R("stt idle unload", "stt", True, "fresh kept, stale freed")
+    stt._free_vram_mib = orig_free
+    if not (roomy_kept and oom_freed):
+        return R("stt oom-floor unload", "stt", False,
+                 f"roomy_kept={roomy_kept} oom_freed={oom_freed}")
+    return R("stt oom-floor unload", "stt", True, "resident kept, OOM-floor freed")
 
 
 def test_stt_webui_endpoint() -> R:
@@ -1905,7 +1909,7 @@ TESTS = {
     "tui": [test_tui_response_model, test_tui_smoke],
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
             test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
-            test_stt_vad_math, test_stt_idle_unload, test_stt_webui_endpoint],
+            test_stt_vad_math, test_stt_oom_floor_unload, test_stt_webui_endpoint],
     "registry": [test_tool_registry],
     "react": [test_react_loop],
 }
