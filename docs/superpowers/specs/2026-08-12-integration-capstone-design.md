@@ -95,7 +95,9 @@ user prompt → queue → run_react (step 2)
 ## 5. Overseer model evaluation
 
 **The risk:** LFM2.5-1.2B driving ReAct + Socratic reasoning is the weakest
-link. The changelog already lists candidates (research pending):
+link. **User pre-approved the swap to a larger overseer (2026-08-12)** — the
+evaluation picks the winner, then the swap happens. The changelog already
+lists candidates:
 
 | Candidate | Size | Why |
 |---|---|---|
