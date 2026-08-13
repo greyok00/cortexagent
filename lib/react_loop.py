@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,6 +27,12 @@ from lib.pre_flight_gate import classify_intent, is_ambiguous  # noqa: E402
 
 MAX_STEPS = 8
 TOOL_TIMEOUT = 60
+# Cap the tool surface the tiny model sees. The full registry can hold
+# hundreds of MCP tools; the tiny overseer (:8082, 2048 ctx) can't fit them
+# all. Priority order keeps core + browser tools first, then MCP/skills.
+# 16 = 12 core + 4 browser ≈ 1.5k tokens, inside the 2048 window. Raise via
+# CORTEXAGENT_MAX_TOOLS when the tiny ctx is bumped or MCP servers are on.
+MAX_TOOLS = int(os.environ.get("CORTEXAGENT_MAX_TOOLS", "16"))
 SOCRATIC_KEYWORDS = (
     "osint", "security", "triage", "investigate", "analyze", "legal",
     "business", "what would falsify", "hypothesis", "assumption",
@@ -139,6 +146,9 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
 
     # ── react mode ─────────────────────────────────────────────────────────
     from lib.tool_registry import list_tools, execute_tool
+    # Full harness surface: browser + skills + MCP tools (idempotent, lazy).
+    from lib.harness_tools import ensure_registered
+    ensure_registered()
     sys_prompt = (system + "\n\n" + _INJECTION_GUARD) if system else _REACT_SYSTEM
     messages = [
         {"role": "system", "content": sys_prompt},
@@ -151,7 +161,8 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
                       "status": "in_progress"})
         _publish(state, steps, step)
         response = tiny_llm.query_with_tools(
-            messages, list_tools(), max_tokens=512, timeout=TOOL_TIMEOUT)
+            messages, list_tools(limit=MAX_TOOLS), max_tokens=512,
+            timeout=TOOL_TIMEOUT)
         if response is None:
             return {"ok": False, "output": "", "error": "tiny model unavailable"}
         if response["kind"] == "text":
