@@ -1947,6 +1947,39 @@ def test_ingest_job_library() -> R:
         domain_db.DOMAINS_DIR = old
 
 
+# AREA: integration (step-5 e2e — offline-testable parts)
+# ═══════════════════════════════════════════════════════════════════════════
+def test_integration_offline() -> R:
+    """E2E offline parts: rag_query with seeded DB, ingest→search, socratic mode."""
+    from lib import domain_ingest, domain_db, react_loop, tool_registry
+    import tempfile, shutil
+    from pathlib import Path
+    tmp = Path(tempfile.mkdtemp())
+    old = domain_db.DOMAINS_DIR
+    domain_db.DOMAINS_DIR = tmp
+    try:
+        r = domain_ingest.ingest("osint", "e2e.txt", "blocked IP 10.0.0.5 beaconing " * 20)
+        if not r.get("ok") or r.get("chunks", 0) < 1:
+            return R("e2e seed", "integration", False, str(r))
+        q = tool_registry.execute_tool("rag_query", {"domain": "osint", "query": "blocked IP"})
+        if not q.get("ok") or "10.0.0.5" not in q.get("output", ""):
+            return R("e2e rag_query", "integration", False, q.get("error", "no output"))
+        ing = tool_registry.execute_tool("ingest_domain",
+                                         {"domain": "dfir", "source": "n.txt",
+                                          "text": "svchost.exe from C:\\Temp " * 20})
+        if not ing.get("ok"):
+            return R("e2e ingest_domain", "integration", False, str(ing))
+        hits = domain_db.search("dfir", "svchost")
+        if not hits:
+            return R("e2e ingest→search", "integration", False, "no hits")
+        if react_loop.classify_mode("What should we do about this threat?") != "socratic":
+            return R("e2e socratic mode", "integration", False, "not socratic")
+        return R("e2e integration offline", "integration", True, "rag+ingest+socratic")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        domain_db.DOMAINS_DIR = old
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1987,6 +2020,7 @@ TESTS = {
     "react": [test_react_loop],
     "domain": [test_domain_db],
     "ingest": [test_ingest_job_library],
+    "integration": [test_integration_offline],
 }
 
 
