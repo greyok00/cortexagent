@@ -41,7 +41,7 @@ def register_tool(name: str, schema: Dict[str, Any], handler: Callable,
     TOOLS[name] = {"schema": schema, "handler": handler, "priority": priority}
 
 
-def list_tools(limit: Optional[int] = None) -> List[Dict[str, Any]]:
+def list_tools(limit: Optional[int] = None, stub: bool = False) -> List[Dict[str, Any]]:
     """OpenAI function-schema list — what the model sees for tool_calls.
 
     ``limit`` caps the number of tools returned (sorted by priority, then
@@ -49,26 +49,77 @@ def list_tools(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     model's context window — the full registry can hold hundreds of MCP
     tools, but the model only sees the top ``limit`` (core + browser first,
     then MCP/skills).
+
+    ``stub=True`` returns MINIFIED entries — name + truncated description,
+    NO parameters. The full schema stays in the registry (the "database
+    indexed of all the information"); ``execute_tool`` resolves it on call
+    (the "tiny call that calls the large call"). A stub is ~35 tokens vs
+    ~180 for a full schema — the whole 168-tool surface drops from ~30k to
+    ~6k tokens, and the default 21-tool surface to ~700.
     """
-    tools = [
-        {"type": "function", "function": {
-            "name": name,
-            "description": t["schema"]["description"],
-            "parameters": t["schema"]["parameters"],
-        }}
-        for name, t in sorted(TOOLS.items(),
-                              key=lambda kv: (kv[1].get("priority", 0), kv[0]))
-    ]
+    tools = []
+    for name, t in sorted(TOOLS.items(),
+                          key=lambda kv: (kv[1].get("priority", 0), kv[0])):
+        if stub:
+            desc = t["schema"]["description"]
+            if len(desc) > 50:
+                desc = desc[:47] + "..."
+            tools.append({"type": "function", "function": {
+                "name": name, "description": desc}})
+        else:
+            tools.append({"type": "function", "function": {
+                "name": name,
+                "description": t["schema"]["description"],
+                "parameters": t["schema"]["parameters"]}})
     if limit is not None:
         tools = tools[:limit]
     return tools
 
 
+def get_schema(name: str) -> Optional[Dict[str, Any]]:
+    """Return a tool's full schema (the stub-mode resolution target)."""
+    tool = TOOLS.get(name)
+    return tool["schema"] if tool else None
+
+
 def execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
-    """Dispatch to handler. Returns {"ok": bool, "output": str, "error": str}."""
+    """Dispatch to handler. Returns {"ok": bool, "output": str, "error": str}.
+
+    Stub-mode resolution: validates required args against the full schema
+    (missing → helpful error listing the required params so the model can
+    retry), coerces integer/number/string types, then dispatches. Empty
+    strings pass through — handlers keep their own validation (e.g.
+    run_command's "non-empty" guard).
+    """
     tool = TOOLS.get(name)
     if tool is None:
         return {"ok": False, "output": "", "error": f"unknown tool: {name}"}
+    schema = tool["schema"]
+    params = schema.get("parameters") or {}
+    props = params.get("properties") or {}
+    required = params.get("required") or []
+    missing = [p for p in required if p not in args or args[p] is None]
+    if missing:
+        hints = ", ".join(f"{p} ({props.get(p, {}).get('type', '?')})"
+                          for p in missing)
+        return {"ok": False, "output": "",
+                "error": f"missing required args: {hints}"}
+    for p, spec in props.items():
+        if p not in args or args[p] is None:
+            continue
+        t = spec.get("type")
+        if t == "integer" and not isinstance(args[p], int):
+            try:
+                args[p] = int(args[p])
+            except (TypeError, ValueError):
+                pass
+        elif t == "number" and not isinstance(args[p], (int, float)):
+            try:
+                args[p] = float(args[p])
+            except (TypeError, ValueError):
+                pass
+        elif t == "string" and not isinstance(args[p], str):
+            args[p] = str(args[p])
     try:
         result = tool["handler"](**args)
         if isinstance(result, dict) and "ok" in result:
@@ -502,6 +553,46 @@ def _smoke() -> int:
     if r.get("ok") or "unknown domain" not in r.get("error", ""):
         print(f"❌ ingest_domain bad domain: {r}")
         fails += 1
+
+    # ── stub mode (minified tool surface) ─────────────────────────────────
+    stubs = list_tools(stub=True)
+    if not stubs:
+        print("❌ list_tools(stub=True) empty")
+        fails += 1
+    for t in stubs:
+        f = t.get("function", {})
+        if (t.get("type") != "function" or not f.get("name")
+                or not f.get("description") or "parameters" in f):
+            print(f"❌ stub leaked parameters: {f.get('name')}")
+            fails += 1
+    full = list_tools()
+    stub_chars = sum(len(json.dumps(t, ensure_ascii=False)) for t in stubs)
+    full_chars = sum(len(json.dumps(t, ensure_ascii=False)) for t in full)
+    if stub_chars >= full_chars:
+        print(f"❌ stub mode not smaller: {stub_chars} vs {full_chars}")
+        fails += 1
+    else:
+        print(f"✅ stub mode: {len(stubs)} tools, {stub_chars:,} chars vs {full_chars:,} full "
+              f"({100 - stub_chars * 100 // full_chars}% smaller)")
+
+    # stub resolution: missing required → helpful error; coercion works
+    r = execute_tool("run_command", {})
+    if r.get("ok") or "missing required args" not in r.get("error", ""):
+        print(f"❌ stub missing-arg error: {r}")
+        fails += 1
+    else:
+        print("✅ stub missing-arg resolution: " + r.get("error", ""))
+    r = execute_tool("run_command", {"command": "echo stub-ok", "timeout": "5"})
+    if not r.get("ok") or "stub-ok" not in r.get("output", ""):
+        print(f"❌ stub coercion: {r}")
+        fails += 1
+    else:
+        print("✅ stub type coercion works")
+    if get_schema("run_command") is None:
+        print("❌ get_schema('run_command') None")
+        fails += 1
+    else:
+        print("✅ get_schema resolves full schema")
 
     print("✅ tool_registry smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0

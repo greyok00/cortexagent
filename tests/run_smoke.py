@@ -2111,6 +2111,33 @@ def test_harness_wiring() -> R:
     return R("harness wiring", "harness", True, f"idempotent, cap={rl.MAX_TOOLS}")
 
 
+def test_harness_stub_mode() -> R:
+    """Stub mode minifies the tool surface and resolves args on the backend."""
+    from lib.tool_registry import list_tools, execute_tool, get_schema
+    import lib.react_loop as rl
+    if not rl.STUB_MODE:
+        return R("harness stub default", "harness", False, "STUB_MODE not default-on")
+    stubs = list_tools(limit=rl.MAX_TOOLS, stub=True)
+    full = list_tools(limit=rl.MAX_TOOLS)
+    for t in stubs:
+        if "parameters" in t["function"]:
+            return R("harness stub no-params", "harness", False,
+                     f"stub leaked parameters: {t['function']['name']}")
+    s_chars = sum(len(str(t)) for t in stubs)
+    f_chars = sum(len(str(t)) for t in full)
+    if s_chars >= f_chars:
+        return R("harness stub smaller", "harness", False,
+                 f"stub {s_chars} not < full {f_chars}")
+    r = execute_tool("run_command", {})
+    if "missing required args" not in r.get("error", ""):
+        return R("harness stub resolution", "harness", False,
+                 f"missing-arg error: {r.get('error')}")
+    if get_schema("run_command") is None:
+        return R("harness stub schema", "harness", False, "get_schema None")
+    return R("harness stub mode", "harness", True,
+             f"{len(stubs)} stubs, {s_chars:,} chars vs {f_chars:,} full")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2154,7 +2181,7 @@ TESTS = {
     "integration": [test_integration_offline],
     "harness": [test_harness_mcp_client, test_harness_browser_tools,
                 test_harness_skills, test_harness_beautify,
-                test_harness_wiring],
+                test_harness_wiring, test_harness_stub_mode],
 }
 
 
