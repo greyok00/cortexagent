@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import urllib.request
@@ -58,10 +59,21 @@ class DomainEmbedder:
             target = MODEL_DIR / name
             if target.exists() and target.stat().st_size > 0:
                 continue
-            print(f"[domain_embed] downloading {name} (~90MB one-time)...")
+            # Download to a temp file and atomically rename on success — a
+            # partial or corrupt download never persists as the final file,
+            # so a retry re-downloads instead of choking on a bad onnx.
+            part = MODEL_DIR / (name + ".part")
+            print(f"[domain_embed] downloading {name}...")
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=300) as r, open(target, "wb") as f:
-                shutil.copyfileobj(r, f)
+            try:
+                with urllib.request.urlopen(req, timeout=300) as r, open(part, "wb") as f:
+                    shutil.copyfileobj(r, f)
+                if part.stat().st_size == 0:
+                    raise OSError(f"downloaded {name} is empty")
+                os.replace(part, target)
+            except BaseException:
+                part.unlink(missing_ok=True)
+                raise
 
     def _load(self) -> None:
         if self._loaded:
