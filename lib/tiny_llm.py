@@ -14,6 +14,7 @@ treat a missing tiny LLM as non-fatal). The user's personal Ollama instance
 from __future__ import annotations
 
 import json
+import re
 import sys
 import urllib.request
 from pathlib import Path
@@ -107,6 +108,81 @@ def _parse_tool_calls(message: dict) -> list:
     return calls
 
 
+def _parse_text_tool_calls(content: str) -> list:
+    """Fallback: extract tool calls from a model's TEXT response.
+
+    Some models (e.g. abliterated GGUFs) never emit native ``tool_calls`` —
+    they write the call as JSON in the reply text. Accept the shapes seen in
+    the wild:
+      {"tool": "run_command", "arguments": {"command": "date"}}
+      {"name": "run_command", "arguments": {...}}          (OpenAI-ish)
+      {"tool_call": {"name": "...", "arguments": {...}}}
+      Action: run_command
+      Action Input: {"command": "date"}                     (ReAct)
+    Returns [] when the text is not a tool call (a plain answer) so the
+    react loop still treats it as text.
+    """
+    if not content:
+        return []
+    text = content.strip()
+    # ReAct shape: "Action: <name>" optionally followed by "Action Input: <json>".
+    # [ \t]* (not \s*) after the name so the newline before "Action Input:" is
+    # not consumed by the greedy whitespace match.
+    m = re.search(
+        r"Action:\s*([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?:\n\s*Action Input:\s*(\{.*\}))?",
+        text, re.S)
+    if m:
+        name = m.group(1)
+        args = {}
+        if m.group(2):
+            try:
+                args = json.loads(m.group(2))
+            except Exception:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+        return [{"id": "call_text_0", "name": name, "arguments": args}]
+    # JSON shape: find the first balanced {...} object.
+    start = text.find("{")
+    if start == -1:
+        return []
+    depth = 0
+    end = -1
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end == -1:
+        return []
+    try:
+        obj = json.loads(text[start:end + 1])
+    except Exception:
+        return []
+    if not isinstance(obj, dict):
+        return []
+    # Unwrap {"tool_call": {...}}.
+    if "tool_call" in obj and isinstance(obj["tool_call"], dict):
+        obj = obj["tool_call"]
+    name = obj.get("tool") or obj.get("name") or obj.get("function")
+    if isinstance(name, dict):  # {"function": {"name": ...}}
+        name = name.get("name")
+    if not isinstance(name, str) or not name:
+        return []
+    args = obj.get("arguments") or obj.get("args") or obj.get("parameters") or {}
+    if isinstance(args, str):
+        try:
+            args = json.loads(args) if args.strip() else {}
+        except Exception:
+            args = {}
+    if not isinstance(args, dict):
+        args = {}
+    return [{"id": "call_text_0", "name": name, "arguments": args}]
+
+
 def query_with_tools(messages: list, tools: list, max_tokens: int = 512,
                      timeout: int = 60) -> Optional[dict]:
     """Send messages + tools to :8082. Returns {"kind": "text", "content": str}
@@ -133,6 +209,12 @@ def query_with_tools(messages: list, tools: list, max_tokens: int = 512,
             return {"kind": "tool_calls", "calls": calls}
         content = (message.get("content") or "").strip()
         if content:
+            # Fallback: models that never emit native tool_calls (abliterated
+            # GGUFs) write the call as text JSON. Parse it so the react loop
+            # can drive tools with any model that emits the JSON shape.
+            text_calls = _parse_text_tool_calls(content)
+            if text_calls:
+                return {"kind": "tool_calls", "calls": text_calls}
             return {"kind": "text", "content": content}
         return None
     except Exception:
@@ -164,6 +246,38 @@ def _test() -> int:
     calls = _parse_tool_calls(msg)
     if len(calls) != 1 or calls[0]["arguments"] != {}:
         print(f"❌ malformed args parse: {calls}")
+        fails += 1
+    # ── text-based tool-call fallback (abliterated models) ────────────────
+    # {"tool": ..., "arguments": {...}} inline in prose
+    calls = _parse_text_tool_calls(
+        'I will check the time. {"tool": "run_command", '
+        '"arguments": {"command": "date"}}')
+    if len(calls) != 1 or calls[0]["name"] != "run_command" \
+            or calls[0]["arguments"] != {"command": "date"}:
+        print(f"❌ text JSON tool call: {calls}")
+        fails += 1
+    # OpenAI-ish {"name": ..., "arguments": {...}}
+    calls = _parse_text_tool_calls(
+        '{"name": "rag_query", "arguments": {"domain": "osint", "query": "IP"}}')
+    if len(calls) != 1 or calls[0]["name"] != "rag_query":
+        print(f"❌ text name/arguments: {calls}")
+        fails += 1
+    # ReAct "Action:" / "Action Input:" shape
+    calls = _parse_text_tool_calls(
+        'Action: run_command\nAction Input: {"command": "echo hi"}')
+    if len(calls) != 1 or calls[0]["name"] != "run_command" \
+            or calls[0]["arguments"] != {"command": "echo hi"}:
+        print(f"❌ ReAct Action parse: {calls}")
+        fails += 1
+    # Plain answer must NOT be parsed as a tool call.
+    calls = _parse_text_tool_calls("The answer is 4. No tools needed.")
+    if calls != []:
+        print(f"❌ plain answer parsed as call: {calls}")
+        fails += 1
+    # JSON answer (not a tool call) must NOT be parsed.
+    calls = _parse_text_tool_calls('{"answer": 4}')
+    if calls != []:
+        print(f"❌ JSON answer parsed as call: {calls}")
         fails += 1
     print("tiny_llm parser: OK" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
