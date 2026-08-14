@@ -201,6 +201,31 @@ _DAEMON_TIMEOUT = 2.0      # seconds — status reads must stay snappy
 _PROXY_TIMEOUT = 1.5       # seconds — /metrics must NEVER hang the UI
 
 
+def _canary_hits(limit: int = 20) -> List[Dict]:
+    """Tail the canary-server hits JSONL log. Same atomic-append pattern
+    as the hits log itself, so concurrent writes don't tear lines."""
+    p = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
+                            str(Path.home() / ".cortexagent"))) / "canary_hits.jsonl"
+    if not p.exists():
+        return []
+    try:
+        with p.open("r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except Exception:
+        return []
+    tail = lines[-limit:] if len(lines) > limit else lines
+    out = []
+    for ln in tail:
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            out.append(json.loads(ln))
+        except Exception:
+            continue
+    return out
+
+
 def _read_json(path: Path, default=None):
     """Tiny helper: read a JSON file or return ``default`` on any failure."""
     try:
@@ -506,6 +531,8 @@ def _api_overseer() -> Dict:
         "unit_pids": unit_pids,
         "minify": minify,
         "steps": steps_state,
+        # ── Canary-token hits (from canary_server.py on 127.0.0.1:8092) ─
+        "canary_hits": _canary_hits(limit=20),
         "proxy": {
             "running": bool(proxy),
             "sessions": proxy.get("sessions") or {},

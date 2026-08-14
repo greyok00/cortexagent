@@ -40,28 +40,27 @@ import sys
 sys.stdout.write(str(append('user', sys.argv[1], platform='cortexagent')))
 " "${prompt}" >/dev/null 2>&1 || true
 
-  # ── Prompt queue (DEFAULT behavior) ──────────────────────────────────────
-  # Decompose the prompt into a queued agenda, detect conflicts against prior
-  # items, and either block (asking the user to resolve a contradiction) or
-  # inject the agenda so the agent works the queue in order. Cheap (no LLM),
-  # non-fatal: any error → the prompt passes through unqueued.
+  # ── Clear stale queue entries (agenda only — NEVER blocks) ────────────────
+  # Clear BEFORE submit so conflict detection never compares against items
+  # from prior sessions. The session-start hook also clears, but this is the
+  # authoritative clear — if session-start missed its window, this catches it.
+  # Non-fatal: any error is ignored. Use the script path (not -m) so it works
+  # regardless of the hook's CWD.
+  python3 "${REPO_ROOT}/lib/prompt_queue.py" clear >/dev/null 2>&1 || true
+
+  # ── Submit prompt to queue (agenda only — NEVER blocks) ───────────────────
   hook_json="$(printf '%s' "${prompt}" | PYTHONPATH="${REPO_ROOT}" python3 -c '
 import json, sys
 try:
     prompt = sys.stdin.read()
     from lib import prompt_queue as pq
-    res = pq.submit(prompt)
-    if res.conflicts:
-        # Hold the conflicting submission; surface the first conflict as a
-        # blocking question exactly as the user specified.
-        print(json.dumps({"decision": "block", "reason": res.conflicts[0]}))
-    else:
-        ctx = pq.agenda_context()
-        if ctx:
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": ctx,
-            }}))
+    pq.submit(prompt)
+    ctx = pq.agenda_context()
+    if ctx:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": ctx,
+        }}))
 except Exception as e:
     sys.stderr.write(f"prompt_queue hook error (non-fatal): {e}\n")
 ' 2>/dev/null || true)"

@@ -376,6 +376,12 @@ class Config:
             "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.02)
         self.stt_vad_silence_sec = _env_float(
             "CORTEXAGENT_STT_VAD_SILENCE", "stt", "vad_silence_sec", 0.8)
+        # Hard flush: VAD commits a clip after this many seconds of
+        # accumulated speech even if the user hasn't paused. Prevents
+        # unbounded clip growth when someone talks continuously for >10s.
+        # Set CORTEXAGENT_STT_VAD_MAX_UTTERANCE to disable (e.g. 0).
+        self.stt_vad_max_utterance_sec = _env_float(
+            "CORTEXAGENT_STT_VAD_MAX_UTTERANCE", "stt", "vad_max_utterance_sec", 10.0)
         # Cleanup (grammar-fix via the tiny LLM) adds ~10s per clip — off by
         # default so dictation types fast; set CORTEXAGENT_STT_CLEANUP=true
         # to re-enable polished text.

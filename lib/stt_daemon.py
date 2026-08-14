@@ -136,6 +136,31 @@ def _key_name(key) -> str:
         return f"<{key.name}>"
     if isinstance(key, keyboard.KeyCode):
         return key.char or f"<{key.vk}>"
+
+
+# Tokens faster-whisper-base emits when transcribing silence / breath / mic noise.
+# We never want these typed into a focused prompt — they're hallucinations.
+_GARBAGE_TOKENS = frozenset({
+    "", ".", "..", "...", ". .", ". . .", ". . . .", ",", ", ,",
+    "uh", "uhh", "uh huh", "um", "umm", "hmm", "huh", "mm",
+    "[blank_audio]", "[silence]", "(silence)", "[music]",
+})
+
+
+def _text_is_meaningful(text: str) -> bool:
+    """True if `text` is real content, not a Whisper silence hallucination.
+
+    Drops pure-punctuation runs and the small set of breath/filler tokens
+    that faster-whisper-base emits on non-speech audio. Everything else —
+    including short real words like 'yes' or 'ok' — passes through.
+    """
+    if not text:
+        return False
+    # Pure punctuation/whitespace: any combo of ".", ",", " ", "\t", "\n"
+    if all(c in "., \t\n" for c in text):
+        return False
+    normalized = text.strip().lower()
+    return normalized not in _GARBAGE_TOKENS
     return str(key)
 
 
@@ -198,8 +223,10 @@ def _transcribe_worker() -> None:
             continue
         try:
             text = stt.transcribe_and_cleanup(clip)
-            if text:
+            if text and _text_is_meaningful(text):
                 type_text(text)
+            elif text:
+                print(f"  (dropped garbage transcript: {text!r})", flush=True)
         except Exception as e:
             print(f"⚠️ transcribe failed: {e}", flush=True)
         finally:
@@ -276,13 +303,21 @@ def vad_capture(on_clip, stop_event=None, mode_event=None, block_sec: float = 0.
 
     Speech onset: RMS > threshold. Speech end: `vad_silence_sec` of trailing
     silence. Debounce: a clip shorter than 0.3s is dropped (mic clicks).
+
+    Max-length flush: when accumulated speech crosses `stt_vad_max_utterance_sec`
+    (default 10s), the clip is committed even without a pause. Stops
+    unbounded growth on long monologues and prevents new utterances from
+    being absorbed into a clip that hasn't flushed yet.
     """
     import sounddevice as sd
     from lib.config import CFG
     threshold = CFG.stt_vad_threshold
     silence_limit = max(1, int(CFG.stt_vad_silence_sec / block_sec))
+    max_utt_sec = max(0.0, float(CFG.stt_vad_max_utterance_sec or 0.0))
+    max_utt_blocks = int(max_utt_sec / block_sec) if max_utt_sec > 0 else 0
     block = int(SAMPLE_RATE * block_sec)
     speech: list = []
+    speech_blocks = 0  # count of in-speech blocks since current onset
     in_speech = False
     silence_blocks = 0
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS,
@@ -293,22 +328,43 @@ def vad_capture(on_clip, stop_event=None, mode_event=None, block_sec: float = 0.
             if mode_event is not None and not mode_event.is_set():
                 in_speech = False
                 speech = []
+                speech_blocks = 0
                 silence_blocks = 0
                 continue
             if rms(data[:, 0]) > threshold:
                 if not in_speech:
                     in_speech = True
                     speech = []
+                    speech_blocks = 0
                 speech.append(data.copy())
+                speech_blocks += 1
                 silence_blocks = 0
             elif in_speech:
                 silence_blocks += 1
                 speech.append(data.copy())
+                speech_blocks += 1
                 if silence_blocks >= silence_limit:
                     clip = np.concatenate(speech)[:, 0]
                     in_speech = False
                     if len(clip) >= int(SAMPLE_RATE * 0.3):
                         on_clip(clip)
+                    speech = []
+                    speech_blocks = 0
+                    continue
+            # Max-length flush — fires when user has been talking
+            # continuously past the configured cap.
+            if (
+                in_speech
+                and max_utt_blocks > 0
+                and speech_blocks >= max_utt_blocks
+            ):
+                clip = np.concatenate(speech)[:, 0]
+                in_speech = False
+                if len(clip) >= int(SAMPLE_RATE * 0.3):
+                    on_clip(clip)
+                speech = []
+                speech_blocks = 0
+                silence_blocks = 0
 
 
 def _safe_send(conn, payload: bytes) -> None:

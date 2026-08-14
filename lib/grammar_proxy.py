@@ -947,14 +947,18 @@ class ProxyHandler:
                     resp_buf.clear()
                     resp_buf.append(minified)
                 full_text = (minified if minified is not full else full).decode("utf-8", errors="replace")
-                # Two SSE shapes we accept:
+                # Three SSE shapes we accept:
                 #   OpenAI: data: {"choices":[...], "usage":{"prompt_tokens":N,"completion_tokens":N}}
                 #     (usage may arrive on the final chunk or in a dedicated chunk)
                 #   llama-server: data: {"choices":[{...finish_reason:"length"...}],
                 #                          "timings":{"prompt_n":N,"predicted_n":N,
                 #                                     "predicted_per_second":F}}
                 #     (timings appear on the last chunk before data: [DONE])
-                # Both arrive inside a "data:" line; [DONE] carries nothing.
+                #   Anthropic (llama-server /v1/messages?beta=true):
+                #     event: message_start → data: {"type":"message_start",...,"usage":{"input_tokens":N}}
+                #     event: message_delta → data: {"type":"message_delta",...,"usage":{"output_tokens":N}}
+                #     (input_tokens on the first event, output_tokens on the last)
+                # All arrive inside a "data:" line; [DONE] carries nothing.
                 for line in full_text.split("\n"):
                     stripped = line.strip()
                     if not stripped.startswith("data:"):
@@ -970,9 +974,22 @@ class ProxyHandler:
                         continue
                     # OpenAI shape — preferred when both are present.
                     usage = obj.get("usage")
+                    # Anthropic message_start nests usage under "message":
+                    #   {"type":"message_start","message":{...,"usage":{...}}}
+                    if not isinstance(usage, dict):
+                        msg = obj.get("message")
+                        if isinstance(msg, dict):
+                            usage = msg.get("usage")
                     if isinstance(usage, dict):
                         u_pt = int(usage.get("prompt_tokens", 0) or 0)
                         u_ct = int(usage.get("completion_tokens", 0) or 0)
+                        # Anthropic shape (llama-server /v1/messages?beta=true):
+                        #   message_start → usage.input_tokens (prompt count)
+                        #   message_delta → usage.output_tokens (completion count)
+                        if not u_pt:
+                            u_pt = int(usage.get("input_tokens", 0) or 0)
+                        if not u_ct:
+                            u_ct = int(usage.get("output_tokens", 0) or 0)
                         if u_pt:
                             pt = u_pt
                         if u_ct:

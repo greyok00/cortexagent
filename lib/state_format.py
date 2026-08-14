@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,47 @@ def _read_json(path: Path, default: Any = None) -> Any:
         return d if d else default
     except Exception:
         return default
+
+
+# ── Active-model fallback (mtime-aware) ────────────────────────────────────
+# state/active_model.json is written by the daemon only when the model
+# changes, not on every tick — so a stale file can show a retired model
+# (e.g. lfm2.5-8b-a1b) long after the live big model swapped. The live
+# daemon control socket is the source of truth; the disk file is a hint.
+_ACTIVE_MODEL_FRESH_SEC = 60.0
+
+
+def _resolve_active_model(active_model: Dict[str, Any],
+                          big_alias: str,
+                          fresh_sec: float = _ACTIVE_MODEL_FRESH_SEC) -> str:
+    """Return the active model name with disk-file fallback semantics.
+
+    Order of preference:
+      1. Live daemon `big.alias` if non-empty (always wins).
+      2. Disk `state/active_model.json` `model` field if its `ts` is < fresh_sec.
+      3. Live `big.alias` even if empty (rarely — only when disk is missing too).
+    """
+    file_model = ""
+    file_ts = None
+    if isinstance(active_model, dict):
+        m = active_model.get("model")
+        if isinstance(m, str) and m.strip():
+            file_model = m.strip()
+        ts = active_model.get("ts")
+        if isinstance(ts, (int, float)):
+            file_ts = float(ts)
+    live = (big_alias or "").strip() if isinstance(big_alias, str) else ""
+    if live:
+        return live
+    if file_model and file_ts is not None:
+        if (time.time() - file_ts) <= fresh_sec:
+            return file_model
+    if file_model:
+        # File existed with a model but ts is stale or missing — keep the
+        # last known model rather than going blank. The freshness strip in
+        # the tray popout will flag the file as stale.
+        return file_model
+    return ""
 
 
 def _daemon_status() -> Dict[str, Any]:
@@ -116,7 +158,8 @@ def format_statusline(state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     minify = s.get("minify") or {}
     proxy = s.get("proxy") or {}
     return {
-        "model": big.get("alias") or (s.get("active_model") or {}).get("model", "") or "",
+        "model": _resolve_active_model(
+            s.get("active_model") or {}, big.get("alias", "") or ""),
         "minify_runs": int(minify.get("runs", 0)),
         "tokens_saved": int(minify.get("tokens_saved", 0)),
         "ratio_pct": int(minify.get("ratio_pct", 0) or 0),
@@ -151,7 +194,8 @@ def format_dashboard(state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # ── Identity ──────────────────────────────────────────────────
         "model_alias": big.get("alias", ""),
         "tiny_alias": tiny.get("alias", ""),
-        "active_model": (s.get("active_model") or {}).get("model", "") or big.get("alias", ""),
+        "active_model": _resolve_active_model(
+            s.get("active_model") or {}, big.get("alias", "") or ""),
         # ── Overseer state ────────────────────────────────────────────
         "overseer_label": ov.get("overseer_state", {}).get("label", "idle"),
         "overseer_since": ov.get("overseer_state", {}).get("since", ""),
@@ -174,6 +218,9 @@ def format_dashboard(state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "queue_pending": sum(1 for t in queue if (t.get("status") == "queued")),
         "queue_total": len(queue),
         "schedule_count": len(schedule),
+        # v0.5.3: expose raw arrays so tray + webui can paint per-item
+        "queue": queue,
+        "schedule": schedule,
         "plan_name": plan.get("name", ""),
         "plan_total_steps": int(plan.get("total_steps", 0)),
         "plan_current": int(plan.get("current_step", 0) or 0),
@@ -193,4 +240,10 @@ def format_dashboard(state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "proxy_up": bool(proxy.get("proxy_up", False)),
         "current_in_tps": float(proxy.get("current_in_tps", 0) or 0),
         "current_out_tps": float(proxy.get("current_out_tps", 0) or 0),
+        # ── Raw daemon (v0.5.3) ────────────────────────────────────────
+        # Consumers (tray popout, webui) need the full daemon dict for
+        # sessions list, profile, idle_sec, model_alias, etc. Earlier
+        # versions stripped it, which made the OVERSEER panel claim
+        # "all models down" even when big + tiny were live.
+        "daemon": daemon,
     }
