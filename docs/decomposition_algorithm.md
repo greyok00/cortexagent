@@ -54,10 +54,13 @@ Break the goal into 4-7 high-level phases.
 
 For **business/venture** goals:
 ```
-1. Research & Validation — market, competitors, opportunity
-2. Planning & Strategy — business model, positioning, roadmap
-3. Setup & Build — infrastructure, product, branding
-4. Launch & Growth — go-to-market, acquisition, iteration
+1. Research & Validation — market, competitors, opportunity (low risk, auto)
+2. Business Model Design — revenue models, financial projections (low risk, auto)
+3. Validation Experiments — landing page, surveys, real signals (low-med risk, checkpoints)
+4. Setup & Build — legal, banking, MVP, branding (med risk, checkpoints + manual)
+5. Launch — go-live, first users, first transactions (med-high risk, max checkpoints)
+6. Operations & Management — financial tracking, compliance, customer ops, strategy (high risk, most checkpoints)
+7. Growth & Adaptation — scaling, new markets, product lines, pivots (high risk, max checkpoints)
 ```
 
 For **product/technical** goals:

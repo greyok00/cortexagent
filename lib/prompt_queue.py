@@ -198,6 +198,24 @@ _REVISION = re.compile(
     r"rather|change\s+(?:it|that|the)|update\s+(?:it|that|the)|forget\s+(?:it|that))\b",
     re.IGNORECASE)
 
+# Tokens that must never be a directive *target*. The old heuristic took the
+# word right after the verb, which is usually a stopword ("use the internet" →
+# target "the") — so any two prompts that both start "use the…" / "keep the…"
+# false-conflicted on "the". Skip these and land on the real noun.
+_STOP_TARGET = {
+    "the", "a", "an", "it", "them", "this", "that", "these", "those", "to", "for",
+    "and", "or", "of", "in", "on", "at", "with", "from", "by", "my", "your", "our",
+    "their", "its", "his", "her", "i", "you", "we", "they", "he", "she", "me", "us",
+    "not", "dont", "don't", "do", "does", "did", "want", "wants", "need", "needs",
+    "have", "has", "had", "is", "are", "was", "were", "be", "been", "being", "can",
+    "could", "will", "would", "should", "shall", "may", "might", "must", "just",
+    "only", "also", "then", "now", "here", "there", "all", "any", "some", "each",
+    "every", "both", "either", "neither", "no", "yes", "ok", "okay", "please",
+    "really", "actually", "still", "already", "yet", "so", "but", "if", "because",
+    "when", "while", "after", "before", "up", "down", "out", "off", "over", "under",
+    "again", "further", "once", "too", "very", "im", "youre", "that",
+}
+
 # "use/install <noun>" — same role, different choice → conflict
 _ROLE_CHOICE = re.compile(
     r"\b(?:use|install|switch\s+to|go\s+with|adopt)\s+([A-Za-z0-9_.\-]+)", re.IGNORECASE)
@@ -216,25 +234,32 @@ def _role_of(text: str) -> Optional[str]:
 def _directive(text: str) -> dict:
     """Extract a coarse directive signature from an item."""
     low = text.lower()
-    neg = bool(_NEGATION.search(low))
-    # first imperative verb in the text
     words = re.findall(r"[A-Za-z']+", low)
     verb = None
     polarity = 0
-    for w in words:
+    neg = False
+    vi = -1
+    for i, w in enumerate(words):
         if w in _VERB_POLARITY:
             verb = w
+            vi = i
+            # Negation only counts when it's ADJACENT to the verb (within 3
+            # tokens). "i use the internet. i dont want to block it" must NOT
+            # negate "use" just because "dont" appears later in the sentence —
+            # that distant negation flipped polarity and false-conflicted.
+            window = words[max(0, i - 3):i + 4]
+            neg = any(_NEGATION.search(w2) for w2 in window)
             polarity = _VERB_POLARITY[w] * (-1 if neg else 1)
             break
-    # target = the first noun-ish token after the verb (heuristic: next word)
+    # target = first non-stopword after the verb ("use the internet" →
+    # "internet", not "the" — stopword targets made unrelated prompts
+    # false-conflict on "the").
     target = None
-    if verb:
-        try:
-            vi = words.index(verb)
-            if vi + 1 < len(words):
-                target = words[vi + 1]
-        except ValueError:
-            pass
+    if verb and vi >= 0:
+        for w in words[vi + 1:]:
+            if w not in _STOP_TARGET:
+                target = w
+                break
     role_choice = _ROLE_CHOICE.search(low)
     rename = _RENAME.search(low)
     return {

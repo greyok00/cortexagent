@@ -6,6 +6,13 @@ REPO_ROOT="${CORTEXAGENT_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 # Start overseer daemon (heartbeat + orchestrator combined)
 python3 "$REPO_ROOT/lib/overseer.py" start --interval 30 >/dev/null 2>&1 || true
 
+# Prompt queue is SESSION-SCOPED: clear stale items from prior sessions so the
+# conflict detector never compares a new prompt against yesterday's agenda.
+# This hook fires on startup / /clear / /compact, so all three reset the queue
+# (the user's /clear expectation). Non-fatal — a queue failure must never block.
+# Use the script path (not -m) so it works regardless of the hook's CWD.
+python3 "${REPO_ROOT}/lib/prompt_queue.py" clear >/dev/null 2>&1 || true
+
 payload="$(cat || true)"
 source="$(printf '%s' "$payload" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('source','startup') or 'startup')" 2>/dev/null || echo "startup")"
 

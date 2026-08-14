@@ -268,6 +268,112 @@ Input: "What's going on?" / "Status" / Home
 
 ---
 
+### 2.7 PROJECT CREATION AGENT (PCA) — For Vague/Wide Goals
+
+```
+Input: "I need [vague/wide goal]" — e.g., "I need a new business", "build me X"
+    │
+    ├─ PARSER → intent=wide_goal, scope=full_lifecycle, ambiguity=high
+    ├─ PCA ACTIVATES (sits above COORDINATOR)
+    │   ├─ Parse goal for intent, scope, constraints, urgency
+    │   ├─ Run 9-step decomposition algorithm (see decomposition_algorithm.md)
+    │   │   ├─ Identify 5-7 phases
+    │   │   ├─ Break each into 3-10 steps
+    │   │   ├─ Map dependencies
+    │   │   ├─ Assign automation levels (auto/checkpoint/manual)
+    │   │   ├─ Estimate effort
+    │   │   └─ Validate plan
+    │   ├─ Present plan to operator (see lifecycle_phases.md for examples)
+    │   └─ Wait for operator approval ("go" or "modify X")
+    │
+    ├─ ON APPROVAL → Hand off to COORDINATOR for execution
+    │   ├─ COORDINATOR executes steps in dependency order
+    │   ├─ At checkpoints → pause for operator decision
+    │   ├─ At manual steps → notify operator, wait for action
+    │   ├─ At blocks → present to operator with recommendation
+    │   └─ Report milestones per phase
+    │
+    └─ RESULT → Full lifecycle plan, executed step-by-step
+                with operator checkpoints at every decision point
+```
+
+**When PCA activates:**
+- Goal is vague ("I need a new business")
+- Goal spans multiple domains (research + build + legal + ops)
+- Goal has no clear pipeline match
+- Goal requires >1 phase to complete
+
+**When COORDINATOR activates directly:**
+- Goal is specific ("Research X", "Analyze Y", "Check Z")
+- Goal fits an existing pipeline
+- Goal is single-domain
+
+**Requirements:**
+- Plan must show all phases, steps, dependencies, automation levels
+- Operator must approve plan before execution
+- Execution pauses at every checkpoint and manual step
+- State persists across sessions
+- Plan can be revised mid-execution
+
+---
+
+### 2.8 LIFECYCLE EXECUTION — From Research to Ongoing Operations
+
+When the PCA decomposes a wide goal, execution flows through phases:
+
+```
+Phase 1: Research & Validation (auto-heavy)
+    └─ Agents: RESEARCHER, SCRAPER, ANALYST
+    └─ Guardrails: All PROCEED (read-only)
+    └─ Checkpoint: Select target → operator decides
+    │
+    ▼
+Phase 2: Business Model Design (auto-heavy)
+    └─ Agents: RESEARCHER, ANALYST, WRITER
+    └─ Guardrails: All PROCEED (analysis only)
+    └─ Checkpoint: Select model → operator decides
+    │
+    ▼
+Phase 3: Validation Experiments (mixed)
+    └─ Agents: COORDINATOR, DEVOPS, SCRAPER, ANALYST
+    └─ Guardrails: CONDITIONAL for deploy, PROCEED for data collection
+    └─ Checkpoint: Go/no-go → operator decides
+    │
+    ▼
+Phase 4: Setup & Build (checkpoint-heavy)
+    └─ Agents: ALL
+    └─ Guardrails: FORBIDDEN for legal/financial, CONDITIONAL for infra
+    └─ Manual: Register business, set up banking
+    └─ Checkpoint: Approve MVP → operator decides
+    │
+    ▼
+Phase 5: Launch (max checkpoints)
+    └─ Agents: DEVOPS, MONITOR, COORDINATOR
+    └─ Guardrails: CONDITIONAL for all production changes
+    └─ Manual: Click publish
+    └─ Checkpoint: First-week review → operator decides
+    │
+    ▼
+Phase 6: Operations & Management (most restrictive)
+    └─ Financial ops: ANALYST aggregates, operator approves budget
+    └─ Customer ops: SCRAPER collects feedback, operator approves comms
+    └─ Compliance: RESEARCHER checks, operator approves legal changes
+    └─ Strategy: ANALYST models scenarios, operator chooses direction
+    └─ All external communication: operator sends (LLM only drafts)
+    └─ All financial decisions: operator approves (LLM only analyzes)
+    │
+    ▼
+Phase 7: Growth & Adaptation (max restrictiveness)
+    └─ ALL decisions require operator approval
+    └─ LLM role: research, analyze, recommend — NEVER decide
+    └─ Checkpoint frequency: 70% of steps
+```
+
+**Key principle:** As phases progress, the LLM shifts from researcher → builder → monitor → advisor. The operator shifts from occasional decision-maker → daily decision-maker → sole decision-maker.
+
+---
+
+
 ## 3. STATE MANAGEMENT
 
 ### 3.1 Task State Machine

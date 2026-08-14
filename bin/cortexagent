@@ -267,7 +267,9 @@ LOG="${CORTEXAGENT_LOG:-$HOME/.cortexagent-server.log}"
 WEBUI_ENABLED="${CORTEXAGENT_WEBUI_ENABLED:-1}"
 
 # ── The agent CLI binary (stock; the wrapper carries the brand) ────────────
-AGENT_CLI="${CORTEXAGENT_CLI:-claude}"
+AGENT_CLI="${CORTEXAGENT_CLI:-cortex}"
+# Air-gapped: disable all startup network operations (version checks, catalog, telemetry).
+export CORTEX_OFFLINE=1
 
 # ── Preflight ──────────────────────────────────────────────────────────────
 [ -x "${LLAMA_DIR}/bin/llama-server" ] || { echo "llama-server not found at ${LLAMA_DIR}/bin (set CORTEXAGENT_LLAMA_DIR)" >&2; exit 1; }
@@ -629,13 +631,13 @@ if [ "${CORTEXAGENT_TICKER:-1}" = "1" ] && [ -z "${CORTEXAGENT_ONE_SHOT:-}" ] &&
 fi
 trap '[ -n "${_TICKER_PID}" ] && kill "${_TICKER_PID}" 2>/dev/null || true' EXIT
 
-# ── Launch Claude Code (with all our fixes, hooks, and memory) ───────────────
-# The hooks in the isolated config dir (SessionStart + UserPromptSubmit)
-# auto-inject memory on startup and save every prompt to CortexAgent via
-# cortexagent_call.py. The practical-reasoning profile is applied via the
-# slimtoken system_minify path and the tiny_llm default — no CLAUDE.md.
+# ── Launch cortex (the Pi fork) with all our fixes, extensions, and memory ──
+# The extensions in ~/.cortex/agent/extensions/ (models.ts auto-switch,
+# skills.ts tool bridge, memory.ts prompt-save + memory inject) replace the
+# claude hooks. The practical-reasoning profile is applied via the slimtoken
+# system_minify path and the tiny_llm default — no CLAUDE.md.
 cd "${REPO_ROOT}"
-# Filter out our custom flags before passing to claude
+# Filter out our custom flags before passing to cortex
 FILTERED_ARGS=()
 for arg in "$@"; do
   case "$arg" in
@@ -644,6 +646,6 @@ for arg in "$@"; do
   esac
 done
 
-${AGENT_CLI} "${FILTERED_ARGS[@]}" --mcp-config "${CORTEXAGENT_MCP_CONFIG}"
-echo "Claude session ended — cleaning up..."
+${AGENT_CLI} "${FILTERED_ARGS[@]}"
+echo "cortex session ended — cleaning up..."
 cleanup

@@ -229,11 +229,34 @@ def _generate_media(prompt: str) -> Dict[str, Any]:
 
 
 def _web_search(query: str, limit: int = 5) -> Dict[str, Any]:
-    """Search the web. Tries firecrawl if configured, else DuckDuckGo HTML."""
+    """Search the web. Tries local searxng, then firecrawl if configured,
+    else DuckDuckGo HTML."""
     import os
     import re
     import urllib.parse
     import urllib.request
+    # Local searxng first — the air-gapped web surface (RSS format, clean XML).
+    for searxng in ("http://127.0.0.1:9999", "http://127.0.0.1:8888"):
+        try:
+            url = (f"{searxng}/search?q={urllib.parse.quote(query)}"
+                   f"&format=rss&safesearch=0")
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                xml = r.read().decode("utf-8", "replace")
+            items = re.findall(r"<item>(.*?)</item>", xml, re.S)
+            lines = []
+            for i, item in enumerate(items[:limit], 1):
+                title = re.search(r"<title>(.*?)</title>", item, re.S)
+                link = re.search(r"<link>(.*?)</link>", item, re.S)
+                desc = re.search(r"<description>(.*?)</description>", item, re.S)
+                t = re.sub(r"<[^>]+>", "", title.group(1)).strip() if title else ""
+                l = link.group(1).strip() if link else ""
+                d = re.sub(r"<[^>]+>", "", desc.group(1)).strip() if desc else ""
+                lines.append(f"{i}. {t}\n   {l}\n   {d[:200]}")
+            if lines:
+                return {"ok": True, "output": "\n".join(lines), "error": ""}
+        except Exception:
+            continue  # try next searxng, then firecrawl, then DuckDuckGo
     if os.environ.get("FIRECRAWL_API_KEY"):
         try:
             from lib.firecrawl_proxy import _call_firecrawl

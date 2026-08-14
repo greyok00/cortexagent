@@ -15,9 +15,11 @@ harness). Exit code 0 on success, 1 on error (error JSON on stdout).
 Design rules:
   - Idempotent: ensure_registered() is safe to call every time.
   - Fast: no heavy imports beyond the registry + harness.
-  - Stub mode: name + short description only (~35 tokens/tool) so the tiny
-    model's 2048-ctx window can see the whole surface. Full schema is
-    resolved on run (missing args → helpful error naming the params).
+  - Full mode is the default: name + description + JSON-schema parameters.
+    Stub mode (--stub or CORTEXAGENT_TOOL_STUBS=1) returns name + short
+    description only (~35 tokens/tool) for callers with tight context windows;
+    the full schema is resolved on run (missing args → helpful error naming
+    the params).
 """
 from __future__ import annotations
 
@@ -31,7 +33,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-STUB_MODE = os.environ.get("CORTEXAGENT_TOOL_STUBS", "1") == "1"
+STUB_MODE = os.environ.get("CORTEXAGENT_TOOL_STUBS", "0") == "1"
 MAX_TOOLS = int(os.environ.get("CORTEXAGENT_MAX_TOOLS", "16"))
 
 

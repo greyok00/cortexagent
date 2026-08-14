@@ -200,3 +200,29 @@ logging:
   log_operator_interactions: true
   log_learning_patterns: true
   retention_days: 90
+
+# Incubator configuration
+incubator:
+  max_active_seeds: 50
+  spawn_limit_per_month: 3
+  seed_stages:
+    - seed
+    - sprout
+    - plant
+    - tree
+    - forest
+  default_allocation:
+    tree_percent: 40
+    plant_percent: 25
+    sprout_percent: 20
+    reserve_percent: 15
+  portfolio_review:
+    daily: true
+    weekly_interval_days: 7
+    monthly_interval_days: 30
+  cross_seed:
+    share_patterns: true
+    share_research: true
+    share_infrastructure: true
+    share_p_and_l: false
+    share_operator_decisions: "anonymized_only"

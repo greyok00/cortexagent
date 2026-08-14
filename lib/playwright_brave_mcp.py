@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
-"""playwright_brave_mcp — MCP server controlling Brave via CDP on port 9222."""
+"""playwright_brave_mcp — MCP server controlling Brave via CDP on port 9222.
+
+Thin MCP transport over lib/browser_control (the general browser engine).
+Holds ONE persistent Playwright CDP connection per process — no per-call
+connect/close churn (which wedges the browser-level endpoint).
+
+Run as:  python3 lib/playwright_brave_mcp.py   (stdio MCP server)
+         python3 lib/playwright_brave_mcp.py smoke
+"""
 from __future__ import annotations
 
 import json
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
-
-
-CDP_URL = "http://127.0.0.1:9222"
+from browser_control import (
+    CDP_URL, close, list_tabs, navigate, fetch, click, type_text,
+    evaluate, snapshot, read_text, fill_and_send,
+)
 
 
 def _send_json(obj: Dict[str, Any]) -> None:
@@ -32,19 +40,27 @@ def _tool(name: str, description: str, params: Dict[str, Any], required: List[st
     return {"name": name, "description": description, "inputSchema": {"type": "object", "properties": params, "required": required}}
 
 
+_TAB = {"type": ["integer", "string", "null"], "description": "Target tab: index, URL prefix, or omit for the first tab."}
+
 TOOLS = [
-    _tool("brave_status", "Check Brave CDP reachability.", {}, []),
-    _tool("brave_navigate", "Navigate to URL; return title+URL.", {"url": {"type": "string"}}, ["url"]),
+    _tool("brave_status", "Check Brave CDP reachability and count open tabs.", {}, []),
+    _tool("brave_tabs", "List open tabs (index, title, url).", {}, []),
+    _tool("brave_navigate", "Navigate a tab to URL; return title+URL.", {
+        "url": {"type": "string"},
+        "tab": _TAB,
+    }, ["url"]),
     _tool("brave_fetch", "Fetch page text via Brave (use for JS-heavy sites).", {
         "url": {"type": "string"},
         "selector": {"type": "string", "description": "CSS selector (default body)."},
         "wait_for_text": {"type": "string"},
         "timeout": {"type": "number", "description": "Seconds (default 30)."},
+        "tab": _TAB,
     }, ["url"]),
     _tool("brave_click", "Click element by CSS selector or accessible text.", {
         "target": {"type": "string"},
         "by_text": {"type": "boolean"},
         "timeout": {"type": "number", "description": "Seconds (default 10)."},
+        "tab": _TAB,
     }, ["target"]),
     _tool("brave_type", "Type text into an element.", {
         "target": {"type": "string"},
@@ -52,33 +68,26 @@ TOOLS = [
         "by_text": {"type": "boolean"},
         "submit": {"type": "boolean"},
         "timeout": {"type": "number", "description": "Seconds (default 10)."},
+        "tab": _TAB,
     }, ["target", "text"]),
     _tool("brave_evaluate", "Evaluate JS in Brave and return JSON result.", {
         "expression": {"type": "string"},
         "timeout": {"type": "number", "description": "Seconds (default 10)."},
+        "tab": _TAB,
     }, ["expression"]),
-    _tool("brave_snapshot", "Return accessibility snapshot of current page.", {"depth": {"type": "number"}}, []),
+    _tool("brave_snapshot", "Return accessibility snapshot of a tab.", {
+        "depth": {"type": "number"},
+        "tab": _TAB,
+    }, []),
+    _tool("brave_fill_send", "Fill a shadow-DOM controlled component (React/LWC) and press Enter. Use for embedded chat composers.", {
+        "text": {"type": "string"},
+        "iframe_marker": {"type": "string", "description": "Substring of the iframe src to target (e.g. 'lwc.mode'). Empty = top document."},
+        "tag": {"type": "string", "description": "Element tag (default TEXTAREA)."},
+        "class_fragment": {"type": "string", "description": "Substring of the element's class (e.g. 'embeddedMessagingInputFooterTextArea')."},
+        "submit": {"type": "boolean", "description": "Press Enter after filling (default true)."},
+        "tab": _TAB,
+    }, ["text"]),
 ]
-
-
-def _connect() -> Tuple[Any, Any]:
-    pw = sync_playwright().start()
-    browser = pw.chromium.connect_over_cdp(CDP_URL)
-    context = browser.contexts[0] if browser.contexts else browser.new_context()
-    page = context.new_page()
-    return browser, page
-
-
-def _close(browser: Any) -> None:
-    try:
-        browser.close()
-    except Exception:
-        pass
-
-
-def _as_text_content(element: Any) -> str:
-    text = element.inner_text()
-    return text.strip() if text else ""
 
 
 def _ok_result(content: Any) -> Dict[str, Any]:
@@ -93,105 +102,98 @@ def _err_result(message: str) -> Dict[str, Any]:
 
 def _handle_status() -> Dict[str, Any]:
     try:
-        browser, page = _connect()
-        version = browser.version if hasattr(browser, "version") else "unknown"
-        _close(browser)
-        return _ok_result(f"Brave reachable on {CDP_URL} (browser: {version}).")
+        tabs = list_tabs()
+        return _ok_result(f"Brave reachable on {CDP_URL} — {len(tabs)} tab(s).")
     except Exception as e:
         return _err_result(f"Brave not reachable on {CDP_URL}: {e}")
 
 
+def _handle_tabs() -> Dict[str, Any]:
+    try:
+        tabs = list_tabs()
+        lines = [f"[{t['index']}] {t['title']} — {t['url']}" for t in tabs]
+        return _ok_result("\n".join(lines) if lines else "No tabs open.")
+    except Exception as e:
+        return _err_result(f"List tabs failed: {e}")
+
+
 def _handle_navigate(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        browser, page = _connect()
-        page.goto(args["url"], wait_until="domcontentloaded", timeout=30000)
-        title, url = page.title(), page.url
-        _close(browser)
-        return _ok_result(f"Title: {title}\nURL: {url}")
+        r = navigate(tab=args.get("tab"), url=args["url"])
+        return _ok_result(f"Title: {r['title']}\nURL: {r['url']}")
     except Exception as e:
         return _err_result(f"Navigate failed: {e}")
 
 
 def _handle_fetch(args: Dict[str, Any]) -> Dict[str, Any]:
-    selector = args.get("selector", "body")
-    wait_text = args.get("wait_for_text")
-    timeout = args.get("timeout", 30) * 1000
     try:
-        browser, page = _connect()
-        page.goto(args["url"], wait_until="networkidle", timeout=timeout)
-        if wait_text:
-            page.wait_for_selector(f"text={wait_text}", timeout=timeout)
-        text = _as_text_content(page.locator(selector).first)
-        _close(browser)
+        text = fetch(tab=args.get("tab"), url=args["url"],
+                     selector=args.get("selector", "body"),
+                     wait_for_text=args.get("wait_for_text", ""),
+                     timeout=args.get("timeout", 30))
         if not text:
             return _err_result("Page loaded but extracted text was empty.")
         return _ok_result(text)
-    except PlaywrightTimeout:
-        return _err_result(f"Timed out waiting for {args['url']} or selector '{selector}'.")
     except Exception as e:
         return _err_result(f"Fetch failed: {e}")
 
 
-def _locate(page: Any, target: str, by_text: bool, timeout: float) -> Any:
-    return page.get_by_text(target) if by_text else page.locator(target)
-
-
 def _handle_click(args: Dict[str, Any]) -> Dict[str, Any]:
-    target = args["target"]
-    by_text = bool(args.get("by_text"))
-    timeout = args.get("timeout", 10) * 1000
     try:
-        browser, page = _connect()
-        _locate(page, target, by_text, timeout).click(timeout=timeout)
-        _close(browser)
+        click(tab=args.get("tab"), selector=args["target"],
+              by_text=bool(args.get("by_text")), timeout=args.get("timeout", 10))
         return _ok_result("Clicked.")
     except Exception as e:
         return _err_result(f"Click failed: {e}")
 
 
 def _handle_type(args: Dict[str, Any]) -> Dict[str, Any]:
-    target = args["target"]
-    text = args["text"]
-    by_text = bool(args.get("by_text"))
-    submit = bool(args.get("submit"))
-    timeout = args.get("timeout", 10) * 1000
     try:
-        browser, page = _connect()
-        _locate(page, target, by_text, timeout).fill(text, timeout=timeout)
-        if submit:
-            page.keyboard.press("Enter")
-        _close(browser)
+        type_text(tab=args.get("tab"), selector=args["target"], text=args["text"],
+                  by_text=bool(args.get("by_text")), submit=bool(args.get("submit")),
+                  timeout=args.get("timeout", 10))
         return _ok_result("Typed.")
     except Exception as e:
         return _err_result(f"Type failed: {e}")
 
 
 def _handle_evaluate(args: Dict[str, Any]) -> Dict[str, Any]:
-    expression = args["expression"]
-    timeout = args.get("timeout", 10) * 1000
     try:
-        browser, page = _connect()
-        result = page.evaluate(expression, timeout=timeout)
-        _close(browser)
+        result = evaluate(tab=args.get("tab"), expression=args["expression"],
+                          timeout=args.get("timeout", 10))
         return _ok_result(json.dumps(result, ensure_ascii=False, default=str))
     except Exception as e:
         return _err_result(f"Evaluate failed: {e}")
 
 
 def _handle_snapshot(args: Dict[str, Any]) -> Dict[str, Any]:
-    depth = args.get("depth", 10)
     try:
-        browser, page = _connect()
-        snapshot = page.accessibility.snapshot(depth=depth)
-        _close(browser)
-        return _ok_result(json.dumps(snapshot, ensure_ascii=False, indent=2))
+        snap = snapshot(tab=args.get("tab"), depth=args.get("depth", 10))
+        return _ok_result(json.dumps(snap, ensure_ascii=False, indent=2))
     except Exception as e:
         return _err_result(f"Snapshot failed: {e}")
+
+
+def _handle_fill_send(args: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        ok = fill_and_send(tab=args.get("tab"), text=args["text"],
+                           iframe_marker=args.get("iframe_marker", ""),
+                           tag=args.get("tag", "TEXTAREA"),
+                           class_fragment=args.get("class_fragment", ""),
+                           submit=bool(args.get("submit", True)))
+        if ok:
+            sent = " and sent (Enter)." if args.get("submit", True) else " (not sent)."
+            return _ok_result("Filled" + sent)
+        return _err_result("Fill failed — element not found.")
+    except Exception as e:
+        return _err_result(f"Fill/send failed: {e}")
 
 
 def _dispatch_call(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     if name == "brave_status":
         return _handle_status()
+    if name == "brave_tabs":
+        return _handle_tabs()
     if name == "brave_navigate":
         return _handle_navigate(args)
     if name == "brave_fetch":
@@ -204,6 +206,8 @@ def _dispatch_call(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         return _handle_evaluate(args)
     if name == "brave_snapshot":
         return _handle_snapshot(args)
+    if name == "brave_fill_send":
+        return _handle_fill_send(args)
     return _err_result(f"Unknown tool: {name}")
 
 
@@ -213,7 +217,7 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     params = req.get("params", {})
 
     if method == "initialize":
-        return {"jsonrpc": "2.0", "id": _id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "playwright-brave-mcp", "version": "1.0"}}}
+        return {"jsonrpc": "2.0", "id": _id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "playwright-brave-mcp", "version": "1.1"}}}
 
     if method == "notifications/initialized":
         return None
@@ -231,6 +235,12 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def _smoke() -> int:
     print(f"tools exposed: {[t['name'] for t in TOOLS]}")
+    try:
+        tabs = list_tabs()
+        print(f"CDP reachable — {len(tabs)} tab(s)")
+        close()
+    except Exception as e:
+        print(f"CDP check failed: {e}")
     print("playwright_brave_mcp: OK")
     return 0
 

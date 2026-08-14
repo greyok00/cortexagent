@@ -1,9 +1,12 @@
 """CortexAgent tray popout dashboard — 4K-aware (HiDPI-scales), animated.
 
 Replaces the original 440×360 / 9pt flat panels. New layout:
-  - Tk scaling 3.0 (overridable via CORTEXAGENT_DASHBOARD_SCALING env)
-  - 1280×720 base, minsize 1024×640, resizable
-  - 14pt base fonts, monospace 13pt body, 16pt panel headers
+  - Tk scaling 3.5 (1080p) / 4.0 (1440p) / 4.5 (4K+); overridable via
+    CORTEXAGENT_DASHBOARD_SCALING env
+  - 40% screen width × 95% screen height, anchored RIGHT, so the terminal
+    that spawned the popout keeps the LEFT 60% (user-facing constraint).
+    Override size ratio with CORTEXAGENT_DASHBOARD_SCALE (default 0.40).
+  - 18pt base fonts, monospace 18pt body, 22pt panel headers, 28pt hero
   - Embedded `lib.banner.LOGO` (8-line wolf-knight ASCII glyph, ice-blue)
   - Animated charts (Tk Canvas only — stdlib, no matplotlib):
       * tok/s sparkline (60-sample rolling)
@@ -144,7 +147,15 @@ def _format_kb(n: int) -> str:
 
 def _model_id_daemon(daemon: Dict[str, Any]) -> str:
     big = (daemon.get("big") or {})
-    return big.get("model_path") or big.get("name") or "?"
+    # v0.5.3: the daemon returns `model` (full path) and `alias` (short).
+    # Accept any of these so the panel renders the model name in real time.
+    # v0.5.4: prefer the basename of the model path so the user sees the
+    # actual model (e.g. "Qwen3.6-35B-A3B-UD-IQ3_S.gguf") rather than the
+    # generic "cortexagent" alias. The alias is still used as fallback.
+    path = (big.get("model") or big.get("model_path") or "")
+    if path and "/" in path:
+        path = path.rsplit("/", 1)[-1]
+    return (path or big.get("alias") or big.get("name") or "?")
 
 
 # ── Inline tk unicode-glyph renderer ────────────────────────────────────────
@@ -410,31 +421,80 @@ class Dashboard(tk.Tk):
         super().__init__()
         self.title("CortexAgent — Overseer")
         self.configure(bg=BG)
-        self.geometry("1280x720")
-        self.minsize(1024, 640)
-
-        # HiDPI scaling: 3.0 for 4K; env override + Wayland/X11 safe default.
+        # v0.5.3: bigger window default (was 1280x720 — too cramped on 1080p).
+        # User reported "tiny for 1080p" — bumped to 1920x1080 so the right
+        # column doesn't get clipped, and the Tk scaling factor increased so
+        # the on-screen text actually fills the panel cells. Env override
+        # preserved (CORTEXAGENT_DASHBOARD_SCALING).
+        #
+        # v0.5.4: CONSTRAINT — the dashboard must fit on screen NEXT to a
+        # terminal (the user opens it from the tray while the CLI is running
+        # in a terminal). Before this fix the 90%-of-screen change on a 4K
+        # display made the popout 3456x2160, covering the terminal entirely.
+        # Now the window is sized to ~40% of screen width, full height, and
+        # positioned on the RIGHT side so the terminal keeps the LEFT 60%.
+        # Adjust CORTEXAGENT_DASHBOARD_SCALE to change the size ratio.
         try:
-            scaling = float(os.environ.get(
-                "CORTEXAGENT_DASHBOARD_SCALING", "2.5"))
-            scaling = max(1.5, min(scaling, 4.0))  # clamp to a sane range
+            sw = self.winfo_screenwidth() or 1920
+            sh = self.winfo_screenheight() or 1080
+        except Exception:
+            sw, sh = 1920, 1080
+        # Width: ~40% of screen (capped between 900 and 1700). Height: full
+        # screen (capped 720..1980). The terminal that spawned the popout
+        # keeps the other ~60% on the left.
+        try:
+            scale = float(os.environ.get("CORTEXAGENT_DASHBOARD_SCALE", "0.40"))
+        except Exception:
+            scale = 0.40
+        ww = max(900, min(int(sw * scale), 1700))
+        wh = max(720, min(int(sh * 0.95), 1980))
+        # Anchor to the RIGHT side of the screen so the terminal on the left
+        # stays visible. x = sw - ww (right edge); y = 0.
+        try:
+            x = max(0, sw - ww)
+            y = max(0, (sh - wh) // 2)
+            self.geometry(f"{ww}x{wh}+{x}+{y}")
+        except Exception:
+            self.geometry(f"{ww}x{wh}")
+        self.minsize(900, 720)
+
+        # HiDPI scaling: env override first, then derive from screen height.
+        # Higher scaling = bigger text. 1080p gets 3.75; 4K gets 4.5.
+        # Clamp 1.5..5.5.
+        try:
+            env_scale = os.environ.get("CORTEXAGENT_DASHBOARD_SCALING")
+            if env_scale:
+                scaling = float(env_scale)
+            else:
+                px_h = sh
+                if px_h >= 2160:
+                    scaling = 4.5
+                elif px_h >= 1440:
+                    scaling = 4.0
+                else:
+                    scaling = 3.5
+            scaling = max(1.5, min(scaling, 5.5))
             self.tk.call("tk", "scaling", scaling)
         except Exception:
             pass
 
         # Esc to close
         self.bind("<Escape>", lambda e: self.destroy())
+        # R to force-refresh (when window is focused)
+        self.bind("<Key-r>", lambda e: self._refresh())
 
-        # ── Fonts (sized relative to the scaling factor; bigger than the
-        # prior 9pt default — readable on a 4K display without zoom).
-        self.f_mono_s = tkfont.Font(family="DejaVu Sans Mono", size=11)
-        self.f_mono = tkfont.Font(family="DejaVu Sans Mono", size=13)
-        self.f_mono_b = tkfont.Font(family="DejaVu Sans Mono", size=13, weight="bold")
-        self.f_mono_l = tkfont.Font(family="DejaVu Sans Mono", size=18, weight="bold")
-        self.f_label = tkfont.Font(family="DejaVu Sans", size=13, weight="bold")
-        self.f_label_l = tkfont.Font(family="DejaVu Sans", size=16, weight="bold")
-        self.f_label_xl = tkfont.Font(family="DejaVu Sans", size=20, weight="bold")
-        self.f_tip = tkfont.Font(family="DejaVu Sans", size=11, slant="italic")
+        # ── Fonts (v0.5.4: bumped for 4K readability BUT the window is now
+        # sized to fit beside a terminal, so on-screen text post-scaling is:
+        #   1080p screen: ~16-32px (matches what the user saw working)
+        #   1440p screen: ~18-36px   4K: ~20-40px
+        self.f_mono_s = tkfont.Font(family="DejaVu Sans Mono", size=14)
+        self.f_mono = tkfont.Font(family="DejaVu Sans Mono", size=18)
+        self.f_mono_b = tkfont.Font(family="DejaVu Sans Mono", size=18, weight="bold")
+        self.f_mono_l = tkfont.Font(family="DejaVu Sans Mono", size=24, weight="bold")
+        self.f_label = tkfont.Font(family="DejaVu Sans", size=18, weight="bold")
+        self.f_label_l = tkfont.Font(family="DejaVu Sans", size=22, weight="bold")
+        self.f_label_xl = tkfont.Font(family="DejaVu Sans", size=28, weight="bold")
+        self.f_tip = tkfont.Font(family="DejaVu Sans", size=16, slant="italic")
 
         # ── Rolling buffers
         self.toks_history: deque = deque(maxlen=60)        # decode (output) rate
@@ -450,23 +510,69 @@ class Dashboard(tk.Tk):
 
     # ── Layout ──────────────────────────────────────────────────────────
     def _build_layout(self) -> None:
-        # 3-column master grid: left = banner + identity; middle = charts;
+        # Top bar (row 0) + 3-column body (row 1).
+        # 3-column body: left = banner + identity; middle = charts;
         # right = tables + alerts.
-        self.columnconfigure(0, weight=0, minsize=240)
+        self.columnconfigure(0, weight=0, minsize=280)
         self.columnconfigure(1, weight=1, minsize=520)
-        self.columnconfigure(2, weight=1, minsize=320)
-        self.rowconfigure(0, weight=1)
+        self.columnconfigure(2, weight=1, minsize=400)
+        self.rowconfigure(0, weight=0)
+        self.rowconfigure(1, weight=1)
 
-        self.left = tk.Frame(self, bg=BG)
+        self._build_topbar()
+
+        body = tk.Frame(self, bg=BG)
+        body.grid(row=1, column=0, columnspan=3, sticky="nsew")
+        body.columnconfigure(0, weight=0, minsize=280)
+        body.columnconfigure(1, weight=1, minsize=520)
+        body.columnconfigure(2, weight=1, minsize=400)
+        body.rowconfigure(0, weight=1)
+
+        self.left = tk.Frame(body, bg=BG)
         self.left.grid(row=0, column=0, sticky="nsew", padx=(12, 6), pady=12)
-        self.mid = tk.Frame(self, bg=BG)
+        self.mid = tk.Frame(body, bg=BG)
         self.mid.grid(row=0, column=1, sticky="nsew", padx=6, pady=12)
-        self.right = tk.Frame(self, bg=BG)
+        self.right = tk.Frame(body, bg=BG)
         self.right.grid(row=0, column=2, sticky="nsew", padx=(6, 12), pady=12)
 
         self._build_left()
         self._build_middle()
         self._build_right()
+
+    # ── Top bar (refresh button + last-updated + data freshness) ─────────
+    def _build_topbar(self) -> None:
+        bar = tk.Frame(self, bg=PANEL, highlightbackground=BORDER,
+                       highlightthickness=1, bd=0)
+        bar.grid(row=0, column=0, columnspan=3, sticky="ew",
+                 padx=12, pady=(12, 6))
+        bar.columnconfigure(0, weight=0)
+        bar.columnconfigure(1, weight=1)
+        bar.columnconfigure(2, weight=0)
+
+        # Refresh button (left)
+        self.refresh_btn = tk.Button(
+            bar, text="↻ Refresh", bg=PANEL, fg=ACCENT,
+            activebackground=PANEL, activeforeground=ICE,
+            font=self.f_label, bd=0, cursor="hand2",
+            command=self._refresh)
+        self.refresh_btn.grid(row=0, column=0, sticky="w", padx=(10, 6), pady=6)
+
+        # Last-updated timestamp (center, expands)
+        self.refresh_ts_lbl = tk.Label(
+            bar, text="last refreshed —", bg=PANEL, fg=DIM,
+            font=self.f_mono, anchor="w")
+        self.refresh_ts_lbl.grid(row=0, column=1, sticky="ew", padx=6, pady=6)
+
+        # Data freshness one-liner (right, clickable)
+        self.freshness_lbl = tk.Label(
+            bar, text="checking data…", bg=PANEL, fg=DIM,
+            font=self.f_mono, cursor="hand2", anchor="e")
+        self.freshness_lbl.grid(row=0, column=2, sticky="e", padx=(6, 12), pady=6)
+        self.freshness_lbl.bind("<Button-1>", lambda e: self._show_freshness_popover())
+
+        # Cache: mtime cache + last-popover closed time (debounce the click)
+        self._fresh_mtimes: Dict[str, float] = {}
+        self._fresh_window: Optional[tk.Toplevel] = None
 
     def _panel(self, parent: tk.Widget, title: str) -> Tuple[tk.Frame, tk.Label]:
         """Return (frame, title_label) so callers can append into the panel."""
@@ -492,7 +598,7 @@ class Dashboard(tk.Tk):
         self.sess_detail_lbl = tk.Label(self.sess_title, text="",
                                         bg=PANEL, fg=FG, font=self.f_mono,
                                         anchor="w", justify="left",
-                                        wraplength=320)
+                                        wraplength=440)
         self.sess_detail_lbl.pack(fill="x", padx=10, pady=(0, 8))
         # Identity / state
         _, self.ov_title = self._panel(self.left, "OVERSEER")
@@ -508,11 +614,11 @@ class Dashboard(tk.Tk):
         body.grid(row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=(2, 8))
         self.ov_desc_lbl = tk.Label(body, text="", bg=PANEL, fg=FG,
                                     font=self.f_mono, anchor="w",
-                                    justify="left", wraplength=320)
+                                    justify="left", wraplength=440)
         self.ov_desc_lbl.pack(fill="x")
         self.ov_stats_lbl = tk.Label(body, text="", bg=PANEL, fg=DIM,
                                      font=self.f_mono, anchor="w",
-                                     justify="left", wraplength=320)
+                                     justify="left", wraplength=440)
         self.ov_stats_lbl.pack(fill="x", pady=(2, 0))
         self.ov_model_lbl = tk.Label(body, text="", bg=PANEL, fg=ICE,
                                      font=self.f_mono, anchor="w")
@@ -523,7 +629,7 @@ class Dashboard(tk.Tk):
         _, tip_title = self._panel(self.left, "TIPS")
         self.tip_lbl = tk.Label(tip_title, text="💡 " + _rotating_tip(),
                                 bg=PANEL, fg=DIM, font=self.f_tip,
-                                anchor="w", justify="left", wraplength=320)
+                                anchor="w", justify="left", wraplength=440)
         self.tip_lbl.pack(fill="x", padx=10, pady=(0, 8))
 
     # ── Middle column ───────────────────────────────────────────────────
@@ -548,7 +654,7 @@ class Dashboard(tk.Tk):
         _, plan_title = self._panel(self.mid, "PLAN TRACKER")
         self.plan_lbl = tk.Label(plan_title, text="(no plan set)", bg=PANEL,
                                  fg=DIM, font=self.f_mono, anchor="w",
-                                 justify="left", wraplength=560)
+                                 justify="left", wraplength=800)
         self.plan_lbl.pack(fill="x", padx=10, pady=(0, 8))
 
     def _build_minify_panel(self) -> None:
@@ -557,7 +663,7 @@ class Dashboard(tk.Tk):
         top = tk.Frame(m_title, bg=PANEL)
         top.pack(fill="x", padx=10, pady=(0, 4))
         self.minify_pct_lbl = tk.Label(top, text="—", bg=PANEL, fg=SUCCESS,
-                                       font=("DejaVu Sans Mono", 22, "bold"),
+                                       font=("DejaVu Sans Mono", 32, "bold"),
                                        anchor="w")
         self.minify_pct_lbl.pack(side="left")
         self.minify_pct_unit = tk.Label(top, text="saved",
@@ -599,14 +705,14 @@ class Dashboard(tk.Tk):
         _, alert_title = self._panel(self.right, "HEALTH ALERTS")
         self.alerts_lbl = tk.Label(alert_title, text="(none)", bg=PANEL,
                                    fg=SUCCESS, font=self.f_mono, anchor="w",
-                                   justify="left", wraplength=320)
+                                   justify="left", wraplength=440)
         self.alerts_lbl.pack(fill="x", padx=10, pady=(0, 8))
 
         # Queue depth + scheduler
         _, q_title = self._panel(self.right, "QUEUE + SCHEDULE")
         self.q_lbl = tk.Label(q_title, text="—", bg=PANEL, fg=FG,
                               font=self.f_mono, anchor="w",
-                              justify="left")
+                              justify="left", wraplength=440)
         self.q_lbl.pack(fill="x", padx=10, pady=(0, 8))
 
     def _make_mem_row(self, parent, label: str, color: str) -> Dict[str, Any]:
@@ -614,15 +720,15 @@ class Dashboard(tk.Tk):
         row = tk.Frame(parent, bg=PANEL)
         row.pack(fill="x", pady=2)
         lbl = tk.Label(row, text=f"{label}", bg=PANEL, fg=color,
-                       font=("DejaVu Sans Mono", 12, "bold"), width=6, anchor="w")
+                       font=("DejaVu Sans Mono", 14, "bold"), width=6, anchor="w")
         lbl.pack(side="left")
         count_lbl = tk.Label(row, text="—", bg=PANEL, fg=FG,
-                             font=("DejaVu Sans Mono", 12), width=6, anchor="w")
+                             font=("DejaVu Sans Mono", 14), width=6, anchor="w")
         count_lbl.pack(side="left")
-        bar = tk.Canvas(row, height=14, bg=BG, highlightthickness=0, bd=0)
+        bar = tk.Canvas(row, height=18, bg=BG, highlightthickness=0, bd=0)
         bar.pack(side="left", fill="x", expand=True)
         cap_lbl = tk.Label(row, text="/ —", bg=PANEL, fg=DIM,
-                           font=("DejaVu Sans Mono", 10), anchor="w", width=10)
+                           font=("DejaVu Sans Mono", 12), anchor="w", width=10)
         cap_lbl.pack(side="left", padx=(6, 0))
         return {"label": lbl, "count": count_lbl, "bar": bar, "cap": cap_lbl}
 
@@ -663,10 +769,18 @@ class Dashboard(tk.Tk):
         plan = {"name": state.get("plan_name", ""),
                 "total_steps": state.get("plan_total_steps", 0),
                 "current_step": state.get("plan_current", 0)}
-        queue = []  # raw list lives in state; painters use *_pending / *_total
+        # v0.5.3: pass real queue + schedule (was always []). The state
+        # bundle has the live values; no need to re-read the disk files.
+        queue = state.get("queue") or []
+        schedule = state.get("schedule") or []
+        # daemon has vram_by_proc — pass it via state for the VRAM bar.
         metrics = {"proxy_up": state.get("proxy_up", False),
                    "current_in_tps": state.get("current_in_tps", 0),
-                   "current_out_tps": state.get("current_out_tps", 0)}
+                   "current_out_tps": state.get("current_out_tps", 0),
+                   "vram_big_mb": state.get("vram_big_mb", 0),
+                   "vram_tiny_mb": state.get("vram_tiny_mb", 0),
+                   "vram_other_mb": state.get("vram_other_mb", 0),
+                   "vram_by_proc": (daemon.get("vram_by_proc") if isinstance(daemon.get("vram_by_proc"), dict) else {})}
 
         self._paint_session(daemon)
         self._paint_overseer(overseer, daemon, metrics)
@@ -675,8 +789,20 @@ class Dashboard(tk.Tk):
         self._paint_plan(plan)
         self._paint_mem(overseer)
         self._paint_alerts(overseer)
-        self._paint_queue(queue)
+        self._paint_queue(queue, schedule)
         self._paint_tip(overseer, daemon)
+
+        # ── Top bar: refresh timestamp + data freshness ─────────────────
+        try:
+            self.refresh_ts_lbl.config(
+                text=f"last refreshed {time.strftime('%H:%M:%S')}",
+                fg=ICE)
+        except Exception:
+            pass
+        try:
+            self._paint_freshness()
+        except Exception:
+            pass
 
     # ── Overseer + identity ─────────────────────────────────────────────
     def _paint_overseer(self, ov: Dict[str, Any], daemon: Dict[str, Any],
@@ -917,28 +1043,166 @@ class Dashboard(tk.Tk):
         if not last:
             self.alerts_lbl.config(text="✅ all green", fg=SUCCESS)
             return
-        text = "\n".join(f"🔴 {a[:120]}" for a in last[:5])
-        self.alerts_lbl.config(text=text, fg=ALERT)
+        # v0.5.3: distinguish "advisory only" from real alerts. Anything
+        # containing "advisory only" gets the warn color (yellow), not red.
+        # Real alerts (no advisory marker) stay red.
+        has_real = any("advisory" not in a.lower() for a in last)
+        if has_real:
+            text = "\n".join(f"🔴 {a[:120]}" for a in last[:5])
+            self.alerts_lbl.config(text=text, fg=ALERT)
+        else:
+            text = "\n".join(f"🟡 {a[:120]}" for a in last[:5])
+            self.alerts_lbl.config(text=text, fg=WARN)
 
     # ── Queue / schedule ────────────────────────────────────────────────
-    def _paint_queue(self, queue: List[Dict[str, Any]]) -> None:
+    def _paint_queue(self, queue: List[Dict[str, Any]],
+                     schedule: Optional[List[Dict[str, Any]]] = None) -> None:
+        # v0.5.3: real queue + schedule arrays from the formatted bundle.
+        # (Previously the caller passed queue=[] and the painter re-read the
+        # schedule file; counts were always 0.)
         n_total = len(queue) if isinstance(queue, list) else 0
-        n_pending = len([t for t in (queue or []) if t.get("status") == "queued"]) \
-            if isinstance(queue, list) else 0
-        # Schedule count is brokered by the overseer; cheap probe via the
-        # schedule file directly.
-        schedule_path = STATE_DIR / "overseer_schedule.json"
-        n_sched = 0
-        try:
-            if schedule_path.exists():
-                sd = json.loads(schedule_path.read_text() or "[]")
-                if isinstance(sd, list):
-                    n_sched = len(sd)
-        except Exception:
-            pass
+        n_pending = sum(1 for t in (queue or [])
+                        if isinstance(t, dict) and t.get("status") == "queued")
+        n_sched = len(schedule) if isinstance(schedule, list) else 0
+        if n_total == 0 and n_sched == 0:
+            self.q_lbl.config(text="📭 no queue, no scheduled tasks\n(add one via the CLI: cortexagent schedule add ...)",
+                              fg=DIM)
+            return
         text = (f"queue: {n_pending} pending / {n_total} total\n"
                 f"schedule: {n_sched} entries")
         self.q_lbl.config(text=text, fg=FG)
+
+    # ── Data freshness (top bar) ────────────────────────────────────────
+    # Per-file freshness thresholds (seconds). The user wanted to see WHY
+    # a panel is empty — this is the single source of truth. Mtime-based;
+    # no writer changes needed in lib/overseer.py.
+    _FRESHNESS_SOURCES = (
+        # (relative_path, fresh_sec, must_exist)
+        ("overseer_state.json",            60,  True),
+        ("big_model_steps.json",          120,  True),
+        ("minify_stats.json",             120,  True),
+        ("overseer_queue.json",           300, False),
+        ("overseer_schedule.json",        600, False),
+        ("overseer_plan.json",            600, False),
+        ("workflow_state.json",           600, False),
+        ("state/active_model.json",        60, False),
+    )
+
+    def _check_freshness(self) -> List[Dict[str, Any]]:
+        """Classify each backing file as fresh / stale / missing.
+
+        Returns a list of dicts: {name, age, status, threshold, missing}.
+        """
+        now = time.time()
+        rows: List[Dict[str, Any]] = []
+        state_dir = STATE_DIR
+        for rel, fresh_sec, must_exist in self._FRESHNESS_SOURCES:
+            p = state_dir / rel
+            if not p.exists():
+                rows.append({"name": rel, "age": None, "threshold": fresh_sec,
+                             "status": "missing", "missing": True,
+                             "required": must_exist})
+                continue
+            try:
+                mtime = p.stat().st_mtime
+            except Exception:
+                rows.append({"name": rel, "age": None, "threshold": fresh_sec,
+                             "status": "missing", "missing": True,
+                             "required": must_exist})
+                continue
+            age = max(0.0, now - mtime)
+            rows.append({"name": rel, "age": age, "threshold": fresh_sec,
+                         "status": "fresh" if age <= fresh_sec else "stale",
+                         "missing": False, "required": must_exist})
+        return rows
+
+    def _paint_freshness(self) -> None:
+        try:
+            rows = self._check_freshness()
+        except Exception:
+            return
+        n_fresh = sum(1 for r in rows if r["status"] == "fresh")
+        n_stale = sum(1 for r in rows if r["status"] == "stale")
+        n_miss = sum(1 for r in rows if r["status"] == "missing"
+                     and r["required"])
+        # Cache rows for the popover
+        self._fresh_mtimes = {r["name"]: r["age"] for r in rows}
+        if n_miss > 0:
+            color, head = ALERT, f"🔴 {n_fresh} ok · {n_stale} stale · {n_miss} missing"
+        elif n_stale > 0:
+            color, head = WARN, f"🟡 {n_fresh} ok · {n_stale} stale"
+        else:
+            color, head = SUCCESS, f"🟢 {n_fresh} ok"
+        try:
+            self.freshness_lbl.config(text=f"data: {head}", fg=color)
+        except Exception:
+            pass
+
+    def _show_freshness_popover(self) -> None:
+        """Click-to-expand detail of every backing file's mtime + status."""
+        if self._fresh_window is not None:
+            try:
+                self._fresh_window.destroy()
+            except Exception:
+                pass
+            self._fresh_window = None
+        rows = self._check_freshness()
+        win = tk.Toplevel(self)
+        win.title("Data Sources — freshness")
+        win.configure(bg=PANEL)
+        win.attributes("-topmost", True)
+        # Position near the freshness label
+        try:
+            x = self.freshness_lbl.winfo_rootx()
+            y = self.freshness_lbl.winfo_rooty() + 28
+            win.geometry(f"420x{40 + 18 * len(rows)}+{x - 380}+{y}")
+        except Exception:
+            win.geometry(f"420x{40 + 18 * len(rows)}")
+        # Header
+        tk.Label(win, text="DATA SOURCES", bg=PANEL, fg=ACCENT,
+                 font=self.f_label, anchor="w").pack(
+            fill="x", padx=10, pady=(8, 4))
+        tk.Label(win, text="mtime-based, no writes changed",
+                 bg=PANEL, fg=DIM, font=self.f_mono_s, anchor="w").pack(
+            fill="x", padx=10, pady=(0, 6))
+        # One row per file
+        body = tk.Frame(win, bg=PANEL)
+        body.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+        for i, r in enumerate(rows):
+            if r["status"] == "fresh":
+                dot, color = "🟢", SUCCESS
+            elif r["status"] == "stale":
+                dot, color = "🟡", WARN
+            else:
+                dot, color = "🔴", ALERT
+            age_s = r["age"]
+            if age_s is None:
+                age_str = "missing"
+            elif age_s < 60:
+                age_str = f"{int(age_s)}s"
+            elif age_s < 3600:
+                age_str = f"{int(age_s / 60)}m"
+            else:
+                age_str = f"{age_s / 3600:.1f}h"
+            req = "" if r["required"] else "  (optional)"
+            txt = f"{dot} {r['name']:<28} {age_str:>6}  / {r['threshold']}s{req}"
+            tk.Label(body, text=txt, bg=PANEL, fg=color,
+                     font=self.f_mono_s, anchor="w").pack(fill="x")
+        # Hint
+        tk.Label(win, text="click anywhere to close",
+                 bg=PANEL, fg=DIM, font=self.f_mono_s, anchor="w").pack(
+            fill="x", padx=10, pady=(0, 8))
+        win.bind("<FocusOut>", lambda e: self._close_freshness_popover())
+        win.bind("<Button-1>", lambda e: self._close_freshness_popover())
+        self._fresh_window = win
+
+    def _close_freshness_popover(self) -> None:
+        if self._fresh_window is not None:
+            try:
+                self._fresh_window.destroy()
+            except Exception:
+                pass
+            self._fresh_window = None
 
     # ── Tip ─────────────────────────────────────────────────────────────
     def _paint_tip(self, ov: Dict[str, Any], daemon: Dict[str, Any]) -> None:
