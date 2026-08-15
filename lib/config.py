@@ -121,8 +121,8 @@ def _env_float(name: str, conf_section: str, conf_key: str,
 # key (e.g. CORTEXAGENT_UNLOCK_BIG_CTX=1) — the testing/tuning escape hatch.
 # When unlocked, env > conf > default precedence is restored for that key.
 LOCKED_KEYS = {
-    "big_ctx": 131072,
-    "big_ub": 1024,
+    "big_ctx": 156000,
+    "big_ub": 2048,
     "big_ngl": 999,
     "big_fa": "on",
     "big_ctk": "q4_0",
@@ -261,6 +261,20 @@ class Config:
             "CORTEXAGENT_TINY_MODEL", "backend", "tiny_model",
             str(self.models_dir / "lfm2.5-1.2b" / "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"))
 
+        # ── Cortex routing (Phase 3 — Claude→Cortex) ─────────────────────────
+        # Replaces Claude only for the cortexagent program. Uses toolproxy.py
+        # as a tool-calling fallback for abliterated models.
+        self.cortex_router_mode = _env(
+            "CORTEXAGENT_ROUTER_MODE", "cortex", "router_mode", "auto")
+        self.cortex_host = _env(
+            "CORTEXAGENT_HOST", "cortex", "host", "127.0.0.1")
+        self.cortex_toolproxy = _env_bool(
+            "CORTEXAGENT_TOOLPROXY", "cortex", "toolproxy", False)
+        self.cortex_brand = _env(
+            "CORTEXAGENT_BRAND", "branding", "name", "Cortex")
+        self.cortex_author = _env(
+            "CORTEXAGENT_AUTHOR", "branding", "author", "GreyOK00")
+
         # Vision: REMOVED in v3.x. The big model is multimodal (Qwen3-VL family
         # fine-tunes / Qwen3.6 35B), so a separate vision server (formerly
         # qwen3vl-8b on :8083) is no longer needed. Big handles vision natively
@@ -303,7 +317,7 @@ class Config:
         self.big_b = _env_int(
             "CORTEXAGENT_B", "backend", "big_b", 2048)
         self.big_ub = _env_locked_int(
-            "big_ub", "CORTEXAGENT_UB", "backend", "big_ub", 1024)
+            "big_ub", "CORTEXAGENT_UB", "backend", "big_ub", 2048)
         self.big_kv_offload = _env_locked_int(
             "big_kv_offload", "CORTEXAGENT_KV_OFFLOAD", "backend", "big_kv_offload", 1)
         self.big_alias = _env(
@@ -472,8 +486,8 @@ def _cli() -> int:
         # Honors CORTEXAGENT_UNLOCK: when a key is unlocked, emit the env/conf
         # value (fall through to normal resolution) instead of the pin.
         env_map = {
-            "big_ctx": ("CORTEXAGENT_CTX", 131072),
-            "big_ub": ("CORTEXAGENT_UB", 1024),
+            "big_ctx": ("CORTEXAGENT_CTX", 156000),
+            "big_ub": ("CORTEXAGENT_UB", 2048),
             "big_ngl": ("CORTEXAGENT_NGL", 999),
             "big_fa": ("CORTEXAGENT_FA", "on"),
             "big_ctk": ("CORTEXAGENT_CTK", "q4_0"),

@@ -275,6 +275,33 @@ def _run_headless(quit_event: threading.Event) -> None:
 
 # ── GUI tray (pystray + Pillow) ──────────────────────────────────────────────
 
+def _patch_pystray_notify() -> None:
+    """Patch pystray's notification D-Bus handler to ignore notification
+    daemon errors. This prevents the system-tray icon from crashing when the
+    notification daemon is slow to start, disappears, or returns stale IDs.
+    The tray icon itself works fine — only the notification close call fails."""
+    try:
+        import pystray._util.notify_dbus as nd
+        orig_hide = getattr(nd, 'NotifyDBus', None)
+        if orig_hide is None:
+            # Newer pystray may use a different class name.
+            for attr in dir(nd):
+                cls = getattr(nd, attr)
+                if hasattr(cls, 'hide') and hasattr(cls, '_notify'):
+                    orig_hide = cls
+                    break
+        if orig_hide is not None:
+            original_hide = orig_hide.hide
+            def safe_hide(self, *args, **kwargs):
+                try:
+                    return original_hide(self, *args, **kwargs)
+                except Exception:
+                    pass
+            orig_hide.hide = safe_hide
+    except Exception:
+        pass  # Non-critical — tray works even without this patch
+
+
 def _make_icon_image():
     """CortexAgent tray icon — the square logo asset if present, else a small
     64x64 wolf head drawn with Pillow."""
@@ -301,6 +328,7 @@ def _make_icon_image():
 
 
 def _run_gui(quit_event: threading.Event) -> None:
+    _patch_pystray_notify()  # Guard notification daemon failures
     import pystray  # type: ignore
     from pystray import MenuItem as MI, Menu  # type: ignore
 

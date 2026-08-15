@@ -58,6 +58,8 @@ _active_sessions = 0         # CLI sessions currently active (refcount)
 _SHUTDOWN = False
 _proxy_proc: Optional[subprocess.Popen] = None
 _tiny_was_healthy = True     # edge-detector: trigger big-kill on tiny death (rising edge only)
+_tiny_down_since: float = 0.0  # unix ts; 0.0 = currently up. Big-kill only fires after GRACE_SEC of continuous downtime.
+TINY_DEATH_GRACE_SEC = 3.0    # tolerate brief tiny restarts (keepalive reload) before unloading the 13.7 GB big
 
 
 def _scan_active_sessions() -> List[Dict]:
@@ -280,21 +282,66 @@ def _free_vram_gb(samples: int = 3, interval: float = 0.7) -> Optional[float]:
     return best
 
 
+def _probe_big_n_ctx() -> Optional[int]:
+    """Read the actual n_ctx the running llama-server on :8080 is using.
+
+    Probes GET /v1/models and extracts meta.n_ctx. Used to detect when a
+    stale or externally-launched server is on :8080 with a different ctx
+    than CFG.big_ctx (e.g. an old 32k server from a prior experiment, an
+    adopted 256k instance, etc.). Returns the int n_ctx or None on failure.
+    """
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"http://127.0.0.1:{_big.port}/v1/models",
+                                    timeout=2) as r:
+            data = json.loads(r.read().decode("utf-8", errors="replace"))
+        # OpenAI-compat path: data[0].meta.n_ctx
+        for entry in data.get("data", []):
+            meta = entry.get("meta") or {}
+            n_ctx = meta.get("n_ctx")
+            if isinstance(n_ctx, int) and n_ctx > 0:
+                return n_ctx
+    except Exception:
+        return None
+    return None
+
+
 def _load_session_model() -> tuple:
     """Load the big model for the new session. Re-runs every session-start.
 
-    If the big model is already up + healthy, keep it — no VRAM probe. (The
-    probe reads *free* VRAM, which counts the big model's own ~14 GB as
-    "used", so probing while the big model is loaded would read ~2 GB free
-    and wrongly unload the healthy big model.) Otherwise probe free VRAM
-    (glitch-rejecting: max of 3 reads) and log the result, then load the
-    big model — it just gets loaded; if VRAM is genuinely too tight it
-    fails and the daemon logs the failure (no fallback swap path).
-    Returns (ok, model_path, is_fallback=False always).
+    If the big model is already up + healthy AND its reported n_ctx matches
+    CFG.big_ctx, keep it — no VRAM probe. (The probe reads *free* VRAM, which
+    counts the big model's own ~14 GB as "used", so probing while the big
+    model is loaded would read ~2 GB free and wrongly unload the healthy big
+    model.) If the running server reports a DIFFERENT n_ctx (stale instance,
+    externally-launched server with the wrong --ctx-size, leftover from a
+    prior config), the daemon kills it and reloads with the correct size —
+    without this, the cortex CLI gets stuck talking to a 32k server while
+    the daemon thinks everything is fine.
+    Otherwise probe free VRAM (glitch-rejecting: max of 3 reads) and log
+    the result, then load the big model — it just gets loaded; if VRAM is
+    genuinely too tight it fails and the daemon logs the failure (no
+    fallback swap path). Returns (ok, model_path, is_fallback=False always).
     """
     if _big.is_healthy():
-        _log(f"Model already up: {Path(_big.model_path).name}", "▶️", DIM)
-        return True, str(_big.model_path), False
+        actual_ctx = _probe_big_n_ctx()
+        if actual_ctx is not None and actual_ctx != int(CFG.big_ctx):
+            _log(f"Big model running with wrong n_ctx (got {actual_ctx}, "
+                 f"want {int(CFG.big_ctx)}) — reloading", "🔁", YELLOW)
+            # Adopted/external (proc is None) → can't stop it ourselves;
+            # log and keep it. Otherwise stop and let _swap_big reload.
+            if _big.proc is not None:
+                _big.stop()
+                # fall through to the load path below
+            else:
+                _log(f"Big is externally-owned with wrong n_ctx — please "
+                     f"restart it manually with --ctx-size {int(CFG.big_ctx)}",
+                     "⚠️", YELLOW)
+                return True, str(_big.model_path), False
+        else:
+            _log(f"Model already up: {Path(_big.model_path).name} "
+                 f"(n_ctx={actual_ctx})", "▶️", DIM)
+            return True, str(_big.model_path), False
     free_gb = _free_vram_gb()
     if free_gb is None:
         why = "VRAM probe failed"
@@ -502,17 +549,29 @@ def _idle_watcher() -> None:
                     _log(f"Idle {int(idle)}s > {CFG.idle_unload_sec}s — unloading big model",
                          "💤", YELLOW)
                     should_unload = True
-            # Tiny-death → big-kill (user rule: closing the system tray or any
-            # tiny failure must unload big so the GPU isn't held by an orphaned
-            # 13.7 GB process). tiny.is_healthy() probes :8082 with a 1s
-            # timeout — fast, non-blocking. The first transition into "tiny
-            # down" triggers an immediate unload; subsequent ticks stay quiet
-            # until tiny recovers.
-            global _tiny_was_healthy
+            # Tiny-death → big-kill with grace window. User rule: closing the
+            # system tray or any tiny failure must unload big so the GPU isn't
+            # held by an orphaned 13.7 GB process. But tiny's keepalive reload
+            # (5-10s) used to reap big spuriously on every reload. TINY_DEATH_GRACE_SEC
+            # tolerates brief downtime: big-kill only fires after tiny has been
+            # continuously down for >=GRACE_SEC. Recovery within the grace
+            # window cancels the pending kill entirely.
+            global _tiny_was_healthy, _tiny_down_since
             tiny_healthy = _tiny.is_healthy(timeout=1)
-            if not tiny_healthy and _tiny_was_healthy and big_running:
-                _log(f"Tiny :{_tiny.port} DOWN — unloading big to free VRAM "
-                     f"(tiny-death → big-kill rule)", "🛑", YELLOW)
+            now = time.time()
+            if tiny_healthy:
+                _tiny_down_since = 0.0
+            elif _tiny_down_since == 0.0:
+                _tiny_down_since = now
+            if (not tiny_healthy and _tiny_was_healthy and big_running):
+                _log(f"Tiny :{_tiny.port} DOWN — grace {TINY_DEATH_GRACE_SEC:.0f}s "
+                     f"before big-kill", "⚠️", YELLOW)
+            if (not tiny_healthy and big_running
+                    and _tiny_down_since > 0
+                    and (now - _tiny_down_since) >= TINY_DEATH_GRACE_SEC):
+                _log(f"Tiny :{_tiny.port} DOWN >{TINY_DEATH_GRACE_SEC:.0f}s — "
+                     f"unloading big to free VRAM (tiny-death → big-kill rule)",
+                     "🛑", YELLOW)
                 should_unload = True
             _tiny_was_healthy = tiny_healthy
         if should_unload:
@@ -677,6 +736,20 @@ def _handle(req: Dict) -> Dict:
         _SHUTDOWN = True
         _log("Shutdown requested", "🛑", YELLOW)
         return {"ok": True}
+
+    if cmd == "proxy-metrics":
+        # Forward proxy /metrics via the daemon socket. The proxy exposes
+        # current_tok_s, current_in_tps, current_out_tps, avg_tok_s,
+        # avg_in_tps, avg_out_tps, minify{}, and VRAM stats.
+        try:
+            import urllib.request
+            port = int(os.environ.get("CORTEXAGENT_PROXY_PORT", "8081"))
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/metrics", timeout=2
+            ) as resp:
+                return json.loads(resp.read())
+        except Exception as exc:
+            return {"ok": False, "error": f"proxy metrics: {exc}"}
 
     return {"ok": False, "error": f"unknown cmd: {cmd}"}
 

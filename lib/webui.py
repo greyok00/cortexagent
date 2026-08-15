@@ -49,6 +49,7 @@ from lib.config import CFG as _CFG  # noqa: E402
 from lib.grammar_proxy import _get_metrics as _proxy_metrics  # noqa: E402
 from lib.state_format import format_dashboard as _format_dashboard  # noqa: E402
 from lib import overseer as _ov  # noqa: E402
+from lib.cortex_routing import stream as _cortex_stream  # noqa: E402
 
 
 # ── Config ────────────────────────────────────────────────────────────────
@@ -142,6 +143,28 @@ def _status_payload() -> Dict:
     # Live data: daemon + proxy snapshot
     daemon = _daemon_status()
     proxy = _proxy_metrics()
+    minify = (proxy.get("minify") if isinstance(proxy, dict) else {}) or {}
+    # Fallback: read from persistent file when proxy metrics are zeroed
+    if minify.get("runs", 0) == 0:
+        minify = _read_json(_STATE_DIR / "minify_stats.json", default={}) or {}
+    
+    # Token tracking — merge stats from proxy + tiny model paths
+    try:
+        from lib.overseer import _merge_token_stats
+        token_stats = _merge_token_stats()
+        total = token_stats.get("total", {})
+        token_tracking = {
+            "runs": total.get("runs", 0),
+            "tokens_in": total.get("tokens_in", 0),
+            "tokens_out": total.get("tokens_out", 0),
+            "tokens_saved": total.get("tokens_saved", 0),
+            "ratio_pct": total.get("ratio_pct", 0.0),
+            "proxy_runs": token_stats.get("proxy", {}).get("runs", 0),
+            "tiny_runs": token_stats.get("tiny_model", {}).get("runs", 0),
+        }
+    except Exception:
+        token_tracking = {}
+    
     return {
         "profile": profile,
         "model": model,
@@ -154,7 +177,8 @@ def _status_payload() -> Dict:
         "current_out_tps": float(proxy.get("current_out_tps", 0.0) or 0.0),
         "vram_by_proc": (daemon.get("vram_by_proc") if isinstance(daemon, dict)
                          else {}) or {},
-        "minify": (proxy.get("minify") if isinstance(proxy, dict) else {}) or {},
+        "minify": minify,
+        "token_tracking": token_tracking,
         "session": (daemon.get("session") if isinstance(daemon, dict) else {}) or {},
         "active_sessions": int((daemon or {}).get("active_sessions", 0) or 0),
         "timestamp": datetime.now().isoformat(),
@@ -381,14 +405,20 @@ def _log_tail(path: Path, lines: int = 25) -> List[str]:
 # ── JSON endpoint builders (the MISSING helpers) ────────────────────────────
 
 def _api_state() -> Dict:
-    """{models, active_model, tabs} — front-end schema at webui_template.html:672."""
+    """{models, active_model, tabs} — front-end schema at webui_template.html:672.
+
+    Cortex branding: all model references show "Cortex" instead of Claude.
+    """
     models: List[Dict] = []
     # Big model from CFG (no fallback swap — only one model on :8080)
     big_alias = str(_CFG.big_alias) if hasattr(_CFG, "big_alias") else "cortexagent"
     big_name = (str(_CFG.big_model).rsplit("/", 1)[-1]
                 if hasattr(_CFG, "big_model") else "big")
+    # Cortex branding: replace Claude with Cortex in model name
+    if big_name and "claude" in big_name.lower():
+        big_name = big_name.replace("claude", "cortex", 1)
     models.append({"id": big_alias, "name": big_name, "kind": "chat",
-                   "alias": big_alias})
+                   "alias": big_alias, "brand": _CFG.cortex_brand})
     # Image / video model slots
     models.append({"id": "image", "name": "Image (diffusion)", "kind": "image"})
     models.append({"id": "video", "name": "Video (LTX)", "kind": "video"})
@@ -399,8 +429,9 @@ def _api_state() -> Dict:
     return {
         "models": models,
         "active_model": str(active.get("model") or big_alias),
+        "brand": _CFG.cortex_brand,
         "tabs": [
-            {"value": "cortexagent", "label": big_name.split("-")[0] or "Cortex",
+            {"value": "cortexagent", "label": big_name.split("-")[0] or _CFG.cortex_brand,
              "short": "Cx", "icon": "🧠"},
             {"value": "image", "label": "Image", "short": "Img", "icon": "🎨"},
             {"value": "video", "label": "Video", "short": "Vid", "icon": "🎬"},
@@ -455,6 +486,26 @@ def _api_overseer() -> Dict:
     ov_state = _read_json(_STATE_DIR / "overseer_state.json", default={}) or {}
     steps_state = _read_json(_STATE_DIR / "big_model_steps.json", default={}) or {}
     minify = (proxy.get("minify") if isinstance(proxy, dict) else {}) or {}
+    # Fallback: read from persistent file when proxy metrics are zeroed
+    if minify.get("runs", 0) == 0:
+        minify = _read_json(_STATE_DIR / "minify_stats.json", default={}) or {}
+
+    # Token tracking — merge stats from proxy + tiny model paths
+    try:
+        from lib.overseer import _merge_token_stats
+        token_stats = _merge_token_stats()
+        total = token_stats.get("total", {})
+        token_tracking = {
+            "runs": total.get("runs", 0),
+            "tokens_in": total.get("tokens_in", 0),
+            "tokens_out": total.get("tokens_out", 0),
+            "tokens_saved": total.get("tokens_saved", 0),
+            "ratio_pct": total.get("ratio_pct", 0.0),
+            "proxy_runs": token_stats.get("proxy", {}).get("runs", 0),
+            "tiny_runs": token_stats.get("tiny_model", {}).get("runs", 0),
+        }
+    except Exception:
+        token_tracking = {}
 
     queue = _read_json(_STATE_DIR / "overseer_queue.json", default=[]) or []
     schedule = _read_json(_STATE_DIR / "overseer_schedule.json", default=[]) or []
@@ -530,6 +581,7 @@ def _api_overseer() -> Dict:
         "units": units,
         "unit_pids": unit_pids,
         "minify": minify,
+        "token_tracking": token_tracking,
         "steps": steps_state,
         # ── Canary-token hits (from canary_server.py on 127.0.0.1:8092) ─
         "canary_hits": _canary_hits(limit=20),
@@ -917,14 +969,14 @@ class WebUIHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _handle_chat_stream(self, body: Dict) -> None:
-        """POST /api/chat → stream NDJSON chunks from the grammar proxy.
+        """POST /api/chat → stream NDJSON chunks from the Cortex routing layer.
 
-        The proxy is the shared session chokepoint: every CLI message already
-        passes through it, so we POST the webui message to it with the same
-        OpenAI shape (and the same session-id header) the CLI uses. The proxy
-        forwards to llama-server and streams SSE back; we re-shape SSE into
-        NDJSON {message:{content,thinking},error} per chunk so the front-end
-        can render incrementally."""
+        The Cortex router provides:
+          1. Native OpenAI-compat streaming (llama-server, Ollama, etc.)
+          2. Tool-proxy mode for abliterated models (toolproxy.py)
+          3. Unified branding (replaces Claude references)
+
+        Falls back to the grammar proxy if the Cortex router is unavailable."""
         msgs = body.get("messages") or []
         if not isinstance(msgs, list) or not msgs:
             self._send_json(400, {"ok": False, "reason": "messages required"})
@@ -941,15 +993,34 @@ class WebUIHandler(BaseHTTPRequestHandler):
         if not session_id:
             session_id = f"webui-{uuid.uuid4().hex[:12]}"
 
-        # Build OpenAI chat completion request (stream=true)
-        proxy_body = json.dumps({
-            "model": str((_daemon_status().get("big") or {}).get("alias") or "cortexagent"),
-            "messages": msgs,
-            "stream": True,
-            "temperature": float(body.get("temperature", 0.7) or 0.7),
-        }).encode("utf-8")
+        temperature = float(body.get("temperature", 0.7) or 0.7)
 
-        def _gen():
+        def _cortex_gen():
+            """Generator from the Cortex routing layer."""
+            try:
+                for chunk in _cortex_stream(
+                    msgs,
+                    session_id=session_id,
+                ):
+                    if chunk.get("done"):
+                        yield {"done": True}
+                        return
+                    if chunk.get("error"):
+                        yield {"error": chunk["error"]}
+                        return
+                    if chunk.get("message"):
+                        yield {"message": chunk["message"]}
+            except Exception as e:
+                yield {"error": f"cortex_router: {e}"}
+
+        def _proxy_gen():
+            """Generator from the grammar proxy (fallback path)."""
+            proxy_body = json.dumps({
+                "model": str((_daemon_status().get("big") or {}).get("alias") or "cortexagent"),
+                "messages": msgs,
+                "stream": True,
+                "temperature": temperature,
+            }).encode("utf-8")
             try:
                 req = _urlreq.Request(
                     f"{_PROXY_URL}/v1/chat/completions",
@@ -1001,7 +1072,23 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-        self._stream_ndjson(_gen())
+        # Try Cortex router first, fall back to grammar proxy
+        # Check if the big model endpoint is reachable
+        _big_reachable = False
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                f"http://{_CFG.cortex_host}:{_CFG.big_model_port}/health",
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    _big_reachable = True
+        except Exception:
+            pass
+
+        gen = _cortex_gen() if _big_reachable else _proxy_gen()
+        self._stream_ndjson(gen)
 
     def _gen_diffusion(self, body: Dict, kind: str):
         """NDJSON generator wrapping in-process diffusion_backend.gen_image /

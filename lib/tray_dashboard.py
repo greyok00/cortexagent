@@ -174,7 +174,7 @@ def _render_banner(parent: tk.Widget) -> tk.Frame:
                        font=("DejaVu Sans Mono", 16, "bold"),
                        anchor="w", justify="left")
         lbl.pack(anchor="w", padx=0, pady=0)
-    tag = tk.Label(frame, text="CORTEXAGENT", bg=BG, fg=ICE,
+    tag = tk.Label(frame, text="CortexAgent", bg=BG, fg=ICE,
                    font=("DejaVu Sans", 13, "bold"))
     tag.pack(anchor="w", padx=2, pady=(4, 0))
     sub = tk.Label(frame, text="by GreyOK00 · overseer dashboard",
@@ -884,10 +884,12 @@ class Dashboard(tk.Tk):
                       ov: Dict[str, Any]) -> None:
         # Prefer the daemon-merged snapshot (state["minify"]) — keeps the
         # rolling history the proxy wrote, but lets the overseer also surface
-        # lifetime totals. Fall back to the live proxy metrics.
-        m = (ov.get("minify") if isinstance(ov.get("minify"), dict) else None) \
-            or (metrics.get("minify") if isinstance(metrics.get("minify"), dict) else None) \
-            or _read_json(MINIFY_STATS)
+        # lifetime totals. Fall back to the file (proxy resets to 0 on restart).
+        m = (ov.get("minify") if isinstance(ov.get("minify"), dict) else None)
+        if not m or m.get("runs", 0) == 0:
+            m = (metrics.get("minify") if isinstance(metrics.get("minify"), dict) else None)
+        if not m or m.get("runs", 0) == 0:
+            m = _read_json(MINIFY_STATS)
         if not isinstance(m, dict) or not m:
             self.minify_pct_lbl.config(text="—", fg=DIM)
             self.minify_pct_unit.config(text="no runs yet")
