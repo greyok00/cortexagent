@@ -242,13 +242,41 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
             "error": ""}
 
 
-def _beautify_response(text: str) -> str:
-    """Apply beautify pass to overseer output — convert tables, CSV, key:value."""
+def _post_process(text: str) -> str:
+    """Post-process LLM output: strip fences, thinking, normalize glyphs.
+    
+    BEAUTIFY-102: Post-processor pipeline integrated into react_loop.
+    Runs BEFORE beautify (strip first, then chart-detect).
+    
+    Args:
+        text: Raw LLM output
+    
+    Returns: Post-processed text
+    """
     if not text:
         return text
     try:
+        from lib.post_processor import process_output
+        return process_output(text, show_code=False, show_thinking=False)
+    except Exception:
+        return text  # fallback: return original if post_processor fails
+
+
+def _beautify_response(text: str) -> str:
+    """Apply post-processor + beautify pass to overseer output.
+    
+    BEAUTIFY-103: Post-processor → beautify → chart chain.
+    Chain: post-process (strip fences) → beautify (tables/charts)
+    """
+    if not text:
+        return text
+    try:
+        # Stage 1: Post-process (strip fences, thinking, normalize glyphs)
+        text = _post_process(text)
+        # Stage 2: Beautify (tables, CSV, key:value, charts)
         from lib import beautify
-        return beautify.beautify(text)
+        text = beautify.beautify(text)
+        return text
     except Exception:
         return text  # fallback: return original if beautify fails
 

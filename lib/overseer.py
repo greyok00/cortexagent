@@ -53,6 +53,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Deque
 
+# ── Scheduler (NDJSON event-sourced) ───────────────────────────────────────
+try:
+    from lib.scheduler import Store, Recovery, SchedulerUI
+    SCHEDULER_AVAILABLE = True
+except ImportError:
+    SCHEDULER_AVAILABLE = False
+
 
 def _fromiso(s: str) -> datetime:
     """Compat wrapper for datetime.fromisoformat. Pre-3.11 only accepted the
@@ -525,10 +532,27 @@ def _check_context_alerts() -> List[str]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _shutdown_signal_handler(signum, frame):
-    """Enhanced SIGTERM/SIGINT handler with graceful shutdown."""
-    global _SHUTDOWN
+    """Enhanced SIGTERM/SIGINT handler with graceful shutdown.
+    
+    Stops worker pool, drains queue, joins workers, saves state.
+    """
+    global _SHUTDOWN, _worker_pool
     _SHUTDOWN = True
-    _log(f"Shutdown signal received ({signum}) — draining queue...", "🛑", RED)
+    _log(f"Shutdown signal received ({signum}) — draining...", "🛑", RED)
+    
+    # Stop worker pool
+    if _worker_pool:
+        _worker_pool.stop()
+        _log("Worker pool stopped", "🛑", DIM)
+    
+    # Drain remaining queue tasks
+    _drain_queue()
+    
+    # Save final state
+    try:
+        _save_metrics()
+    except Exception:
+        pass
 
 
 # Override the existing signal handler
@@ -1777,47 +1801,18 @@ def _cron_matches(expr: str, now: datetime) -> bool:
     return True
 
 
-def schedule_add(name: str, task_type: str, schedule_type: str,
-                 schedule_value: str, prompt: str = "", command: str = "",
-                 output: str = "", system: str = "") -> Dict:
-    schedule = _load_schedule()
-    entry = {
-        "name": name,
-        "type": task_type,
-        "schedule_type": schedule_type,
-        "schedule_value": schedule_value,
-        "prompt": prompt,
-        "command": command,
-        "output": output,
-        "system": system,
-        "enabled": True,
-        "last_run": None,
-        "created_at": datetime.now().isoformat(),
-    }
-    schedule = [s for s in schedule if s.get("name") != name]
-    schedule.append(entry)
-    _save_schedule(schedule)
-    _log(f"Scheduled '{name}' ({schedule_type}: {schedule_value})", "📅", CYAN)
-    return entry
+def _scheduler() -> Optional[Store]:
+    """Lazy singleton for the scheduler store."""
+    if SCHEDULER_AVAILABLE:
+        return Store()
+    return None
 
 
-def schedule_list() -> List[Dict]:
-    return _load_schedule()
-
-
-def schedule_remove(name: str) -> bool:
-    schedule = _load_schedule()
-    before = len(schedule)
-    schedule = [s for s in schedule if s["name"] != name]
-    _save_schedule(schedule)
-    if len(schedule) < before:
-        _log(f"Removed schedule '{name}'", "🗑️", YELLOW)
-        return True
-    return False
-
-
-def _check_schedule() -> None:
-    """Check scheduled tasks and queue any that are due."""
+def _check_schedule_legacy() -> None:
+    """Legacy schedule check (fallback when scheduler store unavailable).
+    
+    Uses old JSON schedule file for backward compatibility.
+    """
     now = datetime.now()
     schedule = _load_schedule()
 
@@ -1825,9 +1820,6 @@ def _check_schedule() -> None:
         if not entry.get("enabled", True):
             continue
 
-        # Dedup: the loop runs every 30s, so a cron/daily/weekly job whose
-        # minute matches would otherwise fire twice in the same minute. Skip if
-        # this job already ran in the current minute.
         last_run = entry.get("last_run")
         if last_run:
             try:
@@ -1880,6 +1872,167 @@ def _check_schedule() -> None:
                 "schedule_fired",
                 f"📅 Scheduled task '{entry['name']}' queued ({task['type']})",
                 schedule_name=entry["name"],
+                task_type=task["type"],
+            )
+
+
+def schedule_add(name: str, task_type: str, schedule_type: str,
+                 schedule_value: str, prompt: str = "", command: str = "",
+                 output: str = "", system: str = "") -> Dict:
+    """Schedule a task. Uses new scheduler store if available."""
+    sched = _scheduler()
+    if sched is None:
+        # Fallback to old JSON method
+        schedule = _load_schedule()
+        entry = {
+            "name": name,
+            "type": task_type,
+            "schedule_type": schedule_type,
+            "schedule_value": schedule_value,
+            "prompt": prompt,
+            "command": command,
+            "output": output,
+            "system": system,
+            "enabled": True,
+            "last_run": None,
+            "created_at": datetime.now().isoformat(),
+        }
+        schedule = [s for s in schedule if s.get("name") != name]
+        schedule.append(entry)
+        _save_schedule(schedule)
+        _log(f"Scheduled '{name}' ({schedule_type}: {schedule_value})", "📅", CYAN)
+        return entry
+
+    # Use new scheduler store
+    receipt = sched.create(
+        title=name,
+        kind="user",
+        trigger=schedule_type,
+        schedule_value=schedule_value,
+        payload_type=task_type,
+        payload={"command": command, "prompt": prompt, "output": output, "system": system},
+        owner="cli",
+        ephemeral=False,
+        visible=True,
+    )
+    if receipt.get("ok"):
+        _log(f"📅 Scheduled '{name}' ({schedule_type}: {schedule_value})",
+             "📅", CYAN)
+        return {"ok": True, "task_id": receipt["task_id"], **receipt}
+    _log(f"📅 Failed to schedule '{name}': {receipt.get('error')}", "❌", RED)
+    return receipt
+
+
+def schedule_list() -> List[Dict]:
+    """List scheduled tasks. Uses new scheduler store if available."""
+    sched = _scheduler()
+    if sched is None:
+        return _load_schedule()
+    return sched.list()
+
+
+def schedule_remove(name: str) -> bool:
+    """Remove a scheduled task. Uses new scheduler store if available."""
+    sched = _scheduler()
+    if sched is None:
+        schedule = _load_schedule()
+        before = len(schedule)
+        schedule = [s for s in schedule if s["name"] != name]
+        _save_schedule(schedule)
+        if len(schedule) < before:
+            _log(f"Removed schedule '{name}'", "🗑️", YELLOW)
+            return True
+        return False
+
+    # Find task by title
+    for task in sched.list():
+        if task.get("title") == name or name in task.get("title", ""):
+            result = sched.cancel(task["id"])
+            if result.get("ok"):
+                _log(f"🗑️ Removed schedule '{name}'", "🗑️", YELLOW)
+                return True
+            return False
+    _log(f"Schedule '{name}' not found", "🗑️", YELLOW)
+    return False
+
+
+def _check_schedule() -> None:
+    """Check scheduled tasks and queue any that are due.
+    
+    Uses new scheduler store with event-sourced tasks.
+    """
+    sched = _scheduler()
+    if sched is None:
+        # Fallback to old method
+        _check_schedule_legacy()
+        return
+    
+    # Use new scheduler
+    tasks = sched.list(visible_only=False)
+    now = datetime.now()
+    
+    for task in tasks:
+        if not task.get("enabled", True):
+            continue
+        if task.get("state") != "scheduled":
+            continue
+        
+        # Dedup: skip if already ran this minute
+        last_run = task.get("last_run")
+        if last_run:
+            try:
+                if _fromiso(last_run).strftime("%Y%m%d%H%M") == now.strftime("%Y%m%d%H%M"):
+                    continue
+            except Exception:
+                pass
+        
+        # Check if due based on trigger
+        should_run = False
+        trigger = task.get("trigger", "manual")
+        sv = task.get("schedule_value", "")
+        
+        if trigger == "cron":
+            should_run = _cron_matches(sv, now)
+        elif trigger == "daily":
+            parts = sv.split(":")
+            target_hour = int(parts[0])
+            target_min = int(parts[1]) if len(parts) > 1 else 0
+            should_run = (now.hour == target_hour and now.minute == target_min)
+        elif trigger == "weekly":
+            parts = sv.split(":")
+            days = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+            target_day = days.get(parts[0].lower(), -1)
+            target_hour = int(parts[1]) if len(parts) > 1 else 0
+            target_min = int(parts[2]) if len(parts) > 2 else 0
+            should_run = (now.weekday() == target_day and
+                         now.hour == target_hour and now.minute == target_min)
+        elif trigger == "date":
+            try:
+                target = _fromiso(sv)
+                should_run = (now >= target)
+            except Exception:
+                pass
+        elif trigger == "interval":
+            should_run = True  # Fire immediately for intervals
+        
+        if should_run:
+            payload = task.get("payload", {})
+            task_type = task.get("payload_type", "command")
+            queue_add(task_type,
+                      prompt=payload.get("prompt", ""),
+                      command=payload.get("command", ""),
+                      output=payload.get("output", ""))
+            
+            # Mark as queued
+            sched.update(task["id"], task.get("version", 0),
+                        state="queued", updated_at=now.isoformat())
+            
+            _log(f"📅 Scheduled task '{task['title']}' queued ({task_type})",
+                 "📅", GREEN)
+            _bridge_emit(
+                "schedule_fired",
+                f"📅 Scheduled task '{task['title']}' queued ({task_type})",
+                schedule_name=task["title"],
                 task_type=task["type"],
             )
 
@@ -2110,17 +2263,28 @@ def _daemon_loop(interval: int) -> None:
                 _cold_distill()
                 state["last_distill"] = datetime.now().isoformat()
 
+            # ── Worker pool heartbeat check (every tick) ──
+            pool = get_worker_pool()
+            if pool:
+                actions = pool.heartbeat_check()
+                for action in actions:
+                    _log(f"Worker pool: {action}", "⚠️", YELLOW)
+            
             # ── Schedule check ──
             overseer_set_state(state, "checking schedule + queue")
             sched_count = len(_load_schedule())
             _log(f"Schedule: {sched_count} entries", "📅", DIM)
             _check_schedule()
+            
             # ── Process queue ──
             q = _load_queue()
             pending = len([t for t in q if t["status"] == "queued"])
             if pending:
                 _log(f"Queue: {pending} pending tasks", "📦", DIM)
             _process_queue(state)
+            
+            # ── Record queue metrics ──
+            _record_queue_depth(len(q))
 
             # ── Workflow engine check + dispatch ──
             try:
@@ -2322,6 +2486,33 @@ def _stop() -> None:
         print(f"Tiny model on :{_tiny.port} may already be stopped")
 
 
+def _replace_emoji(text: str) -> str:
+    """Replace emoji with colorblind-safe status glyphs (BEAUTIFY-106).
+    
+    Maps emoji to Unicode glyphs that are readable without color.
+    """
+    replacements = {
+        "✅": "✓",    # success
+        "❌": "✕",    # error
+        "⚠️ ": "▲",   # warn
+        "📋": "▎",   # task
+        "📦": "◻",   # queue
+        "📅": "◌",   # schedule
+        "🗑️ ": "✕",  # remove
+        "🛑": "▌",   # stop
+        "👷": "◉",   # worker
+        "⚠️": "▲",   # warning
+        "📊": "◐",   # stats
+        "🔴": "✕",   # error
+        "🟡": "▲",   # warning
+        "🟠": "▲",   # critical
+        "🟢": "✓",   # healthy
+    }
+    for emoji, glyph in replacements.items():
+        text = text.replace(emoji, glyph)
+    return text
+
+
 def _status() -> None:
     """Show overseer status — beautified as key:value table."""
     pid = _is_running()
@@ -2416,9 +2607,14 @@ def _status() -> None:
 
 
 def _beautify_status(text: str) -> str:
-    """Apply beautify pass to overseer status output."""
-    from lib.beautify import beautify
+    """Apply beautify pass to overseer status output.
+    
+    BEAUTIFY-106: Also replaces emoji with colorblind-safe glyphs.
+    Chain: replace_emoji → beautify
+    """
     try:
+        text = _replace_emoji(text)
+        from lib.beautify import beautify
         return beautify(text)
     except Exception:
         return text
@@ -2736,3 +2932,201 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  QUEUE-003: Worker Pool with Heartbeat
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WorkerPool:
+    """Multi-threaded worker pool for task execution.
+    
+    Features:
+    - N worker threads pulling from bounded queue
+    - Heartbeat every 60s, dead worker replacement
+    - Backpressure metrics tracking
+    """
+    
+    def __init__(self, max_workers: int = 5, heartbeat_interval: int = 60):
+        self.max_workers = max_workers
+        self.heartbeat_interval = heartbeat_interval
+        self.workers: List[Dict] = []
+        self._stop_event = threading.Event()
+        self._metrics = {
+            "total_executed": 0,
+            "total_failed": 0,
+            "last_executions": deque(maxlen=100),  # (timestamp, duration_ms)
+        }
+        self._lock = threading.Lock()
+    
+    def start(self) -> None:
+        """Start worker threads."""
+        self._stop_event.clear()
+        for i in range(self.max_workers):
+            t = threading.Thread(
+                target=self._worker_loop,
+                name=f"worker-{i}",
+                daemon=True,
+            )
+            t.start()
+            worker_id = f"w{i}"
+            self.workers.append({
+                "id": worker_id,
+                "thread": t,
+                "last_heartbeat": time.time(),
+                "status": "alive",
+                "current_task": None,
+            })
+            _log(f"Worker {worker_id} started", "👷", DIM)
+    
+    def stop(self) -> None:
+        """Signal workers to stop."""
+        self._stop_event.set()
+        for w in self.workers:
+            try:
+                w["thread"].join(timeout=10)
+            except Exception:
+                pass
+        self.workers.clear()
+        _log("Worker pool stopped", "🛑", RED)
+    
+    def _worker_loop(self) -> None:
+        """Main loop for each worker thread."""
+        while not self._stop_event.is_set():
+            try:
+                # Get task from queue with timeout
+                queue = _load_queue()
+                task = None
+                for i, t in enumerate(queue):
+                    if t["status"] == "queued":
+                        task = t
+                        task["status"] = "running"
+                        task["started_at"] = datetime.now().isoformat()
+                        _save_queue(queue)
+                        break
+                
+                if task is None:
+                    time.sleep(1)  # No tasks, sleep briefly
+                    continue
+                
+                # Update worker status
+                self._update_heartbeat(True, task["id"])
+                
+                try:
+                    start = time.time()
+                    success = _execute_task(task)
+                    duration_ms = (time.time() - start) * 1000
+                    
+                    with self._lock:
+                        self._metrics["total_executed"] += 1
+                        if success:
+                            self._metrics["last_executions"].append(
+                                (time.time(), duration_ms))
+                        else:
+                            self._metrics["total_failed"] += 1
+                    
+                    # Update task status
+                    queue = _load_queue()
+                    for i, t in enumerate(queue):
+                        if t["id"] == task["id"]:
+                            t["status"] = "succeeded" if success else "failed"
+                            t["completed_at"] = datetime.now().isoformat()
+                            t["result"] = "ok" if success else "error"
+                            queue[i] = t
+                            break
+                    _save_queue(queue)
+                    
+                except Exception as e:
+                    with self._lock:
+                        self._metrics["total_failed"] += 1
+                    _log(f"Worker task error: {e}", "❌", RED)
+                
+                finally:
+                    self._update_heartbeat(True, None)
+                    
+            except Exception as e:
+                _log(f"Worker loop error: {e}", "❌", RED)
+                time.sleep(5)
+        
+        self._update_heartbeat(False, None)
+    
+    def _update_heartbeat(self, alive: bool, current_task: Optional[str]) -> None:
+        """Update heartbeat for the calling worker."""
+        thread_name = threading.current_thread().name
+        for w in self.workers:
+            if w["thread"].name == thread_name:
+                w["last_heartbeat"] = time.time()
+                w["status"] = "alive" if alive else "dead"
+                w["current_task"] = current_task
+                break
+    
+    def heartbeat_check(self) -> List[str]:
+        """Check heartbeats, replace dead workers. Returns list of actions taken."""
+        now = time.time()
+        actions = []
+        dead_workers = []
+        
+        for w in self.workers:
+            if now - w["last_heartbeat"] > self.heartbeat_interval * 2:
+                dead_workers.append(w["id"])
+        
+        if dead_workers:
+            # Replace dead workers
+            for dw in dead_workers:
+                # Remove dead worker
+                self.workers = [w for w in self.workers if w["id"] != dw]
+                # Create replacement
+                replacement_id = f"w{len(self.workers)}"
+                t = threading.Thread(
+                    target=self._worker_loop,
+                    name=replacement_id,
+                    daemon=True,
+                )
+                t.start()
+                self.workers.append({
+                    "id": replacement_id,
+                    "thread": t,
+                    "last_heartbeat": time.time(),
+                    "status": "alive",
+                    "current_task": None,
+                })
+                actions.append(f"Replaced dead worker {dw} with {replacement_id}")
+                _log(f"Worker pool: replaced dead worker {dw}", "⚠️", YELLOW)
+        
+        return actions
+    
+    def get_metrics(self) -> Dict:
+        """Get current worker pool metrics."""
+        with self._lock:
+            last_execs = list(self._metrics["last_executions"])
+            durations = [d for _, d in last_execs]
+            
+            return {
+                "total_executed": self._metrics["total_executed"],
+                "total_failed": self._metrics["total_failed"],
+                "worker_count": len(self.workers),
+                "active_workers": len([w for w in self.workers if w["status"] == "alive"]),
+                "p95_latency": sorted(durations)[-1] if durations else 0,
+                "p50_latency": sorted(durations)[len(durations) // 2] if durations else 0,
+            }
+
+
+# Global worker pool instance
+_worker_pool: Optional[WorkerPool] = None
+
+
+def get_worker_pool() -> Optional[WorkerPool]:
+    """Get the global worker pool (lazy init)."""
+    global _worker_pool
+    if _worker_pool is None:
+        _worker_pool = WorkerPool()
+        _worker_pool.start()
+    return _worker_pool
+
+
+def record_queue_depth(depth: int) -> None:
+    """Record queue depth for monitoring (called by tick loop)."""
+    global _queue_depth_history
+    _queue_depth_history.append((time.time(), depth))
+
+
