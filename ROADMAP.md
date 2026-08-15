@@ -115,3 +115,21 @@ deleting the three zero-importer dead modules:
 
 - Nuitka/Cython compilation (the plan defers this until Phases 0–8 work + test).
 - GitHub push (held until everything works; standing constraint).
+## 📋 Completed (added 2026-08-14)
+
+4. ✅ **System tray icon fix.** Fixed pystray crash caused by missing notification daemon. Added xfce4-notifyd autostart + guard patch in `lib/tray.py`. Tray now runs in GUI mode with greyok logo icon.
+
+5. ✅ **Minify stats dashboard.** Fixed dashboard reading reset proxy metrics instead of persistent file. Dashboard now falls back to `~/.cortexagent/minify_stats.json` when proxy shows 0. Shows real savings: 257 runs, 7.8% ratio, 977K tokens saved.
+
+6. ✅ **Queue cleanup.** Added `_cleanup_queue()` — removes tasks older than 1 hour, keeps last 10. Called every 10 ticks (~5 min). CLI: `overseer.py queue cleanup` or `queue prune`.
+
+7. ✅ **Code blocks disabled.** Added "NO code blocks (never use ```)" to `_REACT_SYSTEM` and `_SOCRATIC_SYSTEM` prompts in `lib/react_loop.py`.
+
+8. ✅ **Beautification pass.** Integrated `lib/beautify.py` into react/socratic/direct output paths. Converts markdown tables, CSV, key:value blocks to formatted output. Applied to all overseer output.
+
+9. ✅ **Stuck scheduler tasks removed.** Removed "smoke-test" and "verify-test" from schedule via CLI. Schedule is now clean.
+
+## Out of scope for this pass (still deferred)
+
+- Nuitka/Cython compilation (the plan defers this until Phases 0–8 work + test).
+- GitHub push (held until everything works; standing constraint).

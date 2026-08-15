@@ -61,7 +61,7 @@ def list_tools(limit: Optional[int] = None, stub: bool = False) -> List[Dict[str
     for name, t in sorted(TOOLS.items(),
                           key=lambda kv: (kv[1].get("priority", 0), kv[0])):
         if stub:
-            desc = t["schema"]["description"]
+            desc = t["schema"].get("description", t["schema"].get("function", {}).get("description", ""))
             if len(desc) > 50:
                 desc = desc[:47] + "..."
             tools.append({"type": "function", "function": {
@@ -69,8 +69,8 @@ def list_tools(limit: Optional[int] = None, stub: bool = False) -> List[Dict[str
         else:
             tools.append({"type": "function", "function": {
                 "name": name,
-                "description": t["schema"]["description"],
-                "parameters": t["schema"]["parameters"]}})
+                "description": t["schema"].get("description", t["schema"].get("function", {}).get("description", "")),
+                "parameters": t["schema"].get("parameters", t["schema"].get("function", {}).get("parameters", {}))}})
     if limit is not None:
         tools = tools[:limit]
     return tools
@@ -467,6 +467,81 @@ def _register_all() -> None:
 _register_all()
 
 
+# Register converted MCP tools (direct Python wrappers — no MCP/stdio overhead)
+from lib.converted_mcp_tools import (
+    execute_converted_tool as _exec,
+    list_converted_tools as _list_conv,
+)
+
+# Create stub schemas for converted MCP tools
+_MCP_TOOL_DEFS = [
+    {"name": "memory_read", "desc": "Read from CortexLLM memory (hot/warm/cold tiers)",
+     "params": {"type": "object", "properties": {
+         "tier": {"type": "string", "enum": ["hot", "warm", "cold"]},
+         "platform": {"type": "string"},
+         "category": {"type": "string"}
+     }, "required": ["tier"]}},
+    {"name": "memory_write", "desc": "Write to CortexLLM memory tier",
+     "params": {"type": "object", "properties": {
+         "tier": {"type": "string", "enum": ["hot", "warm", "cold"]},
+         "content": {"type": "string"},
+         "platform": {"type": "string"},
+         "category": {"type": "string"},
+         "role": {"type": "string", "enum": ["user", "assistant", "system"]}
+     }, "required": ["tier", "content"]}},
+    {"name": "memory_search", "desc": "Search across all CortexLLM memory tiers",
+     "params": {"type": "object", "properties": {
+         "query": {"type": "string"},
+         "limit": {"type": "integer"}
+     }, "required": ["query"]}},
+    {"name": "memory_clear", "desc": "Clear CortexLLM memory",
+     "params": {"type": "object", "properties": {
+         "tier": {"type": "string", "enum": ["hot", "warm", "all"]},
+         "platform": {"type": "string"}
+     }, "required": ["tier"]}},
+    {"name": "memory_search_semantic", "desc": "Semantic (BM25) search across CortexLLM memory",
+     "params": {"type": "object", "properties": {
+         "query": {"type": "string"},
+         "limit": {"type": "integer"},
+         "platform": {"type": "string"}
+     }, "required": ["query"]}},
+    {"name": "memory_graph_query", "desc": "Query the CortexLLM knowledge graph",
+     "params": {"type": "object", "properties": {
+         "action": {"type": "string", "enum": ["query", "extract", "path", "stats"]},
+         "entity": {"type": "string"},
+         "text": {"type": "string"},
+         "target": {"type": "string"},
+         "depth": {"type": "integer"},
+         "platform": {"type": "string"}
+     }, "required": ["action"]}},
+    {"name": "memory_ontology", "desc": "Ontology operations (categorize, taxonomy, gaps, tags)",
+     "params": {"type": "object", "properties": {
+         "action": {"type": "string", "enum": ["categorize", "taxonomy", "gaps", "tag", "tagmem", "discover", "stats"]},
+         "text": {"type": "string"}
+     }, "required": ["action"]}},
+]
+
+def _conv_tool(name):
+    """Wrap converted MCP tool as a handler."""
+    def handler(**kwargs):
+        result = _exec(name, kwargs)
+        if "error" in result:
+            return {"ok": False, "output": "", "error": result["error"]}
+        return {"ok": True, "output": str(result), "error": ""}
+    return handler
+
+for tdef in _MCP_TOOL_DEFS:
+    schema = {
+        "type": "function",
+        "function": {
+            "name": tdef["name"],
+            "description": tdef["desc"],
+            "parameters": tdef["params"],
+        }
+    }
+    register_tool(tdef["name"], schema, _conv_tool(tdef["name"]), priority=5)
+
+print(f"Registered {len(_MCP_TOOL_DEFS)} converted MCP tools")
 def _smoke() -> int:
     """Self-test: schema shape, run_command, query_llm, stubs."""
     fails = 0

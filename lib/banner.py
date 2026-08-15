@@ -55,7 +55,7 @@ LOGO = [
 ]
 LOGO_H = len(LOGO)
 LOGO_W = max(len(ln) for ln in LOGO)
-TAG_H = 2  # "CORTEXAGENT by <author>" + "Model: <name>"
+TAG_H = 2  # "CortexAgent by <author>" + "Model: <name>"
 
 
 def _pad(ln: str) -> str:
@@ -80,7 +80,7 @@ def _frames() -> list[str]:
             else:
                 rows.append(f"{' ' * LOGO_W}{CLEAR_EOL}")
         if i == LOGO_H:
-            rows.append(f"{DIM}CORTEXAGENT by {CFG.author}{RST}{CLEAR_EOL}")
+            rows.append(f"{DIM}CortexAgent by {CFG.author}{RST}{CLEAR_EOL}")
             rows.append(f"{DIM}Model: {_model_placeholder}{RST}{CLEAR_EOL}")
         else:
             rows.append(f"{' ' * (len(CFG.author) + 18)}{CLEAR_EOL}")
@@ -106,7 +106,7 @@ def print_banner(model: str = "", stream=None) -> None:
     stream.write("\n")
     for ln in LOGO:
         stream.write(f"  {ICE}{ln}{RST}\n")
-    stream.write(f"  {DIM}CORTEXAGENT by {CFG.author}{RST}\n")
+    stream.write(f"  {DIM}CortexAgent by {CFG.author}{RST}\n")
     stream.write(f"  {DIM}Model: {model or '?'}{RST}\n")
     stream.write("\n")
     stream.flush()
@@ -161,7 +161,7 @@ def _smoke() -> int:
     buf = io.StringIO()
     print_banner("Qwen-test", stream=buf)
     out = buf.getvalue()
-    assert "CORTEXAGENT" in out, "brand missing"
+    assert "CortexAgent" in out, "brand missing"
     assert "Model: Qwen-test" in out, "model line missing"
     assert "\033[?25" not in out, "static banner must not use cursor codes"
     print(f"  static: brand+model present, no cursor codes ({len(out.splitlines())} lines)")
@@ -178,7 +178,7 @@ def _smoke() -> int:
         assert CLEAR_EOL in f, "frame missing EOL clear (residue risk)"
     # Final frame lights every logo row + tagline.
     final = frames[-1]
-    assert ICE in final and "CORTEXAGENT by" in final, "final frame missing lit logo/tagline"
+    assert ICE in final and "CortexAgent by" in final, "final frame missing lit logo/tagline"
     # First frame is all blank rows (nothing lit yet).
     assert ICE not in frames[0], "first frame should light nothing"
     print(f"  frames: {len(frames)} uniform ({h[0]} lines each), no clear, EOL-cleared, lit-final")

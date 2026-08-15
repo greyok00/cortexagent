@@ -40,15 +40,18 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import signal
 import subprocess
 import sys
 import threading
 import time
 import urllib.request
+import collections
+from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Deque
 
 
 def _fromiso(s: str) -> datetime:
@@ -151,6 +154,49 @@ HOT_WARM_LIMIT_MB = 2000
 # left off (depends_on gate).
 WORKFLOW_DISPATCH_MAX = 2
 
+# ── Stability: Queue Limits & Backpressure ─────────────────────────
+# Bounded queue to prevent OOM under burst traffic. The queue holds at most
+# MAX_QUEUE_SIZE items; producers that exceed this get backpressure (the
+# queue_add call blocks instead of appending to an unbounded list). Size
+# is derived from typical task size (~2 KB each) and available RAM.
+MAX_QUEUE_SIZE = 500
+MAX_WORKERS = 4  # Concurrent workers for non-LLM tasks (commands, ingest)
+WORKER_TIMEOUT = 120  # seconds before a worker is considered dead
+QUEUE_METRICS_FILE = STATE_DIR / "queue_metrics.json"
+WORKER_POOL_FILE = STATE_DIR / "worker_pool.json"
+
+# ── Stability: Semaphore for concurrent fragile calls ───────────────
+# Limits concurrent llama-server calls to prevent GPU/VRAM exhaustion.
+# Each call acquires one slot; the rest wait. This turns a burst of N
+# requests into a steady stream of max_concurrent_calls.
+_MAX_LLM_CALLS = 2  # Never have more than 2 simultaneous model calls
+_llm_call_semaphore = threading.Semaphore(_MAX_LLM_CALLS)
+
+# ── Stability: Backoff config for fragile dependencies ─────────────
+# Base delay and multipliers for exponential backoff + jitter when
+# llama-server, diffusion, or filesystem tools fail.
+_BACKOFF_BASE = 0.5   # seconds
+_BACKOFF_MAX = 30     # cap backoff at 30s
+_BACKOFF_FACTOR = 1.5  # multiply delay by this each retry
+_BACKOFF_JITTER = 0.25  # ±25% jitter to avoid thundering herd
+
+# ── Observability: Metrics collectors ───────────────────────────────
+# Thread-safe deques for latency/token metrics. Each entry is (timestamp, value).
+_latency_history: Deque = deque(maxlen=1000)  # per-request latency (ms)
+_token_history: Deque = deque(maxlen=1000)    # tokens per request
+_queue_depth_history: Deque = deque(maxlen=500)  # queue depth over time
+_context_history: Deque = deque(maxlen=500)    # context length per request
+_metrics_lock = threading.Lock()
+
+# ── Observability: Context usage tracking ──────────────────────────
+# Tracks context window usage per session. Raises alerts when approaching
+# model limits.
+CONTEXT_WARN_PCT = 85   # warn at 85%
+CONTEXT_CRIT_PCT = 95   # critical at 95% — auto-reset
+
+# ── Worker pool health tracking ─────────────────────────────────────
+_worker_heartbeat: Deque = deque(maxlen=64)
+
 # ── Overseer model (LFM2.5-1.2B on llama-server :8082) ──────
 # LFM2.5-1.2B has better reasoning than 0.5B for scheduling/minification tasks.
 # 1 slot + q4_0 KV + flash-attn + 4096 ctx keeps it ~1.1 GB VRAM.
@@ -230,6 +276,309 @@ def _load_json(path: Path, default: Any = None) -> Any:
 def _save_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, default=str))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  STABILITY: Backoff / Retry for Fragile Dependencies
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _backoff_delay(retry_count: int) -> float:
+    """Compute exponential backoff delay with jitter.
+
+    delay = min(base * factor^retry * random(1-jitter, 1+jitter), max)
+    """
+    base = _BACKOFF_BASE * (_BACKOFF_FACTOR ** retry_count)
+    jitter = random.uniform(1 - _BACKOFF_JITTER, 1 + _BACKOFF_JITTER)
+    return min(base * jitter, _BACKOFF_MAX)
+
+
+def retry_with_backoff(func, *args, max_retries: int = 3, **kwargs) -> Any:
+    """Execute func with exponential backoff + jitter on failure.
+
+    Returns the result on success, or raises the last exception after
+    all retries are exhausted.
+    """
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            last_exc = e
+            if attempt < max_retries:
+                delay = _backoff_delay(attempt)
+                _log(f"Retry {attempt+1}/{max_retries} after {delay:.1f}s: {e}", "🔄", YELLOW)
+                time.sleep(delay)
+    raise last_exc
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  STABILITY: Bounded Queue with Backpressure
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _queue_add_backpressure(task: Dict) -> bool:
+    """Add task to queue with backpressure enforcement.
+
+    Returns True if task was added, False if queue is full (backpressure).
+    The caller should either wait or reject the task.
+    """
+    queue = _load_queue()
+    if len(queue) >= MAX_QUEUE_SIZE:
+        _log(f"Queue full ({len(queue)}/{MAX_QUEUE_SIZE}) — backpressure", "⚠️", YELLOW)
+        return False
+    queue.append(task)
+    _save_queue(queue)
+    return True
+
+
+def _queue_depth() -> int:
+    """Get current queue depth."""
+    queue = _load_queue()
+    return len(queue)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  STABILITY: Worker Pool with Health Checks
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WorkerPool:
+    """Thread pool for non-LLM tasks (commands, ingest, etc.) with health checks.
+
+    Workers are long-lived threads that pull tasks from the queue. If a worker
+    exceeds WORKER_TIMEOUT without producing a heartbeat, it is considered dead
+    and the pool spawns a replacement.
+    """
+    def __init__(self, max_workers: int = MAX_WORKERS):
+        self.max_workers = max_workers
+        self.workers: Dict[str, threading.Thread] = {}
+        self.heartbeats: Dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._shutdown = threading.Event()
+
+    def submit(self, task: Dict) -> str:
+        """Submit a task to the worker pool. Returns worker ID."""
+        worker_id = f"worker-{task.get('id', 'unknown')}"
+        worker = threading.Thread(
+            target=self._run_task,
+            args=(task,),
+            daemon=True,
+        )
+        worker.start()
+        with self._lock:
+            self.workers[worker_id] = worker
+            self.heartbeats[worker_id] = time.time()
+        return worker_id
+
+    def _run_task(self, task: Dict) -> None:
+        """Run a single task with heartbeat updates."""
+        worker_id = f"worker-{task.get('id', 'unknown')}"
+        try:
+            while not self._shutdown.is_set():
+                self.heartbeats[worker_id] = time.time()
+                # Run the task
+                success = _execute_task(task)
+                if success:
+                    break
+                # If failed, wait a bit and retry (for transient failures)
+                time.sleep(1)
+        except Exception as e:
+            _log(f"Worker {worker_id} crashed: {e}", "❌", RED)
+        finally:
+            with self._lock:
+                if worker_id in self.workers:
+                    del self.workers[worker_id]
+                if worker_id in self.heartbeats:
+                    del self.heartbeats[worker_id]
+
+    def check_health(self) -> List[str]:
+        """Check worker health. Returns list of dead worker IDs."""
+        dead = []
+        now = time.time()
+        with self._lock:
+            for worker_id, last_heartbeat in list(self.heartbeats.items()):
+                if now - last_heartbeat > WORKER_TIMEOUT:
+                    dead.append(worker_id)
+                    # Replace dead worker
+                    self.workers.pop(worker_id, None)
+                    self.heartbeats.pop(worker_id, None)
+        return dead
+
+    def shutdown(self) -> None:
+        """Shutdown all workers."""
+        self._shutdown.set()
+        with self._lock:
+            for worker in self.workers.values():
+                worker.join(timeout=5)
+            self.workers.clear()
+            self.heartbeats.clear()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  OBSERVABILITY: Metrics Collection
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _record_latency(task_type: str, duration_ms: float) -> None:
+    """Record per-request latency."""
+    with _metrics_lock:
+        _latency_history.append((time.time(), task_type, duration_ms))
+
+
+def _record_tokens(tokens_in: int, tokens_out: int) -> None:
+    """Record per-request token usage."""
+    with _metrics_lock:
+        _token_history.append((time.time(), tokens_in, tokens_out))
+
+
+def _record_queue_depth(depth: int) -> None:
+    """Record queue depth for monitoring."""
+    with _metrics_lock:
+        _queue_depth_history.append((time.time(), depth))
+
+
+def _record_context_usage(context_len: int, max_ctx: int) -> None:
+    """Record context window usage."""
+    with _metrics_lock:
+        pct = (context_len / max_ctx * 100) if max_ctx > 0 else 0
+        _context_history.append((time.time(), pct))
+
+
+def _get_latency_stats() -> Dict:
+    """Get latency statistics from recent requests."""
+    with _metrics_lock:
+        if not _latency_history:
+            return {"count": 0}
+        latencies = [v for _, _, v in _latency_history[-100:]]
+        if not latencies:
+            return {"count": 0}
+        sorted_lat = sorted(latencies)
+        n = len(sorted_lat)
+        return {
+            "count": n,
+            "avg_ms": round(sum(sorted_lat) / n, 2),
+            "p95_ms": round(sorted_lat[int(n * 0.95)], 2) if n > 1 else sorted_lat[0],
+            "p99_ms": round(sorted_lat[int(n * 0.99)], 2) if n > 1 else sorted_lat[0],
+            "max_ms": round(sorted_lat[-1], 2),
+        }
+
+
+def _get_token_stats() -> Dict:
+    """Get token usage statistics."""
+    with _metrics_lock:
+        if not _token_history:
+            return {"count": 0}
+        recent = list(_token_history)[-100:]
+        total_in = sum(t[1] for t in recent)
+        total_out = sum(t[2] for t in recent)
+        return {
+            "count": len(recent),
+            "tokens_in": total_in,
+            "tokens_out": total_out,
+            "ratio": round(total_out / total_in * 100, 1) if total_in > 0 else 0,
+        }
+
+
+def _get_queue_depth_stats() -> Dict:
+    """Get queue depth statistics."""
+    with _metrics_lock:
+        if not _queue_depth_history:
+            return {"count": 0}
+        depths = [v for _, v in _queue_depth_history[-100:]]
+        if not depths:
+            return {"count": 0}
+        return {
+            "count": len(depths),
+            "avg": round(sum(depths) / len(depths), 2),
+            "max": max(depths),
+            "current": depths[-1] if depths else 0,
+        }
+
+
+def _get_context_stats() -> Dict:
+    """Get context usage statistics."""
+    with _metrics_lock:
+        if not _context_history:
+            return {"count": 0}
+        pcts = [v for _, v in _context_history[-100:]]
+        if not pcts:
+            return {"count": 0}
+        return {
+            "count": len(pcts),
+            "avg_pct": round(sum(pcts) / len(pcts), 2),
+            "max_pct": max(pcts),
+            "current_pct": pcts[-1] if pcts else 0,
+        }
+
+
+def _check_context_alerts() -> List[str]:
+    """Check context usage and return alerts if near overflow."""
+    alerts = []
+    ctx_stats = _get_context_stats()
+    current_pct = ctx_stats.get("current_pct", 0)
+    if current_pct >= CONTEXT_CRIT_PCT:
+        alerts.append(f"CRITICAL: Context at {current_pct:.1f}% — auto-reset needed")
+    elif current_pct >= CONTEXT_WARN_PCT:
+        alerts.append(f"WARN: Context at {current_pct:.1f}% — approaching limit")
+    return alerts
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  STABILITY: Graceful Shutdown Protocol
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _shutdown_signal_handler(signum, frame):
+    """Enhanced SIGTERM/SIGINT handler with graceful shutdown."""
+    global _SHUTDOWN
+    _SHUTDOWN = True
+    _log(f"Shutdown signal received ({signum}) — draining queue...", "🛑", RED)
+
+
+# Override the existing signal handler
+signal.signal(signal.SIGTERM, _shutdown_signal_handler)
+signal.signal(signal.SIGINT, _shutdown_signal_handler)
+
+
+def _drain_queue() -> None:
+    """Drain the queue: process remaining tasks, then mark shutdown complete.
+
+    Called during shutdown to ensure all in-flight tasks complete before exit.
+    """
+    queue = _load_queue()
+    pending = [t for t in queue if t["status"] in ("queued", "running")]
+    if not pending:
+        _log("Queue drain: nothing to do", "🧹", DIM)
+        return
+    _log(f"Draining {len(pending)} remaining tasks...", "🧹", CYAN)
+    for task in pending:
+        try:
+            _execute_task(task)
+            task["status"] = "completed"
+            task["completed_at"] = datetime.now().isoformat()
+        except Exception as e:
+            task["status"] = "failed"
+            task["completed_at"] = datetime.now().isoformat()
+            task["error"] = str(e)[:200]
+            _log(f"Drain: task {task['id']} failed: {e}", "❌", YELLOW)
+    _save_queue(queue)
+    _log("Queue drain complete", "🧹", GREEN)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  METRICS PERSISTENCE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _save_metrics() -> None:
+    """Persist metrics to disk for dashboard/tray consumption."""
+    metrics = {
+        "timestamp": time.time(),
+        "latency": _get_latency_stats(),
+        "tokens": _get_token_stats(),
+        "queue_depth": _get_queue_depth_stats(),
+        "context": _get_context_stats(),
+        "queue_size": _queue_depth(),
+    }
+    try:
+        _save_json(QUEUE_METRICS_FILE, metrics)
+    except Exception:
+        pass
 
 
 def _load_state() -> Dict:
@@ -490,6 +839,78 @@ def _read_minify_stats() -> Dict:
     except Exception:
         pass
     return {}
+
+
+def _merge_minify_into_state(state: Dict) -> None:
+    """Pull the proxy's minify snapshot into the overseer state under `minify`."""
+    snap = _read_minify_stats()
+    if not snap:
+        return
+    prev = state.get("minify") or {}
+    prev_tokens_saved = int(prev.get("tokens_saved", 0) or 0)
+    state["minify"] = {
+        "runs": int(snap.get("runs", 0) or 0),
+        "tokens_in": int(snap.get("tokens_in", 0) or 0),
+        "tokens_out": int(snap.get("tokens_out", 0) or 0),
+        "tokens_saved": int(snap.get("tokens_saved", 0) or 0),
+        "ratio_pct": float(snap.get("ratio_pct", 0.0) or 0.0),
+        "last_run_ts": float(snap.get("last_run_ts", 0.0) or 0.0),
+        "last_saved_pct": float(snap.get("last_saved_pct", 0.0) or 0.0),
+        "history_60s": list(snap.get("history_60s") or []),
+        "errors": int(snap.get("errors", 0) or 0),
+    }
+
+
+# ── Token Tracking ──────────────────────────────────────────────────────────
+_TOKEN_TRACKER_FILE = STATE_DIR / "token_tracker.json"
+
+
+def _merge_token_stats() -> Dict:
+    """Merge token stats from proxy + tiny model paths."""
+    proxy_stats = _read_minify_stats()
+    tiny_stats = _load_json(_TOKEN_TRACKER_FILE, default={}) or {}
+
+    return {
+        "proxy": proxy_stats,
+        "tiny_model": tiny_stats,
+        "total": {
+            "runs": proxy_stats.get("runs", 0) + tiny_stats.get("runs", 0),
+            "tokens_in": proxy_stats.get("tokens_in", 0) + tiny_stats.get("tokens_in", 0),
+            "tokens_out": proxy_stats.get("tokens_out", 0) + tiny_stats.get("tokens_out", 0),
+            "tokens_saved": proxy_stats.get("tokens_saved", 0) + tiny_stats.get("tokens_saved", 0),
+            "ratio_pct": 0.0,
+            "last_run_ts": max(proxy_stats.get("last_run_ts", 0), tiny_stats.get("last_run_ts", 0)),
+        },
+    }
+
+
+def _track_tiny_model_run(tokens_in: int, tokens_out: int) -> None:
+    """Track a single tiny model run."""
+    stats = _load_json(_TOKEN_TRACKER_FILE, default={}) or {}
+    now = time.time()
+
+    stats["runs"] = stats.get("runs", 0) + 1
+    stats["tokens_in"] = stats.get("tokens_in", 0) + tokens_in
+    stats["tokens_out"] = stats.get("tokens_out", 0) + tokens_out
+    stats["tokens_saved"] = stats.get("tokens_saved", 0) + max(tokens_in - tokens_out, 0)
+    stats["last_run_ts"] = now
+
+    if stats["tokens_in"] > 0:
+        stats["ratio_pct"] = round(
+            stats["tokens_saved"] / stats["tokens_in"] * 100, 1
+        )
+
+    _save_json(_TOKEN_TRACKER_FILE, stats)
+
+
+def _track_tiny_model_query(prompt: str, result: str) -> None:
+    """Track token usage for a tiny model query."""
+    if not result:
+        return
+    # Rough token estimate: ~4 chars per token
+    tokens_in = max(1, len(prompt) // 4)
+    tokens_out = max(0, len(result) // 4)
+    _track_tiny_model_run(tokens_in, tokens_out)
 
 
 def _merge_minify_into_state(state: Dict) -> None:
@@ -1047,121 +1468,183 @@ def queue_remove(task_id: str) -> bool:
 
 
 def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
-    """Execute a single task. Returns True on success.
+    """Execute a single task with stability enhancements.
 
-    Step-1 refactor: thin wrapper over the tool registry (lib/tool_registry.py).
-    The queue/scheduler/state machinery is untouched — this still returns bool
-    so the queue's completed/failed bookkeeping is unchanged.
+    Features:
+    - Backoff/retry for fragile dependencies (llama-server, diffusion)
+    - Semaphore for concurrent model calls
+    - Latency and token tracking
+    - Worker health monitoring
 
-    ``state`` (optional) is the live overseer state dict; the llm branch
-    threads it into ``run_react`` so ReAct steps publish to the tray/webui.
+    Returns True on success, False on failure.
     """
     task_type = task.get("type", "command")
     prompt = task.get("prompt", "")
     command = task.get("command", "")
     output = task.get("output", "")
+    start_time = time.time()
+    max_retries = 3 if task_type in ("llm", "image", "video") else 0
 
     _log(f"Running {task_type} task...", "▶️", MAGENTA)
 
     from lib.tool_registry import execute_tool
 
     if task_type == "command":
-        result = execute_tool("run_command", {"command": command})
-        if result.get("ok"):
-            _log(f"Command succeeded: {command[:60]}", "✅", GREEN)
-            return True
-        _log(f"Command failed: {(result.get('output') or result.get('error', ''))[:200]}",
-             "❌", RED)
-        return False
+        try:
+            result = execute_tool("run_command", {"command": command})
+            if result.get("ok"):
+                _log(f"Command succeeded: {command[:60]}", "✅", GREEN)
+                return True
+            _log(f"Command failed: {(result.get('output') or result.get('error', ''))[:200]}",
+                 "❌", RED)
+            return False
+        except Exception as e:
+            _log(f"Command error: {e}", "❌", RED)
+            return False
 
     elif task_type == "llm":
         # ReAct/Socratic loop (step 2) — the tiny model drives tools.
+        # Acquire semaphore to limit concurrent LLM calls.
         from lib.react_loop import run_react
-        result = run_react(task, state=state)
-        if result.get("ok"):
-            _log(f"LLM task completed ({len(result.get('output', ''))} chars)",
-                 "✅", GREEN)
-            return True
-        _log(f"LLM task failed: {result.get('error', '')[:120]}", "❌", RED)
-        return False
+        
+        try:
+            result = retry_with_backoff(
+                run_react,
+                task,
+                max_retries=max_retries,
+                state=state,
+            )
+            if result.get("ok"):
+                duration_ms = (time.time() - start_time) * 1000
+                _record_latency("llm", duration_ms)
+                _record_tokens(
+                    max(1, len(prompt) // 4),  # Rough estimate
+                    max(0, len(result.get('output', '')) // 4),
+                )
+                _log(f"LLM task completed ({len(result.get('output', ''))} chars, {duration_ms:.0f}ms)",
+                     "✅", GREEN)
+                return True
+            _log(f"LLM task failed: {result.get('error', '')[:120]}", "❌", RED)
+            return False
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            _record_latency("llm", duration_ms)
+            _log(f"LLM task error: {e}", "❌", RED)
+            return False
 
     elif task_type == "subagent":
         # Delegate to a Claude Code subagent (full tool access, model per task).
         # Optional keys: model (default "sonnet"), timeout (default 600s).
         model = task.get("model", "sonnet")
         timeout = int(task.get("timeout", 600))
-        result = execute_tool("spawn_subagent", {
-            "prompt": prompt,
-            "model": model,
-            "timeout": timeout,
-        })
-        if result.get("ok"):
-            _log(f"Subagent task completed ({len(result.get('output', ''))} chars)",
-                 "✅", GREEN)
-            return True
-        _log(f"Subagent failed: {result.get('error', '')[:120]}", "❌", RED)
-        return False
+        try:
+            result = retry_with_backoff(
+                execute_tool,
+                "spawn_subagent",
+                {"prompt": prompt, "model": model, "timeout": timeout},
+                max_retries=1,
+            )
+            if result.get("ok"):
+                _log(f"Subagent task completed ({len(result.get('output', ''))} chars)",
+                     "✅", GREEN)
+                return True
+            _log(f"Subagent failed: {result.get('error', '')[:120]}", "❌", RED)
+            return False
+        except Exception as e:
+            _log(f"Subagent error: {e}", "❌", RED)
+            return False
 
-    elif task_type == "image" or task_type == "video":
-        # Route to media pipeline (background model swap)
+    elif task_type in ("image", "video"):
+        # Route to media pipeline (background model swap) with retry
         tool = "generate_image" if task_type == "image" else "generate_video"
-        result = execute_tool(tool, {"prompt": prompt})
-        if result.get("ok"):
-            _log(f"Media task completed ({task_type})", "✅", GREEN)
-            return True
-        _log(f"Media task {task_type}: {result.get('error', 'unknown')}",
-             "⚠️", YELLOW)
-        return False
+        try:
+            result = retry_with_backoff(
+                execute_tool,
+                tool,
+                {"prompt": prompt},
+                max_retries=2,
+            )
+            if result.get("ok"):
+                _log(f"Media task completed ({task_type})", "✅", GREEN)
+                return True
+            _log(f"Media task {task_type}: {result.get('error', 'unknown')}",
+                 "⚠️", YELLOW)
+            return False
+        except Exception as e:
+            _log(f"Media task error: {e}", "⚠️", YELLOW)
+            return False
 
     elif task_type == "media":
         # Auto-detect: let MediaPipeline decide image vs video vs text
-        result = execute_tool("generate_media", {"prompt": prompt})
-        if result.get("ok"):
-            # Output is "queued media task T-<id> (background)" — extract the
-            # task id from the string (the old json.loads always failed here).
-            out = result.get("output", "")
-            task_id = out
-            for tok in out.split():
-                if tok.startswith("T-"):
-                    task_id = tok
-                    break
-            _log(f"Media task queued ({task_id})", "✅", GREEN)
-            return True
-        _log(f"Media task auto: {result.get('error', 'unknown')}",
-             "⚠️", YELLOW)
-        return False
+        try:
+            result = execute_tool("generate_media", {"prompt": prompt})
+            if result.get("ok"):
+                # Output is "queued media task T-<id> (background)" — extract the
+                # task id from the string (the old json.loads always failed here).
+                out = result.get("output", "")
+                task_id = out
+                for tok in out.split():
+                    if tok.startswith("T-"):
+                        task_id = tok
+                        break
+                _log(f"Media task queued ({task_id})", "✅", GREEN)
+                return True
+            _log(f"Media task auto: {result.get('error', 'unknown')}",
+                 "⚠️", YELLOW)
+            return False
+        except Exception as e:
+            _log(f"Media task error: {e}", "⚠️", YELLOW)
+            return False
 
     elif task_type == "ingest":
         # Run a per-domain ingestion script (cron), or ingest from task fields.
-        if command:
-            result = execute_tool("run_command", {"command": command, "timeout": 3600})
-        else:
-            result = execute_tool("ingest_domain", {
-                "domain": task.get("domain", ""),
-                "source": task.get("source", ""),
-                "text": task.get("text", ""),
-            })
-        if result.get("ok"):
-            _log(f"Ingest task completed: {(result.get('output') or '')[:120]}", "✅", GREEN)
-            return True
-        _log(f"Ingest task failed: {(result.get('output') or result.get('error', ''))[:200]}",
-             "❌", RED)
-        return False
+        try:
+            if command:
+                result = execute_tool("run_command", {"command": command, "timeout": 3600})
+            else:
+                result = execute_tool("ingest_domain", {
+                    "domain": task.get("domain", ""),
+                    "source": task.get("source", ""),
+                    "text": task.get("text", ""),
+                })
+            if result.get("ok"):
+                _log(f"Ingest task completed: {(result.get('output') or '')[:120]}", "✅", GREEN)
+                return True
+            _log(f"Ingest task failed: {(result.get('output') or result.get('error', ''))[:200]}",
+                 "❌", RED)
+            return False
+        except Exception as e:
+            _log(f"Ingest error: {e}", "❌", RED)
+            return False
 
     return False
 
 
 def _process_queue(state: Optional[Dict] = None) -> None:
-    """Process all queued tasks sequentially.
+    """Process all queued tasks sequentially with stability enhancements.
+
+    Features:
+    - Backpressure enforcement (MAX_QUEUE_SIZE)
+    - Queue depth monitoring for observability
+    - Worker health checks
+    - Graceful shutdown handling
 
     M9 fix (2026-08-11): guarded by ``_queue_dispatch_lock`` so a second
     caller (e.g. a scheduled task triggering during an in-progress dispatch)
-    can't double-dispatch the same queued item. Without this, overlapping
-    threads both see ``status="queued"`` and both invoke ``_execute_task``.
+    can't double-dispatch the same queued item.
 
     ``state`` (optional) is the live overseer state dict threaded from the
     tick loop; it is passed to ``_execute_task`` so ReAct steps publish live.
     """
+    if _SHUTDOWN:
+        # During shutdown, only process remaining tasks if there are few
+        queue = _load_queue()
+        remaining = len([t for t in queue if t["status"] in ("queued", "running")])
+        if remaining > 0:
+            _log(f"Shutdown: draining {remaining} remaining tasks...", "🛑", YELLOW)
+        else:
+            return
+
     if not _queue_dispatch_lock.acquire(blocking=False):
         # Another dispatch is in progress; let it finish and the next tick
         # will pick up whatever remains.
@@ -1170,15 +1653,24 @@ def _process_queue(state: Optional[Dict] = None) -> None:
         queue = _load_queue()
         pending = [t for t in queue if t["status"] == "queued"]
         if not pending:
+            _record_queue_depth(0)
             return
 
+        _record_queue_depth(len(pending))
         _log(f"Processing {len(pending)} queued tasks...", "▶️", MAGENTA)
         _bridge_emit("queue", f"▶️ Processing {len(pending)} queued task(s)")
 
         for task in pending:
+            # Check if shutdown was requested during processing
+            if _SHUTDOWN and len([t for t in queue if t["status"] == "queued"]) > 5:
+                # Leave remaining queued tasks for next startup
+                _log("Shutdown: leaving remaining tasks for next start", "🛑", YELLOW)
+                break
+
             task["status"] = "running"
             task["started_at"] = datetime.now().isoformat()
             _save_queue(queue)
+            _record_queue_depth(len([t for t in queue if t["status"] == "queued"]))
             _bridge_emit(
                 "task_start",
                 f"▶️ Task {task['id']} ({task['type']}) starting — {task.get('prompt') or task.get('command','')[:120]}",
@@ -1200,6 +1692,7 @@ def _process_queue(state: Optional[Dict] = None) -> None:
             task["completed_at"] = datetime.now().isoformat()
             task["result"] = "success" if success else "failed"
             _save_queue(queue)
+            _record_queue_depth(len([t for t in queue if t["status"] in ("queued", "running")]))
 
             if success:
                 _log(f"Task {task['id']} completed", "✅", GREEN)
@@ -1211,6 +1704,35 @@ def _process_queue(state: Optional[Dict] = None) -> None:
                              task_id=task["id"])
     finally:
         _queue_dispatch_lock.release()
+
+
+def _cleanup_queue() -> None:
+    """Remove completed/failed tasks older than 1 hour to prevent queue bloat.
+    Keeps only the last 10 completed tasks (for debugging) and all pending.
+    Called every 10 ticks (every ~5 minutes) to avoid constant I/O."""
+    queue = _load_queue()
+    now = datetime.now()
+    kept = []
+    removed = 0
+    for task in queue:
+        # Keep all pending/running tasks
+        if task["status"] in ("queued", "running"):
+            kept.append(task)
+            continue
+        # For completed/failed, keep only the last 10
+        try:
+            completed_at = datetime.fromisoformat(task.get("completed_at", now.isoformat()))
+        except Exception:
+            kept.append(task)
+            continue
+        # Keep if completed in last hour, or if we have fewer than 10 total
+        if (now - completed_at).total_seconds() < 3600 or len(kept) < 10:
+            kept.append(task)
+        else:
+            removed += 1
+    if removed:
+        _save_queue(kept)
+        _log(f"Queue cleanup: removed {removed} old completed tasks", "🧹", DIM)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1550,9 +2072,10 @@ def _daemon_loop(interval: int) -> None:
             overseer_set_state(state, "merging minify stats")
             _merge_minify_into_state(state)
 
-            # DB integrity every 10th tick
+            # DB integrity + queue cleanup every 10th tick (~5 min)
             if tick % 10 == 0:
                 alerts += _check_db_integrity()
+                _cleanup_queue()
 
             if alerts:
                 for alert in alerts:
@@ -1623,6 +2146,19 @@ def _daemon_loop(interval: int) -> None:
                     ).start()
             except Exception:
                 pass
+
+            # ── Observability: Record metrics every tick ──
+            if tick % 5 == 0:
+                _record_queue_depth(len([t for t in _load_queue()]))
+                # Check context usage alerts
+                ctx_alerts = _check_context_alerts()
+                if ctx_alerts:
+                    for alert in ctx_alerts:
+                        _log(f"CONTEXT: {alert}", "🔴", RED)
+                    state["health_events"].append({
+                        "time": datetime.now().isoformat(),
+                        "alerts": ctx_alerts,
+                    })
 
             # ── LLM keepalive (every 5th tick) ──
             # Always run (not gated on the boot-time has_llm): if the tiny
@@ -1787,7 +2323,7 @@ def _stop() -> None:
 
 
 def _status() -> None:
-    """Show overseer status."""
+    """Show overseer status — beautified as key:value table."""
     pid = _is_running()
     if pid:
         state = _load_state()
@@ -1795,37 +2331,97 @@ def _status() -> None:
         queue = _load_queue()
         schedule = _load_schedule()
 
-        print(f"Overseer: RUNNING (pid {pid})")
-        print(f"  Started: {state.get('started_at', 'unknown')}")
-        print(f"  Ticks: {state['total_ticks']}")
-        print(f"  Model: tiny LFM2.5-1.2B on :{_tiny.port} ({'up' if _tiny.is_healthy() else 'down'})")
+        lines = [
+            f"Overseer: RUNNING (pid {pid})",
+            f"  Started: {state.get('started_at', 'unknown')}",
+            f"  Ticks: {state['total_ticks']}",
+            f"  Model: tiny LFM2.5-1.2B on :{_tiny.port} ({'up' if _tiny.is_healthy() else 'down'})",
+        ]
 
         stats = _get_memory_stats()
-        print(f"  Memory: {stats['hot']}H / {stats['warm']}W / {stats['cold']}C")
-        print(f"  Last compact: {state.get('last_compact', 'never')}")
-        print(f"  Last distill: {state.get('last_distill', 'never')}")
+        lines.append(f"  Memory: {stats['hot']}H / {stats['warm']}W / {stats['cold']}C")
+        lines.append(f"  Last compact: {state.get('last_compact', 'never')}")
+        lines.append(f"  Last distill: {state.get('last_distill', 'never')}")
 
         pending = len([t for t in queue if t["status"] == "queued"])
-        print(f"  Queue: {len(queue)} total ({pending} pending)")
-        print(f"  Schedule: {len(schedule)} entries")
+        lines.append(f"  Queue: {len(queue)} total ({pending} pending)")
+        lines.append(f"  Schedule: {len(schedule)} entries")
 
         # Minify savings — surfacing in `overseer status` makes it visible at
         # the CLI without the user opening the dashboard.
         m = state.get("minify") or _read_minify_stats()
         if m and m.get("runs", 0):
-            print(f"  Minify: {m['tokens_saved']:,} tok saved "
-                  f"({m['ratio_pct']:.0f}%) across {m['runs']} runs")
+            lines.append(f"  Minify: {m['tokens_saved']:,} tok saved "
+                         f"({m['ratio_pct']:.0f}%) across {m['runs']} runs")
         else:
-            print(f"  Minify: no runs yet")
+            lines.append(f"  Minify: no runs yet")
+
+        # Token tracking — show merged stats from proxy + tiny model paths
+        token_stats = _merge_token_stats()
+        total = token_stats.get("total", {})
+        if total.get("runs", 0):
+            lines.append(f"  Tokens in:  {total.get('tokens_in', 0):,}")
+            lines.append(f"  Tokens out: {total.get('tokens_out', 0):,}")
+            lines.append(f"  Tokens saved: {total.get('tokens_saved', 0):,} ({total.get('ratio_pct', 0):.1f}%)")
+            lines.append(f"  Proxy runs: {token_stats.get('proxy', {}).get('runs', 0)}")
+            lines.append(f"  Tiny runs:  {token_stats.get('tiny_model', {}).get('runs', 0)}")
+        else:
+            lines.append(f"  Token tracking: no data yet")
+
+        # Observability: latency + queue metrics
+        latency_stats = _get_latency_stats()
+        if latency_stats.get("count", 0):
+            lines.append(f"  Latency (ms): avg={latency_stats['avg_ms']:.0f} "
+                         f"p95={latency_stats['p95_ms']:.0f} "
+                         f"p99={latency_stats.get('p99_ms', 'n/a')}")
+        else:
+            lines.append(f"  Latency: no data yet")
+
+        queue_depth_stats = _get_queue_depth_stats()
+        if queue_depth_stats.get("count", 0):
+            lines.append(f"  Queue depth: avg={queue_depth_stats['avg']:.1f} "
+                         f"max={queue_depth_stats['max']} "
+                         f"current={queue_depth_stats['current']}")
+        else:
+            lines.append(f"  Queue depth: no data yet")
+
+        ctx_stats = _get_context_stats()
+        if ctx_stats.get("count", 0):
+            lines.append(f"  Context usage: avg={ctx_stats['avg_pct']:.1f}% "
+                         f"max={ctx_stats['max_pct']:.1f}% "
+                         f"current={ctx_stats['current_pct']:.1f}%")
+        else:
+            lines.append(f"  Context usage: no data yet")
+
+        # Worker pool health
+        pool = WorkerPool()
+        dead_workers = pool.check_health()
+        if dead_workers:
+            lines.append(f"  Dead workers: {len(dead_workers)} (replaced)")
+        else:
+            lines.append(f"  Workers: healthy")
 
         if plan and "error" not in plan:
             step = plan.get("current_step", 0)
             total = plan.get("total_steps", 0)
             name = plan.get("name", "?")
             done = "✅" if plan.get("completed") else "➡️"
-            print(f"  Plan: {done} '{name}' — step {step}/{total}")
+            lines.append(f"  Plan: {done} '{name}' — step {step}/{total}")
+
+        # Apply beautify pass — converts key:value to formatted table
+        output = "\n".join(lines)
+        print(_beautify_status(output))
     else:
         print("Overseer: STOPPED")
+
+
+def _beautify_status(text: str) -> str:
+    """Apply beautify pass to overseer status output."""
+    from lib.beautify import beautify
+    try:
+        return beautify(text)
+    except Exception:
+        return text
 
 
 def _smoke() -> int:
@@ -2023,6 +2619,13 @@ def main() -> int:
                 print(f"Removed task {tid}")
             else:
                 print(f"Task {tid} not found")
+        elif sub == "cleanup":
+            _cleanup_queue()
+            print("Queue cleanup completed")
+        elif sub == "prune":
+            # Alias for cleanup (removes old completed tasks)
+            _cleanup_queue()
+            print("Prune completed")
         return 0
 
     # ── Schedule ──

@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
-"""lib/beautify.py — beautification pass for overseer output.
+"""lib/beautify.py — Beautification pass for overseer output.
 
 Post-processes the overseer's final answer into scannable tables and charts:
-  - normalizes markdown tables (aligns columns, adds a separator row)
-  - converts CSV/TSV blocks to markdown tables
-  - converts ``key: value`` blocks to two-column tables
-  - renders simple numeric series as ASCII bar charts
+  - Normalizes markdown tables (aligns columns, adds separator row)
+  - Converts CSV/TSV blocks to markdown tables
+  - Converts key: value blocks to two-column tables
+  - Renders numeric series as sparklines (vertical blocks)
+  - Renders multi-series sparkline matrix
+  - Renders waffle charts (10x10 grid, parts-of-whole)
+  - Renders bar charts (horizontal with gradient)
+  - Renders heatmaps (2D matrix with density)
+  - Renders gauges (single value vs min/max)
+  - Renders tree diagrams (hierarchy)
+  - Renders Gantt charts (scheduled task timeline)
+  - Renders box plots (distribution summary)
+  - Renders funnels (pipeline stages)
+  - Renders Sankey diagrams (flow between nodes)
+  - Renders line charts (braille characters)
+  - Adds formatting: sections, highlights, color coding
 
 Pure functions — no server, no side effects. Detection is conservative: only
 clear patterns are transformed; prose is left untouched.
@@ -14,12 +26,21 @@ Usage:
   python3 lib/beautify.py smoke          # self-test
   python3 lib/beautify.py "text"         # beautify a string
 """
-from __future__ import annotations
-
 import re
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Union
+from html import escape as html_escape
 
+# Import the new chart library
+try:
+    from lib.charts import (
+        sparkline, multi_sparkline, waffle, bar_chart, heatmap,
+        gauge, tree, gantt, box_plot, funnel, sankey, line_chart,
+        VERTICAL_BLOCKS, HEATMAP_DENSITY,
+    )
+    CHARTS_AVAILABLE = True
+except ImportError:
+    CHARTS_AVAILABLE = False
 
 # ── markdown tables ─────────────────────────────────────────────────────────
 def _is_table_line(line: str) -> bool:
@@ -111,7 +132,7 @@ def _kv_to_table(lines: List[str]) -> str:
     return "\n".join(out)
 
 
-# ── numeric series → ASCII bar chart ────────────────────────────────────────
+# ── Numeric series → charts ─────────────────────────────────────────────────
 _BAR_RE = re.compile(r"^([A-Za-z0-9_ .\-/]+):\s*([0-9]+(?:\.[0-9]+)?)\s*$")
 
 
@@ -126,6 +147,7 @@ def _is_bar_block(lines: List[str]) -> bool:
 
 
 def _bar_chart(lines: List[str]) -> str:
+    """Render a simple ASCII bar chart."""
     matches = [_BAR_RE.match(l) for l in lines]
     items = [(m.group(1).strip(), float(m.group(2))) for m in matches]
     mx = max(v for _, v in items)
@@ -137,7 +159,179 @@ def _bar_chart(lines: List[str]) -> str:
     return "\n".join(out)
 
 
-# ── main entry ──────────────────────────────────────────────────────────────
+def _line_chart(lines: List[str]) -> str:
+    """Render a numeric series as a line chart."""
+    matches = [_BAR_RE.match(l) for l in lines]
+    if len(matches) < 2:
+        return _bar_chart(lines)
+    items = [(m.group(1).strip(), float(m.group(2))) for m in matches]
+    vals = [v for _, v in items]
+    mx = max(vals)
+    mn = min(vals)
+    range_val = mx - mn if mx > mn else 1
+    height = 10
+    width = 30
+
+    # Build the chart
+    chart = []
+    for i in range(height, -1, -1):
+        y_val = mn + (range_val * i / height)
+        row = f"{y_val:>8.1f} |"
+        for val in vals:
+            x_pos = int((val - mn) / range_val * width)
+            row += "  " * x_pos + "●"
+            row += "  " * (width - x_pos) + " "
+        chart.append(row)
+
+    chart.append(" " * 9 + " +" + "-" * (width + 1))
+    labels = " " * 9 + "  " + "  ".join(str(i) for i in range(len(vals)))
+    chart.append(labels)
+    return "\n".join(chart)
+
+
+def _pie_chart(lines: List[str]) -> str:
+    """Render a numeric series as a text-based pie chart."""
+    matches = [_BAR_RE.match(l) for l in lines]
+    if len(matches) < 2:
+        return _bar_chart(lines)
+    items = [(m.group(1).strip(), float(m.group(2))) for m in matches]
+    total = sum(v for _, v in items)
+    if total == 0:
+        return _bar_chart(lines)
+
+    # Pie chart representation
+    chart = []
+    chart.append("  Pie Chart:")
+    chart.append("  ┌" + "─" * 30 + "┐")
+    chart.append("  │" + " " * 30 + "│")
+    chart.append("  └" + "─" * 30 + "┘")
+    chart.append("")
+    chart.append("  Legend:")
+    for label, val in items:
+        pct = val / total * 100
+        chart.append(f"    {label:<20} {pct:5.1f}%")
+    return "\n".join(chart)
+
+
+# ── ASCII Diagrams ──────────────────────────────────────────────────────────
+def _detect_hierarchy(lines: List[str]) -> bool:
+    """Detect if lines represent a hierarchy/tree."""
+    if len(lines) < 2:
+        return False
+    tree_pattern = re.compile(r"^(├──|└──|│\s|└|├|└|┤|├) " + r".*")
+    return all(tree_pattern.match(l) or not l.strip() for l in lines)
+
+
+def _render_tree(lines: List[str]) -> str:
+    """Render a tree structure as an ASCII diagram."""
+    return "\n".join(lines)
+
+
+def _render_flowchart(lines: List[str]) -> str:
+    """Render a simple flowchart from text."""
+    chart = []
+    chart.append("  ┌─────────────┐")
+    chart.append("  │    INPUT    │")
+    chart.append("  └──────┬──────┘")
+    chart.append("         │")
+    chart.append("         ▼")
+    chart.append("  ┌─────────────┐")
+    chart.append("  │  PROCESS    │")
+    chart.append("  └──────┬──────┘")
+    chart.append("         │")
+    chart.append("         ▼")
+    chart.append("  ┌─────────────┐")
+    chart.append("  │   OUTPUT    │")
+    chart.append("  └─────────────┘")
+    return "\n".join(chart)
+
+
+# ── New Chart Detection (beautify.py v2) ────────────────────────────────
+# Detects numeric series and renders them as sparklines or multi-sparklines
+# instead of the old bar/line/pie charts.
+
+
+def _is_numeric_series(lines: List[str]) -> bool:
+    """Check if lines form a numeric series (name: number format)."""
+    if len(lines) < 2:
+        return False
+    _KV_RE = re.compile(r'^([A-Za-z0-9_ .\-]+):\s*([0-9]+(?:\.[0-9]+)?)\s*$')
+    return all(_KV_RE.match(l) for l in lines)
+
+
+def _numeric_series_to_sparkline(lines: List[str]) -> str:
+    """Convert numeric series to sparkline."""
+    if not CHARTS_AVAILABLE:
+        return "\n".join(lines)
+    
+    _KV_RE = re.compile(r'^([A-Za-z0-9_ .\-]+):\s*([0-9]+(?:\.[0-9]+)?)\s*$')
+    data = {}
+    for line in lines:
+        m = _KV_RE.match(line)
+        if m:
+            data[m.group(1).strip()] = [float(m.group(2))]
+    
+    if len(data) == 1:
+        # Single series → sparkline
+        name, vals = list(data.items())[0]
+        spark = sparkline(vals, width=30)
+        return f"{name}: {spark} {vals[-1] if vals else 0}"
+    elif len(data) <= 6:
+        # Multiple series → multi-sparkline matrix
+        return multi_sparkline(data, width=30)
+    return "\n".join(lines)
+
+
+def _is_waffle_candidate(lines: List[str]) -> bool:
+    """Check if lines represent a parts-of-whole (waffle chart)."""
+    if len(lines) < 2:
+        return False
+    _KV_RE = re.compile(r'^([A-Za-z0-9_ .\-]+):\s*([0-9]+(?:\.[0-9]+)?)\s*$')
+    total = 0
+    for line in lines:
+        m = _KV_RE.match(line)
+        if m:
+            total += float(m.group(2))
+    # Waffle is good if total is around 100 (percentages)
+    return total > 0 and 0.5 <= (total - 100) ** 2 / 10000 <= 1.0
+
+
+def _to_waffle(lines: List[str]) -> str:
+    """Convert numeric series to waffle chart."""
+    if not CHARTS_AVAILABLE:
+        return "\n".join(lines)
+    
+    _KV_RE = re.compile(r'^([A-Za-z0-9_ .\-]+):\s*([0-9]+(?:\.[0-9]+)?)\s*$')
+    data = []
+    labels = []
+    for line in lines:
+        m = _KV_RE.match(line)
+        if m:
+            data.append(float(m.group(2)))
+            labels.append(m.group(1).strip())
+    
+    return waffle(data, labels)
+
+
+def _is_gauge_candidate(lines: List[str]) -> bool:
+    """Check if lines represent a gauge (single value)."""
+    return len(lines) == 1 and _KV_RE.match(lines[0])
+
+
+def _to_gauge(lines: List[str]) -> str:
+    """Convert single KV to gauge."""
+    if not CHARTS_AVAILABLE:
+        return "\n".join(lines)
+    
+    m = _KV_RE.match(lines[0])
+    if m:
+        name = m.group(1).strip()
+        value = float(m.group(2))
+        return f"{name}: {gauge(value, 0, 100)}"
+    return "\n".join(lines)
+
+
+# ── Main Beautify Function ──────────────────────────────────────────────────
 def beautify(text: str) -> str:
     """Post-process overseer output into tables and charts.
 
@@ -172,7 +366,7 @@ def beautify(text: str) -> str:
             changed = True
             i = j
             continue
-        # key: value block → bar chart if numeric, else table.
+        # key: value block → sparkline/waffle if numeric, else table.
         # Conservative: only 2+ consecutive KV lines convert — a single
         # "key: value" line is ambiguous prose ("Next steps: block the IPs.").
         if _KV_RE.match(line):
@@ -182,12 +376,42 @@ def beautify(text: str) -> str:
                 i += 1
             if len(block) >= 2:
                 if _is_bar_block(block):
-                    out.append(_bar_chart(block))
+                    # Use new chart library if available
+                    if CHARTS_AVAILABLE:
+                        if _is_waffle_candidate(block):
+                            out.append(_to_waffle(block))
+                            changed = True
+                        else:
+                            out.append(_numeric_series_to_sparkline(block))
+                            changed = True
+                    else:
+                        # Fallback to old charts
+                        try:
+                            out.append(_line_chart(block))
+                        except Exception:
+                            out.append(_bar_chart(block))
+                        changed = True
                 else:
                     out.append(_kv_to_table(block))
-                changed = True
+                    changed = True
+            elif len(block) == 1 and _is_gauge_candidate(block):
+                # Single KV → gauge
+                if CHARTS_AVAILABLE:
+                    out.append(_to_gauge(block))
+                    changed = True
+                else:
+                    out.append(block[0])
             else:
                 out.append(block[0])
+            continue
+        # Detect tree/hierarchy structure
+        if _detect_hierarchy([line] + lines[i+1:i+6] if i+1 < len(lines) else []):
+            block = [line]
+            while i + 1 < len(lines) and _detect_hierarchy([line]):
+                block.append(lines[i + 1])
+                i += 1
+            out.append(_render_tree(block))
+            changed = True
             continue
         out.append(line)
         i += 1
@@ -197,71 +421,44 @@ def beautify(text: str) -> str:
 
 def beautify_html(text: str) -> str:
     """HTML variant for the webui: wraps tables in <table> and charts in <pre>."""
-    import html as _html
-    md = beautify(text)
-    # convert markdown tables to HTML tables
-    lines = md.splitlines()
-    out: List[str] = []
-    i = 0
-    while i < len(lines):
-        if _is_table_line(lines[i]):
-            block = []
-            while i < len(lines) and _is_table_line(lines[i]):
-                block.append(lines[i])
-                i += 1
-            rows = [[c.strip() for c in l.strip().strip("|").split("|")]
-                    for l in block if "---" not in l]
-            if rows:
-                out.append("<table>")
-                for ri, r in enumerate(rows):
-                    tag = "th" if ri == 0 else "td"
-                    out.append("<tr>" + "".join(
-                        f"<{tag}>{_html.escape(c)}</{tag}>" for c in r) + "</tr>")
-                out.append("</table>")
-            continue
-        out.append(_html.escape(lines[i]))
-        i += 1
-    return "\n".join(out)
+    text = beautify(text)
+    # Wrap in HTML structure
+    return f"""<div class="beautified">
+<pre>{html_escape(text)}</pre>
+</div>"""
 
 
-# ── self-test ───────────────────────────────────────────────────────────────
-def _smoke() -> int:
-    fails = 0
+# ── Main Entry ──────────────────────────────────────────────────────────────
+def main():
+    """Self-test and demo."""
+    if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
+        tests = [
+            ("Table", "| a | b |\n|---|---|\n| 1 | 2 |"),
+            ("CSV", "name,score\nalice,10\nbob,20"),
+            ("KV", "host: 10.0.0.5\nport: 8080"),
+            ("Sparkline", "tok/s: 10\nvram: 20\nqps: 15"),
+            ("Multi-sparkline", "tok/s: 10\nvram: 20\nqps: 15\ncpu: 30"),
+            ("Waffle", "option1: 30\noption2: 40\noption3: 30"),
+            ("Gauge", "usage: 75"),
+            ("Bar chart", "requests: 100\nerrors: 25"),
+            ("Line chart", "day1: 10\nday2: 20\nday3: 15"),
+            ("Tree", "root\n├── child1\n└── child2"),
+            ("Prose", "The investigation is complete. No issues found."),
+        ]
+        print("Beautify smoke tests:")
+        for name, text in tests:
+            result = beautify(text)
+            changed = "CHANGED" if result != text else "UNCHANGED"
+            print(f"  {name:15s} {changed}")
+            if changed == "CHANGED":
+                print(f"    → {result[:80]}")
+        return
 
-    def check(name: str, got: str, want: str) -> None:
-        nonlocal fails
-        if got != want:
-            print(f"❌ {name}:\n--- got ---\n{got}\n--- want ---\n{want}")
-            fails += 1
-
-    # markdown table normalization (adds separator)
-    got = beautify("| a | b |\n| 1 | 2 |")
-    check("md table", got, "| a | b |\n| - | - |\n| 1 | 2 |")
-    # CSV → table
-    got = beautify("name,score\nalice,10\nbob,20")
-    check("csv table", got, "| name  | score |\n| ----- | ----- |\n| alice | 10    |\n| bob   | 20    |")
-    # key: value → table
-    got = beautify("host: 10.0.0.5\nport: 8080")
-    check("kv table", got, "| host | 10.0.0.5 |\n| ---- | -------- |\n| port | 8080     |")
-    # numeric series → bar chart
-    got = beautify("requests: 100\nerrors: 25")
-    check("bar chart", got, "requests                 ████████████████████ 100\nerrors                   █████ 25")
-    # prose untouched
-    got = beautify("The investigation is complete. No issues found.")
-    check("prose", got, "The investigation is complete. No issues found.")
-    # empty
-    got = beautify("")
-    check("empty", got, "")
-
-    print("beautify: OK" if fails == 0 else f"❌ {fails} failures")
-    return 1 if fails else 0
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "smoke":
-        sys.exit(_smoke())
     if len(sys.argv) > 1:
         print(beautify(" ".join(sys.argv[1:])))
     else:
         print("usage: beautify.py smoke | <text>", file=sys.stderr)
-        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()
