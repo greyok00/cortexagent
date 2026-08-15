@@ -68,7 +68,7 @@ print("\n3. TINY MODEL PATH (OVERSEER)")
 print("-" * 70)
 try:
     from lib import tiny_llm
-    print(f"  Model path:     {tiny_llm._MODEL}")
+    print(f"  Model path:     {tiny_llm._BASE}")
     print(f"  Port:           {tiny_llm._PORT}")
     print(f"  Max tokens:     {tiny_llm._MAX_TOKENS}")
     print(f"  Is healthy:     {tiny_llm._is_healthy()}")
