@@ -26,6 +26,8 @@ Usage:
   python3 lib/beautify.py smoke          # self-test
   python3 lib/beautify.py "text"         # beautify a string
 """
+import json
+import os
 import re
 import sys
 from typing import List, Optional, Tuple, Dict, Union
@@ -41,6 +43,42 @@ try:
     CHARTS_AVAILABLE = True
 except ImportError:
     CHARTS_AVAILABLE = False
+
+# Import semantic palette (BEAUTIFY-101: wire palette into beautify)
+try:
+    from lib.semantic_palette import Palette
+    PALETTE = Palette()
+    PALETTE_AVAILABLE = True
+except ImportError:
+    PALETTE_AVAILABLE = False
+    PALETTE = None
+
+
+# ── ASCII Fallback Mode (BEAUTIFY-206) ──────────────────────────────────────
+def _is_ascii_mode() -> bool:
+    """Check if we should use ASCII fallback mode.
+    
+    Returns True if LANG=C or --ascii-fallback flag is set.
+    """
+    if os.environ.get("CORTEXAGENT_ASCII_FALLBACK", "0") == "1":
+        return True
+    lang = os.environ.get("LANG", "")
+    return "C" == lang or "POSIX" == lang
+
+
+def _color_reset() -> str:
+    """Get color reset sequence (empty in ASCII mode)."""
+    if _is_ascii_mode():
+        return ""
+    return "\033[0m"
+
+
+def _color_for(role: str) -> str:
+    """Get color for semantic role (empty in ASCII mode)."""
+    if _is_ascii_mode() or not PALETTE_AVAILABLE:
+        return ""
+    color = getattr(PALETTE, role, "")
+    return color if color else ""
 
 # ── markdown tables ─────────────────────────────────────────────────────────
 def _is_table_line(line: str) -> bool:
@@ -67,10 +105,17 @@ def _normalize_table(block: List[str]) -> str:
     data_rows = [r for i, r in enumerate(rows) if i != sep_idx]
     widths = [max(len(r[i]) for r in data_rows) for i in range(ncols)]
     sep = "| " + " | ".join("-" * widths[j] for j in range(ncols)) + " |"
+    # Color header row (BEAUTIFY-104: semantic color for tables)
+    header_color = _color_for("accent")
+    reset = _color_reset()
+    
     out = []
     for i, r in enumerate(rows):
         if i == sep_idx:
             out.append(sep)
+        elif i == 0 and header_color:  # Header row
+            cells = [c.ljust(widths[j]) for j, c in enumerate(r)]
+            out.append(f"{header_color}| {' | '.join(cells)} |{reset}")
         else:
             cells = [c.ljust(widths[j]) for j, c in enumerate(r)]
             out.append("| " + " | ".join(cells) + " |")
