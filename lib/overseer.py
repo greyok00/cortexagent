@@ -2586,7 +2586,7 @@ def _status() -> None:
 
         # Worker pool health
         pool = WorkerPool()
-        dead_workers = pool.check_health()
+        dead_workers = pool.heartbeat_check()
         if dead_workers:
             lines.append(f"  Dead workers: {len(dead_workers)} (replaced)")
         else:
