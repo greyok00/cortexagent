@@ -7,7 +7,7 @@
   "tone": "direct",
   "audience": "developer",
   "output_format": "markdown_brief",
-  "default_shrink_mode": "aggressive",
+  "default_shrink_mode": "balanced",
   "default_domain_hint": null,
   "explicit_rules": [
     "No sales pitch.",
