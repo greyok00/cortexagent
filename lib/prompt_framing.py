@@ -219,73 +219,89 @@ def reframe_prompt(prompt: str) -> str:
     return out
 
 
-# ── Stage: shrink (sentence-rank + cap) ─────────────────────────────────────
-def _rank_sentence(sent: str, query_words: set) -> float:
-    """Rank by word count + keyword overlap (cheap proxy for informativeness)."""
-    words = re.findall(r"[a-z0-9]+", sent.lower())
-    if not words:
-        return 0.0
-    overlap = sum(1 for w in words if w in query_words)
-    return overlap * 2.0 + len(words)
+# ── Stage: shrink (rephrase via tiny, preserve intent) ─────────────────────
+_SHRINK_SYSTEM = (
+    "You are a prompt rewriter. Rephrase the user's message into a tight, "
+    "clear prompt that PRESERVES the original intent exactly. Strip filler, "
+    "fragments, false starts, and repetition. Keep every actionable detail. "
+    "Output ONLY the rewritten prompt — no commentary, no quotes, no labels."
+)
+
+
+def _tiny_rephrase(prompt: str, max_words: int) -> Optional[str]:
+    """Use the overseer (tiny model on :8082) to rephrase + shrink while
+    preserving intent. Returns None if tiny is unavailable."""
+    try:
+        from lib import tiny_llm
+        if not tiny_llm.is_available():
+            return None
+        instr = (f"Rewrite this prompt in at most {max_words} words. "
+                 f"Keep every detail that affects what the user wants done. "
+                 f"Drop filler only.\n\n{prompt}")
+        out = tiny_llm.query(instr, system=_SHRINK_SYSTEM,
+                             max_tokens=max(64, max_words * 2),
+                             temperature=0.1)
+        if not out:
+            return None
+        # Strip any quoting / labels the tiny may add
+        out = out.strip().strip('"').strip("'").strip()
+        out = re.sub(r"^(rewritten|output|prompt):\s*", "", out,
+                     flags=re.IGNORECASE).strip()
+        return out or None
+    except Exception:
+        return None
 
 
 def shrink_prompt(prompt: str, max_tokens: int = 50,
-                  mode: str = "aggressive") -> str:
-    """Shrink to the most informative sentences.
+                  mode: str = "balanced") -> str:
+    """Rephrase to a tight prompt that preserves intent.
 
-    mode='aggressive'  — cap ~12 words, drop stopwords (caveman style)
-    mode='balanced'    — cap ~25 words, keep grammar (business style)
-    mode='preserve'    — cap ~50 words, dedupe only (passes through reframe)
+    Primary: route through the overseer (tiny model) which rephrases
+    semantically. Falls back to local sentence-rank if the tiny is unavailable.
+
+    mode='aggressive'  — ~20 words (caveman)
+    mode='balanced'    — ~50 words (default; tight business prose)
+    mode='preserve'    — ~150 words (light cleanup only)
     """
     if not prompt:
         return prompt
-
-    words = prompt.split()
     if mode == "aggressive":
-        word_cap = 12
-        drop_stopwords = True
+        max_words = 20
     elif mode == "balanced":
-        word_cap = 25
-        drop_stopwords = False
+        max_words = 50
     else:
-        word_cap = 50
-        drop_stopwords = False
+        max_words = 150
 
-    # Sentence-rank
-    sents = re.split(r"(?<=[.!?])\s+", prompt)
+    # Primary path: tiny rephrases the rambling in its own words, preserving
+    # intent. This is what makes the big model produce equivalent output.
+    tiny_out = _tiny_rephrase(prompt, max_words)
+    if tiny_out:
+        return tiny_out
+
+    # Fallback: sentence-rank + cap (no semantic guarantee, but better than
+    # nothing when tiny is down)
+    sents = re.split(r"(?<=[.!?])\s+|\n+", prompt)
+    sents = [s.strip() for s in sents if s.strip()]
     query_words = {w for w in re.findall(r"[a-z0-9]+", prompt.lower())
                    if len(w) > 3}
-    ranked = sorted(sents, key=lambda s: _rank_sentence(s, query_words),
-                    reverse=True)
+
+    def _rank(s: str) -> float:
+        ws = re.findall(r"[a-z0-9]+", s.lower())
+        return sum(2 for w in ws if w in query_words) + len(ws)
+
+    ranked = sorted(sents, key=_rank, reverse=True)
+    order = {s: i for i, s in enumerate(sents)}
+    ranked.sort(key=lambda s: order.get(s, 0))
     kept: List[str] = []
     word_count = 0
     for sent in ranked:
-        sent = sent.strip()
-        if not sent:
-            continue
-        s_words = len(sent.split())
-        if word_count + s_words > word_cap and kept:
+        sw = len(sent.split())
+        if word_count + sw > max_words and kept:
             break
         kept.append(sent)
-        word_count += s_words
-
-    # Restore original order
-    order = {s: i for i, s in enumerate(sents)}
-    kept.sort(key=lambda s: order.get(s, 0))
+        word_count += sw
     out = " ".join(kept).strip()
-    if not out:
-        return prompt
-
-    # Aggressive: drop stopwords (caveman)
-    if drop_stopwords:
-        tokens = re.findall(r"[a-z0-9]+", out.lower())
-        keep = [t for t in tokens if t not in _STOPWORDS]
-        out = " ".join(keep) or prompt
-
-    # Cap character count too
-    if len(out) > max_tokens * 6:
-        out = out[:max_tokens * 6].rsplit(" ", 1)[0].rstrip(",.") + "."
-    return out
+    return out or prompt
 
 
 # ── Stage: minify (character-level squeeze) ────────────────────────────────
