@@ -468,11 +468,12 @@ def main():
             ("Help me with my homework please can you "
              "just basically tell me what is the answer "
              "really kind of like basically", None),
-            ("go through all of our docs. Remove any of "
-             "the old shit remove any of the redundancy "
-             "remove anything that is going to affect our "
-             "latest build. update the poll diversion "
-             "stuff...", None),
+            ("Audit the docs. Remove outdated material and "
+             "redundancy. Keep only what affects the latest "
+             "build. Update the polling-diversion section. "
+             "Then give a step-by-step walk-through from "
+             "prompt to output for a sample request, showing "
+             "how the prompt is transformed at every stage.", None),
         ]
         for text, agent in tests:
             refr, sysp, dom = frame_prompt(text, "", agent_name=agent)
