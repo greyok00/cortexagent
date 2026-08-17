@@ -31,7 +31,7 @@ Areas (``--area NAME`` to run one; default = all):
   nvsmi     nvidia-smi wrapper reads /metrics → real tok/s (#24)
   diffusion diffusers in-process (offline): resolution/detection/honest-miss paths
   banner   ANSI in-place boot banner (no clear/flicker) + static fallback; launcher wires it
-  tui      response_model parsing (pure) + lib/tui.py smoke self-test
+  tui      tui_status rendering + processing animation
   coverage   print the module→test coverage matrix + gap report
 
 Usage:
@@ -281,12 +281,6 @@ def test_v03x_rules() -> R:
     """
     fails = []
     try:
-        from lib.response_model import collapse
-        if collapse.__kwdefaults__.get("max_visible_artifacts") != 0:
-            fails.append("R2 collapse default != 0")
-    except Exception as e:
-        fails.append(f"R2 import: {e}")
-    try:
         from lib.grammar_proxy import minify_response
         body = b'data: {"choices":[{"delta":{"content":"Sure!\\nHi."}}]}\n\ndata: [DONE]\n'
         out = minify_response(body)
@@ -308,7 +302,7 @@ def test_v03x_rules() -> R:
     try:
         import re as _re
         repopath = str(REPO)
-        for f in ("lib/grammar_proxy.py", "lib/response_model.py", "lib/pre_flight_gate.py"):
+        for f in ("lib/grammar_proxy.py", "lib/pre_flight_gate.py"):
             t = open(os.path.join(repopath, f)).read()
             if _re.search(r"--no-format|--no-visual|format=False|charts=False", t):
                 fails.append(f"R5 opt-out flag found in {f}")
@@ -1492,8 +1486,6 @@ COVERAGE = [
     ("lib/webui.py — /assets/logo route", "webui_assets", True),
     ("lib/grammar_proxy.py + statusline.py — VRAM in /metrics + render", "proxy_vram_field", True),
     ("lib/doctor.py — settings drift repair + idempotent + non-destructive", "doctor_drift_repair", True),
-    ("lib/response_model.py — parse/sanitize/collapse/render (pure)", "tui (response_model)", True),
-    ("lib/tui.py — streaming TUI + block cards + artifact viewer", "tui (smoke)", True),
 ]
 
 
@@ -1787,41 +1779,8 @@ def test_no_fallback_two_models_only() -> R:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# AREA: tui — response model (pure) + smoke
+# AREA: tui — status rendering
 # ═══════════════════════════════════════════════════════════════════════════
-def test_tui_response_model() -> R:
-    """lib/response_model.py parses artifacts, sanitizes ANSI, collapses."""
-    try:
-        from lib.response_model import (ArtifactBlock, DisclosureBlock,
-                                        TextBlock, collapse, parse_response,
-                                        sanitize_terminal)
-    except Exception as e:
-        return R("response_model import", "tui", False, f"import: {e}")
-    blocks = parse_response("Intro\n```python\nprint(1)\n```\nOutro")
-    arts = [b for b in blocks if isinstance(b, ArtifactBlock)]
-    if len(arts) != 1 or arts[0].artifact.language != "python":
-        return R("response_model parse", "tui", False, f"got {len(arts)} artifacts")
-    if sanitize_terminal("\x1b[31mhi\x1b[0m") != "hi":
-        return R("response_model sanitize", "tui", False, "ANSI not stripped")
-    if not any(isinstance(b, DisclosureBlock)
-               for b in collapse([TextBlock("x" * 5000)])):
-        return R("response_model collapse", "tui", False, "long text not collapsed")
-    return R("response_model parse/sanitize/collapse", "tui", True, "3/3 OK")
-
-
-def test_tui_smoke() -> R:
-    """lib/tui.py smoke self-test exits 0."""
-    out = subprocess.run(
-        [sys.executable, str(REPO / "lib" / "tui.py"), "smoke"],
-        capture_output=True, text=True, timeout=60,
-    )
-    if out.returncode != 0:
-        return R("tui smoke", "tui", False,
-                 (out.stderr or out.stdout).strip()[:300])
-    tail = out.stdout.strip().splitlines()[-1] if out.stdout.strip() else "ok"
-    return R("tui smoke", "tui", True, tail)
-
-
 def test_tui_status_render() -> R:
     """lib/tui_status.py renders 3-up / 2+1 / stack across widths."""
     try:
@@ -2335,8 +2294,7 @@ TESTS = {
                   test_install_starts_daemon_unconditional,
                   test_fallback_vram_probe_glitchrejection,
                   test_no_fallback_two_models_only],
-    "tui": [test_tui_response_model, test_tui_smoke,
-            test_tui_status_render, test_tui_status_active_work,
+    "tui": [test_tui_status_render, test_tui_status_active_work,
             test_tui_status_unavailable_memory,
             test_processing_animation],
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
