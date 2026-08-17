@@ -151,11 +151,38 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": "empty prompt"}
 
     # ── Prompt Framing Pass ───────────────────────────────────────────────
-    # Apply domain analysis and optimization BEFORE sending to model
+    # Apply domain analysis and optimization BEFORE sending to model.
+    # The progress_cb publishes each stage to task_steps so the dashboard
+    # shows a progress bar instead of code blocks.
     from lib import prompt_framing
+    pipeline_steps: List[Dict] = []
+
+    def _stage_cb(name: str, status: str) -> None:
+        nonlocal pipeline_steps
+        label = {"reframe": "Reframe prompt",
+                 "agent_pick": "Pick agent persona",
+                 "shrink": "Shrink via tiny model",
+                 "memory_hint": "Decide memory hint",
+                 "minify": "Minify characters"}.get(name, name)
+        # Update or append
+        existing = next((s for s in pipeline_steps if s["id"] == name), None)
+        if existing:
+            existing["status"] = "done" if status == "done" else "in_progress"
+        else:
+            pipeline_steps.append({"id": name, "label": label,
+                                   "status": "done" if status == "done"
+                                   else "in_progress"})
+        if state is not None:
+            _publish(state, list(pipeline_steps), name if status == "running" else None)
+
     optimized_prompt, framed_system, domain = prompt_framing.frame_prompt(
-        prompt, system or _REACT_SYSTEM
+        prompt, system or _REACT_SYSTEM, progress_cb=_stage_cb
     )
+    # Mark all stages done
+    for s in pipeline_steps:
+        s["status"] = "done"
+    if state is not None:
+        _publish(state, list(pipeline_steps), None)
     
     mode = classify_mode(optimized_prompt)
 

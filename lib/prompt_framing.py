@@ -314,6 +314,59 @@ def minify_prompt(prompt: str) -> str:
     return s
 
 
+# ── Stage: tiny picks agent + memory hint ───────────────────────────────────
+_AGENT_PICK_SYSTEM = (
+    "Pick the right agent persona for this user request. Reply with ONE WORD "
+    "from: default, planner, auditor, shrinker. Planner for ambiguous or "
+    "step-by-step tasks. Auditor for read-only investigations. Shrinker for "
+    "very long inputs that need compaction. Default for everything else."
+)
+_MEMORY_HINT_SYSTEM = (
+    "Reply with one of: yes, no, maybe. yes = the request clearly needs "
+    "past context (continuation, 'as we discussed', 'previous'). maybe = "
+    "ambiguous, could go either way. no = standalone question."
+)
+
+
+def _tiny_pick_agent(prompt: str, agents: Dict[str, dict]) -> str:
+    """Use tiny to pick the right agent persona."""
+    try:
+        from lib import tiny_llm
+        if not tiny_llm.is_available() or not agents:
+            return "default"
+        names = ", ".join(agents.keys())
+        instr = (f"Agents: {names}\n\nRequest:\n{prompt}\n\n"
+                 f"Reply with one agent name only.")
+        out = tiny_llm.query(instr, system=_AGENT_PICK_SYSTEM,
+                             max_tokens=8, temperature=0.0)
+        if out:
+            out = out.strip().lower().strip(".").strip('"').strip("'")
+            # Match against known agents
+            for name in agents:
+                if name in out:
+                    return name
+    except Exception:
+        pass
+    return "default"
+
+
+def _tiny_memory_hint(prompt: str) -> str:
+    """Use tiny to decide whether memory context should be loaded."""
+    try:
+        from lib import tiny_llm
+        if not tiny_llm.is_available():
+            return "maybe"
+        out = tiny_llm.query(prompt[:500], system=_MEMORY_HINT_SYSTEM,
+                             max_tokens=4, temperature=0.0)
+        if out:
+            ans = out.strip().lower().strip(".").strip()
+            if ans in ("yes", "no", "maybe"):
+                return ans
+    except Exception:
+        pass
+    return "maybe"
+
+
 # ── Stage: build system prompt from profile + agent + domain ───────────────
 def build_system(profile: dict, agent: dict, domain: str) -> str:
     """Compose a tight system prompt from profile + agent + domain."""
@@ -332,6 +385,8 @@ def build_system(profile: dict, agent: dict, domain: str) -> str:
     if rules:
         parts.append("Rules: " + "; ".join(rules[:6]))
     parts.append("Output: lead with the answer or action. No filler.")
+    parts.append("Format: tables / lists / charts when they shorten. "
+                 "No code blocks unless asked. No thinking preamble.")
     return " ".join(parts)
 
 
@@ -340,27 +395,61 @@ def frame_prompt(prompt: str, system_prompt: str = "",
                  domain: Optional[str] = None,
                  profile_name: Optional[str] = None,
                  agent_name: Optional[str] = None,
-                 shrink_mode: Optional[str] = None
+                 shrink_mode: Optional[str] = None,
+                 progress_cb: Optional[callable] = None,
                  ) -> Tuple[str, str, str]:
-    """Full pipeline: reframe → shrink → minify + build tight system prompt.
+    """Full pipeline: reframe → tiny-picks-agent → tiny-shrinks → tiny-memory-hint
+    → minify + build tight system prompt.
 
     Returns: (reframed_prompt, system_prompt, domain)
+    progress_cb(stage, status) is called at each stage if provided, for the
+    progress bar.
     """
     if not prompt:
         return prompt, system_prompt, "general"
 
+    def _stage(name, status):
+        if progress_cb:
+            try:
+                progress_cb(name, status)
+            except Exception:
+                pass
+
     profile = load_profile(profile_name)
-    agent = load_agent(profile, agent_name)
     domain = domain or classify_domain(prompt)
-    mode = shrink_mode or profile.get("default_shrink_mode") or "aggressive"
+    mode = shrink_mode or profile.get("default_shrink_mode") or "balanced"
 
+    _stage("reframe", "running")
     reframed = reframe_prompt(prompt)
-    shrunk = shrink_prompt(reframed, mode=mode)
-    minified = minify_prompt(shrunk)
-    sys_prompt = build_system(profile, agent, domain)
+    _stage("reframe", "done")
 
-    # Preserve caller's system_prompt if they passed one — our built one is
-    # advisory and only used when caller passes empty.
+    _stage("agent_pick", "running")
+    # Tiny picks the agent unless caller named one
+    if agent_name is None:
+        picked = _tiny_pick_agent(reframed, profile.get("agents") or {})
+        agent = load_agent(profile, picked)
+    else:
+        agent = load_agent(profile, agent_name)
+    _stage("agent_pick", "done")
+
+    _stage("shrink", "running")
+    shrunk = shrink_prompt(reframed, mode=mode)
+    _stage("shrink", "done")
+
+    _stage("memory_hint", "running")
+    mem_hint = _tiny_memory_hint(shrunk)
+    _stage("memory_hint", "done")
+
+    _stage("minify", "running")
+    minified = minify_prompt(shrunk)
+    _stage("minify", "done")
+
+    sys_prompt = build_system(profile, agent, domain)
+    if mem_hint == "yes":
+        sys_prompt += " Memory: load prior context before answering."
+    elif mem_hint == "maybe":
+        sys_prompt += " Memory: load if relevant."
+
     if system_prompt:
         final_system = system_prompt + "\n\n" + sys_prompt
     else:
