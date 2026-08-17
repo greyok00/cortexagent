@@ -160,22 +160,28 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
     mode = classify_mode(optimized_prompt)
 
     if mode == "direct":
-        result = tiny_llm.query(prompt, system=system or _DIRECT_SYSTEM, max_tokens=256)
+        # Use the optimized prompt + domain-framed system (request-chain items
+        # 1 & 2): the framing pass must actually reach the model.
+        result = tiny_llm.query(optimized_prompt, system=framed_system, max_tokens=256)
         if result is None:
             return {"ok": False, "output": "", "error": "tiny model unavailable"}
         # Apply output framing pass
         framed, _ = frame_output(result, domain)
+        framed = _post_process(framed)
+        framed = _beautify_response(framed)
         return {"ok": True, "output": framed, "error": ""}
 
     if mode == "socratic":
         # Clarifying questions returned as output; no tools called until the
         # user answers and re-submits.
-        sys_prompt = (system + "\n\n" + _INJECTION_GUARD) if system else _SOCRATIC_SYSTEM
-        result = tiny_llm.query(prompt, system=sys_prompt, max_tokens=512)
+        sys_prompt = framed_system + "\n\n" + _INJECTION_GUARD
+        result = tiny_llm.query(optimized_prompt, system=sys_prompt, max_tokens=512)
         if result is None:
             return {"ok": False, "output": "", "error": "tiny model unavailable"}
         # Apply output framing pass
         framed, _ = frame_output(result, domain)
+        framed = _post_process(framed)
+        framed = _beautify_response(framed)
         return {"ok": True, "output": framed, "error": ""}
 
     # ── react mode ─────────────────────────────────────────────────────────
@@ -207,6 +213,20 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
             output = response["content"]
             # Apply output framing pass
             framed, _ = frame_output(output, domain)
+            # Minify + beautify output (BEAUTIFY-202/103 wire-up).
+            # Post-processor strips fences/thinking; beautify turns tables/CSV
+            # into scannable visual blocks. Profile-driven via default agent.
+            try:
+                from lib.post_processor import process_output
+                framed = process_output(framed, show_code=False,
+                                        show_thinking=False)
+            except Exception:
+                pass
+            try:
+                from lib import beautify
+                framed = beautify.beautify(framed)
+            except Exception:
+                pass
             return {"ok": True, "output": framed, "error": ""}
         calls = response["calls"]
         if not calls:
@@ -228,7 +248,14 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
                 result = _execute_with_timeout(name, args, TOOL_TIMEOUT)
             except Exception as e:
                 result = {"ok": False, "output": "", "error": str(e)}
-            observations.append(f"call {name} → {json.dumps(result)[:800]}")
+            # SEC-001: annotate low/medium-trust outputs so the model treats
+            # them as untrusted data, not ground truth.
+            from lib.tool_registry import check_trust
+            note = check_trust(result)
+            obs = f"call {name} → {json.dumps(result)[:800]}"
+            if note:
+                obs = f"{note} {obs}"
+            observations.append(obs)
             if state is not None:
                 state["last_tool"] = name
                 _save_state(state)

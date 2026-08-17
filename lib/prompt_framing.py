@@ -1,30 +1,51 @@
 #!/usr/bin/env python3
-"""prompt_framing.py — Analyze and optimize user prompts before they hit the LLM.
+"""prompt_framing.py — Reframe + shrink + minify user prompts before the LLM.
 
-This module performs a "prompt framing pass" that:
-1. Classifies the prompt into a domain (business, OSINT, cybersecurity, professional)
-2. Adds appropriate framing/context to the system prompt
-3. Optimizes the prompt for clarity and conciseness
-4. Shrinks redundant parts of the prompt
+Pipeline (per call to frame_prompt):
+  1. classify_domain       — keyword match into {business, professional, osint,
+                              cybersecurity, code, general}
+  2. load_profile          — read profiles/default.json (or named profile).
+                              No PII, no upstream-tool references.
+  3. load_agent            — pick an "agent" persona from profile (default
+                              planner / auditor / shrinker / generalist).
+  4. reframe_prompt        — strip filler, dedupe sentences, normalize
+                              whitespace, drop fragments, apply domain hint.
+  5. shrink_prompt         — cap to N words/tokens per profile; pick the
+                              most informative sentences.
+  6. minify_prompt         — character-level squeeze: lower-case stopwords,
+                              drop punctuation, collapse whitespace.
+  7. build_system          — domain prompt + agent role + output format.
 
-The framing pass happens BEFORE minification, so the optimized prompt
-is what gets sent to the model.
+Every prompt leaves Stage 2 smaller, clearer, and matched to the profile.
 
 Usage:
-  python3 lib/prompt_framing.py smoke          # self-test
-  python3 lib/prompt_framing.py "your prompt"  # frame a prompt
+  python3 lib/prompt_framing.py smoke
+  python3 lib/prompt_framing.py "your rambling prompt here"
+  from lib.prompt_framing import frame_prompt
 """
+from __future__ import annotations
+
+import json
+import os
 import re
 import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# ── Paths ───────────────────────────────────────────────────────────────────
+_REPO = Path(__file__).resolve().parent.parent
+_PROFILE_DIR = Path(os.environ.get(
+    "CORTEXAGENT_PROFILES_DIR", str(_REPO / "profiles")))
+_DEFAULT_PROFILE = os.environ.get("CORTEXAGENT_PROFILE", "default")
+
+
 # ── Domain Classification ──────────────────────────────────────────────────
-DOMAIN_KEYWORDS = {
+DOMAIN_KEYWORDS: Dict[str, List[str]] = {
     "cybersecurity": [
         "security", "malware", "virus", "trojan", "ransomware", "phishing",
         "breach", "incident", "forensics", "exploit", "vulnerability",
         "attack", "defense", "firewall", "intrusion", "threat", "ioc",
-        "indicator", "compromise", "breach", "anomaly", "suspicious",
+        "indicator", "compromise", "anomaly", "suspicious",
     ],
     "osint": [
         "osint", "open source", "intelligence", "investigate", "search",
@@ -34,7 +55,12 @@ DOMAIN_KEYWORDS = {
     "business": [
         "business", "company", "market", "revenue", "profit", "cost",
         "budget", "forecast", "strategy", "plan", "growth", "investment",
-        "ROI", "KPI", "metrics", "analytics", "dashboard", "report",
+        "roi", "kpi", "metrics", "analytics", "dashboard", "report",
+    ],
+    "code": [
+        "code", "function", "class", "method", "compile", "import",
+        "module", "refactor", "debug", "bug", "fix", "patch", "git",
+        "merge", "commit", "branch", "test", "lint", "type",
     ],
     "professional": [
         "professional", "report", "analysis", "research", "study",
@@ -43,151 +69,323 @@ DOMAIN_KEYWORDS = {
     ],
 }
 
+
 def classify_domain(prompt: str) -> str:
-    """Classify the prompt into a domain."""
+    """Classify the prompt into a domain. Falls back to 'general'."""
     lower = prompt.lower()
-    scores = {}
+    scores: Dict[str, int] = {}
     for domain, keywords in DOMAIN_KEYWORDS.items():
         score = sum(1 for kw in keywords if kw in lower)
         if score > 0:
             scores[domain] = score
     if not scores:
-        return "professional"
+        return "general"
     return max(scores, key=scores.get)
 
 
-# ── System Prompt Templates ────────────────────────────────────────────────
-DOMAIN_FRAMING = {
-    "cybersecurity": """You are a senior cybersecurity analyst. Provide thorough,
-actionable security analysis. Include: (1) Threat classification, (2) IOCs if
-applicable, (3) Mitigation steps, (4) Prevention recommendations.""",
+# ── Profile / Agent Loading ─────────────────────────────────────────────────
+_PROFILE_CACHE: Dict[str, dict] = {}
 
-    "osint": """You are an OSINT investigator. Provide structured, evidence-based
-findings. Include: (1) Key findings, (2) Sources and confidence levels,
-(3) Timeline if applicable, (4) Next investigation steps.""",
 
-    "business": """You are a business analyst. Provide structured, data-driven
-insights. Include: (1) Key metrics, (2) Trends and patterns, (3)
-Recommendations, (4) Risk assessment.""",
+def load_profile(name: Optional[str] = None) -> dict:
+    """Load a profile by name. Cached. Falls back to defaults."""
+    name = name or _DEFAULT_PROFILE
+    if name in _PROFILE_CACHE:
+        return _PROFILE_CACHE[name]
+    path = _PROFILE_DIR / f"{name}.json"
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        data = _FALLBACK_PROFILE
+    except Exception:
+        data = _FALLBACK_PROFILE
+    _PROFILE_CACHE[name] = data
+    return data
 
-    "professional": """You are a professional analyst. Provide clear, concise,
-well-structured analysis. Include: (1) Executive summary, (2) Detailed findings,
-(3) Recommendations, (4) Action items.""",
+
+_FALLBACK_PROFILE = {
+    "name": "fallback",
+    "preferred_style": "terse",
+    "verbosity": "low",
+    "default_shrink_mode": "aggressive",
+    "agents": {
+        "default": {"role": "generalist", "style": "terse",
+                    "max_output_tokens": 1024},
+    },
+    "domain_prompts": {
+        "general": "Plain language, no filler, lead with the answer.",
+    },
+    "explicit_rules": [
+        "No filler ('a lot of', 'kind of', 'just', 'really', 'very').",
+        "Lead with the answer or the action.",
+    ],
 }
 
 
-def add_domain_framing(system_prompt: str, domain: str) -> str:
-    """Add domain-specific framing to the system prompt."""
-    framing = DOMAIN_FRAMING.get(domain, DOMAIN_FRAMING["professional"])
-    if "You are CortexAgent" in system_prompt:
-        # Insert framing after the "You are CortexAgent" line
-        idx = system_prompt.find("You are CortexAgent")
-        if idx >= 0:
-            insert_point = system_prompt.find("\n", idx)
-            if insert_point >= 0:
-                return system_prompt[:insert_point+1] + f"  {framing}\n\n" + system_prompt[insert_point+1:]
-    return system_prompt + f"\n\n{framing}"
+def load_agent(profile: dict, agent_name: Optional[str] = None) -> dict:
+    """Pick an agent persona from the profile."""
+    agents = profile.get("agents", {}) or {}
+    name = agent_name or "default"
+    if name in agents:
+        return {"name": name, **agents[name]}
+    if "default" in agents:
+        return {"name": "default", **agents["default"]}
+    return {"name": "default",
+            "role": "generalist", "style": "terse",
+            "max_output_tokens": 1024}
 
 
-# ── Prompt Optimization ────────────────────────────────────────────────────
-def optimize_prompt(prompt: str) -> str:
-    """Optimize the user prompt for clarity and conciseness.
+# ── Filler / Stopword Sets ──────────────────────────────────────────────────
+_FILLER_PHRASES = [
+    "i want to know", "i want", "i'd like", "i would like",
+    "can you tell me", "can you", "could you",
+    "i need you to", "i need", "help me with", "help me",
+    "please", "thanks", "thank you",
+    "a lot of", "kind of", "sort of", "type of",
+    "basically", "essentially", "literally", "actually",
+    "just", "really", "very", "quite", "pretty",
+    "in order to", "for the purpose of",
+    "as well as", "in addition to",
+    "due to the fact that", "in spite of the fact that",
+    "at this point in time", "at the present time",
+    "i was wondering", "i'm wondering",
+    "do you think", "would you be able",
+    "it's important to note", "it should be noted",
+]
 
-    - Remove redundant phrases ("I want to know", "Can you tell me", etc.)
-    - Fix common typos and grammar
-    - Ensure the prompt is clear and actionable
+_FRAGMENT_PATTERNS = [
+    r"\.{3,}",            # "..." "...."
+    r"\b(\w+)\s+\1\b",    # "the the"
+    r"\s+,",              # " ,"
+    r",\s*,",             # ", ,"
+    r"\s+\.",             # " ."
+    r"\?{2,}", r"!{2,}",
+]
+
+_STOPWORDS = {
+    "a", "an", "the", "and", "or", "but", "of", "in", "on", "at", "to",
+    "for", "with", "by", "from", "as", "is", "are", "was", "were", "be",
+    "been", "being", "have", "has", "had", "do", "does", "did", "will",
+    "would", "should", "could", "may", "might", "must", "shall", "can",
+    "this", "that", "these", "those", "i", "you", "he", "she", "it", "we",
+    "they", "me", "him", "her", "us", "them", "my", "your", "his", "its",
+    "our", "their", "what", "which", "who", "whom", "whose", "where",
+    "when", "why", "how", "if", "then", "than", "so", "such", "no", "not",
+    "only", "own", "same", "too", "very", "just", "also",
+}
+
+
+# ── Stage: reframe (strip filler + dedupe + normalize) ─────────────────────
+def reframe_prompt(prompt: str) -> str:
+    """Strip filler phrases, drop fragments, dedupe sentences, fix whitespace."""
+    if not prompt:
+        return prompt
+    s = prompt
+
+    # 1. Drop filler phrases (case-insensitive)
+    for phrase in _FILLER_PHRASES:
+        s = re.sub(r"\b" + re.escape(phrase) + r"\b", "", s,
+                   flags=re.IGNORECASE)
+
+    # 2. Drop fragment patterns
+    for pat in _FRAGMENT_PATTERNS:
+        s = re.sub(pat, " ", s)
+
+    # 3. Split into sentences, dedupe (case-insensitive, ignoring punctuation)
+    raw_sents = re.split(r"(?<=[.!?])\s+|\n+", s)
+    seen = set()
+    kept: List[str] = []
+    for sent in raw_sents:
+        norm = re.sub(r"[^a-z0-9 ]", " ", sent.lower()).strip()
+        norm = re.sub(r"\s+", " ", norm)
+        if not norm:
+            continue
+        if norm in seen:
+            continue
+        seen.add(norm)
+        kept.append(sent.strip())
+
+    # 4. Re-join, normalize whitespace
+    out = " ".join(kept)
+    out = re.sub(r"\s+", " ", out).strip()
+
+    # 5. Capitalize first letter, ensure terminal punctuation
+    if out and out[0].islower():
+        out = out[0].upper() + out[1:]
+    if out and out[-1] not in ".!?":
+        out += "."
+
+    return out
+
+
+# ── Stage: shrink (sentence-rank + cap) ─────────────────────────────────────
+def _rank_sentence(sent: str, query_words: set) -> float:
+    """Rank by word count + keyword overlap (cheap proxy for informativeness)."""
+    words = re.findall(r"[a-z0-9]+", sent.lower())
+    if not words:
+        return 0.0
+    overlap = sum(1 for w in words if w in query_words)
+    return overlap * 2.0 + len(words)
+
+
+def shrink_prompt(prompt: str, max_tokens: int = 50,
+                  mode: str = "aggressive") -> str:
+    """Shrink to the most informative sentences.
+
+    mode='aggressive'  — cap ~12 words, drop stopwords (caveman style)
+    mode='balanced'    — cap ~25 words, keep grammar (business style)
+    mode='preserve'    — cap ~50 words, dedupe only (passes through reframe)
     """
-    # Remove redundant phrases
-    redundant = [
-        (r"\bi want to know\s+", ""),
-        (r"\bcan you tell me\s+", ""),
-        (r"\bwhat is the\s+capital\s+of\s+", ""),  # keep "capital" but remove "what is the"
-        (r"\bwhat\s+is\s+(a|the)\s+", "What is "),
-        (r"\bcan you\s+", ""),
-        (r"\bplease\s+", ""),
-        (r"\bcould you\s+", ""),
-        (r"\bi need you to\s+", ""),
-        (r"\bi'd like you to\s+", ""),
-        (r"\bhelp me with\s+", ""),
-    ]
-    for pattern, replacement in redundant:
-        prompt = re.sub(pattern, replacement, prompt, flags=re.IGNORECASE)
-
-    # Capitalize first letter
-    if prompt and prompt[0].islower():
-        prompt = prompt[0].upper() + prompt[1:]
-
-    # Remove trailing punctuation if present
-    prompt = prompt.rstrip("!?")
-
-    return prompt.strip()
-
-
-# ── Prompt Shrinking ───────────────────────────────────────────────────────
-def shrink_prompt(prompt: str, max_tokens: int = 50) -> str:
-    """Shrink the prompt if it's too long, keeping the core meaning.
-
-    This is a lightweight pass — only shrink if over the token limit.
-    """
-    # Rough token estimate: ~4 chars per token
-    if len(prompt) <= max_tokens * 4:
+    if not prompt:
         return prompt
 
-    # Shrink: take the first 60% and last 40%, remove middle
-    first = int(len(prompt) * 0.6)
-    last = int(len(prompt) * 0.4)
-    return prompt[:first] + " ... [truncated] ..." + prompt[-last:]
+    words = prompt.split()
+    if mode == "aggressive":
+        word_cap = 12
+        drop_stopwords = True
+    elif mode == "balanced":
+        word_cap = 25
+        drop_stopwords = False
+    else:
+        word_cap = 50
+        drop_stopwords = False
+
+    # Sentence-rank
+    sents = re.split(r"(?<=[.!?])\s+", prompt)
+    query_words = {w for w in re.findall(r"[a-z0-9]+", prompt.lower())
+                   if len(w) > 3}
+    ranked = sorted(sents, key=lambda s: _rank_sentence(s, query_words),
+                    reverse=True)
+    kept: List[str] = []
+    word_count = 0
+    for sent in ranked:
+        sent = sent.strip()
+        if not sent:
+            continue
+        s_words = len(sent.split())
+        if word_count + s_words > word_cap and kept:
+            break
+        kept.append(sent)
+        word_count += s_words
+
+    # Restore original order
+    order = {s: i for i, s in enumerate(sents)}
+    kept.sort(key=lambda s: order.get(s, 0))
+    out = " ".join(kept).strip()
+    if not out:
+        return prompt
+
+    # Aggressive: drop stopwords (caveman)
+    if drop_stopwords:
+        tokens = re.findall(r"[a-z0-9]+", out.lower())
+        keep = [t for t in tokens if t not in _STOPWORDS]
+        out = " ".join(keep) or prompt
+
+    # Cap character count too
+    if len(out) > max_tokens * 6:
+        out = out[:max_tokens * 6].rsplit(" ", 1)[0].rstrip(",.") + "."
+    return out
 
 
-# ── Main Entry ──────────────────────────────────────────────────────────────
-def frame_prompt(prompt: str, system_prompt: str, domain: Optional[str] = None) -> Tuple[str, str, str]:
-    """Full framing pass: classify, optimize, shrink, and add framing.
+# ── Stage: minify (character-level squeeze) ────────────────────────────────
+def minify_prompt(prompt: str) -> str:
+    """Further squeeze: collapse whitespace, drop redundant punctuation."""
+    if not prompt:
+        return prompt
+    s = re.sub(r"\s+", " ", prompt).strip()
+    s = re.sub(r"[,;:!?]{2,}", "", s)
+    return s
 
-    Returns: (optimized_prompt, framed_system_prompt, domain)
+
+# ── Stage: build system prompt from profile + agent + domain ───────────────
+def build_system(profile: dict, agent: dict, domain: str) -> str:
+    """Compose a tight system prompt from profile + agent + domain."""
+    role = agent.get("role", "generalist")
+    style = agent.get("style", "terse")
+    rules = profile.get("explicit_rules") or []
+    domain_prompts = profile.get("domain_prompts") or {}
+    domain_hint = domain_prompts.get(domain) or domain_prompts.get("general") \
+        or "Plain language, no filler."
+
+    parts = [
+        f"Role: {role}.",
+        f"Style: {style}.",
+        f"Domain ({domain}): {domain_hint}",
+    ]
+    if rules:
+        parts.append("Rules: " + "; ".join(rules[:6]))
+    parts.append("Output: lead with the answer or action. No filler.")
+    return " ".join(parts)
+
+
+# ── Main entry ──────────────────────────────────────────────────────────────
+def frame_prompt(prompt: str, system_prompt: str = "",
+                 domain: Optional[str] = None,
+                 profile_name: Optional[str] = None,
+                 agent_name: Optional[str] = None,
+                 shrink_mode: Optional[str] = None
+                 ) -> Tuple[str, str, str]:
+    """Full pipeline: reframe → shrink → minify + build tight system prompt.
+
+    Returns: (reframed_prompt, system_prompt, domain)
     """
-    # 1. Classify domain
-    if not domain:
-        domain = classify_domain(prompt)
+    if not prompt:
+        return prompt, system_prompt, "general"
 
-    # 2. Optimize prompt
-    optimized = optimize_prompt(prompt)
+    profile = load_profile(profile_name)
+    agent = load_agent(profile, agent_name)
+    domain = domain or classify_domain(prompt)
+    mode = shrink_mode or profile.get("default_shrink_mode") or "aggressive"
 
-    # 3. Shrink if needed
-    optimized = shrink_prompt(optimized)
+    reframed = reframe_prompt(prompt)
+    shrunk = shrink_prompt(reframed, mode=mode)
+    minified = minify_prompt(shrunk)
+    sys_prompt = build_system(profile, agent, domain)
 
-    # 4. Add domain framing to system prompt
-    framed_system = add_domain_framing(system_prompt, domain)
+    # Preserve caller's system_prompt if they passed one — our built one is
+    # advisory and only used when caller passes empty.
+    if system_prompt:
+        final_system = system_prompt + "\n\n" + sys_prompt
+    else:
+        final_system = sys_prompt
 
-    return optimized, framed_system, domain
+    return minified, final_system, domain
 
 
+# ── CLI ─────────────────────────────────────────────────────────────────────
 def main():
-    """Self-test and demo."""
-    if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
-        # Self-test
+    if len(sys.argv) > 1 and sys.argv[1] == "smoke":
         tests = [
-            "What is the capital of France?",
-            "Investigate the security posture of this server",
-            "Write a business plan for a coffee shop",
-            "Help me with my homework",
-            "Scan the network for vulnerabilities",
-            "Analyze the market for electric vehicles",
+            ("What is the capital of France?", None),
+            ("Investigate the security posture of this server "
+             "and check for any IOCs", None),
+            ("Help me with my homework please can you "
+             "just basically tell me what is the answer "
+             "really kind of like basically", None),
+            ("go through all of our docs. Remove any of "
+             "the old shit remove any of the redundancy "
+             "remove anything that is going to affect our "
+             "latest build. update the poll diversion "
+             "stuff...", None),
         ]
-        for text in tests:
-            optimized, framed, domain = frame_prompt(text, "You are CortexAgent.")
-            print(f"Domain: {domain}")
-            print(f"Original: {text}")
-            print(f"Optimized: {optimized}")
-            print(f"System framing: {framed[:80]}...")
-            print("-" * 70)
+        for text, agent in tests:
+            refr, sysp, dom = frame_prompt(text, "", agent_name=agent)
+            print(f"\n  IN:  {text[:120]!r}")
+            print(f"  DOM: {dom}")
+            print(f"  OUT: {refr}")
+            print(f"  SYS: {sysp[:160]}...")
+            print("  " + "─" * 60)
         return
 
-    # Frame a user-provided prompt
-    prompt = " ".join(sys.argv[1:])
-    optimized, framed, domain = frame_prompt(prompt, "You are CortexAgent.")
-    print(f"Domain: {domain}")
-    print(f"Optimized prompt: {optimized}")
-    print(f"Framed system: {framed[:200]}...")
+    prompt = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else ""
+    if not prompt:
+        prompt = ("Help me with this. Can you basically just "
+                  "tell me what is really the answer.")
+    refr, sysp, dom = frame_prompt(prompt, "")
+    print(f"Domain: {dom}")
+    print(f"Reframed prompt:\n  {refr}")
+    print(f"System prompt:\n  {sysp}")
 
 
 if __name__ == "__main__":
