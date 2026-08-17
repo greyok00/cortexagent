@@ -54,7 +54,7 @@ SPAN_TYPES = {
     "tool":    "Tool execution",
     "beautify": "Output beautification pass",
     "output":  "Final output formatting",
-    "memory":  "Memory operation (hot/warm/cold)",
+    "memory":  "Memory operation (hot/cold)",
     "eval":    "Evaluation/guardrail check",
     "error":   "Error/failure span",
 }

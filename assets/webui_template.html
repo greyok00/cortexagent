@@ -19,9 +19,14 @@
     --accent-soft: rgba(201,168,76,0.18);
     --border: rgba(201,168,76,0.18);
     --border-strong: rgba(201,168,76,0.35);
-    --success: #6FCF97;
-    --error: #E57373;
-    --warning: #F2C94C;
+    /* BEAUTIFY-210: semantic status colors aligned with the CLI palette
+       (lib/semantic_palette.py) so the same data reads consistently across
+       CLI / webui / tray. */
+    --success: #9ECE6A;
+    --error: #F7768E;
+    --warning: #E0AF68;
+    --info: #7AA2F7;
+    --accent-teal: #7FD4C9;
     --radius: 14px;
     --font: 'Helvetica Neue', 'Inter', Arial, sans-serif;
     --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -298,6 +303,108 @@
   .sched-add .btn { background: var(--accent); border: none; border-radius: 8px; padding: 4px 12px; color: #1a1408; font-weight: 700; cursor: pointer; white-space: nowrap; }
   .sched-add .btn:hover { background: var(--accent-hover); }
   .empty { color: var(--text-tertiary); font-size: 12.5px; }
+
+
+  /* ── Scheduler table styles ─────────────────────────────────────────── */
+  .sched-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 8px 0 4px;
+    padding: 4px 0;
+  }
+  .sched-header h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+  .sched-header span {
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+  .sched-table {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .sched-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .sched-table thead {
+    background: rgba(0,0,0,0.4);
+  }
+  .sched-table th {
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sched-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(201,168,76,0.1);
+    vertical-align: middle;
+  }
+  .sched-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .sched-table tbody tr:hover {
+    background: rgba(201,168,76,0.05);
+  }
+  .sched-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 120px;
+  }
+  .sched-title {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .sched-time {
+    font-weight: 500;
+    color: var(--accent);
+    min-width: 100px;
+  }
+  .sched-desc {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sched-status {
+    min-width: 80px;
+  }
+  .sched-x {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 2px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    opacity: 0;
+  }
+  .sched-name:hover .sched-x {
+    opacity: 1;
+  }
+  .sched-x:hover {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+    background: rgba(201,168,76,0.1);
+  }
+
 
   /* ── Full-screen card picker ── */
   .overlay { position: fixed; inset: 0; background: rgba(6,7,9,.93); z-index: 60; display: flex; flex-direction: column; }
@@ -909,6 +1016,18 @@ async function sendMsg() {
   }
 }
 send.onclick = sendMsg;
+
+// ── Enter-to-send (robust — always catches Enter, even if input loses focus) ──
+document.addEventListener('keydown', e => {
+  // Global Enter catch — sends if textarea has text (handles lost focus)
+  if (e.key === 'Enter' && !e.shiftKey) {
+    if (input.value.trim()) {
+      e.preventDefault();
+      sendMsg();
+    }
+  }
+});
+
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); return; }
   // ↑ / ↓ recall previously sent messages in this chat (terminal-style)
@@ -928,8 +1047,17 @@ input.addEventListener('keydown', e => {
     e.preventDefault(); autosize();
   }
 });
+
+// Clicking anywhere in the composer focuses the input (stays focused)
+const composer = document.querySelector('.composer');
+if (composer) composer.addEventListener('mousedown', e => {
+  if (e.target === composer || e.target.classList.contains('composer')) {
+    input.focus();
+  }
+});
 function autosize() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 200) + 'px'; }
 input.addEventListener('input', autosize);
+input.addEventListener('click', () => input.focus());
 
 // ── STT: hold-to-record mic button ─────────────────────────────────────
 const micBtn = document.getElementById('mic');
@@ -1069,13 +1197,172 @@ function makeCards(j) {
   ];
   const bar = `<div style="height:6px;background:rgba(255,255,255,0.05);border-radius:6px;margin-top:8px"><div style="height:6px;background:var(--accent);border-radius:6px;width:${usedPct}%"></div></div>`;
 
-  // ── 3. Tasks (queue + schedule combined) ──────────────────────────────
-  const schedRows = (j.schedule || []).map(s => `<div class="row"><span class="k">${esc(s.name)}${s.enabled ? '' : pill('off', 'mut')}<button class="sched-x" data-sched="${esc(s.name)}" title="remove ${esc(s.name)}">✕</button></span><span class="v">${esc(s.schedule_type || '')} · ${esc(s.schedule_value || '')}<br><span style="color:var(--text-tertiary);font-size:11px">${s.command ? 'cmd: ' + esc(s.command) : ''}${s.prompt ? (s.command ? ' · ' : '') + 'prompt: ' + esc(String(s.prompt).slice(0, 60)) : ''} · last: ${esc(s.last_run || 'never')}</span></span></div>`).join('') || '<div class="empty">no scheduled tasks</div>';
-  const q = (j.queue || []).slice().reverse().slice(0, 8);
-  const qRows = q.map(t => `<div class="row"><span class="k">${pill(t.status, statusKind(t.status))} ${esc(t.type || '')} #${esc(String(t.id || '').slice(-6))}</span><span class="v" style="max-width:60%;font-size:12px">${esc((t.prompt || t.command || '').slice(0, 60))}</span></div>`).join('') || '<div class="empty">queue empty</div>';
-  const tasksInner = `<div class="row"><span class="k" style="font-weight:600">Scheduled (${j.schedule?.length || 0})</span></div>${schedRows}${schedAddForm()}<div class="row" style="margin-top:10px"><span class="k" style="font-weight:600">Queue (${j.queue?.length || 0})</span></div>${qRows}`;
+// ── 3. Scheduler helpers (normalize old+new formats, beautify display) ────
+
+
+// ── 3. Scheduler helpers & display ──────────────────────────────────────
+
+function schedLabel(s) {
+  const trigger = s.trigger || s.schedule_type || '';
+  const val = s.schedule_value || '';
+  const icons = {
+    cron: '🔄', daily: '🌅', weekly: '📅', date: '📌', interval: '⏱', manual: '👤'
+  };
+  const icon = icons[trigger] || '🕐';
+  let time = '—';
+  
+  // Handle empty/missing schedule value
+  if (!val || val === '') {
+    // No schedule value means this is a one-shot or manual task
+    if (trigger === 'manual' || trigger === '') {
+      return `${icon} One-shot`;
+    }
+    return `${icon} Pending`;
+  }
+  
+  // Format based on trigger type
+  time = formatTimeTrigger(trigger, val);
+  return `${icon} ${time}`;
+}
+
+function formatTimeTrigger(trigger, val) {
+  if (trigger === 'cron') {
+    if (val === '* * * * *') return 'Every minute';
+    if (val === '*/5 * * * *') return 'Every 5 min';
+    if (val === '*/15 * * * *') return 'Every 15 min';
+    if (val === '*/30 * * * *') return 'Every 30 min';
+    return val;
+  }
+  if (trigger === 'daily') {
+    const parts = (val || '').split(':');
+    if (parts.length >= 2) {
+      const h = parseInt(parts[0]) || 0, m = parseInt(parts[1]) || 0;
+      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+    }
+    return 'Daily';
+  }
+  if (trigger === 'weekly') {
+    const parts = (val || '').split(':');
+    const dayMap = {mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun'};
+    const day = dayMap[(parts[0]||'').toLowerCase()] || parts[0] || '—';
+    if (parts.length >= 3) {
+      const h = parseInt(parts[1]) || 0, m = parseInt(parts[2]) || 0;
+      return `${day} ${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+    }
+    return day;
+  }
+  if (trigger === 'date') {
+    try {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+    } catch {}
+    return val;
+  }
+  if (trigger === 'interval') {
+    const sec = parseInt(val);
+    if (!isNaN(sec)) {
+      if (sec >= 86400) return `Every ${sec / 86400}d`;
+      if (sec >= 3600) return `Every ${sec / 3600}h`;
+      if (sec >= 60) return `Every ${sec / 60}m`;
+      return `Every ${sec}s`;
+    }
+    return 'Interval';
+  }
+  if (trigger === 'manual') return 'Manual';
+  return trigger || '—';
+}
+
+function toggleCodeBlock(el) {
+  const codeBlocks = el.querySelectorAll('pre, [data-code-block]');
+  codeBlocks.forEach(block => {
+    block.style.display = block.style.display === 'none' ? 'block' : 'none';
+  });
+}
+
+function schedDesc(s) {
+  let cmd = s.command || '';
+  let prompt = s.prompt || '';
+  const payload = s.payload || {};
+  if (!cmd && payload.command) cmd = payload.command;
+  if (!prompt && payload.prompt) prompt = payload.prompt;
+
+  let parts = [];
+  if (cmd) {
+    parts.push(`<span style="cursor:pointer" onclick="toggleCodeBlock(this.closest('tr'))" title="toggle code">[👁]</span> cmd: ${esc(cmd).length > 60 ? esc(cmd).slice(0, 57) + '…' : esc(cmd)}`);
+  } else if (prompt) {
+    parts.push('prompt: ' + (esc(prompt).length > 60 ? esc(prompt).slice(0, 57) + '…' : esc(prompt)));
+  }
+
+  const last = s.last_run || s.last_run_at || '';
+  if (last) {
+    try {
+      const ago = Math.round((Date.now() - new Date(last).getTime()) / 60000);
+      parts.push(ago > 1440 ? (ago / 1440).toFixed(1) + 'd ago' : ago + 'm ago');
+    } catch {
+      parts.push('last: ' + esc(last));
+    }
+  }
+
+  return parts.join(' · ');
+}
+
+function normalizeTasks(raw) {
+  // Normalize old (overseer JSON) and new (scheduler store) formats
+  const seen = new Map();
+  const tasks = (raw || []).map(s => ({
+    name: s.title || s.name || 'unnamed',
+    enabled: s.enabled !== false,
+    trigger: s.trigger || s.schedule_type || '',
+    schedule_value: s.schedule_value || '',
+    command: s.command || (s.payload && s.payload.command) || '',
+    prompt: s.prompt || (s.payload && s.payload.prompt) || '',
+    last_run: s.last_run || s.last_run_at || '',
+    state: s.state || '',
+    kind: s.kind || '',
+    payload: s.payload || {},
+  }));
+
+  // Deduplicate by title/name (case-insensitive), keeping the one with schedule info
+  tasks.forEach(t => {
+    const key = t.name.toLowerCase();
+    if (!seen.has(key) || t.schedule_value) {
+      seen.set(key, t);
+    }
+  });
+
+  return Array.from(seen.values());
+}
+
+// ── 3. Tasks (queue + schedule combined) ──────────────────────────────
+const norm = normalizeTasks(j.schedule || []);
+
+let schedHtml = '';
+if (norm.length === 0) {
+  schedHtml = '<div class="empty">No scheduled tasks</div>';
+} else {
+  schedHtml = '<div class="sched-table"><table>';
+  schedHtml += '<thead><tr><th>Name</th><th>Schedule</th><th>Description</th><th>Status</th></tr></thead>';
+  schedHtml += '<tbody>';
+  norm.forEach(s => {
+    const off = s.enabled ? '' : pill('off', 'mut');
+    const btn = `<button class="sched-x" data-sched="${esc(s.name)}" title="remove ${esc(s.name)}">✕</button>`;
+    const label = schedLabel(s);
+    const desc = schedDesc(s);
+    const status = s.enabled ? pill('active', 'ok') : pill('paused', 'warn');
+    schedHtml += '<tr>';
+    schedHtml += `<td class="sched-name"><span class="sched-title">${esc(s.name)}</span>${off}${btn}</td>`;
+    schedHtml += `<td class="sched-time">${label}</td>`;
+    schedHtml += `<td class="sched-desc">${desc || '—'}</td>`;
+    schedHtml += `<td class="sched-status">${status}</td>`;
+    schedHtml += '</tr>';
+  });
+  schedHtml += '</tbody></table></div>';
+}
+
+const tasksInner = `<div class="sched-header"><h3>Scheduled Tasks</h3><span>${norm.length} active</span></div>${schedHtml}${schedAddForm()}<div class="sched-header" style="margin-top:12px"><h3>Queue</h3><span>${j.queue?.length || 0} items</span></div>${qRows}`;
 
   // ── 4. Sessions (only our own stack) ──────────────────────────────────
+// ── 4. Sessions (only our own stack) ──────────────────────────────────
   // Show ONLY the processes that are actually CortexAgent-owned per the
   // hard isolation rule (no generic claude, no ollama shells).
   const procs = j.processes || [];

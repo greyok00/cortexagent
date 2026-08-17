@@ -8,7 +8,7 @@
 - **Fix**: 
   - Added xfce4-notifyd autostart (`~/.config/autostart/xfce4-notifyd.desktop`)
   - Patched `lib/tray.py` to guard notification daemon failures (`_patch_pystray_notify`)
-  - Tray now runs in GUI mode with greyok logo icon
+  - Tray now runs in GUI mode with brand logo icon
 - **Status**: ✅ Working
 
 ### Minify Stats / Slimtoken
@@ -66,7 +66,7 @@
 - ✅ Big model (:8080) — Qwen3.6-35B-A3B-UD-IQ3_S.gguf
 - ✅ Tiny model (:8082) — LFM2.5-1.2B-Instruct
 - ✅ Proxy (:8081) — slimtoken minify, grammar proxy
-- ✅ System tray — GUI mode, greyok logo icon
+- ✅ System tray — GUI mode, brand logo icon
 - ✅ Webui — running on http://127.0.0.1:8090/
 
 ### Minify Stats (from file)

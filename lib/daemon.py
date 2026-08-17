@@ -44,6 +44,7 @@ if str(_REPO_ROOT) not in sys.path:
 from lib.config import CFG  # noqa: E402
 from lib.model_backend import LlamaServer  # noqa: E402
 from lib import control  # noqa: E402
+from lib.errorlog import log_exception, close_dump  # noqa: E402
 
 # ── State ────────────────────────────────────────────────────────────────────
 STATE_DIR = CFG.state_dir
@@ -309,15 +310,20 @@ def _probe_big_n_ctx() -> Optional[int]:
 def _load_session_model() -> tuple:
     """Load the big model for the new session. Re-runs every session-start.
 
-    If the big model is already up + healthy AND its reported n_ctx matches
-    CFG.big_ctx, keep it — no VRAM probe. (The probe reads *free* VRAM, which
-    counts the big model's own ~14 GB as "used", so probing while the big
-    model is loaded would read ~2 GB free and wrongly unload the healthy big
-    model.) If the running server reports a DIFFERENT n_ctx (stale instance,
-    externally-launched server with the wrong --ctx-size, leftover from a
-    prior config), the daemon kills it and reloads with the correct size —
-    without this, the cortex CLI gets stuck talking to a 32k server while
-    the daemon thinks everything is fine.
+    If the big model is already up + healthy AND its reported n_ctx is at
+    least CFG.big_ctx, keep it — no VRAM probe. (The probe reads *free* VRAM,
+    which counts the big model's own ~14 GB as "used", so probing while the
+    big model is loaded would read ~2 GB free and wrongly unload the healthy
+    big model.) If the running server reports a SMALLER n_ctx than wanted
+    (stale instance, externally-launched server with the wrong --ctx-size,
+    leftover from a prior config), the daemon kills it and reloads with the
+    correct size — without this, the cortex CLI gets stuck talking to a 32k
+    server while the daemon thinks everything is fine.
+    NOTE: llama.cpp rounds n_ctx UP to a multiple of 32, so the reported
+    n_ctx is normally a little LARGER than CFG.big_ctx (e.g. 156160 vs the
+    requested 156000). An exact-match check would therefore reload on every
+    session start, keeping :8080 down and spamming "Connection refused".
+    Only reload when the actual ctx is genuinely SMALLER than wanted.
     Otherwise probe free VRAM (glitch-rejecting: max of 3 reads) and log
     the result, then load the big model — it just gets loaded; if VRAM is
     genuinely too tight it fails and the daemon logs the failure (no
@@ -325,16 +331,16 @@ def _load_session_model() -> tuple:
     """
     if _big.is_healthy():
         actual_ctx = _probe_big_n_ctx()
-        if actual_ctx is not None and actual_ctx != int(CFG.big_ctx):
-            _log(f"Big model running with wrong n_ctx (got {actual_ctx}, "
-                 f"want {int(CFG.big_ctx)}) — reloading", "🔁", YELLOW)
+        if actual_ctx is not None and actual_ctx < int(CFG.big_ctx):
+            _log(f"Big model running with too-small n_ctx (got {actual_ctx}, "
+                 f"want at least {int(CFG.big_ctx)}) — reloading", "🔁", YELLOW)
             # Adopted/external (proc is None) → can't stop it ourselves;
             # log and keep it. Otherwise stop and let _swap_big reload.
             if _big.proc is not None:
                 _big.stop()
                 # fall through to the load path below
             else:
-                _log(f"Big is externally-owned with wrong n_ctx — please "
+                _log(f"Big is externally-owned with too-small n_ctx — please "
                      f"restart it manually with --ctx-size {int(CFG.big_ctx)}",
                      "⚠️", YELLOW)
                 return True, str(_big.model_path), False
@@ -810,6 +816,9 @@ def _run() -> None:
         os.unlink(control._socket_path())
     except Exception:
         pass
+    # Close dump: record the clean shutdown (SIGINT/SIGTERM) with uptime so a
+    # "normal close" is still auditable.
+    close_dump(component="daemon", reason="SIGINT/SIGTERM clean shutdown", log_file=LOG_FILE)
     _log("Daemon stopped cleanly (exit 0)", "✅", GREEN)
 
 

@@ -1,0 +1,4 @@
+#!/bin/bash
+# Quick launcher for the STT control window
+cd "$(dirname "$0")/.."
+python3 -m lib.stt_controls

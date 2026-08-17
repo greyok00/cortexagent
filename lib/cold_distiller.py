@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""cold_distiller — warm → cold memory distillation.
+"""cold_distiller — hot → cold memory distillation.
 
-Reads warm memory from the in-repo SQLite database, extracts high-signal
+Reads hot memory (the active conversation buffer), extracts high-signal
 facts via regex patterns, deduplicates them, and writes distilled facts to
-the cold memory table.
+the cold memory table. Warm was removed in v0.4.2 — hot is the source.
 
 CLI:
   python3 cold_distiller.py run [--profile NAME] [--min-confidence 0.5]
@@ -96,25 +96,26 @@ def _save_seen_facts(seen: Set[str]) -> None:
         pass
 
 
-# ── Warm memory reader ────────────────────────────────────────────────────
-def _read_warm_entries(profile: Optional[str] = None) -> List[Dict]:
-    """Read warm memory. Prefers NDJSON (file-of-truth per the 2026-08-11
+# ── Hot memory reader ────────────────────────────────────────────────────
+def _read_hot_entries(profile: Optional[str] = None) -> List[Dict]:
+    """Read hot memory. Prefers NDJSON (file-of-truth per the 2026-08-11
     no-caps rule) and falls back to SQLite if NDJSON is missing.
 
-    NDJSON lives at ~/.config/cortexllm/memory/warm/<platform>.warm.jsonl,
-    written atomically by lib/memory_thin.py on every prompt. Each line is
-    a JSON object with at least {role, content, timestamp}.
+    NDJSON lives at ~/.config/cortexllm/memory/hot/<platform>.jsonl, written
+    atomically by lib/memory_thin.py on every prompt. Each line is a JSON
+    object with at least {role, content, timestamp}.
 
     SQLite is the legacy read path — kept as a fallback for installs where
     the in-tree manager wrote rows directly without mirroring to NDJSON.
     """
     ndjson_entries: List[Dict] = []
     try:
-        from lib.memory_thin import WARM_DIR  # local import: not always importable
+        from lib.memory_thin import HOT_FILE  # local import: not always importable
+        hot_dir = HOT_FILE.parent  # ~/.config/cortexllm/memory/hot
         if profile:
-            files = [WARM_DIR / f"{profile}.warm.jsonl"]
+            files = [hot_dir / f"{profile}.jsonl"]
         else:
-            files = list(WARM_DIR.glob("*.warm.jsonl"))
+            files = list(hot_dir.glob("*.jsonl"))
         for fp in files:
             if not fp.exists():
                 continue
@@ -145,12 +146,16 @@ def _read_warm_entries(profile: Optional[str] = None) -> List[Dict]:
     if ndjson_entries:
         return ndjson_entries
 
-    # Fallback: legacy SQLite read
+    # Fallback: legacy SQLite read (Memory_Hot)
     try:
         if profile:
-            rows = manager.get_warm_messages(platform=profile, limit=10000)
+            rows = manager.get_hot_messages(platform=profile, limit=10000)
         else:
-            rows = manager.get_warm_messages(limit=10000)
+            rows = db.reader().execute(
+                "SELECT * FROM Memory_Hot ORDER BY timestamp DESC LIMIT ?",
+                (10000,),
+            ).fetchall()
+            rows = [dict(r) for r in rows]
     except Exception:
         return []
     entries = []
@@ -213,7 +218,7 @@ class ColdDistiller:
             "categories": {},
         }
 
-        rows = _read_warm_entries(profile=profile)
+        rows = _read_hot_entries(profile=profile)
         stats["scanned"] = len(rows)
 
         for row in rows:

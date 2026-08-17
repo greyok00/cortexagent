@@ -181,6 +181,7 @@ def _status_payload() -> Dict:
         "token_tracking": token_tracking,
         "session": (daemon.get("session") if isinstance(daemon, dict) else {}) or {},
         "active_sessions": int((daemon or {}).get("active_sessions", 0) or 0),
+        "latency": _ov._get_latency_stats(),
         "timestamp": datetime.now().isoformat(),
     }
 

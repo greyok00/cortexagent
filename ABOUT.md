@@ -7,9 +7,9 @@ scheduling, memory distillation, and diffusion orchestration. All
 traffic is over `127.0.0.1`.
 
 CortexAgent is not a from-scratch agent framework. It is built on top of
-two existing upstream libraries — [`cortexllm`](https://github.com/greyok00/cortexllm)
+two existing upstream libraries — [`cortexllm`](`<repo>/cortexllm`)
 for memory, scheduling, and lifecycle primitives, and
-[`slimtoken`](https://github.com/greyok00/slimtoken) for token
+[`slimtoken`](`<repo>/slimtoken`) for token
 minimisation at the request layer. The sections below explain what each
 library is, what its core features are, and what CortexAgent adds on
 top to turn them into a working agent runtime.
@@ -37,31 +37,29 @@ top to turn them into a working agent runtime.
 
 ## cortexllm
 
-[`cortexllm`](https://github.com/greyok00/cortexllm) is a memory
+[`cortexllm`](`<repo>/cortexllm`) is a memory
 layer that actually remembers, plus the lifecycle helpers every agent
 needs. Plain files. POSIX-atomic. No SQL, no vector store, no daemon.
 
 The core API is `cortexllm.append(role=..., content=..., platform=...)`
-which atomically appends to a hot NDJSON file and mirrors it to warm in
-the same call. Every prompt and response survives by default. There are
-no rotation caps; hot and warm grow unbounded. Default storage is
-`~/.config/cortexllm/memory/` with
-`hot/<platform>.jsonl`, `warm/<platform>.warm.jsonl`, and
-`cold/<category>.json`.
+which atomically appends to a hot NDJSON file. Every prompt and response
+survives by default. There are no rotation caps; hot grows unbounded.
+Default storage is `~/.config/cortexllm/memory/` with
+`hot/<platform>.jsonl` and `cold/<category>.json`.
 
 ### Core features
 
-- **Three memory tiers in plain NDJSON / JSON.** Hot is the working set;
-  warm is the cross-session buffer; cold is curated long-term facts
-  keyed by category. All files are `cat`-able, `grep`-able, and
+- **Two memory tiers in plain NDJSON / JSON.** Hot is the active
+  conversation buffer; cold is curated long-term facts keyed by
+  category. All files are `cat`-able, `grep`-able, and
   `rsync`-able — no proprietary format, no inspection tooling needed.
 - **POSIX atomic append.** `O_APPEND` with the 4096 B `PIPE_BUF`
   guarantee. Multiple writers (overseer + hook + daemon) cannot
   interleave within a line. Measured **90 000 writes/s** and **14.2
   MiB/s** throughput on Linux + ext4 + NVMe.
 - **No caps rule.** Earlier versions had a 300-row cap that silently
-  ate data. Killed in v0.4.0, locked in by tests. Hot and warm grow
-  unbounded by design.
+  ate data. Killed in v0.4.0, locked in by tests. Hot grows unbounded
+  by design.
 - **DAG scheduler + workflow engine.** Tasks run in dependency order,
   batched by kind, persistent, with streaming progress events. The
   engine shell is generic; caller's executors do the real work.
@@ -108,7 +106,7 @@ does not address:
   appended atomically per turn, never clobbered. This is the
   drop-in path that `lib/memory_thin.py:_atomic_append` already
   migrated to `from cortexllm.atomic import atomic_append`.
-- **Overseer scheduler.** The cron registry and the warm → cold
+- **Overseer scheduler.** The cron registry and the hot → cold
   distillation cadence call into `cortexllm.scheduler` and
   `cortexllm.distiller`, but the orchestration policy (idle-only
   firing, big-model unload for diffusion) is CortexAgent-specific.
@@ -121,7 +119,7 @@ does not address:
 
 ## slimtoken
 
-[`slimtoken`](https://github.com/greyok00/slimtoken) is a token
+[`slimtoken`](`<repo>/slimtoken`) is a token
 optimisation layer that sits between an Anthropic-compatible client and
 its backend — a local llama-server or a cloud API — and rewrites every
 request to use **fewer tokens** before forwarding it.
@@ -238,7 +236,7 @@ choices, not because they are inherited from upstream.
 ## Quick start
 
 ```bash
-git clone https://github.com/greyok00/cortexagent ~/cortexagent
+git clone `<repo>/cortexagent` ~/cortexagent
 cd ~/cortexagent
 bash install.sh
 cortexagent
@@ -253,4 +251,4 @@ Full documentation in [README.md](README.md) and
 
 **Maintainer:** GreyOK00 ·
 **License:** MIT ·
-**Repository:** [github.com/greyok00/cortexagent](https://github.com/greyok00/cortexagent)
+**Repository:** `<repo>/cortexagent`

@@ -149,16 +149,23 @@ class Recovery:
         repairs = []
         
         for task_id, task in snapshot.items():
-            # Validate required fields
-            required = ["id", "title", "state", "kind", "payload_type", "payload"]
-            for field in required:
-                if field not in task:
-                    task[field] = "id" if field == "id" else task_id
-                    task["title"] = task.get("title", f"unnamed-{task_id[:8]}")
-                    task["kind"] = task.get("kind", "user")
-                    task["payload_type"] = task.get("payload_type", "command")
-                    task["payload"] = task.get("payload", {})
-                    repairs.append(f"{task_id[:8]}: added missing '{field}'")
+            # Validate required fields — ensure sane defaults for any gap
+            if not task.get("id"):
+                task["id"] = task_id
+            if not task.get("title"):
+                task["title"] = f"unnamed-{task_id[:8]}"
+            if "kind" not in task:
+                task["kind"] = "user"
+                repairs.append(f"{task_id[:8]}: added missing 'kind'")
+            if "payload_type" not in task:
+                task["payload_type"] = "command"
+                repairs.append(f"{task_id[:8]}: added missing 'payload_type'")
+            if "payload" not in task:
+                task["payload"] = {}
+                repairs.append(f"{task_id[:8]}: added missing 'payload'")
+            if "state" not in task:
+                task["state"] = "scheduled"
+                repairs.append(f"{task_id[:8]}: added missing 'state'")
             
             # Validate state
             if task.get("state") not in VALID_STATES:

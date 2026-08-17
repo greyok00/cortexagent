@@ -126,7 +126,7 @@ class DomainEmbedder:
         import onnxruntime as ort
         from tokenizers import Tokenizer
         self._tok = Tokenizer.from_file(str(MODEL_DIR / "tokenizer.json"))
-        self._tok.enable_truncation(max_length=MAX_SEQ)
+        # Never truncate — pad only, preserve full tokens
         self._tok.enable_padding(pad_id=0, pad_token="[PAD]")
         # GPU only when the budget allows AND onnxruntime has a CUDA provider
         # (onnxruntime-gpu installed). Otherwise CPU — never evict a resident.

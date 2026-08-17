@@ -130,10 +130,10 @@ PCA plans are stored in a separate namespace from regular tasks:
 | Event | Memory Layer | Content |
 |-------|-------------|---------|
 | Plan created | HOT | Current plan state |
-| Step completed | WARM | Step results + context |
+| Step completed | HOT | Step results + context |
 | Plan completed | COLD | Final deliverables |
-| Checkpoint decision | WARM | Decision + reasoning |
-| Error/recovery | WARM | What failed + what was tried |
+| Checkpoint decision | HOT | Decision + reasoning |
+| Error/recovery | HOT | What failed + what was tried |
 
 ### 5. Guardrail Integration
 

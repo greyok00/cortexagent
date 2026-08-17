@@ -38,6 +38,7 @@ try:
     from lib.charts import (
         sparkline, multi_sparkline, waffle, bar_chart, heatmap,
         gauge, tree, gantt, box_plot, funnel, sankey, line_chart,
+        flowchart, calendar_heatmap,
         VERTICAL_BLOCKS, HEATMAP_DENSITY,
     )
     CHARTS_AVAILABLE = True
@@ -192,15 +193,22 @@ def _is_bar_block(lines: List[str]) -> bool:
 
 
 def _bar_chart(lines: List[str]) -> str:
-    """Render a simple ASCII bar chart."""
+    """Render a simple ASCII bar chart.
+
+    BEAUTIFY-104: bars are colored with the semantic accent role (empty in
+    ASCII mode, so plain terminals fall back to uncolored bars).
+    """
     matches = [_BAR_RE.match(l) for l in lines]
     items = [(m.group(1).strip(), float(m.group(2))) for m in matches]
     mx = max(v for _, v in items)
     scale = 20.0 / mx
+    bar_color = _color_for("accent")
+    reset = _color_reset()
     out = []
     for label, val in items:
         bar = "█" * max(1, int(val * scale))
-        out.append(f"{label:<24} {bar} {val:g}")
+        colored = f"{bar_color}{bar}{reset}" if bar_color else bar
+        out.append(f"{label:<24} {colored} {val:g}")
     return "\n".join(out)
 
 
@@ -304,26 +312,43 @@ def _is_numeric_series(lines: List[str]) -> bool:
     return all(_KV_RE.match(l) for l in lines)
 
 
+def _chart_palette() -> Optional[Dict[str, str]]:
+    """Build a palette dict (role -> ANSI code) for chart series coloring.
+
+    BEAUTIFY-205: returns None in ASCII mode so charts fall back to plain
+    glyphs. Includes a "reset" key for the charts library.
+    """
+    if _is_ascii_mode():
+        return None
+    try:
+        pal = {role: getattr(PALETTE, role, "") for role in
+               ("accent", "success", "warn", "danger", "info", "muted")}
+        pal["reset"] = _color_reset()
+        return pal if any(pal.values()) else None
+    except Exception:
+        return None
+
+
 def _numeric_series_to_sparkline(lines: List[str]) -> str:
     """Convert numeric series to sparkline."""
     if not CHARTS_AVAILABLE:
         return "\n".join(lines)
-    
+
     _KV_RE = re.compile(r'^([A-Za-z0-9_ .\-]+):\s*([0-9]+(?:\.[0-9]+)?)\s*$')
     data = {}
     for line in lines:
         m = _KV_RE.match(line)
         if m:
             data[m.group(1).strip()] = [float(m.group(2))]
-    
+
     if len(data) == 1:
         # Single series → sparkline
         name, vals = list(data.items())[0]
         spark = sparkline(vals, width=30)
         return f"{name}: {spark} {vals[-1] if vals else 0}"
     elif len(data) <= 6:
-        # Multiple series → multi-sparkline matrix
-        return multi_sparkline(data, width=30)
+        # Multiple series → multi-sparkline matrix (BEAUTIFY-205: colored)
+        return multi_sparkline(data, width=30, palette=_chart_palette())
     return "\n".join(lines)
 
 
@@ -367,13 +392,48 @@ def _to_gauge(lines: List[str]) -> str:
     """Convert single KV to gauge."""
     if not CHARTS_AVAILABLE:
         return "\n".join(lines)
-    
+
     m = _KV_RE.match(lines[0])
     if m:
         name = m.group(1).strip()
         value = float(m.group(2))
         return f"{name}: {gauge(value, 0, 100)}"
     return "\n".join(lines)
+
+
+# ── Flowchart (BEAUTIFY-208) ────────────────────────────────────────────────
+_FLOW_RE = re.compile(r"^\s*([^→\->]+?)\s*(?:→|->)\s*(.+?)\s*$")
+
+
+def _detect_flowchart(lines: List[str]) -> bool:
+    """Detect a `A → B` / `A -> B` chain (≥2 edges) as a flowchart."""
+    if not CHARTS_AVAILABLE or len(lines) < 2:
+        return False
+    edges = 0
+    for l in lines:
+        if _FLOW_RE.match(l):
+            edges += 1
+    return edges >= 2
+
+
+def _to_flowchart(lines: List[str]) -> str:
+    """Convert `A → B` lines into a data-driven flowchart."""
+    if not CHARTS_AVAILABLE:
+        return "\n".join(lines)
+    nodes: List[str] = []
+    edges: List[Tuple[str, str]] = []
+    for l in lines:
+        m = _FLOW_RE.match(l)
+        if not m:
+            continue
+        src, tgt = m.group(1).strip(), m.group(2).strip()
+        for n in (src, tgt):
+            if n and n not in nodes:
+                nodes.append(n)
+        edges.append((src, tgt))
+    if not nodes:
+        return "\n".join(lines)
+    return flowchart(nodes, edges)
 
 
 # ── Main Beautify Function ──────────────────────────────────────────────────
@@ -449,11 +509,24 @@ def beautify(text: str) -> str:
             else:
                 out.append(block[0])
             continue
+        # Detect flowchart (BEAUTIFY-208): `A → B` chain
+        if _detect_flowchart([line] + lines[i+1:i+6] if i+1 < len(lines) else []):
+            block = [line]
+            i += 1
+            while i < len(lines) and _FLOW_RE.match(lines[i]):
+                block.append(lines[i])
+                i += 1
+            out.append(_to_flowchart(block))
+            changed = True
+            continue
         # Detect tree/hierarchy structure
         if _detect_hierarchy([line] + lines[i+1:i+6] if i+1 < len(lines) else []):
             block = [line]
-            while i + 1 < len(lines) and _detect_hierarchy([line]):
-                block.append(lines[i + 1])
+            i += 1
+            # Collect consecutive tree lines. _detect_hierarchy needs ≥2 lines,
+            # so check the current line against the next candidate line.
+            while i < len(lines) and _detect_hierarchy([line, lines[i]]):
+                block.append(lines[i])
                 i += 1
             out.append(_render_tree(block))
             changed = True

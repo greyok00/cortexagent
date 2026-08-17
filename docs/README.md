@@ -46,7 +46,7 @@ The operator handles emails, invoices, and admin. OPERATOR handles **deep web an
 │                                                                 │
 │  ┌──────────────┐     ┌──────────────────┐                      │
 │  │ MEMORY       │     │ PORTFOLIO VIEW     │                      │
-│  │ (Hot/Warm/Cold)│   │ (Seeds, metrics,   │                      │
+│  │ (Hot/Cold)   │   │ (Seeds, metrics,   │                      │
 │  └──────────────┘     │  patterns, alerts)  │                      │
 │                       └──────────────────┘                       │
 └─────────────────────────────────────────────────────────────────┘
@@ -129,9 +129,8 @@ Five predefined flows for common task types:
 - **Clarification** — Ask → Wait → Proceed
 
 ### Memory
-Three-tier system with strict loading rules:
-- **Hot** — Per-platform, per-session (loaded on every task)
-- **Warm** — Cross-platform, medium-term (loaded on relevance match)
+Two-tier system with strict loading rules:
+- **Hot** — Active conversation buffer (loaded on every task)
 - **Cold** — Permanent, structured (loaded only on explicit request)
 
 ---

@@ -11,11 +11,12 @@
 # Everything here is env-driven — no hardcoded home paths, no secrets.
 #
 # Usage: cortexagent [any agent flags/args]
-#   cortexagent                      # plain CLI — launches Claude interactively
+#   cortexagent                      # plain CLI — launches the cortex fork (pi.dev renamed) interactively
 #   cortexagent -p "fix this bug"    # one-shot, output passed through untouched
 #   cortexagent --restart            # restart daemon + overseer (one shot)
 #   cortexagent --list-models        # show available models
 #   cortexagent --model=other.gguf   # use a different model
+#   cortexagent --claude [args]      # bypass cortex fork; run upstream Claude Code
 #   CORTEXAGENT_MODEL=/path/to.gguf cortexagent
 #   CORTEXAGENT_CTX=16384 cortexagent
 
@@ -75,6 +76,37 @@ if [ $# -gt 0 ] && [ "$1" = "voice" ]; then
   shift
   /usr/bin/python3 "$REPO_ROOT/lib/stt_daemon.py" "$@"
   exit $?
+fi
+
+# ── --claude: run the original upstream Claude Code CLI instead of cortex ─
+# Useful when the renamed pi.dev fork (cortex) is broken in your session
+# (e.g. a keybinding override stuck the input editor in a non-input focus
+# state). Resolves the real `claude` binary in this order: ~/.local/bin,
+# ~/.openclaw/bin, ~/.nvm/versions/node/*/bin. If none found, fail loudly
+# with a hint. We preserve our env (daemon proxies, model name) and just
+# swap AGENT_CLI. CLAUDE_CONFIG_DIR is set to the real ~/.claude so the
+# upstream binary finds its own settings, not the isolated cortex config.
+if [ $# -gt 0 ] && { [ "$1" = "--claude" ] || [ "$1" = "claude" ]; }; then
+  shift
+  _CLAUDE_BIN=""
+  for _candidate in \
+    "$HOME/.local/bin/claude" \
+    "$HOME/.openclaw/bin/claude" \
+    $(ls -d $HOME/.nvm/versions/node/*/bin/claude 2>/dev/null | tail -1) \
+    "$(command -v claude 2>/dev/null)"; do
+    if [ -n "$_candidate" ] && [ -x "$_candidate" ]; then
+      _CLAUDE_BIN="$_candidate"
+      break
+    fi
+  done
+  if [ -z "$_CLAUDE_BIN" ]; then
+    echo "❌ --claude: upstream claude binary not found (checked ~/.local/bin, ~/.openclaw/bin, ~/.nvm/versions/node/*/bin, PATH)" >&2
+    exit 1
+  fi
+  echo "🟡 Running upstream Claude Code via $_CLAUDE_BIN (cortex fork bypassed)."
+  export CLAUDE_CONFIG_DIR="${HOME}/.claude"
+  printf '\033]0;CortexAgent (claude)\007'
+  exec "$_CLAUDE_BIN" "$@"
 fi
 
 # ── Source the LOCKED model settings (lib/config.py LOCKED_KEYS) ──────────────
@@ -235,6 +267,93 @@ else
     MODEL="${MODELS_DIR}/qwen3.6-35b-iq3s/Qwen3.6-35B-A3B-UD-IQ3_S.gguf"
   fi
 fi
+# ── Provider opt-in (hardened local default) ────────────────────────────────
+# Default is LOCAL (the big model). Cloud providers (anthropic/openai/ollama)
+# are opt-in via `--provider=NAME`; without the flag we FORCE settings.json back
+# to the local default so nothing else can silently overwrite it. API keys are
+# read from the conf file [provider] section and surfaced as env vars for the
+# registered cloud providers in models.ts. The overseer (tiny :8082) is never
+# touched — it stays local + always loaded.
+PROVIDER="${CORTEXAGENT_PROVIDER:-local}"
+for arg in "$@"; do
+  case "$arg" in
+    --provider=*) PROVIDER="${arg#--provider=}" ;;
+  esac
+done
+case "$PROVIDER" in
+  local|anthropic|openai|ollama) ;;
+  *) echo "Unknown provider '${PROVIDER}' (use local|anthropic|openai|ollama)" >&2; exit 1 ;;
+esac
+export CORTEXAGENT_PROVIDER="${PROVIDER}"
+
+# Read [provider] keys from the conf file (env var > conf > default).
+_provider_conf() {  # $1=key  $2=default
+  local v
+  v="$(python3 -c "import configparser,sys;c=configparser.ConfigParser(interpolation=None);c.read('$HOME/.cortexagent/cortexagent.conf');print(c.get('provider','$1',fallback='') if c.has_section('provider') else '')" 2>/dev/null)"
+  [ -n "$v" ] && echo "$v" || echo "$2"
+}
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(_provider_conf anthropic_api_key '')}"
+OPENAI_API_KEY="${OPENAI_API_KEY:-$(_provider_conf openai_api_key '')}"
+CORTEXAGENT_ANTHROPIC_MODEL="${CORTEXAGENT_ANTHROPIC_MODEL:-$(_provider_conf anthropic_model 'claude-sonnet-5')}"
+CORTEXAGENT_OPENAI_MODEL="${CORTEXAGENT_OPENAI_MODEL:-$(_provider_conf openai_model 'gpt-4o')}"
+CORTEXAGENT_OLLAMA_MODEL="${CORTEXAGENT_OLLAMA_MODEL:-$(_provider_conf ollama_model 'qwen3:8b')}"
+
+# Validate keys BEFORE writing settings.json so a bad config can't leave the
+# agent default pointing at a cloud provider it can't authenticate to. On
+# failure, restore the local default so the next launch is safe.
+_restore_local_settings() {
+  python3 - local "$_AGENT_SETTINGS" <<'PY'
+import json, sys
+path = sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+data["defaultProvider"] = "cortex-big"
+data["defaultModel"] = "cortexagent"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+}
+_AGENT_SETTINGS="${HOME}/.cortex/agent/settings.json"
+if [ "${PROVIDER}" = "anthropic" ] && [ -z "${ANTHROPIC_API_KEY}" ]; then
+  echo "Error: --provider=anthropic needs anthropic_api_key in ~/.cortexagent/cortexagent.conf [provider]" >&2
+  _restore_local_settings
+  exit 1
+fi
+if [ "${PROVIDER}" = "openai" ] && [ -z "${OPENAI_API_KEY}" ]; then
+  echo "Error: --provider=openai needs openai_api_key in ~/.cortexagent/cortexagent.conf [provider]" >&2
+  _restore_local_settings
+  exit 1
+fi
+
+# Force the agent's default provider/model in ~/.cortex/agent/settings.json.
+# local → cortex-big/cortexagent (hardened). Cloud → the matching provider.
+python3 - "$PROVIDER" "$_AGENT_SETTINGS" <<'PY'
+import json, os, sys
+provider, path = sys.argv[1], sys.argv[2]
+if provider == "local":
+    dp, dm = "cortex-big", "cortexagent"
+elif provider == "anthropic":
+    dp, dm = "anthropic-cloud", os.environ.get("CORTEXAGENT_ANTHROPIC_MODEL", "claude-sonnet-5")
+elif provider == "openai":
+    dp, dm = "openai-cloud", os.environ.get("CORTEXAGENT_OPENAI_MODEL", "gpt-4o")
+else:  # ollama
+    dp, dm = "ollama-local", os.environ.get("CORTEXAGENT_OLLAMA_MODEL", "qwen3:8b")
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+data["defaultProvider"] = dp
+data["defaultModel"] = dm
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+
 ALIAS="${CORTEXAGENT_ALIAS:-cortexagent}"
 PORT="${CORTEXAGENT_PORT:-8080}"
 # Context — Qwen3.6-35B-A3B is a hybrid SSM/attention model (only ~10 of 40
@@ -270,6 +389,8 @@ WEBUI_ENABLED="${CORTEXAGENT_WEBUI_ENABLED:-1}"
 AGENT_CLI="${CORTEXAGENT_CLI:-cortex}"
 # Air-gapped: disable all startup network operations (version checks, catalog, telemetry).
 export CORTEX_OFFLINE=1
+# Suppress the redundant banner echo — banner.py already showed model + author
+export CORTEX_QUIET=1
 
 # ── Preflight ──────────────────────────────────────────────────────────────
 [ -x "${LLAMA_DIR}/bin/llama-server" ] || { echo "llama-server not found at ${LLAMA_DIR}/bin (set CORTEXAGENT_LLAMA_DIR)" >&2; exit 1; }
@@ -398,6 +519,7 @@ fi
 
 # ── Cleanup: free VRAM on exit ───────────────────────────────────────────────
 _CLEANUP_DONE=0
+_KILLED=0
 cleanup() {
   # Run-once guard + ignore further signals so a double Ctrl-C can't interrupt
   # cleanup and leave the 0.5b / llama-server pinned in memory.
@@ -428,11 +550,13 @@ cleanup() {
   # Stop memory daemon (flushes pending writes)
   bash "${HOME}/.cortexllm/scripts/memory-daemon.sh" stop 2>/dev/null || true
   if [ "$DAEMON_MODE" = "1" ]; then
-    # Daemon owns the big model — just release this session. The daemon will
-    # idle-unload the big model after CORTEXAGENT_IDLE_UNLOAD_SEC.
-    echo "Daemon mode — releasing session (big model idles then unloads)..."
+    # Daemon owns the big model — notify it the session ended, then unload the
+    # big model NOW to free VRAM on close. The daemon's idle-unload may be
+    # disabled, so don't rely on it. The tiny 0.5b + overseer stay up.
+    echo "Daemon mode — ending session + unloading big model to free VRAM..."
     python3 -c "import sys; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
-control.send_request('session-end', timeout=5)" 2>/dev/null || true
+control.send_request('session-end', timeout=5); \
+control.send_request('unload', which='big', timeout=30)" 2>/dev/null || true
   else
     # Stop ONLY the big-model llama-server on :8080 (port-specific — never the
     # always-on tiny on :8082). model_backend stop big kills by port, so it
@@ -443,11 +567,34 @@ control.send_request('session-end', timeout=5)" 2>/dev/null || true
       python3 "${REPO_ROOT}/lib/model_backend.py" stop big >/dev/null 2>&1 || true
     fi
   fi
+  # If cortexagent was KILLED (pkill / Ctrl-C), tear down the tray too so the
+  # wolf-head icon doesn't linger. The tray owns the overseer (PartOf), so this
+  # also stops the overseer — which is what "kill cortexagent" means. Normal
+  # CLI exit leaves the always-on tray + overseer running.
+  if [ "${_KILLED:-0}" = "1" ]; then
+    if command -v systemctl >/dev/null 2>&1 && \
+       systemctl --user cat cortexagent-tray.service >/dev/null 2>&1; then
+      systemctl --user stop cortexagent-tray.service >/dev/null 2>&1 || true
+    else
+      pkill -f "python3 .*lib\.tray(\s|$)" 2>/dev/null || true
+    fi
+  fi
+}
+
+# Killed (SIGTERM/SIGINT) — mark it so cleanup tears down the tray, then run
+# the normal cleanup and exit. Normal exit (EXIT trap) leaves _KILLED=0 → the
+# always-on tray + overseer stay up.
+_on_kill() {
+  _KILLED=1
+  cleanup
+  exit 130
 }
 # PIPE added: dying on SIGPIPE (piping output into head/less that closes early)
 # used to kill the wrapper WITHOUT running cleanup → session-end never sent →
-# active_sessions leaked. Trapping it runs cleanup (which sends session-end) first.
-trap cleanup EXIT INT TERM PIPE
+# active_sessions leaked. Trapping it runs cleanup (which sends session-end +
+# unload big) first.
+trap cleanup EXIT PIPE
+trap _on_kill INT TERM
 
 # ── Start Brave CDP debugging server (for Playwright web fetch/browser tools) ──
 BRAVE_PID=""
@@ -532,10 +679,29 @@ elif [ "$DAEMON_MODE" = "1" ]; then
   echo "Daemon mode — reusing daemon grammar proxy on port ${PROXY_PORT}"
 fi
 
+# ── Block ollama.com cloud probes (CORTEX_OFFLINE=1) ────────────────────────
+# The ollama-ai-provider JS library used by some AI SDK integrations falls
+# back to https://ollama.com (the cloud) when OLLAMA_HOST is unset, then
+# probes api/show to validate model IDs. That fails DNS in air-gapped setups
+# and spams the log with "lookup ollama.com ... server misbehaving" errors.
+# Pin OLLAMA_HOST to the local daemon (127.0.0.1:11434 by default) so the
+# library's own base URL is always local. If the user wants the cloud
+# intentionally, they can export OLLAMA_HOST before invoking cortexagent.
+export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+# Belt-and-suspenders: strip any ollama.com from no_proxy bypass so the JS
+# fetch stack never reaches the cloud even if a library ignores OLLAMA_HOST.
+export no_proxy="127.0.0.1,localhost,.local${no_proxy:+,$no_proxy}"
+unset no_proxy_bypass 2>/dev/null || true
+
 # ── Route the agent at the LOCAL llama.cpp server via grammar proxy ─────────
+# (Cloud providers override this below — see the --provider block.)
 export ANTHROPIC_BASE_URL="http://127.0.0.1:${PROXY_PORT}"
 export ANTHROPIC_AUTH_TOKEN="cortexagent"
-unset ANTHROPIC_API_KEY
+# Only drop the cloud key for the LOCAL provider; cloud providers re-export it
+# below (and it must stay bound for the anthropic/openai branches).
+if [ "${PROVIDER}" = "local" ]; then
+  unset ANTHROPIC_API_KEY
+fi
 export ANTHROPIC_MODEL="${ALIAS}"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ALIAS}"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="${ALIAS}"
@@ -544,6 +710,29 @@ export CLAUDE_CODE_SUBAGENT_MODEL="${ALIAS}"
 export CLAUDE_CODE_ATTRIBUTION_HEADER=0
 # Show the real model name so Claude displays it
 export CLAUDE_MODEL_NAME="$(basename "${MODEL}" .gguf)"
+
+# ── Cloud provider override (opt-in via --provider) ─────────────────────────
+# anthropic → point the native Anthropic API at the cloud + inject the key.
+# openai/ollama → the registered provider in models.ts carries its own baseUrl
+# and key; just drop the local-proxy routing so nothing leaks to :8081.
+if [ "${PROVIDER}" = "anthropic" ]; then
+  export ANTHROPIC_BASE_URL="https://api.anthropic.com"
+  export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"
+  unset ANTHROPIC_AUTH_TOKEN
+  export ANTHROPIC_MODEL="${CORTEXAGENT_ANTHROPIC_MODEL}"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="${CORTEXAGENT_ANTHROPIC_MODEL}"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="${CORTEXAGENT_ANTHROPIC_MODEL}"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="${CORTEXAGENT_ANTHROPIC_MODEL}"
+  export CLAUDE_CODE_SUBAGENT_MODEL="${CORTEXAGENT_ANTHROPIC_MODEL}"
+  export CLAUDE_MODEL_NAME="${CORTEXAGENT_ANTHROPIC_MODEL}"
+elif [ "${PROVIDER}" = "openai" ]; then
+  export OPENAI_API_KEY="${OPENAI_API_KEY}"
+  unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY
+  export CLAUDE_MODEL_NAME="${CORTEXAGENT_OPENAI_MODEL}"
+elif [ "${PROVIDER}" = "ollama" ]; then
+  unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY
+  export CLAUDE_MODEL_NAME="${CORTEXAGENT_OLLAMA_MODEL}"
+fi
 
 # ── The fix: tell the agent the REAL context window so it auto-compacts ──────
 # Without this it defaults to a 200k window and never compacts, then hard-fails
@@ -636,12 +825,17 @@ trap '[ -n "${_TICKER_PID}" ] && kill "${_TICKER_PID}" 2>/dev/null || true' EXIT
 # skills.ts tool bridge, memory.ts prompt-save + memory inject) replace the
 # claude hooks. The practical-reasoning profile is applied via the slimtoken
 # system_minify path and the tiny_llm default — no CLAUDE.md.
+# Branding: surface the cortex name so the user knows which binary is running.
+# (CORTEX_QUIET=1 silences it for one-shots / scripts.)
+if [ -z "${CORTEX_QUIET:-}" ]; then
+  echo "🐺 cortexagent → ${AGENT_CLI} (renamed pi.dev fork) · model $(basename "${MODEL}")"
+fi
 cd "${REPO_ROOT}"
 # Filter out our custom flags before passing to cortex
 FILTERED_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --model=*|--list-models|--welcome-screen|--welcome-screen=*) ;;
+    --model=*|--list-models|--welcome-screen|--welcome-screen=*|--provider=*) ;;
     *) FILTERED_ARGS+=("$arg") ;;
   esac
 done

@@ -40,6 +40,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+# Force GTK backend on Linux — AppIndicator (default on many distros)
+# doesn't render icons in MATE's status menu. GTK StatusIcon works everywhere.
+if sys.platform == "linux":
+    os.environ.setdefault("PYSTRAY_BACKEND", "gtk")
+
 from lib.config import CFG  # noqa: E402
 
 CYAN, GREEN, YELLOW, RED, DIM, BOLD, RST = (
@@ -50,6 +55,11 @@ if not sys.stderr.isatty():
 _OVERSEER = _REPO_ROOT / "lib" / "overseer.py"
 _CLI = _REPO_ROOT / "engine" / "cli.py"
 _LAUNCHER = _REPO_ROOT / "bin" / "cortexagent"
+
+# Set by _run_gui once the pystray icon exists. The SIGTERM/SIGINT handler
+# uses it to stop the icon so `systemctl stop` / `pkill -f lib.tray` cleanly
+# removes the tray instead of leaving a stuck icon until systemd force-kills.
+_ICON = None
 
 
 def _log(msg: str, emoji: str = "", color: str = "") -> None:
@@ -102,29 +112,6 @@ def _overseer_restart() -> bool:
     return _overseer_start()
 
 
-# ── STT daemon helpers ────────────────────────────────────────────────────────
-
-def _stt_state() -> dict:
-    import json
-    from pathlib import Path
-    p = Path.home() / ".cortexagent" / "state" / "stt_daemon.json"
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {}
-
-
-def _stt_control(cmd: str, mode: str | None = None) -> str:
-    import subprocess
-    from pathlib import Path
-    repo = Path(__file__).resolve().parent.parent
-    args = [sys.executable, str(repo / "lib" / "stt_daemon.py"), cmd]
-    if mode:
-        args.append(mode)
-    r = subprocess.run(args, capture_output=True, text=True, timeout=10)
-    return r.stdout.strip() or r.stderr.strip()
-
-
 # ── Model + config actions (via the daemon control socket) ───────────────────
 
 def _run_cli(*args: str, timeout: int = 120) -> tuple[int, str]:
@@ -143,6 +130,28 @@ def _status_text() -> str:
     if rc == 0:
         return f"{out}\n{ov_line}"
     return f"{RED}daemon down — start with `cortexagent daemon start`{RST}\n{ov_line}"
+
+
+def _stop_big() -> str:
+    """Stop the big model via the daemon control socket (frees ~13 GB VRAM)."""
+    _log("stopping big model…", "🛑", YELLOW)
+    try:
+        from lib import control
+        r = control.send_request("unload", which="big", timeout=30)
+        return "big model stopped" if r.get("ok") else f"stop failed: {r}"
+    except Exception as e:
+        return f"stop failed: {e}"
+
+
+def _start_big() -> str:
+    """Start the big model via the daemon control socket."""
+    _log("starting big model…", "🔄", CYAN)
+    try:
+        from lib import control
+        r = control.send_request("load", which="big", timeout=320)
+        return "big model started" if r.get("ok") else f"start failed: {r}"
+    except Exception as e:
+        return f"start failed: {e}"
 
 
 def _reload_models() -> str:
@@ -339,6 +348,12 @@ def _run_gui(quit_event: threading.Event) -> None:
             pass
         _log(msg, "ℹ️", CYAN if kind == "info" else (GREEN if kind == "ok" else RED))
 
+    def on_stop_big(icon, item):
+        _toast(icon, _stop_big(), "ok")
+
+    def on_start_big(icon, item):
+        _toast(icon, _start_big(), "ok")
+
     def on_reload(icon, item):
         _toast(icon, _reload_models(), "ok")
 
@@ -382,52 +397,42 @@ def _run_gui(quit_event: threading.Event) -> None:
 
     def on_quit(icon, item):
         _log("Quit — tearing down overseer", "🛑", YELLOW)
-        _overseer_stop()
-        icon.stop()
         quit_event.set()
+        # Stop the icon FIRST so the tray disappears immediately. The overseer
+        # teardown can block (up to 40s) and must never hold the icon hostage —
+        # otherwise the tray looks stuck and unclosable.
+        try:
+            icon.stop()
+        except Exception:
+            pass
+        _overseer_stop()
 
-    def on_stt_toggle(icon, item):
-        # Single speak-to-text (VAD) on/off toggle. The hotkey hold-to-talk
-        # mode is not exposed here — `set-mode hotkey` via the CLI still works.
-        cur = _stt_state().get("modes", {})
-        want = not cur.get("vad", False)
-        target = "vad" if want else "off"
-        out = _stt_control("set-mode", target)
-        if "not running" in out:
-            _stt_control("start")
-            out = _stt_control("set-mode", target)
-        _toast(icon, f"Speak to text: {'on' if want else 'off'} — " + out, "ok")
-
-    def on_stt_test(icon, item):
-        _toast(icon, "recording 2s…", "info")
-        import subprocess
-        from pathlib import Path
-        repo = Path(__file__).resolve().parent.parent
-        r = subprocess.run([sys.executable, str(repo / "lib" / "stt_daemon.py"), "--test"],
-                           capture_output=True, text=True, timeout=30)
-        _toast(icon, r.stdout.strip() or r.stderr.strip(), "ok")
-
-    stt_menu = Menu(
-        MI("Speak to text", on_stt_toggle,
-           checked=lambda item: _stt_state().get("modes", {}).get("vad", False)),
-        Menu.SEPARATOR,
-        MI("Model: small", None, enabled=False),
-        MI("Cleanup: tiny", None, enabled=False),
-        MI("Test mic", on_stt_test),
-    )
+    # ── Open STT controls window ──────────────────────────────────────────
+    def on_stt_controls(icon, item):
+        """Open the floating STT control window."""
+        try:
+            import importlib
+            import lib.stt_controls as _sc
+            _sc = importlib.reload(_sc)
+            _sc.open_in_thread()
+            _toast(icon, "STT controls opened", "ok")
+        except Exception as e:
+            _toast(icon, f"Failed to open STT controls: {e}", "info")
 
     menu = Menu(
         MI("CortexAgent", None, enabled=False),
         Menu.SEPARATOR,
+        MI("STT Controls", on_stt_controls),
+        MI("Overseer dashboard", on_dashboard),
+        MI("Launch CLI", on_cli),
+        Menu.SEPARATOR,
+        MI("Stop big model", on_stop_big),
+        MI("Start big model", on_start_big),
+        Menu.SEPARATOR,
         MI("Reload models", on_reload),
         MI("Restart overseer", on_restart_ov),
         MI("Reload config", on_reload_cfg),
-        Menu.SEPARATOR,
-        MI("Launch CLI", on_cli),
-        MI("Overseer dashboard", on_dashboard),
         MI("Open webui (8090)", on_open_webui),
-        Menu.SEPARATOR,
-        MI("STT", stt_menu),
         Menu.SEPARATOR,
         MI("Quit", on_quit),
     )
@@ -441,6 +446,8 @@ def _run_gui(quit_event: threading.Event) -> None:
         pass
     _log("tray icon running — close it via the menu's Quit to stop the overseer",
          "🟢", GREEN)
+    global _ICON
+    _ICON = icon
     icon.run()
 
 
@@ -469,8 +476,17 @@ def check() -> int:
 def _signal_shutdown(quit_event: threading.Event) -> None:
     def handler(signum, frame):
         _log(f"signal {signum} — tearing down overseer and exiting", "🛑", YELLOW)
-        _overseer_stop()
         quit_event.set()
+        # Stop the GUI icon first so the tray disappears on SIGTERM/SIGINT
+        # (e.g. `systemctl --user stop cortexagent-tray.service`). Without this
+        # the icon keeps running until systemd force-kills the process.
+        icon = _ICON
+        if icon is not None:
+            try:
+                icon.stop()
+            except Exception:
+                pass
+        _overseer_stop()
     return handler
 
 

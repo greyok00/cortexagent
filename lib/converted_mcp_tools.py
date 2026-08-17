@@ -418,172 +418,448 @@ def slimtoken_maxify(messages: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Session Coordination Tools
+# ---------------------------------------------------------------------------
+
+def session_broadcast(status: str = "working", task: str = None) -> dict:
+    """Broadcast session status to other sessions."""
+    try:
+        from lib.session_coordinator import get_coordinator
+        coord = get_coordinator("cortexagent")
+        result = coord.broadcast(status=status, task=task or status)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def session_check() -> dict:
+    """Check what other sessions are doing."""
+    try:
+        from lib.session_coordinator import get_coordinator
+        coord = get_coordinator("cortexagent")
+        return {
+            "sessions": coord.poll(),
+            "summary": coord.summarize_activity()
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def session_log(message: str, level: str = "info") -> dict:
+    """Log inter-session awareness message."""
+    try:
+        from lib.session_coordinator import get_coordinator
+        coord = get_coordinator("cortexagent")
+        return coord.log_awareness(message, level)
+    except Exception as e:
+        return {"error": str(e)}
+
 # Unified Tool Registry for converted MCP tools
 # ---------------------------------------------------------------------------
 
 CONVERTED_TOOLS = [
-    {"type": "function", "function": {
-        "name": "memory_read",
-        "description": "Read from CortexLLM memory (hot/warm/cold tiers)",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "tier": {"type": "string", "enum": ["hot", "warm", "cold"]},
-                "platform": {"type": "string"},
-                "category": {"type": "string"}
-            },
-            "required": ["tier"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "memory_write",
-        "description": "Write to CortexLLM memory tier",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "tier": {"type": "string", "enum": ["hot", "warm", "cold"]},
-                "content": {"type": "string"},
-                "platform": {"type": "string"},
-                "category": {"type": "string"},
-                "role": {"type": "string", "enum": ["user", "assistant", "system"]}
-            },
-            "required": ["tier", "content"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "memory_search",
-        "description": "Search across all CortexLLM memory tiers",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer"}
-            },
-            "required": ["query"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "memory_clear",
-        "description": "Clear CortexLLM memory",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "tier": {"type": "string", "enum": ["hot", "warm", "all"]},
-                "platform": {"type": "string"}
-            },
-            "required": ["tier"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "memory_search_semantic",
-        "description": "Semantic (BM25) search across CortexLLM memory",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer"},
-                "platform": {"type": "string"}
-            },
-            "required": ["query"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "memory_graph_query",
-        "description": "Query the CortexLLM knowledge graph",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["query", "extract", "path", "stats"]},
-                "entity": {"type": "string"},
-                "text": {"type": "string"},
-                "target": {"type": "string"},
-                "depth": {"type": "integer"},
-                "platform": {"type": "string"}
-            },
-            "required": ["action"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "memory_ontology",
-        "description": "Ontology operations (categorize, taxonomy, gaps, tags)",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["categorize", "taxonomy", "gaps", "tag", "tagmem", "discover", "stats"]},
-                "text": {"type": "string"}
-            },
-            "required": ["action"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "firecrawl_search",
-        "description": "Search the web using Firecrawl",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer"}
-            },
-            "required": ["query"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "firecrawl_scrape",
-        "description": "Scrape content from a URL",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string"}
-            },
-            "required": ["url"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "magicui_generate",
-        "description": "Generate UI from description",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "description": {"type": "string"},
-                "format": {"type": "string"}
-            },
-            "required": ["description"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "alpaca_get_account",
-        "description": "Get Alpaca trading account info",
-        "parameters": {"type": "object", "properties": {}, "required": []}
-    }},
-    {"type": "function", "function": {
-        "name": "ibkr_get_positions",
-        "description": "Get Interactive Brokers positions",
-        "parameters": {"type": "object", "properties": {}, "required": []}
-    }},
-    {"type": "function", "function": {
-        "name": "quant_trader_strategy",
-        "description": "Run quant strategy on a symbol",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string"},
-                "timeframe": {"type": "string"}
-            },
-            "required": ["symbol"]
-        }
-    }},
-    {"type": "function", "function": {
-        "name": "slimtoken_minify",
-        "description": "Minify messages for slim token usage",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "messages": {"type": "array"}
-            },
-            "required": ["messages"]
-        }
-    }},
+{
+                "type": "function",
+                "function": {
+                        "name": "memory_read",
+                        "description": "Read from CortexLLM memory (hot/warm/cold tiers)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "tier": {
+                                                "type": "string",
+                                                "enum": [
+                                                        "hot",
+                                                        "warm",
+                                                        "cold"
+                                                ]
+                                        },
+                                        "platform": {
+                                                "type": "string"
+                                        },
+                                        "category": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "tier"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "memory_write",
+                        "description": "Write to CortexLLM memory tier",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "tier": {
+                                                "type": "string",
+                                                "enum": [
+                                                        "hot",
+                                                        "warm",
+                                                        "cold"
+                                                ]
+                                        },
+                                        "content": {
+                                                "type": "string"
+                                        },
+                                        "platform": {
+                                                "type": "string"
+                                        },
+                                        "category": {
+                                                "type": "string"
+                                        },
+                                        "role": {
+                                                "type": "string",
+                                                "enum": [
+                                                        "user",
+                                                        "assistant",
+                                                        "system"
+                                                ]
+                                        }
+                                },
+                                "required": [
+                                        "tier",
+                                        "content"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "memory_search",
+                        "description": "Search across all CortexLLM memory tiers",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "query": {
+                                                "type": "string"
+                                        },
+                                        "limit": {
+                                                "type": "integer"
+                                        }
+                                },
+                                "required": [
+                                        "query"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "memory_clear",
+                        "description": "Clear CortexLLM memory",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "tier": {
+                                                "type": "string",
+                                                "enum": [
+                                                        "hot",
+                                                        "warm",
+                                                        "all"
+                                                ]
+                                        },
+                                        "platform": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "tier"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "memory_search_semantic",
+                        "description": "Semantic (BM25) search across CortexLLM memory",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "query": {
+                                                "type": "string"
+                                        },
+                                        "limit": {
+                                                "type": "integer"
+                                        },
+                                        "platform": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "query"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "memory_graph_query",
+                        "description": "Query the CortexLLM knowledge graph",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "action": {
+                                                "type": "string",
+                                                "enum": [
+                                                        "query",
+                                                        "extract",
+                                                        "path",
+                                                        "stats"
+                                                ]
+                                        },
+                                        "entity": {
+                                                "type": "string"
+                                        },
+                                        "text": {
+                                                "type": "string"
+                                        },
+                                        "target": {
+                                                "type": "string"
+                                        },
+                                        "depth": {
+                                                "type": "integer"
+                                        },
+                                        "platform": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "action"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "memory_ontology",
+                        "description": "Ontology operations (categorize, taxonomy, gaps, tags)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "action": {
+                                                "type": "string",
+                                                "enum": [
+                                                        "categorize",
+                                                        "taxonomy",
+                                                        "gaps",
+                                                        "tag",
+                                                        "tagmem",
+                                                        "discover",
+                                                        "stats"
+                                                ]
+                                        },
+                                        "text": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "action"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "firecrawl_search",
+                        "description": "Search the web using Firecrawl",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "query": {
+                                                "type": "string"
+                                        },
+                                        "limit": {
+                                                "type": "integer"
+                                        }
+                                },
+                                "required": [
+                                        "query"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "firecrawl_scrape",
+                        "description": "Scrape content from a URL",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "url": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "url"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "magicui_generate",
+                        "description": "Generate UI from description",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "description": {
+                                                "type": "string"
+                                        },
+                                        "format": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "description"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "alpaca_get_account",
+                        "description": "Get Alpaca trading account info",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {},
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "ibkr_get_positions",
+                        "description": "Get Interactive Brokers positions",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {},
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "quant_trader_strategy",
+                        "description": "Run quant strategy on a symbol",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "symbol": {
+                                                "type": "string"
+                                        },
+                                        "timeframe": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "symbol"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "slimtoken_minify",
+                        "description": "Minify messages for slim token usage",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "messages": {
+                                                "type": "array"
+                                        }
+                                },
+                                "required": [
+                                        "messages"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "session_broadcast",
+                        "description": "Broadcast session status to other sessions",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "status": {
+                                                "type": "string",
+                                                "enum": [
+                                                        "idle",
+                                                        "working",
+                                                        "thinking",
+                                                        "blocked"
+                                                ]
+                                        },
+                                        "task": {
+                                                "type": "string"
+                                        }
+                                },
+                                "required": [
+                                        "status"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "session_check",
+                        "description": "Check what other sessions are doing",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {}
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "session_log",
+                        "description": "Log inter-session awareness message",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "message": {
+                                                "type": "string"
+                                        },
+                                        "level": {
+                                                "type": "string",
+                                                "enum": [
+                                                        "info",
+                                                        "warn",
+                                                        "critical"
+                                                ]
+                                        }
+                                },
+                                "required": [
+                                        "message"
+                                ]
+                        }
+                }
+        },
 ]
+
 
 
 TOOL_MAP = {
@@ -591,16 +867,11 @@ TOOL_MAP = {
     "memory_write": memory_write,
     "memory_search": memory_search,
     "memory_clear": memory_clear,
-    "memory_search_semantic": memory_search_semantic,
-    "memory_graph_query": memory_graph_query,
-    "memory_ontology": memory_ontology,
+    "session_broadcast": session_broadcast,
+    "session_check": session_check,
+    "session_log": session_log,
     "firecrawl_search": firecrawl_search,
     "firecrawl_scrape": firecrawl_scrape,
-    "magicui_generate": magicui_generate,
-    "alpaca_get_account": alpaca_get_account,
-    "ibkr_get_positions": ibkr_get_positions,
-    "quant_trader_strategy": quant_trader_strategy,
-    "slimtoken_minify": slimtoken_minify,
 }
 
 

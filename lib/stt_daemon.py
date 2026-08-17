@@ -320,51 +320,72 @@ def vad_capture(on_clip, stop_event=None, mode_event=None, block_sec: float = 0.
     speech_blocks = 0  # count of in-speech blocks since current onset
     in_speech = False
     silence_blocks = 0
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS,
-                        dtype="float32", device=_mic_device(),
-                        blocksize=block) as stream:
-        while not (stop_event and stop_event.is_set()):
-            data, _ = stream.read(block)
-            if mode_event is not None and not mode_event.is_set():
-                in_speech = False
-                speech = []
-                speech_blocks = 0
-                silence_blocks = 0
-                continue
-            if rms(data[:, 0]) > threshold:
-                if not in_speech:
-                    in_speech = True
-                    speech = []
-                    speech_blocks = 0
-                speech.append(data.copy())
-                speech_blocks += 1
-                silence_blocks = 0
-            elif in_speech:
-                silence_blocks += 1
-                speech.append(data.copy())
-                speech_blocks += 1
-                if silence_blocks >= silence_limit:
-                    clip = np.concatenate(speech)[:, 0]
-                    in_speech = False
-                    if len(clip) >= int(SAMPLE_RATE * 0.3):
-                        on_clip(clip)
-                    speech = []
-                    speech_blocks = 0
-                    continue
-            # Max-length flush — fires when user has been talking
-            # continuously past the configured cap.
-            if (
-                in_speech
-                and max_utt_blocks > 0
-                and speech_blocks >= max_utt_blocks
-            ):
-                clip = np.concatenate(speech)[:, 0]
-                in_speech = False
-                if len(clip) >= int(SAMPLE_RATE * 0.3):
-                    on_clip(clip)
-                speech = []
-                speech_blocks = 0
-                silence_blocks = 0
+    while not (stop_event and stop_event.is_set()):
+        dev = _mic_device()
+        if dev is None and CFG.stt_mic_device:
+            # A mic is configured but currently unavailable (unplugged /
+            # PipeWire re-enumeration). Wait and retry instead of falling
+            # back to a possibly-broken default device — the daemon
+            # self-heals the moment the mic returns, no restart needed.
+            print("⚠️ mic unavailable — retrying in 2s", flush=True)
+            if stop_event:
+                stop_event.wait(2.0)
+            else:
+                time.sleep(2.0)
+            continue
+        try:
+            with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS,
+                                dtype="float32", device=dev,
+                                blocksize=block) as stream:
+                while not (stop_event and stop_event.is_set()):
+                    data, _ = stream.read(block)
+                    if mode_event is not None and not mode_event.is_set():
+                        in_speech = False
+                        speech = []
+                        speech_blocks = 0
+                        silence_blocks = 0
+                        continue
+                    if rms(data[:, 0]) > threshold:
+                        if not in_speech:
+                            in_speech = True
+                            speech = []
+                            speech_blocks = 0
+                        speech.append(data.copy())
+                        speech_blocks += 1
+                        silence_blocks = 0
+                    elif in_speech:
+                        silence_blocks += 1
+                        speech.append(data.copy())
+                        speech_blocks += 1
+                        if silence_blocks >= silence_limit:
+                            clip = np.concatenate(speech)[:, 0]
+                            in_speech = False
+                            if len(clip) >= int(SAMPLE_RATE * 0.3):
+                                on_clip(clip)
+                            speech = []
+                            speech_blocks = 0
+                            continue
+                    # Max-length flush — fires when user has been talking
+                    # continuously past the configured cap.
+                    if (
+                        in_speech
+                        and max_utt_blocks > 0
+                        and speech_blocks >= max_utt_blocks
+                    ):
+                        clip = np.concatenate(speech)[:, 0]
+                        in_speech = False
+                        if len(clip) >= int(SAMPLE_RATE * 0.3):
+                            on_clip(clip)
+                        speech = []
+                        speech_blocks = 0
+                        silence_blocks = 0
+        except Exception as e:
+            # InputStream failed (device vanished mid-stream) — retry.
+            print(f"⚠️ mic error ({e}) — retrying in 2s", flush=True)
+            if stop_event:
+                stop_event.wait(2.0)
+            else:
+                time.sleep(2.0)
 
 
 def _safe_send(conn, payload: bytes) -> None:
