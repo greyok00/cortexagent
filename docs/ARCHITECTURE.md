@@ -31,12 +31,12 @@ multi-agent session where webui / TUI / overseer all share one chat log.
 | Tiny LLM | `:8082` | `llama-server` | LFM2.5-1.2B Q4_K_M (~728 MB) — overseer only |
 | Grammar proxy | `:8081` | `lib/grammar_proxy.py` | Minify (slimtoken) + grammar-strip + tool-call routing for every chat |
 | Daemon | AF_UNIX `~/.cortexagent/control.sock` | `lib/daemon.py run` | Owns `:8080`/`:8081`, session lifecycle, idle-unload |
-| Overseer | always-on systemd | `lib/overseer.py start` | Scheduler, warm→cold distillation, tiny keepalive, watchdog |
+| Overseer | always-on systemd | `lib/overseer.py start` | Scheduler, hot→cold distillation, tiny keepalive, watchdog |
 | Webui | `:8090` | `lib/webui.py serve` | 3D chat + live dashboard, shared session with CLI |
 | TUI | stdio | `lib/tui.py` | Streaming TUI (opt-in, `cortexagent --tui`) |
 | Tray | system tray | `lib/tray.py` + `lib/tray_dashboard.py` | Tray icon + overseer dashboard popout |
 | Diffusion | in-process | `lib/diffusion_backend.py` | SDXL / SD1.5 image, LTX-Video (group-offloaded) |
-| Memory daemon | AF_UNIX `~/.cortexllm/memory.sock` | `~/.cortexllm/scripts/memory-daemon.py` | CortexLLM hot/warm/cold writes |
+| Memory daemon | AF_UNIX `~/.cortexllm/memory.sock` | `~/.cortexllm/scripts/memory-daemon.py` | CortexLLM hot/cold writes |
 
 ---
 
@@ -69,7 +69,7 @@ multi-agent session where webui / TUI / overseer all share one chat log.
        │
        ▼
 ┌──────────────────────────────────────┐
-│  CortexLLM memory (hot/warm/cold)     │
+│  CortexLLM memory (hot/cold)     │
 │  ~/.config/cortexllm/memory/          │
 └──────────────────────────────────────┘
 ```
@@ -174,18 +174,16 @@ this).
 
 CortexAgent writes to CortexLLM memory via `lib/memory_thin.py` (CLI hook thin
 wrapper) and the in-tree `memory/` package (`memory/db.py`, `memory/mcp_server.py`,
-`memory/manager.py`, `memory/{hot,warm,cold}/`). All writes use
+`memory/manager.py`, `memory/{hot,cold}/`). All writes use
 `platform="cortexagent"`.
 
 - **Hot** — `~/.config/cortexllm/memory/hot/cortexagent.jsonl` (every prompt)
-- **Warm** — `~/.config/cortexllm/memory/warm/cortexagent.warm.jsonl` (mirror)
 - **Cold** — `~/.config/cortexllm/memory/cold/*.json` (curated facts)
-- **SQLite** — `~/.config/cortexllm/cortexllm.db` (mirror, faster queries)
+- **SQLite** — `~/.config/cortexllm/cortexllm.db` (faster queries)
 
 Write path: daemon socket (`~/.cortexllm/memory.sock`) first, NDJSON append
-fallback. **No caps** (2026-08-11 rule): every prompt appends to hot AND is
-mirrored to warm. The mirror is what the overseer uses as its cross-session
-buffer; the engine was designed for it.
+fallback. **No caps** (2026-08-11 rule): every prompt appends to hot. Hot is
+what the overseer uses as its cross-session buffer.
 
 Hooks wire the CLI session into memory:
 - `hooks/session-start.sh` — starts overseer, reads recent memory
@@ -308,7 +306,8 @@ side-effects), not regressions from the audit fixes.
 - **Smoke test 5 failures** (pre-existing, not regressions from audit):
   - `pii_free`: my docs (`docs/ARCHITECTURE.md`, `docs/AUDIT-2026-08-11.md`,
     `lib/tray_dashboard.py`) mention the username — the PII rule excludes
-    `GreyOK00` and `/home/grey` literally. The doc references are intentional.
+    the project maintainer string and the personal install path literally.
+    The doc references are intentional.
   - `tiny_llm_query`: live port-busy against the real tiny backend.
   - `proxy_vram_field`: test mocks the proxy `/metrics` but
     `_get_vram_breakdown()` reads the daemon `control.sock` (correct path —
@@ -321,7 +320,7 @@ side-effects), not regressions from the audit fixes.
 
 - **MEDIUM (deferred):** ~~M21~~ memory-store split, ~~M22~~ `Coding_Practices`
   table, ~~M23~~ cold-fact profile mismatch. **All three fixed 2026-08-11**:
-  M21 → distiller reads NDJSON first (lib/cold_distiller.py:_read_warm_entries),
+  M21 → distiller reads NDJSON first (lib/cold_distiller.py:_read_hot_entries),
   M22 → table added to SCHEMA_SQL (memory/db.py), M23 → distiller normalizes
   profile to `platform:<x>` (lib/cold_distiller.py:_write_cold_fact).
 

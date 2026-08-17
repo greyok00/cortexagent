@@ -12,7 +12,7 @@
 
 | Feature | Status | Files |
 |---|---|---|
-| **System Tray Icon** | ✅ Working (greyok logo, GUI mode) | `lib/tray.py`, `lib/tray_dashboard.py` |
+| **System Tray Icon** | ✅ Working (brand logo, GUI mode) | `lib/tray.py`, `lib/tray_dashboard.py` |
 | **Minify Stats / Slimtoken** | ✅ Working (7.8% savings, 257 runs) | `lib/grammar_proxy.py` |
 | **Stuck Scheduler Tasks** | ✅ Cleaned (removed smoke-test, verify-test) | Overseer scheduler |
 | **Queue Cleanup** | ✅ Working (auto-prune, keeps last 10) | `lib/overseer.py` |

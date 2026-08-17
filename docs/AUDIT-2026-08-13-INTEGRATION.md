@@ -141,7 +141,7 @@ python3 cortexllm/memory_manager.py --smoke
 ```
 
 ## Critical Context
-- **Repository**: `/home/grey/cortexagent/`
+- **Repository**: `~/cortexagent/`
 - **Big Model**: `:8080` (Claude → Cortex)
 - **Tiny Model**: `:8082` (LFM2.5-1.2B via llama-server)
 - **Memory**: SQLite at `~/.config/cortexllm/cortexllm.db`
@@ -150,7 +150,7 @@ python3 cortexllm/memory_manager.py --smoke
 - **Cold Memory**: `~/.config/cortexllm/memory/cold/`
 - **Profile State**: `~/.cortexagent/profiles/<name>/`
 - **Config**: `~/.cortexagent/config/`
-- **Toolproxy**: `/home/grey/cortex-toolproxy/toolproxy.py` (for abliterated models)
+- **Toolproxy**: `~/cortex-toolproxy/toolproxy.py` (for abliterated models)
 
 ## Constraints
 - No cloud/API keys — fully local

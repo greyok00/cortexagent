@@ -121,8 +121,8 @@ def _env_float(name: str, conf_section: str, conf_key: str,
 # key (e.g. CORTEXAGENT_UNLOCK_BIG_CTX=1) — the testing/tuning escape hatch.
 # When unlocked, env > conf > default precedence is restored for that key.
 LOCKED_KEYS = {
-    "big_ctx": 156000,
-    "big_ub": 2048,
+    "big_ctx": 98304,
+    "big_ub": 2560,
     "big_ngl": 999,
     "big_fa": "on",
     "big_ctk": "q4_0",
@@ -295,7 +295,7 @@ class Config:
         # (Measured: 35B = 13.7 GB at 128k/ub512; ub=1024 adds ~0.43 GB buffer.)
         # LOCKED in LOCKED_KEYS below; override only via CORTEXAGENT_UNLOCK=1.
         self.big_ctx = _env_locked_int(
-            "big_ctx", "CORTEXAGENT_CTX", "backend", "big_ctx", 131072)
+            "big_ctx", "CORTEXAGENT_CTX", "backend", "big_ctx", 98304)
         self.big_ngl = _env_locked_int(
             "big_ngl", "CORTEXAGENT_NGL", "backend", "big_ngl", 999)
         self.big_fa = _env_locked(
@@ -317,7 +317,7 @@ class Config:
         self.big_b = _env_int(
             "CORTEXAGENT_B", "backend", "big_b", 2048)
         self.big_ub = _env_locked_int(
-            "big_ub", "CORTEXAGENT_UB", "backend", "big_ub", 2048)
+            "big_ub", "CORTEXAGENT_UB", "backend", "big_ub", 2560)
         self.big_kv_offload = _env_locked_int(
             "big_kv_offload", "CORTEXAGENT_KV_OFFLOAD", "backend", "big_kv_offload", 1)
         self.big_alias = _env(
@@ -375,11 +375,11 @@ class Config:
         # model also unloads after 120s idle so the big model keeps its VRAM.
         # Set CORTEXAGENT_STT_DEVICE=cpu to force CPU-only (keeps the GPU
         # fully free, "mostly cpu" mode).
-        # stt_model=base = the speed/accuracy sweet spot (2.5x faster than
-        # small on CPU, near-small accuracy, cached offline). Override with
-        # CORTEXAGENT_STT_MODEL=tiny (fastest) or =small (most accurate).
+        # stt_model=small = the accuracy sweet spot (fixes mishearing like
+        # "full input volume" → "four volume input"). Override with
+        # CORTEXAGENT_STT_MODEL=tiny (fastest) or =base (faster, less accurate).
         self.stt_model = _env("CORTEXAGENT_STT_MODEL", "stt", "model", "base")
-        self.stt_device = _env("CORTEXAGENT_STT_DEVICE", "stt", "device", "auto")
+        self.stt_device = _env("CORTEXAGENT_STT_DEVICE", "stt", "device", "cuda")
         self.stt_mic_device = _env(
             "CORTEXAGENT_STT_MIC", "stt", "mic_device", "Logi USB Headset")
         self.stt_hotkey = _env(
@@ -387,7 +387,7 @@ class Config:
         self.stt_speak_to_capture = _env_bool(
             "CORTEXAGENT_STT_SPEAK", "stt", "speak_to_capture", True)
         self.stt_vad_threshold = _env_float(
-            "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.02)
+            "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.03)
         self.stt_vad_silence_sec = _env_float(
             "CORTEXAGENT_STT_VAD_SILENCE", "stt", "vad_silence_sec", 0.8)
         # Hard flush: VAD commits a clip after this many seconds of
@@ -413,6 +413,21 @@ class Config:
         # the budget is too small.
         self.vram_buffer_mb = _env_int(
             "CORTEXAGENT_VRAM_BUFFER_MB", "vram", "buffer_mb", 512)
+
+        # ── Metrics / observability ─────────────────────────────────────────
+        # Latency alert: when the p95 per-request latency (ms) exceeds this
+        # threshold, the overseer logs a warning. 0 disables the alert.
+        self.latency_alert_p95_ms = _env_float(
+            "CORTEXAGENT_LATENCY_ALERT_P95_MS", "metrics", "latency_alert_p95_ms", 5000.0)
+        # Context-window monitor thresholds (percent of the big-model slot).
+        # Alert at alert_pct; force-reset the session when pegged at critical_pct
+        # for critical_ticks consecutive ticks (auto-compact dead → hard 400).
+        self.context_alert_pct = _env_float(
+            "CORTEXAGENT_CTX_ALERT_PCT", "metrics", "context_alert_pct", 76.0)
+        self.context_critical_pct = _env_float(
+            "CORTEXAGENT_CTX_CRITICAL_PCT", "metrics", "context_critical_pct", 90.0)
+        self.context_critical_ticks = _env_int(
+            "CORTEXAGENT_CTX_CRITICAL_TICKS", "metrics", "context_critical_ticks", 3)
 
     # ── Helpers ────────────────────────────────────────────────────────────
     def ensure_dirs(self) -> None:
@@ -486,8 +501,8 @@ def _cli() -> int:
         # Honors CORTEXAGENT_UNLOCK: when a key is unlocked, emit the env/conf
         # value (fall through to normal resolution) instead of the pin.
         env_map = {
-            "big_ctx": ("CORTEXAGENT_CTX", 156000),
-            "big_ub": ("CORTEXAGENT_UB", 2048),
+            "big_ctx": ("CORTEXAGENT_CTX", 98304),
+            "big_ub": ("CORTEXAGENT_UB", 2560),
             "big_ngl": ("CORTEXAGENT_NGL", 999),
             "big_fa": ("CORTEXAGENT_FA", "on"),
             "big_ctk": ("CORTEXAGENT_CTK", "q4_0"),

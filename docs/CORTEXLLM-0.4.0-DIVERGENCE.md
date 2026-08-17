@@ -194,7 +194,7 @@ third model, no separate vision server.
 | `Config.fallback_model` attribute removed | ✅ Done (was already removed) | The attribute was removed 2026-08-11; absence is the proof. |
 | `tests/run_smoke.py:test_no_fallback_two_models_only` | ✅ Added | Replaces `test_fallback_config_and_args`. Fails LOUDLY if `fallback_model` is set. |
 | `tests/run_smoke.py:PII_EXCLUDE_FILES` extended | ✅ Done | `ABOUT.md`, `docs/ARCHITECTURE.md`, `docs/AUDIT-2026-08-11.md`, `lib/tray_dashboard.py` ship GreyOK00 as branding or are local-only audit docs. |
-| `docs/SEPARATION.md` PII cleanup | ✅ Done | `/home/grey/cortexagent/lib` → `~/cortexagent/lib`. |
+| `docs/SEPARATION.md` PII cleanup | ✅ Done | `~/cortexagent/lib` → `~/cortexagent/lib`. |
 
 **README + ABOUT rewrite:**
 
@@ -276,7 +276,7 @@ items. **3 new commits, no regressions (smoke 34/38, up from 33/38):**
   - L6: aligned tiny ctx 4096 → 2048 to match daemon's lean tiny config
   - L17: dropped duplicate `ConfigParser()` (interpolation=None wins)
   - L19: removed unused `_check_tiny_model` (replaced by `_preload_tiny_model`)
-  - L20: removed unused `_auto_compact` (no-caps rule: never trim warm)
+  - L20: removed unused `_auto_compact` (no-caps rule: never trim hot)
   - L21: removed unused `_fallback_extra_args` (no fallback model exists)
   - L23: guarded `history[-1][1]` for empty / list-of-1 cases
 - `946ecf6` fix(tests): S4 regression test tries legacy/ path after v0.3.2 split
@@ -303,7 +303,7 @@ normalization) remain the canonical side-port list.
 These fixes are cortexagent-specific but the underlying techniques are
 generic enough to mention when the upstream PR for v0.4.0 lands:
 
-1. **NDJSON-first reads** — `lib/cold_distiller.py:_read_warm_entries`
+1. **NDJSON-first reads** — `lib/cold_distiller.py:_read_hot_entries`
    reads NDJSON (file-of-truth per the no-caps rule) before falling back
    to SQLite. Useful pattern for any engine that has dual stores.
    Worth mentioning in the upstream README so consumers know to mirror

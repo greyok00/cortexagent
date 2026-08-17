@@ -73,9 +73,8 @@ A local, air-gapped coding agent runtime with two llama-server models, a slimtok
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  Memory Management                                       │   │
 │  │  - Hot: uncapped append of every prompt/response           │   │
-│  │  - Warm: mirror of hot + curated facts                    │   │
 │  │  - Cold: JSON + SQLite for fast queries                   │   │
-│  │  - Hot→Warm sync on every tick                            │   │
+│  │  - Hot→Cold distill on every tick                         │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └───────────────────────┬─────────────────────────────────────────┘
                         │
@@ -236,7 +235,7 @@ User Input
 - ReAct/Socratic orchestration via `react_loop.py`
 - Task queue: command, llm, subagent, media, ingest
 - Schedule manager: cron, daily, weekly, date-based
-- Memory management: hot → warm → cold
+- Memory management: hot → cold
 - Token tracking: proxy + tiny model paths merged
 - Output beautification + formatting passes
 
@@ -331,7 +330,7 @@ User Input
 - `tool`: Tool execution
 - `beautify`: Output beautification pass
 - `output`: Final output formatting
-- `memory`: Memory operation (hot/warm/cold)
+- `memory`: Memory operation (hot/cold)
 - `eval`: Evaluation/guardrail check
 - `error`: Error/failure span
 
@@ -387,17 +386,7 @@ User Input
 │  HOT (Uncapped Append)                      │
 │  - Every prompt/response written immediately │
 │  - No size limit                            │
-│  - Mirrored to warm on every tick            │
 │  - Stored in JSONL log                      │
-└─────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────┐
-│  WARM (Curated Facts)                       │
-│  - Mirror of hot + curated facts            │
-│  - Structured as JSON                       │
-│  - Fast queries via SQLite                  │
-│  - Compact representation                   │
 └─────────────────────────────────────────────┘
     │
     ▼
@@ -412,10 +401,9 @@ User Input
 
 ### Memory Operations
 
-- **Hot → Warm Sync**: Every tick, hot data is mirrored to warm
-- **Cold Distill**: Every idle tick, old turns are distilled into summaries
+- **Hot → Cold Distill**: Every tick, hot data is distilled to cold facts
 - **Compact**: When hot exceeds threshold, old data is compacted
-- **Query**: Fast queries via SQLite mirror
+- **Query**: Fast queries via SQLite
 
 ## Token Tracking
 
@@ -496,7 +484,7 @@ User Input
 3. **Token Budget**: 131072 token limit
 4. **Chunked Minify**: For long contexts
 5. **Response Minify**: Stream compression
-6. **Memory Tiers**: Hot → Warm → Cold
+6. **Memory Tiers**: Hot → Cold
 
 ### Metrics
 
@@ -560,7 +548,7 @@ python3 lib/observability.py eval --trace=<trace_id>
 ## File Structure
 
 ```
-/home/grey/cortexagent/
+cortexagent/  (clone root)
 ├── lib/
 │   ├── beautify.py           # Output beautification
 │   ├── chain_diagnostic.py   # Full chain diagnostic

@@ -199,7 +199,7 @@ Verification:
 After every state change, save to the appropriate layer:
 
 ```
-On step complete → Save to WARM memory (project history)
+On step complete → Save to COLD memory (project history)
 On step blocked → Save to HOT memory (active plan)
 On plan update → Save to HOT memory (current state)
 On plan complete → Save to COLD memory (final deliverables)

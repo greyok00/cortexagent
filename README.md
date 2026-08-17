@@ -1,361 +1,225 @@
 # CortexAgent
 
-A local, air-gapped coding agent runtime with two llama-server models, a slimtoken chokepoint proxy, an always-on overseer daemon, and three UIs (CLI, 3D WebUI, tray), with all traffic on 127.0.0.1 and no cloud fallbacks.
+**A local coding-agent runtime with a small, complete toolchain — two llama.cpp models,
+a token-saving proxy, an always-on overseer, and three UIs. No cloud, no API key, no telemetry.**
 
-## Quick Start
+```
+╭─ RUNTIME ────────────╮ ╭─ SLIMTOKEN ─────────╮ ╭─ MEMORY ─────────────╮
+│ ctx 2.0% · 3.1k/156k │ │ saved 18% · 2.7k    │ │ 30 groups · 29 active │
+│ in —/s · out 47.6/s  │ │ last 15k → 12k      │ │ workflow · error fix  │
+│ ● model ready        │ │ balanced            │ │ press m for details   │
+╰──────────────────────╯ ╰─────────────────────╯ ╰───────────────────────╯
+```
+
+The strip above is the live 3-panel status bar that sits under the chat input in the TUI.
+It shows context usage, token savings, memory state, and the current work phase —
+always-on, width-adaptive, and color-paired so nothing relies on color alone.
+
+---
+
+## What it is
+
+CortexAgent runs a **single large model + a single small model**, both served locally by
+`llama-server`. The big model answers your prompts. The small model is the **overseer**:
+an always-on sidecar that classifies intents, schedules tasks, watches memory, and
+catches failures. Between you and the big model sits **slimtoken** — a token-minifying
+chokepoint proxy that strips grammar fields, dedupes messages, and compresses tool
+schemas before the request ever reaches the model.
+
+| Layer | What it does | File |
+|---|---|---|
+| **Daemon** | Owns big model + proxy lifecycle, exposes control socket | `lib/daemon.py` |
+| **Overseer** | Owns tiny model, queue, scheduler, memory writes | `lib/overseer.py` |
+| **Proxy** | Minifies tokens, tracks `/metrics`, swaps big↔fallback | `lib/grammar_proxy.py` |
+| **WebUI** | 3D dashboard + chat at `http://127.0.0.1:8090` | `lib/webui.py` |
+| **TUI** | Terminal chat at `python3 lib/tui.py` | `lib/tui.py` |
+| **Tray** | System tray icon + popout overseer dashboard | `lib/tray.py` + `lib/overseer_dashboard/` |
+
+Everything binds to `127.0.0.1`. Nothing leaves your machine.
+
+---
+
+## Quick start
 
 ```bash
-# Start the system
-python3 lib/daemon.py start      # Start big model + proxy
-python3 lib/overseer.py start    # Start tiny model + overseer
-python3 lib/webui.py start       # Start WebUI (optional)
+# 1. Clone
+git clone https://github.com/greyok00/cortexagent ~/cortexagent
+cd ~/cortexagent
 
-# Use the CLI
-python3 lib/tui.py               # Launch TUI chat
+# 2. Configure (one-time)
+cp config/settings.toml.example ~/.cortexagent/cortexagent.conf
+# edit to point at your GGUF files; see "Configuration" below
 
-# Check status
-python3 lib/overseer.py status   # Overseer status
-python3 lib/chain_diagnostic.py  # Full chain diagnostic
+# 3. Start the runtime
+python3 lib/daemon.py start      # loads big model + starts proxy
+python3 lib/overseer.py start    # starts tiny + overseer
+
+# 4. Pick a UI
+python3 lib/tui.py               # terminal chat (recommended)
+# — or —
+python3 lib/webui.py start       # then open http://127.0.0.1:8090
+# — or —
+python3 lib/tray.py start        # system tray icon
+
+# 5. Chat
+python3 lib/tui.py
+> write a python function that returns the fibonacci sequence
+
+# 6. Inspect
+python3 lib/overseer.py status   # live state
+python3 lib/chain_diagnostic.py  # full chain dump (routing → framing → LLM → output)
 ```
 
-## Architecture
-
-CortexAgent is designed as a fully instrumented "agent spine" with:
-- **Routing** → Intent classification + route decision
-- **Framing** → Domain analysis + prompt optimization
-- **LLM** → Big model (Qwen3.6-35B) + tiny model (LFM2.5-1.2B)
-- **Beautify** → Tables, charts, diagrams
-- **Output** → Domain-specific formatting
-
-See `ARCHITECTURE.md` for the full architecture diagram and component details.
-
-## Observability
-
-CortexAgent includes a comprehensive observability layer:
-
-### Trace Spans
-
-Each agent run generates a trace with spans for every operation:
-```python
-from lib.observability import Trace, Span, save_trace
-
-trace = Trace(user_input="test", workflow="example")
-with Span(trace.trace_id, "llm", "tiny_model_query") as span:
-    span.set_metric("tokens_in", 50)
-    span.set_metric("tokens_out", 100)
-save_trace(trace)
-```
-
-### Metrics
-
-Token/cost/latency/error metrics are collected per span:
-```bash
-# View metrics
-python3 lib/observability.py metrics
-```
-
-### Evaluations
-
-Automated evaluations for groundedness, hallucination, and safety:
-```bash
-python3 lib/observability.py eval --trace=<trace_id>
-```
-
-### Load Test Kit
-
-Test the system under pressure:
-```bash
-# Quick smoke test
-python3 lib/load_test.py --smoke
-
-# Proxy load test (100 requests, 10 parallel)
-python3 lib/load_test.py proxy --count=100 --parallel=10
-
-# Overseer load test (50 requests, 5 parallel)
-python3 lib/load_test.py overseer --count=50 --parallel=5
-
-# End-to-end load test
-python3 lib/load_test.py e2e --count=100 --parallel=10
-
-# Disk I/O stress test
-python3 lib/load_test.py disk --count=1000 --parallel=20
-
-# Error injection tests
-python3 lib/load_test.py error --injection=model_down
-python3 lib/load_test.py error --injection=network_timeout
-
-# Run all tests
-python3 lib/load_test.py all --count=500 --parallel=20
-```
-
-### Full Test Suite
-
-Comprehensive system test with report generation:
-```bash
-# Run everything
-python3 lib/run_full_test.py
-
-# Health check only
-python3 lib/run_full_test.py health
-
-# Load tests only
-python3 lib/run_full_test.py load
-```
-
-## Components
-
-### Grammar Proxy (`lib/grammar_proxy.py`)
-
-Strips Anthropic grammar fields, runs slimtoken minification, tracks tokens.
-
-**Features**:
-- 5-stage minification: system, dedup, messages, tools, distill
-- Token budget: 131072
-- Chunked minify + response minify
-- Token tracking + `/metrics` endpoint
-
-### Overseer (`lib/overseer.py`)
-
-Orchestrates the tiny model, manages queues, schedules, and memory.
-
-**Features**:
-- Tiny model: LFM2.5-1.2B on `:8082`
-- Task queue: command, llm, subagent, media, ingest
-- Schedule manager: cron, daily, weekly, date-based
-- Memory management: hot → warm → cold
-- Token tracking: proxy + tiny model paths merged
-
-### React Loop (`lib/react_loop.py`)
-
-Drives the tiny model through Thought → Action → Observation loops.
-
-**Modes**:
-- `react`: Straight tool-calling loop
-- `socratic`: Surface assumptions + falsification questions
-- `direct`: Single tiny query, no tools
-
-### Session Bridge (`lib/session_bridge.py`)
-
-Shared-file bridge between TUI, webui, and overseer.
-
-**Features**:
-- Atomic JSONL appends with `flock`
-- Per-origin cursor tracking
-- SSE streaming to UIs
-
-### TUI (`lib/tui.py`)
-
-Full-screen chat with Textual 8.x.
-
-**Features**:
-- Streaming (chunk-by-chunk)
-- Typed response blocks: text, code, tools, disclosures
-- Collapsed code cards with copy/save/search
-- Terminal-escape-sanitized output
-
-### WebUI (`lib/webui.py`)
-
-3D dashboard with chat interface.
-
-**Features**:
-- Real-time metrics: VRAM, tokens, TPS, latency
-- Mini-map (3D visualization)
-- Chat interface with streaming
-- Dashboard cards for all subsystems
-
-### Tray (`lib/tray.py`)
-
-System tray icon with popout dashboard.
-
-**Features**:
-- Manages overseer start/stop
-- Quick options: dashboard, CLI, restart
-- Popout dashboard: memory, tokens, queue, alerts
-
-## Security
-
-### Defenses
-
-1. **Grammar Proxy**: Strips grammar fields, minifies content
-2. **Injection Guardrails**: Explicit warnings on tool outputs
-3. **Trust Tagging**: Tool outputs wrapped in "tool_output" markers
-4. **Output Filtering**: Sanitized terminal output
-5. **Sandboxing**: Command execution with timeouts
-6. **Session Isolation**: Per-origin cursors + logging
-
-### Safety Detection
-
-- **Keyword Matching**: 20+ injection keywords
-- **Pattern Matching**: Common injection techniques
-- **Confidence Scoring**: 0-1 safety score
-- **Flags**: `potential_injection`, `unsafe_content`, etc.
-
-## Token Tracking
-
-### Proxy Path (Big Model)
-
-- Tracks `tokens_in`, `tokens_out`, `tokens_saved` per request
-- Minification savings: `tokens_saved = tokens_in - tokens_out`
-- Savings ratio: `ratio_pct = tokens_saved / tokens_in * 100`
-
-### Tiny Model Path (Overseer)
-
-- Tracks `tokens_in`, `tokens_out`, `tokens_saved` per query
-- Merged with proxy stats for unified view
-
-### View Stats
+Stop:
 
 ```bash
-python3 lib/overseer.py status
-python3 lib/chain_diagnostic.py
-python3 lib/observability.py metrics
+python3 lib/overseer.py stop
+python3 lib/daemon.py stop
 ```
 
-## Memory Architecture
-
-### Memory Tiers
-
-```
-HOT (Uncapped Append)
-  → WARM (Curated Facts)
-    → COLD (Archived)
-```
-
-### Memory Operations
-
-- **Hot → Warm Sync**: Every tick
-- **Cold Distill**: Every idle tick
-- **Compact**: When hot exceeds threshold
-- **Query**: Fast queries via SQLite
+---
 
 ## Configuration
 
-### Environment Variables
+State lives under `~/.cortexagent/`. Config is `~/.cortexagent/cortexagent.conf`
+(TOML), overridable by environment variables:
 
-- `CORTEXAGENT_STATE_DIR`: State directory (default: `~/.cortexagent`)
-- `CORTEXAGENT_MAX_TOOLS`: Max tools for tiny model (default: 16)
-- `CORTEXAGENT_TOOL_STUBS`: Enable stub mode (default: 1)
-- `CORTEXAGENT_MINIFY`: Enable minification (default: 1)
-- `CORTEXAGENT_MINIFY_TOOLS`: Minify tool schemas (default: 1)
-- `CORTEXAGENT_AUTHOR`: Author tag for prompts
+| Env var | Purpose | Default |
+|---|---|---|
+| `CORTEXAGENT_STATE_DIR` | State directory | `~/.cortexagent` |
+| `CORTEXAGENT_BIG_MODEL` | Big GGUF path (overrides conf) | unset |
+| `CORTEXAGENT_TINY_MODEL` | Tiny GGUF path | unset |
+| `CORTEXAGENT_FALLBACK_MODEL` | Fallback GGUF (VRAM-aware) | unset |
+| `CORTEXAGENT_MINIFY` | Enable slimtoken proxy | `1` |
+| `CORTEXAGENT_MAX_TOOLS` | Tiny model tool surface budget | `16` |
+| `CORTEXAGENT_AUTHOR` | Branding tag for prompts | the maintainer |
 
-### State Files
-
-- `~/.cortexagent/overseer_state.json`: Overseer state
-- `~/.cortexagent/overseer_queue.json`: Task queue
-- `~/.cortexagent/overseer_schedule.json`: Schedule entries
-- `~/.cortexagent/token_tracker.json`: Token stats
-- `~/.cortexagent/minify_stats.json`: Minify stats
-- `~/.cortexagent/observability/`: Observability data
-- `~/.cortexagent/test_results/`: Load test results
-
-## File Structure
+State files (all written atomically):
 
 ```
-/home/grey/cortexagent/
-├── lib/
-│   ├── beautify.py           # Output beautification
-│   ├── chain_diagnostic.py   # Full chain diagnostic
-│   ├── daemon.py             # Big model daemon
-│   ├── grammar_proxy.py      # Proxy + minification
-│   ├── load_test.py          # Load test kit
-│   ├── observability.py      # Trace/metrics/evals
-│   ├── output_frame.py       # Output formatting
-│   ├── overseer.py           # Overseer daemon
-│   ├── pre_flight_gate.py    # Intent classification
-│   ├── prompt_framing.py     # Prompt optimization
-│   ├── react_loop.py         # ReAct/Socratic engine
-│   ├── response_model.py     # TUI response parsing
-│   ├── run_full_test.py      # Full test suite
-│   ├── session_bridge.py     # Shared file bridge
-│   ├── tiny_llm.py           # Tiny model interface
-│   ├── token_tracker.py      # Token tracking
-│   ├── tool_registry.py      # Tool registry
-│   ├── tui.py                # Terminal UI
-│   └── webui.py              # Web UI
-├── assets/
-│   └── cortexagentsquarelogo.png  # Tray icon
-├── ARCHITECTURE.md           # Full architecture diagram
-├── ARCHITECTURAL_AUDIT_PROMPT.md   # Audit brief
-├── CHAIN_OVERHAUL_PLAN.md    # Implementation plan
-└── README.md                 # This file
+~/.cortexagent/
+├── overseer_state.json          # live state
+├── overseer_queue.json          # task queue
+├── overseer_schedule.json       # cron entries
+├── token_tracker.json           # per-request token counts
+├── minify_stats.json            # slimtoken savings
+├── observability/<trace_id>/    # one dir per trace
+└── stt_daemon.log               # STT sidecar (optional)
 ```
+
+---
+
+## Pair it with
+
+CortexAgent is the runtime; the engine it leans on lives in two sibling repos.
+They are independent — drop-in replaceable — but designed to work together.
+
+| Component | Role | Repo |
+|---|---|---|
+| **slimtoken** | The token-minification proxy (`lib/grammar_proxy.py` is a thin adapter) | `<repo>/slimtoken` |
+| **cortexllm** | The memory layer + scheduler the overseer writes to | `<repo>/cortexllm` |
+
+If you only want CortexAgent without the proxy, set `CORTEXAGENT_MINIFY=0`. If you
+don't need the memory layer, the overseer will simply not write to it.
+
+---
+
+## Architecture in 30 seconds
+
+```
+                         ┌───────────────────────────────┐
+                         │  TUI · WebUI · Tray (any one) │
+                         └──────────────┬────────────────┘
+                                        │
+                            ┌───────────▼───────────┐
+                            │   grammar_proxy (:81) │ ←─── minify + /metrics
+                            └───────────┬───────────┘
+                                        │
+                            ┌───────────▼───────────┐
+                            │  big model (:8080)     │ ←─── Qwen3.6-35B UD-IQ3_S
+                            └───────────┬───────────┘
+                                        │
+       ┌────────────────────────────────▼────────────────────────────┐
+       │                                                              │
+┌──────▼──────┐  ┌───────────┐  ┌──────────┐  ┌───────────────────────┐
+│ overseer    │  │ tiny LLM  │  │ queue +  │  │ memory (cortexllm)    │
+│ (:8082)     │  │ (:8082)   │  │ schedule │  │ hot NDJSON + cold JSON│
+└─────────────┘  └───────────┘  └──────────┘  └───────────────────────┘
+```
+
+Each box runs as its own process. The proxy is the only thing on the hot path
+between you and the big model.
+
+For the full architecture (every span, every state file, every subsystem), see
+[`ARCHITECTURE.md`](ARCHITECTURE.md). For the design decisions behind each piece,
+see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+---
 
 ## Development
 
-### Testing
+### Test gates
 
 ```bash
-# Run all tests
-python3 lib/run_full_test.py
+# Pure unit tests (no live servers needed)
+python3 -m pytest tests/test_tui_status.py         # 27 tests, 0.05s
+python3 -m pytest tests/test_response_model.py     # response parsing/sanitize
+python3 -m pytest tests/test_overseer_dashboard.py # dashboard widgets
 
-# Run specific tests
-python3 lib/run_full_test.py health
-python3 lib/run_full_test.py load
-
-# Load test kit
-python3 lib/load_test.py --smoke
-python3 lib/load_test.py proxy --count=100 --parallel=10
-python3 lib/load_test.py overseer --count=50 --parallel=5
-python3 lib/load_test.py e2e --count=100 --parallel=10
-
-# Observability
-python3 lib/observability.py --smoke
-python3 lib/observability.py traces
-python3 lib/observability.py metrics
-python3 lib/observability.py eval --trace=<trace_id>
+# Full smoke gate (some need live ports)
+python3 tests/run_smoke.py
 ```
 
-### Adding New Components
+### Layout
 
-1. Create module in `lib/`
-2. Add to chain diagnostic (`lib/chain_diagnostic.py`)
-3. Add to load test (`lib/load_test.py`)
-4. Add to full test suite (`lib/run_full_test.py`)
-5. Document in `ARCHITECTURE.md`
+```
+lib/
+├── daemon.py                # big model lifecycle
+├── overseer.py              # tiny model + queue + scheduler
+├── grammar_proxy.py         # token minify + /metrics
+├── webui.py                 # :8090 dashboard + chat
+├── tui.py                   # terminal UI (Textual 8.x)
+├── tui_status.py            # 3-panel status strip (pure render layer)
+├── processing_animation.py  # 7-stage "CORTEX ACTIVE" animation
+├── tray.py                  # system tray icon
+├── overseer_dashboard/      # tk-based popout dashboard
+├── session_bridge.py        # shared-file bridge (TUI ↔ webui ↔ overseer)
+├── observability.py         # trace spans + metrics + evals
+├── response_model.py        # typed response blocks + sanitization
+├── beautify.py              # tables / charts / diagrams in terminal output
+├── tool_registry.py         # tiny-model tool surface
+├── stt.py                   # faster-whisper speech-to-text sidecar
+└── ... (40+ modules, all stdlib where possible)
+```
 
-### Adding New Tests
+### Repo conventions
 
-1. Add test function to `lib/load_test.py`
-2. Add test runner to `lib/run_full_test.py`
-3. Document in README.md
+- **One module per concern.** If a file is over ~600 lines it probably wants splitting.
+- **Stdlib-only by default.** Optional dependencies are clearly marked.
+- **Atomic writes everywhere.** `O_APPEND` for hot memory, `tmp+rename` for everything else.
+- **Sanitize the boundary.** Anything that crosses a process boundary passes through
+  `lib/response_model.sanitize_terminal` first.
+- **No PII in commits.** See the pre-commit grep in `tests/run_smoke.py` (`PII_PATTERNS`).
 
-## Performance
+---
 
-### Optimization Strategies
+## Threat model
 
-1. **Minification**: 5-stage slimtoken pipeline
-2. **Stub Mode**: 35 tokens vs 180 full for tool surface
-3. **Token Budget**: 131072 token limit
-4. **Chunked Minify**: For long contexts
-5. **Response Minify**: Stream compression
-6. **Memory Tiers**: Hot → Warm → Cold
+| Trust | Examples |
+|---|---|
+| **Trusted** | The user, the local filesystem, the daemon, the overseer |
+| **Untrusted** | File contents, web pages, emails, MCP outputs, browser content — any content the model ingests can carry adversarial instructions |
 
-### Key Metrics
+Defenses:
 
-- **Throughput**: req/s (load tests)
-- **Latency**: avg, p95, max (ms)
-- **Error Rate**: % of failed requests
-- **Token Savings**: % reduction via minification
-- **VRAM Usage**: Per-process breakdown
+1. **Grammar proxy** strips grammar fields and runs slimtoken minification (catches most tool-injection payloads by reducing the surface the model sees).
+2. **Injection guardrails** mark tool outputs with `tool_output` tags and surface them as untrusted.
+3. **Output sanitization** — terminal escapes are stripped before any cell lands in the chat scrollback.
+4. **Per-origin session cursors** so the TUI and the webui can't stomp each other's history.
+5. **Localhost-only bindings** — nothing on `0.0.0.0`, no cloud fallbacks.
 
-## Security
-
-### Threat Model
-
-- **Single-user, local system**: User is trusted
-- **Untrusted content**: Files, emails, web pages, MCP outputs, browser content can contain adversarial instructions
-- **Local-only**: All traffic on 127.0.0.1, no cloud fallbacks
-
-### Defenses
-
-1. **Grammar Proxy**: Strips grammar fields, minifies content
-2. **Injection Guardrails**: Explicit warnings on tool outputs
-3. **Trust Tagging**: Tool outputs wrapped in "tool_output" markers
-4. **Output Filtering**: Sanitized terminal output
-5. **Sandboxing**: Command execution with timeouts
-6. **Session Isolation**: Per-origin cursors + logging
+---
 
 ## License
 
-This project is proprietary and confidential.
+MIT.

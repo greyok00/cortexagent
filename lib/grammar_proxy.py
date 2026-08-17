@@ -128,7 +128,7 @@ def _build_minify_cfg():
             "CORTEXAGENT_MINIFY_DEDUP_MIN", "200") or 200),
         distill_max_chars=int(os.environ.get(
             "CORTEXAGENT_MINIFY_DISTILL_MAX", "240") or 240),
-        tool_compress=_bool_env("CORTEXAGENT_MINIFY_TOOL_COMPRESS", False),
+        tool_compress=_bool_env("CORTEXAGENT_MINIFY_TOOL_COMPRESS", True),
         minify_dom=_bool_env("CORTEXAGENT_MINIFY_DOM", False),
     )
     return MinifyConfig(**kw)
@@ -137,6 +137,50 @@ def _build_minify_cfg():
 _MINIFY_CFG = _build_minify_cfg()
 _MINIFY_CHUNKED = _bool_env("CORTEXAGENT_MINIFY_CHUNKED", True)
 _MINIFY_RESPONSE = _bool_env("CORTEXAGENT_MINIFY_RESPONSE", True)
+
+# ── Tool-result size cap (R5) ─────────────────────────────────────────────────
+# A single oversized tool result (e.g. a broad `find` dumping 1MB of file paths)
+# can blow the context window ~5x and trigger the 400-class overflow. Cap each
+# tool_result's content at CORTEXAGENT_TOOL_RESULT_MAX chars (default 50k),
+# truncating with a marker so the model still sees the head of the output.
+# Applied BEFORE minify so slimtoken never has to chew on a megabyte blob.
+_TOOL_RESULT_MAX = int(os.environ.get("CORTEXAGENT_TOOL_RESULT_MAX", "50000") or 50000)
+
+
+def _trunc_marker(removed: int) -> str:
+    return f"\n...[truncated {removed} chars by cortexagent]"
+
+
+def _cap_tool_results(parsed, max_chars: int):
+    """Truncate oversized tool_result content in-place. Returns parsed."""
+    if not isinstance(parsed, dict):
+        return parsed
+    for msg in parsed.get("messages", []):
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "tool_result":
+                continue
+            c = item.get("content")
+            if isinstance(c, str):
+                if len(c) > max_chars:
+                    item["content"] = c[:max_chars] + _trunc_marker(len(c) - max_chars)
+            elif isinstance(c, list):
+                # tool_result content may be a list of {type: text} blocks.
+                total = sum(len(x.get("text", "")) for x in c if isinstance(x, dict))
+                if total > max_chars:
+                    budget = max_chars
+                    for blk in c:
+                        if not isinstance(blk, dict) or blk.get("type") != "text":
+                            continue
+                        t = blk.get("text", "")
+                        if len(t) <= budget:
+                            budget -= len(t)
+                        else:
+                            blk["text"] = t[:budget] + _trunc_marker(len(t) - budget)
+                            budget = 0
+    return parsed
 
 # ── Output-side minify (R4) ──────────────────────────────────────────────────
 # Slimtoken has no response minify, so we run a thin local helper. Strips
@@ -690,6 +734,7 @@ class ProxyHandler:
                 if isinstance(parsed, dict):
                     if "grammar" in parsed:
                         del parsed["grammar"]
+                    parsed = _cap_tool_results(parsed, _TOOL_RESULT_MAX)
                     if _MINIFY_CFG is not None:
                         parsed, mstats = minify_request(parsed, _MINIFY_CFG)
                         print(f"[proxy] minify: {mstats.summary()}", file=sys.stderr)
@@ -766,6 +811,7 @@ class ProxyHandler:
             if isinstance(parsed, dict):
                 if "grammar" in parsed:
                     del parsed["grammar"]
+                parsed = _cap_tool_results(parsed, _TOOL_RESULT_MAX)
                 parsed, mstats = minify_request(parsed, _MINIFY_CFG)
                 print(f"[proxy] minify(chunked): {mstats.summary()}", file=sys.stderr)
                 _record_minify(mstats)
@@ -935,80 +981,118 @@ class ProxyHandler:
             pass
         finally:
             stop.set()
-            # Extract token usage from response. Run minify_response on the
-            # buffered response (no-op for live SSE — we already piped live
-            # bytes to the client; this only feeds token accounting / metrics).
-            pt, ct = 0, 0
-            if resp_buf:
-                full = b"".join(resp_buf)
-                minified = minify_response(full)
-                if minified is not full:
-                    # update in-place so subsequent accounting sees the minified form
-                    resp_buf.clear()
-                    resp_buf.append(minified)
-                full_text = (minified if minified is not full else full).decode("utf-8", errors="replace")
-                # Three SSE shapes we accept:
-                #   OpenAI: data: {"choices":[...], "usage":{"prompt_tokens":N,"completion_tokens":N}}
-                #     (usage may arrive on the final chunk or in a dedicated chunk)
-                #   llama-server: data: {"choices":[{...finish_reason:"length"...}],
-                #                          "timings":{"prompt_n":N,"predicted_n":N,
-                #                                     "predicted_per_second":F}}
-                #     (timings appear on the last chunk before data: [DONE])
-                #   Anthropic (llama-server /v1/messages?beta=true):
-                #     event: message_start → data: {"type":"message_start",...,"usage":{"input_tokens":N}}
-                #     event: message_delta → data: {"type":"message_delta",...,"usage":{"output_tokens":N}}
-                #     (input_tokens on the first event, output_tokens on the last)
-                # All arrive inside a "data:" line; [DONE] carries nothing.
-                for line in full_text.split("\n"):
-                    stripped = line.strip()
-                    if not stripped.startswith("data:"):
-                        continue
-                    payload = stripped[5:].strip()
-                    if payload == "[DONE]" or not payload:
-                        continue
+            # ── Token extraction (must NEVER crash the proxy) ────────────────
+            # The model returns a full HTTP response (headers + body) in resp_buf.
+            # We strip the headers, then try multiple body shapes to recover
+            # prompt/completion token counts for `_record_tokens`. Anything that
+            # fails (parse error, missing key, weird encoding) is silently
+            # swallowed — token accounting is a side concern, not worth killing
+            # the connection for.
+            try:
+                pt, ct, _elapsed = 0, 0, time.time() - _t0
+                if resp_buf:
+                    full = b"".join(resp_buf)
+                    # minify_response is the existing pass (strips grammar field
+                    # llama-server can't parse) — keep it. It returns the same
+                    # bytes if nothing matched, so identity-check is safe.
+                    minified = minify_response(full)
+                    if minified is not full:
+                        resp_buf.clear()
+                        resp_buf.append(minified)
+                    body_bytes = minified if minified is not full else full
+                    full_text = body_bytes.decode("utf-8", errors="replace")
+
+                    # ── 1. Strip HTTP response headers (llama-server sends them
+                    #       when the proxy connects raw; split on the blank line
+                    #       that separates headers from body) ───────────────
+                    if "\r\n\r\n" in full_text:
+                        full_text = full_text.split("\r\n\r\n", 1)[1]
+                    # Some proxies return \n\n (no \r); handle that too.
+                    if not full_text and "\n\n" in (body_bytes.decode("utf-8", errors="replace")):
+                        full_text = body_bytes.decode("utf-8", errors="replace").split("\n\n", 1)[1]
+                    stripped_text = full_text.strip()
+
+                    # ── 2. Collect candidate JSON payloads ────────────────
+                    # Shape A: body IS a single raw JSON object (non-streaming
+                    #          chat completion, /v1/models, /health, etc).
+                    # Shape B: SSE — multiple `data: {...}` lines, possibly
+                    #          wrapping usage across message_start + message_delta.
+                    payloads: list[str] = []
                     try:
-                        obj = json.loads(payload)
+                        json.loads(stripped_text)  # validates
+                        payloads.append(stripped_text)  # raw JSON wins
                     except Exception:
-                        continue
-                    if not isinstance(obj, dict):
-                        continue
-                    # OpenAI shape — preferred when both are present.
-                    usage = obj.get("usage")
-                    # Anthropic message_start nests usage under "message":
-                    #   {"type":"message_start","message":{...,"usage":{...}}}
-                    if not isinstance(usage, dict):
-                        msg = obj.get("message")
-                        if isinstance(msg, dict):
-                            usage = msg.get("usage")
-                    if isinstance(usage, dict):
-                        u_pt = int(usage.get("prompt_tokens", 0) or 0)
-                        u_ct = int(usage.get("completion_tokens", 0) or 0)
-                        # Anthropic shape (llama-server /v1/messages?beta=true):
-                        #   message_start → usage.input_tokens (prompt count)
-                        #   message_delta → usage.output_tokens (completion count)
-                        if not u_pt:
-                            u_pt = int(usage.get("input_tokens", 0) or 0)
-                        if not u_ct:
-                            u_ct = int(usage.get("output_tokens", 0) or 0)
-                        if u_pt:
-                            pt = u_pt
-                        if u_ct:
-                            ct = u_ct
-                    # llama-server shape — only used when OpenAI usage was absent.
-                    if not pt and not ct:
-                        timings = obj.get("timings")
-                        if isinstance(timings, dict):
-                            pn = int(timings.get("prompt_n", 0) or 0)
-                            prn = int(timings.get("predicted_n", 0) or 0)
-                            if pn:
-                                pt = pn
-                            if prn:
-                                ct = prn
-            _elapsed = time.time() - _t0
+                        for line in full_text.split("\n"):
+                            ln = line.strip()
+                            if not ln or not ln.startswith("data:"):
+                                continue
+                            payload = ln[5:].strip()
+                            if not payload or payload == "[DONE]":
+                                continue
+                            payloads.append(payload)
+
+                    # ── 3. Walk payloads, pull usage + timings ────────────
+                    for payload in payloads:
+                        try:
+                            obj = json.loads(payload)
+                        except Exception:
+                            continue
+                        if not isinstance(obj, dict):
+                            continue
+
+                        # OpenAI shape (preferred): {"usage":{"prompt_tokens":N,
+                        #   "completion_tokens":N}}. llama-server's /v1/chat
+                        #   returns this on the final streaming chunk.
+                        usage = obj.get("usage")
+                        # Anthropic beta shape: usage nests under "message"
+                        #   {"type":"message_start","message":{"usage":{...}}}.
+                        if not isinstance(usage, dict):
+                            msg = obj.get("message")
+                            if isinstance(msg, dict):
+                                usage = msg.get("usage")
+                        if isinstance(usage, dict):
+                            u_pt = int(usage.get("prompt_tokens", 0) or 0)
+                            u_ct = int(usage.get("completion_tokens", 0) or 0)
+                            # Anthropic uses input_tokens / output_tokens.
+                            if not u_pt:
+                                u_pt = int(usage.get("input_tokens", 0) or 0)
+                            if not u_ct:
+                                u_ct = int(usage.get("output_tokens", 0) or 0)
+                            if u_pt:
+                                pt = u_pt
+                            if u_ct:
+                                ct = u_ct
+
+                        # ── 4. Fallback: llama-server timings block ─────
+                        # When usage is absent (non-streaming or older builds),
+                        # the `timings` object carries prompt_n / predicted_n.
+                        # Only consult this if OpenAI usage was empty so we
+                        # don't double-count on the same response.
+                        if not pt and not ct:
+                            timings = obj.get("timings")
+                            if isinstance(timings, dict):
+                                pn = int(timings.get("prompt_n", 0) or 0)
+                                prn = int(timings.get("predicted_n", 0) or 0)
+                                if pn:
+                                    pt = pn
+                                if prn:
+                                    ct = prn
+            except Exception:
+                # Swallow ALL errors here — token extraction is best-effort.
+                # The response was already piped to the client; the proxy
+                # staying up is more important than the metrics.
+                pt, ct, _elapsed = 0, 0, 0.0
+
+            # ── 5. Record metrics if we got a completion count ────────────
             if ct:
-                _record_tokens(pt, ct, _elapsed)
-                tok_s = round(ct / _elapsed, 1) if _elapsed > 0 else 0
-                print(f"[proxy] tokens: {pt} in → {ct} out ({tok_s} tok/s, {_elapsed:.1f}s)", file=sys.stderr)
+                try:
+                    _record_tokens(pt, ct, _elapsed)
+                    tok_s = round(ct / _elapsed, 1) if _elapsed > 0 else 0
+                    print(f"[proxy] tokens: {pt} in → {ct} out ({tok_s} tok/s, {_elapsed:.1f}s)", file=sys.stderr)
+                except Exception:
+                    pass  # metrics must never break the proxy
+
+            # ── 6. Socket cleanup (keep t1.join and closes from before) ───
             t1.join(timeout=3)
             try:
                 dst.close()

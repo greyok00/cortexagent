@@ -216,7 +216,7 @@ Thin wrapper over CortexAgent's pre_flight_gate.classify_intent. Prints
 "tiny" or "big" to stdout. Never raises.
 """
 import sys
-sys.path.insert(0, "/home/grey/cortexagent")
+sys.path.insert(0, "~/cortexagent")
 from lib.pre_flight_gate import classify_intent  # noqa: E402
 
 _DIRECT = {"conversation", "memory_operation", "scheduling", "task_management"}
@@ -538,7 +538,7 @@ Create `cortex/scripts/schedule_bridge.py` (reads the overseer's schedule):
 import json
 import sys
 
-sys.path.insert(0, "/home/grey/cortexagent")
+sys.path.insert(0, "~/cortexagent")
 from lib.overseer import schedule_list  # noqa: E402
 
 def main() -> int:
@@ -646,7 +646,7 @@ Usage:
 import json
 import sys
 
-sys.path.insert(0, "/home/grey/cortexagent")
+sys.path.insert(0, "~/cortexagent")
 from lib.skills import load_skills_dir, list_skills, run_skill  # noqa: E402
 
 def main() -> int:

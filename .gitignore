@@ -47,3 +47,5 @@ __pycache__/
 *.bak*
 *.bak-ctx*
 *.pre-wolf-*
+.backups/
+.snapshots/

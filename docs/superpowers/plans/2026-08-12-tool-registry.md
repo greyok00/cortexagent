@@ -12,7 +12,7 @@
 
 - **stdlib-only** for the registry module — no new pip deps (matches codebase style).
 - **Localhost-only bindings** — nothing on 0.0.0.0; all 127.0.0.1.
-- **No PII** — use `Path.home()` / env vars; never hardcode `/home/grey`.
+- **No PII** — use `Path.home()` / env vars; never hardcode the user home path.
 - **Two-models-only** — this step adds no models; it wraps existing ones.
 - **GPU reserved for the big model** — no GPU work in this step.
 - **`cortexagent doctor` + full smoke must pass** after every task.

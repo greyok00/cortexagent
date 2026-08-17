@@ -2,7 +2,7 @@
 """cortexagent_call — hook-friendly CLI into the CortexAgent memory system.
 
 Thin shim over the in-repo memory manager:
-  hot write (300-row FIFO cap) + checkpoint (session resume) + warm-buffer
+  hot write (300-row FIFO cap) + checkpoint (session resume)
   prune/dedup (2000 cap, 70/30) + event logging.
 
 Used by cortexagent hooks to save prompts/responses and pull recent context.
@@ -68,12 +68,12 @@ def get_resume():
 
 
 def search(query: str, limit: int = 10):
-    """Read-only warm-memory search."""
+    """Read-only hot-memory search."""
     if db is None:
         return []
     try:
         rows = db.reader().execute(
-            "SELECT role, content, timestamp FROM Memory_Warm "
+            "SELECT role, content, timestamp FROM Memory_Hot "
             "WHERE profile = ? AND LOWER(content) LIKE ? ORDER BY id DESC LIMIT ?",
             (f"platform:{PLATFORM}", f"%{query.lower()}%", limit),
         ).fetchall()
@@ -114,7 +114,7 @@ def main():
     p_write = sub.add_parser("write", help="save a message through the memory pipeline")
     p_write.add_argument("--role", default="user")
     p_write.add_argument("--content", required=True)
-    p_search = sub.add_parser("search", help="search warm memory (read-only)")
+    p_search = sub.add_parser("search", help="search hot memory (read-only)")
     p_search.add_argument("query")
     p_search.add_argument("--limit", type=int, default=10)
     args = ap.parse_args()

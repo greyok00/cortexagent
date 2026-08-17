@@ -41,7 +41,7 @@ Operator input (text)
     │
     ├─ Load session context (current conversation)
     ├─ Load hot memory (active projects, current priorities)
-    ├─ Load warm memory (related past work, if topic matches)
+    ├─ Load cold memory (related past work, if topic matches)
     └─ Present relevant context to COORDINATOR
     │
     ▼
@@ -87,7 +87,7 @@ Input: "Research [topic]"
     │
     ├─ PARSER → intent=research, target=topic, scope=default
     ├─ GUARDRAIL → Check: read-only research = PROCEED
-    ├─ CONTEXT → Load related past research from warm memory
+    ├─ CONTEXT → Load related past research from cold memory
     ├─ DECOMPOSE → COORDINATOR creates tasks:
     │   ├─ Task 1: "Scrape [topic] — main sources" → assign: SCRAPER
     │   ├─ Task 2: "Cross-reference findings" → assign: ANALYST
@@ -393,7 +393,7 @@ Phase 7: Growth & Adaptation (max restrictiveness)
 | Task complete | Save result to appropriate memory layer |
 | Project milestone | Update project status in hot memory |
 | Operator preference observed | Append to cold memory |
-| Error encountered | Log to warm memory for pattern learning |
+| Error encountered | Log to hot memory for pattern learning |
 | Session end | Flush all pending writes |
 
 ### 3.3 Recovery

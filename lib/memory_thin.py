@@ -1,16 +1,11 @@
 """
-memory_thin.py — thinned CortexAgent memory wrapper.
+memory_thin.py — Single-session memory wrapper for CortexAgent.
 
-Thin shell over ~/.cortexllm/scripts/save-context.py + the daemon socket.
-The CortexAgent side does NOT need the full MCP server, skill, or ontology
-tooling — just hot append + warm mirror + cold write + read/search.
+No tiers. No caps. Single linear history + cold facts.
 
-HARD RULE (2026-08-11): no caps. Every prompt appends to hot and is mirrored
-to warm. Warm is the cross-session buffer the engine was designed for.
-
-DROPPED 2026-08-11 (post-cortexllm v0.4.0): the local `_atomic_append` is now
-`from cortexllm.atomic import atomic_append`. POSIX-atomic O_APPEND ≤ PIPE_BUF
-(4096B) on Linux. The local copy was a verbatim duplicate of the public API.
+The hot layer is the active conversation buffer (NDJSON, no limit).
+The cold layer stores persistent knowledge facts (NDJSON, no limit).
+Warm was for cross-session merging — removed for single-session use.
 """
 import json
 import os
@@ -20,13 +15,10 @@ import time
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 
-# Re-export the drop-in so internal callers can keep using the underscore name.
 try:
-    from cortexllm.atomic import atomic_append as _atomic_append  # noqa: F401
+    from cortexllm.atomic import atomic_append as _atomic_append
 except ImportError:
-    # cortexllm not installed / vendored fallback missing — provide a local
-    # POSIX-only atomic append (kept here so the wrapper degrades gracefully).
-    def _atomic_append(file_path, line):  # type: ignore[no-redef]
+    def _atomic_append(file_path, line):
         file_path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(file_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
         try:
@@ -34,31 +26,26 @@ except ImportError:
         finally:
             os.close(fd)
 
-# Resolve CortexLLM paths (mirrors lib/config.py get cortexllm_*)
+# Paths
 _HOME = Path.home()
 CORTEXLLM_DIR = _HOME / ".config/cortexllm"
-HOT_DIR = CORTEXLLM_DIR / "memory/hot"
-WARM_DIR = CORTEXLLM_DIR / "memory/warm"
-COLD_DIR = CORTEXLLM_DIR / "memory/cold"
+# Actual hot/cold paths used by the daemon (single-session, no per-profile)
+HOT_FILE = CORTEXLLM_DIR / "memory" / "hot" / "cortexagent.jsonl"
+COLD_FILE = CORTEXLLM_DIR / "memory" / "cold" / "cortexagent.jsonl"
 DAEMON_SOCKET = _HOME / ".cortexllm" / "memory.sock"
-SAVE_SCRIPT = _HOME / ".cortexllm" / "scripts" / "save-context.py"
 ENTERPRISE_DB = CORTEXLLM_DIR / "cortexllm.db"
 
 
 def _now_ts() -> str:
-    """ISO-ish timestamp matching the engine's format."""
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _try_daemon(role: str, content: str, platform: str, **meta) -> bool:
-    """Send one write via the daemon socket. Fast path. Returns True on success."""
+def _try_daemon(content: str) -> bool:
+    """Try writing via daemon socket."""
     if not DAEMON_SOCKET.exists():
         return False
-    payload = json.dumps(
-        {"role": role, "content": content, "platform": platform, "metadata": meta},
-        ensure_ascii=False,
-    ) + "\n"
     try:
+        payload = json.dumps({"content": content}, ensure_ascii=False) + "\n"
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(1.0)
             s.connect(str(DAEMON_SOCKET))
@@ -68,38 +55,38 @@ def _try_daemon(role: str, content: str, platform: str, **meta) -> bool:
         return False
 
 
-def _direct_write(role: str, content: str, platform: str, tiers: Tuple[str, ...] = ("hot", "warm")) -> bool:
-    """Append to hot NDJSON + warm NDJSON directly. No caps, no SQL."""
-    message = {"role": role, "content": content, "timestamp": _now_ts()}
-    line = json.dumps(message, ensure_ascii=False) + "\n"
-    if "hot" in tiers:
-        _atomic_append(HOT_DIR / f"{platform}.jsonl", line)
-    if "warm" in tiers:
-        _atomic_append(WARM_DIR / f"{platform}.warm.jsonl", line)
-    return True
+def append(content: str, role: str = "user", *, session: str = "cortexagent",
+           session_status: str = None, **meta) -> Path:
+    """Append to single-session hot memory. No cap, no tier.
 
-
-def append(role: str, content: str, *, platform: str = "cortexagent", **meta) -> Path:
-    """Atomic append to hot+warm. Daemon first, direct fallback.
-
-    Returns the path of the hot file written to (for callers that want to
-    tail it). Never raises — memory failures are non-fatal by design.
+    Daemon first, direct fallback. Includes session awareness if session_status set.
     """
-    if _try_daemon(role, content, platform, **meta):
-        return HOT_DIR / f"{platform}.jsonl"
-    _direct_write(role, content, platform)
-    return HOT_DIR / f"{platform}.jsonl"
+    message = {"role": role, "content": content, "timestamp": _now_ts(), **meta}
+    line = json.dumps(message, ensure_ascii=False) + "\n"
+
+    # Optional: broadcast session status for inter-session awareness
+    if session_status:
+        try:
+            from lib.session_coordinator import get_coordinator
+            coord = get_coordinator(session)
+            coord.broadcast(status=session_status, task=content[:80])
+        except Exception:
+            pass  # Non-fatal, session awareness is optional
+
+    if _try_daemon(line):
+        return HOT_FILE
+    HOT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_append(HOT_FILE, line)
+    return HOT_FILE
 
 
-def read_last(n: int = 5, *, platform: str = "cortexagent") -> List[Dict]:
-    """Tail-read hot, return last N entries as dictionaries."""
-    hot_file = HOT_DIR / f"{platform}.jsonl"
-    if not hot_file.exists():
+def read_last(n: int = 5) -> List[Dict]:
+    """Read last N entries from hot memory."""
+    if not HOT_FILE.exists():
         return []
     try:
-        # Read last ~8KB — enough for ~50 short messages.
-        size = hot_file.stat().st_size
-        with open(hot_file, "rb") as f:
+        size = HOT_FILE.stat().st_size
+        with open(HOT_FILE, "rb") as f:
             f.seek(max(0, size - 8192))
             tail = f.read().decode("utf-8", errors="replace")
         lines = [l for l in tail.split("\n") if l.strip()][-n:]
@@ -108,117 +95,118 @@ def read_last(n: int = 5, *, platform: str = "cortexagent") -> List[Dict]:
         return []
 
 
-def search(query: str, *, tier: str = "hot", platform: str = "cortexagent",
-           limit: int = 10) -> List[Dict]:
-    """Linear keyword scan across the tier. Fast enough for working sets.
+def read_all() -> List[Dict]:
+    """Read all entries from hot memory (no cap)."""
+    if not HOT_FILE.exists():
+        return []
+    try:
+        return [json.loads(l) for l in HOT_FILE.read_text().strip().split("\n") if l.strip()]
+    except (OSError, ValueError):
+        return []
 
-    Returns list of {role, content, timestamp, line_no} matches.
-    """
-    if not query:
+
+def search(query: str, limit: int = 10) -> List[Dict]:
+    """Linear keyword search across hot memory."""
+    if not query or not HOT_FILE.exists():
         return []
     q = query.lower()
-    path = (HOT_DIR if tier == "hot" else WARM_DIR) / f"{platform}.{'' if tier == 'hot' else 'warm.'}jsonl"
-    if not path.exists():
-        return []
     matches = []
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            for i, line in enumerate(f, 1):
-                if q in line.lower():
-                    try:
-                        entry = json.loads(line)
-                        entry["line_no"] = i
-                        matches.append(entry)
-                        if len(matches) >= limit:
-                            break
-                    except ValueError:
-                        continue
-    except OSError:
+        for i, line in enumerate(HOT_FILE.read_text().split("\n"), 1):
+            if not line.strip():
+                continue
+            if q in line.lower():
+                entry = json.loads(line)
+                entry["line_no"] = i
+                matches.append(entry)
+                if len(matches) >= limit:
+                    break
+    except Exception:
         pass
     return matches
 
 
-def write_cold(category: str, knowledge: Dict, *, source: str = "cortexagent") -> Path:
-    """Write a single curated fact to cold/<category>.json. Atomic (tmp+rename)."""
-    import tempfile
-    path = COLD_DIR / f"{category}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        try:
-            data = json.loads(path.read_text())
-            if not isinstance(data, dict):
-                data = {"category": category, "entries": []}
-        except (OSError, ValueError):
-            data = {"category": category, "entries": []}
-    else:
-        data = {"category": category, "entries": []}
-    if "entries" not in data:
-        data["entries"] = []
-    data["entries"].append({
-        "timestamp": _now_ts(),
-        "source": source,
-        "knowledge": knowledge,
-    })
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".cold-", suffix=".tmp")
+def write_cold(content: str, **meta) -> Path:
+    """Append a cold knowledge fact. No cap."""
+    entry = {"timestamp": _now_ts(), "content": content, **meta}
+    line = json.dumps(entry, ensure_ascii=False) + "\n"
+    COLD_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_append(COLD_FILE, line)
+    return COLD_FILE
+
+
+def read_cold() -> List[Dict]:
+    """Read all cold facts."""
+    if not COLD_FILE.exists():
+        return []
     try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-    return path
+        return [json.loads(l) for l in COLD_FILE.read_text().strip().split("\n") if l.strip()]
+    except (OSError, ValueError):
+        return []
 
 
 def cold_list() -> List[str]:
-    """List cold category files."""
-    if not COLD_DIR.exists():
-        return []
-    return sorted(p.stem for p in COLD_DIR.glob("*.json"))
+    """List cold entry keys/timestamps."""
+    return [f"{e['timestamp']}: {e.get('content', '')[:40]}" for e in read_cold()]
 
 
-def cold_get(category: str) -> Dict:
-    """Read a cold category file."""
-    path = COLD_DIR / f"{category}.json"
-    if not path.exists():
-        return {"category": category, "entries": []}
+# ─── Session Awareness ────────────────────────────────────────────────────
+def check_sessions() -> dict:
+    """Check what other sessions are doing. Returns session status dict."""
     try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {"category": category, "entries": []}
+        from lib.session_coordinator import get_coordinator
+        coord = get_coordinator("cortexagent")
+        return {"sessions": coord.poll(), "summary": coord.summarize_activity()}
+    except Exception as e:
+        return {"error": str(e), "sessions": []}
 
 
-# ─── CLI for direct invocation ─────────────────────────────────────────────
+def log_awareness(message: str, level: str = "info") -> dict:
+    """Log inter-session awareness to hot memory."""
+    try:
+        from lib.session_coordinator import get_coordinator
+        coord = get_coordinator("cortexagent")
+        return coord.log_awareness(message, level)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ─── CLI ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="Thin CortexAgent memory wrapper")
+    ap = argparse.ArgumentParser(description="Single-session memory wrapper")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
     a = sub.add_parser("append")
     a.add_argument("content")
     a.add_argument("--role", "-r", default="user")
-    a.add_argument("--platform", "-p", default="cortexagent")
-    a = sub.add_parser("read")
-    a.add_argument("--n", type=int, default=5)
-    a.add_argument("--platform", "-p", default="cortexagent")
-    s = sub.add_parser("search")
-    s.add_argument("query")
-    s.add_argument("--tier", default="hot", choices=["hot", "warm"])
-    s.add_argument("--platform", "-p", default="cortexagent")
-    s.add_argument("--limit", type=int, default=10)
-    c = sub.add_parser("cold")
-    c.add_argument("category")
-    c.add_argument("knowledge_json")
+    a.add_argument("--session-status", "-s", default=None)
     args = ap.parse_args()
     if args.cmd == "append":
-        print(append(args.role, args.content, platform=args.platform))
-    elif args.cmd == "read":
-        for entry in read_last(args.n, platform=args.platform):
+        print(append(args.content, role=args.role, session_status=args.session_status))
+
+    r = sub.add_parser("read")
+    r.add_argument("--n", type=int, default=5)
+    args = ap.parse_args()
+    if args.cmd == "read":
+        for entry in read_last(args.n):
             print(json.dumps(entry, ensure_ascii=False))
-    elif args.cmd == "search":
-        for entry in search(args.query, tier=args.tier, platform=args.platform, limit=args.limit):
+
+    s = sub.add_parser("search")
+    s.add_argument("query")
+    s.add_argument("--limit", type=int, default=10)
+    args = ap.parse_args()
+    if args.cmd == "search":
+        for entry in search(args.query, limit=args.limit):
             print(json.dumps(entry, ensure_ascii=False))
-    elif args.cmd == "cold":
-        print(write_cold(args.category, json.loads(args.knowledge_json)))
+
+    c = sub.add_parser("cold")
+    c.add_argument("content")
+    args = ap.parse_args()
+    if args.cmd == "cold":
+        print(write_cold(args.content))
+
+    p = sub.add_parser("sessions")
+    args = ap.parse_args()
+    if args.cmd == "sessions":
+        print(json.dumps(check_sessions(), indent=2, ensure_ascii=False))

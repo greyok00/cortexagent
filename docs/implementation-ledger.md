@@ -125,13 +125,13 @@
 - **Rollback:** `git revert <commit>`
 - **Acceptance criteria:** Queue blocks producers when full; no OOM under burst traffic
 
-### UI-001: System tray icon with greyok logo
+### UI-001: System tray icon with brand logo
 - **Type:** implementation
 - **Status:** ✅ **verified**
 - **Files changed:** `lib/tray.py`, `lib/tray_dashboard.py`
 - **Test command:** `systemctl --user status cortexagent-tray.service`
 - **Test result:** ✅ PASS (GUI mode, icon visible, manages overseer)
-- **Integration proof:** Tray icon shows greyok logo, can open dashboard and CLI
+- **Integration proof:** Tray icon shows brand logo, can open dashboard and CLI
 - **Rollback:** `git revert <commit>`
 - **Acceptance criteria:** Icon appears in system tray; manages overseer lifecycle; opens dashboard
 

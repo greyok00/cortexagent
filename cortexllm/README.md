@@ -7,7 +7,7 @@ that CortexAgent installs at `~/cortexllm/repo/` and shares across platforms.
 
 | File | Purpose |
 |------|---------|
-| `cortexllm_db.py` | SQLite storage layer (hot/warm/cold tiers) |
+| `cortexllm_db.py` | SQLite storage layer (hot/cold tiers) |
 | `cortexllm_vector.py` | BM25 vector search |
 | `cortexllm_graph.py` | Deterministic knowledge graph |
 | `cortexllm_ontology.py` | Rule-based ontology / taxonomy |

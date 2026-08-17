@@ -96,6 +96,7 @@ from lib.config import CFG  # noqa: E402
 from lib.model_backend import LlamaServer  # noqa: E402
 from lib import tiny_llm  # noqa: E402
 from lib import control  # noqa: E402 — daemon_present() to detect daemon mode
+from lib.errorlog import log_exception, close_dump  # noqa: E402
 
 # Slimtoken pipeline for request optimization (minify, dedup, distill)
 try:
@@ -396,7 +397,7 @@ class WorkerPool:
                 if worker_id in self.heartbeats:
                     del self.heartbeats[worker_id]
 
-    def check_health(self) -> List[str]:
+    def heartbeat_check(self) -> List[str]:
         """Check worker health. Returns list of dead worker IDs."""
         dead = []
         now = time.time()
@@ -453,7 +454,7 @@ def _get_latency_stats() -> Dict:
     with _metrics_lock:
         if not _latency_history:
             return {"count": 0}
-        latencies = [v for _, _, v in _latency_history[-100:]]
+        latencies = [v for _, _, v in list(_latency_history)[-100:]]
         if not latencies:
             return {"count": 0}
         sorted_lat = sorted(latencies)
@@ -488,7 +489,7 @@ def _get_queue_depth_stats() -> Dict:
     with _metrics_lock:
         if not _queue_depth_history:
             return {"count": 0}
-        depths = [v for _, v in _queue_depth_history[-100:]]
+        depths = [v for _, v in list(_queue_depth_history)[-100:]]
         if not depths:
             return {"count": 0}
         return {
@@ -504,7 +505,7 @@ def _get_context_stats() -> Dict:
     with _metrics_lock:
         if not _context_history:
             return {"count": 0}
-        pcts = [v for _, v in _context_history[-100:]]
+        pcts = [v for _, v in list(_context_history)[-100:]]
         if not pcts:
             return {"count": 0}
         return {
@@ -989,9 +990,8 @@ def _merge_minify_into_state(state: Dict) -> None:
 
 # Context-window monitor state (big model KV usage). Reset once below critical.
 _CTX_CRITICAL_TICKS = 0
-_CTX_ALERT_PCT = 88.0          # warn when the slot is this full
-_CTX_CRITICAL_PCT = 95.0       # auto-compact should have fired before here
-_CTX_CRITICAL_TICKS_NEEDED = 3  # sustained critical ticks (90s @30s) → failsafe
+# Thresholds are configurable via CFG (CORTEXAGENT_CTX_* env / [metrics] conf).
+# Defaults: warn at 88%, force-reset at 95% after 3 sustained ticks (90s @30s).
 
 
 def _check_context_window() -> List[str]:
@@ -1005,6 +1005,8 @@ def _check_context_window() -> List[str]:
     Returns alerts (does not self-mutate; the loop handles the failsafe).
     """
     global _CTX_CRITICAL_TICKS
+    alert_pct = CFG.context_alert_pct
+    critical_pct = CFG.context_critical_pct
     port = CFG.big_model_port
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{port}/slots")
@@ -1022,11 +1024,11 @@ def _check_context_window() -> List[str]:
         if n_ctx <= 0 or n_past <= 0:
             continue
         pct = n_past / n_ctx * 100
-        if pct >= _CTX_CRITICAL_PCT:
+        if pct >= critical_pct:
             critical = True
             alerts.append(f"CONTEXT WINDOW at {pct:.0f}% ({n_past}/{n_ctx} tok) — "
                           f"auto-compact failed, ceiling imminent")
-        elif pct >= _CTX_ALERT_PCT:
+        elif pct >= alert_pct:
             alerts.append(f"Context window at {pct:.0f}% ({n_past}/{n_ctx} tok) — near ceiling")
     if critical:
         _CTX_CRITICAL_TICKS += 1
@@ -1041,16 +1043,36 @@ def _context_failsafe() -> None:
     the next request would hard-400. Reset the session (unloads big) so the
     next launch starts clean instead of failing at the ceiling again."""
     global _CTX_CRITICAL_TICKS
-    if _CTX_CRITICAL_TICKS < _CTX_CRITICAL_TICKS_NEEDED:
+    needed = CFG.context_critical_ticks
+    if _CTX_CRITICAL_TICKS < needed:
         return
     _CTX_CRITICAL_TICKS = 0
-    _log(f"Context window pegged ≥{_CTX_CRITICAL_PCT:.0f}% for "
-         f"{_CTX_CRITICAL_TICKS_NEEDED} ticks — resetting session so the next "
+    _log(f"Context window pegged ≥{CFG.context_critical_pct:.0f}% for "
+         f"{needed} ticks — resetting session so the next "
          f"launch starts with fresh context (avoiding a hard 400)", "🔥", RED)
     try:
         control.send_request("session-reset", timeout=5)
     except Exception:
         _log("context failsafe: session-reset failed", "❌", RED)
+
+
+def _check_latency_alert() -> List[str]:
+    """Alert when the p95 per-request latency exceeds the configured threshold.
+
+    Reads the in-memory latency history (last 100 requests). Returns an alert
+    string when p95_ms > CFG.latency_alert_p95_ms (0 disables). Does not mutate.
+    """
+    threshold = CFG.latency_alert_p95_ms
+    if not threshold:
+        return []
+    stats = _get_latency_stats()
+    if stats.get("count", 0) < 5:
+        return []  # not enough samples to be meaningful
+    p95 = stats.get("p95_ms", 0)
+    if p95 > threshold:
+        return [f"LATENCY p95 {p95:.0f}ms > {threshold:.0f}ms threshold "
+                f"({stats.get('count', 0)} samples, avg {stats.get('avg_ms', 0):.0f}ms)"]
+    return []
 
 
 def _cortexagent_active() -> bool:
@@ -1450,7 +1472,8 @@ def _save_queue(queue: List[Dict]) -> None:
 
 
 def queue_add(task_type: str, prompt: str = "", command: str = "",
-              output: str = "", priority: int = 0) -> Dict:
+              output: str = "", priority: int = 0,
+              scheduler_task_id: str = "") -> Dict:
     queue = _load_queue()
     task = {
         "id": f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{len(queue)}",
@@ -1464,6 +1487,7 @@ def queue_add(task_type: str, prompt: str = "", command: str = "",
         "started_at": None,
         "completed_at": None,
         "result": None,
+        "scheduler_task_id": scheduler_task_id or None,
     }
     queue.append(task)
     _save_queue(queue)
@@ -1545,6 +1569,9 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
                     max(1, len(prompt) // 4),  # Rough estimate
                     max(0, len(result.get('output', '')) // 4),
                 )
+                # Apply beautification pass to LLM output
+                from lib.react_loop import _beautify_response
+                result['output'] = _beautify_response(result.get('output', ''))
                 _log(f"LLM task completed ({len(result.get('output', ''))} chars, {duration_ms:.0f}ms)",
                      "✅", GREEN)
                 return True
@@ -1644,6 +1671,40 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
     return False
 
 
+def _sync_scheduler_result(task: Dict, success: bool) -> None:
+    """Sync a finished queue task's result back to the scheduler store.
+
+    The scheduler capsule reads tasks.json + executions.jsonl for status, but
+    the overseer's queue is the real executor. Without this sync, a dispatched
+    task's state stays "queued" and its execution receipt stays "pending"
+    forever — so the capsule shows it as perpetually running. This updates the
+    scheduler task state and appends a terminal execution receipt so the
+    capsule reflects reality.
+    """
+    sched_task_id = task.get("scheduler_task_id")
+    if not sched_task_id:
+        return
+    sched = _scheduler()
+    if sched is None:
+        return
+    try:
+        rec = sched.get(sched_task_id)
+        if not rec:
+            return
+        new_state = "completed" if success else "failed"
+        # Optimistic concurrency: pass the version we just read.
+        sched.update(sched_task_id, rec.get("version", 0), state=new_state)
+        sched.record_execution(
+            sched_task_id,
+            status=new_state,
+            result="success" if success else "failed",
+        )
+        _log(f"📅 Scheduler task '{rec.get('title', sched_task_id)}' → {new_state}",
+             "📅", GREEN if success else RED)
+    except Exception as e:
+        _log(f"Scheduler sync failed for {sched_task_id}: {e}", "⚠️", YELLOW)
+
+
 def _process_queue(state: Optional[Dict] = None) -> None:
     """Process all queued tasks sequentially with stability enhancements.
 
@@ -1717,6 +1778,9 @@ def _process_queue(state: Optional[Dict] = None) -> None:
             task["result"] = "success" if success else "failed"
             _save_queue(queue)
             _record_queue_depth(len([t for t in queue if t["status"] in ("queued", "running")]))
+            # Sync the terminal result back to the scheduler store so the
+            # capsule shows the real status instead of a perpetual "running".
+            _sync_scheduler_result(task, success)
 
             if success:
                 _log(f"Task {task['id']} completed", "✅", GREEN)
@@ -2021,7 +2085,8 @@ def _check_schedule() -> None:
             queue_add(task_type,
                       prompt=payload.get("prompt", ""),
                       command=payload.get("command", ""),
-                      output=payload.get("output", ""))
+                      output=payload.get("output", ""),
+                      scheduler_task_id=task["id"])
             
             # Mark as queued
             sched.update(task["id"], task.get("version", 0),
@@ -2212,6 +2277,13 @@ def _daemon_loop(interval: int) -> None:
             if ctx_alerts:
                 _log("Context: " + " | ".join(ctx_alerts), "📏", YELLOW)
 
+            # Latency alert: p95 per-request latency over the configured
+            # threshold (CORTEXAGENT_LATENCY_ALERT_P95_MS, default 5000ms).
+            lat_alerts = _check_latency_alert()
+            alerts += lat_alerts
+            if lat_alerts:
+                _log("Latency: " + " | ".join(lat_alerts), "⏱️", YELLOW)
+
             # ── CortexAgent watchdog (every 2nd tick) ──
             # If cortexagent is closed but the daemon still tracks an active
             # session, reset + unload the big model so VRAM is freed.
@@ -2357,7 +2429,15 @@ def _daemon_loop(interval: int) -> None:
             _save_state(state)
 
         except Exception as e:
+            # Structured error: log a concise line + write a full crash dump
+            # (traceback, pid, uptime, tick) so a swallowed loop error is
+            # resolvable without grepping for the bare message.
             _log(f"Daemon error: {e}", "❌", RED)
+            log_exception(
+                e, component="overseer",
+                context={"tick": tick, "state": state.get("status", "?")},
+                log_file=LOG_FILE,
+            )
 
         # Interruptible sleep: poll the shutdown flag every 1s so a SIGTERM is
         # noticed within ~1s instead of waiting up to `interval` seconds.
@@ -2372,6 +2452,14 @@ def _daemon_loop(interval: int) -> None:
     state = _load_state()
     state["stopped_at"] = datetime.now().isoformat()
     _save_state(state)
+    # Close dump: record the clean shutdown (SIGINT/SIGTERM) with uptime + tick
+    # count so a "normal close" is still auditable.
+    close_dump(
+        component="overseer",
+        reason="SIGINT/SIGTERM clean shutdown",
+        context={"ticks": tick, "started_at": state.get("started_at")},
+        log_file=LOG_FILE,
+    )
     PID_FILE.unlink(missing_ok=True)
     _log("Overseer stopped cleanly (exit 0)", "✅", GREEN)
     sys.exit(0)
@@ -2930,10 +3018,6 @@ def main() -> int:
         return 1
 
 
-if __name__ == "__main__":
-    sys.exit(main())
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 #  QUEUE-003: Worker Pool with Heartbeat
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3128,5 +3212,16 @@ def record_queue_depth(depth: int) -> None:
     """Record queue depth for monitoring (called by tick loop)."""
     global _queue_depth_history
     _queue_depth_history.append((time.time(), depth))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Entry point — MUST be the last thing in the file.
+#  main() → _daemon_loop() runs an infinite loop, so every module-level name it
+#  references (WorkerPool, get_worker_pool, record_queue_depth, _worker_pool)
+#  must already be defined. If this block sits above those definitions, the loop
+#  throws NameError on the first tick. Keep it at the very bottom.
+# ═══════════════════════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    sys.exit(main())
 
 

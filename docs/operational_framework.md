@@ -211,7 +211,6 @@ Output: Structured analysis with ranked findings
 |-------|-----------|-------|
 | **Session** | Current session | Immediate conversation |
 | **Hot** | Per-platform, recent | Active projects, current priorities |
-| **Warm** | Cross-platform, medium-term | Past research, completed projects |
 | **Cold** | Permanent, structured | Historical decisions, operator preferences |
 
 ### 6.2 Context Loading Protocol
@@ -219,8 +218,7 @@ Output: Structured analysis with ranked findings
 Before starting any task:
 1. Load session context (immediate conversation)
 2. Load hot memory (current projects, active tasks)
-3. Load warm memory (related past work if relevant)
-4. **Never load cold memory unprompted** — only if the task is clearly historical
+3. **Never load cold memory unprompted** — only if the task is clearly historical
 
 ### 6.3 Context Preservation
 

@@ -117,7 +117,7 @@ deleting the three zero-importer dead modules:
 - GitHub push (held until everything works; standing constraint).
 ## 📋 Completed (added 2026-08-14)
 
-4. ✅ **System tray icon fix.** Fixed pystray crash caused by missing notification daemon. Added xfce4-notifyd autostart + guard patch in `lib/tray.py`. Tray now runs in GUI mode with greyok logo icon.
+4. ✅ **System tray icon fix.** Fixed pystray crash caused by missing notification daemon. Added xfce4-notifyd autostart + guard patch in `lib/tray.py`. Tray now runs in GUI mode with brand logo icon.
 
 5. ✅ **Minify stats dashboard.** Fixed dashboard reading reset proxy metrics instead of persistent file. Dashboard now falls back to `~/.cortexagent/minify_stats.json` when proxy shows 0. Shows real savings: 257 runs, 7.8% ratio, 977K tokens saved.
 

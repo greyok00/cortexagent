@@ -13,7 +13,7 @@
 
 ## Metadata for the human reader
 
-- **Project:** CortexAgent (https://github.com/greyok00/cortexagent) — local coding-agent runtime.
+- **Project:** CortexAgent (`<repo>/cortexagent`) — local coding-agent runtime.
 - **Stack at a glance:** two local models on one GPU (35B MoE + ≤2B MoE), a `slimtoken` chokepoint proxy, an always-on `overseer` daemon, two systemd user services, an in-process `diffusers` diffusion backend, and three user-facing surfaces (CLI / 3D webui on `:8090` / system-tray popout). All traffic on `127.0.0.1`. No cloud, no fallback swap.
 - **Why we want this report:** we have a 13.7 GB primary model, a 1.2 GB orchestrator, three UIs that partially overlap, a slimtoken middleware that has eaten its own tail more than once, and a `subprocess.run(..., shell=True)` somewhere in the queue path. We need an outside pair of eyes.
 - **What we are *not* asking for:** rewriting the whole project, recommending a different framework, replacing llama.cpp, anything that touches external APIs, anything that requires an internet connection at runtime. The whole point of CortexAgent is local / air-gappable.
@@ -38,7 +38,7 @@ A 200-word executive summary a non-technical stakeholder could read. What the pr
 I will describe the architecture below. Your job in this section is to:
 1. Restate it back in 3–5 sentences so we know you understood.
 2. Flag any **architectural** mistakes (NOT code-level bugs) — wrong defaults, races, single points of failure, missing invariants, components that should exist and don't.
-3. Flag anything that smells like "this will not survive a power cut" or "this will not survive two simultaneous users" or "this will not survive 100 GB of warm memory".
+3. Flag anything that smells like "this will not survive a power cut" or "this will not survive two simultaneous users" or "this will not survive 100 GB of memory".
 
 ---
 
@@ -50,11 +50,11 @@ I will describe the architecture below. Your job in this section is to:
 | Tiny orchestrator LLM | `127.0.0.1:8082` (llama-server) | llama.cpp | LFM2.5-1.2B Q4_K_M, ~728 MB, MoE. Used by overseer only — never answers user prompts directly. |
 | Grammar + slimtoken proxy | `127.0.0.1:8081` | `lib/grammar_proxy.py` | **The chokepoint.** Strips `grammar` (which llama-server rejects on chunked), runs `slimtoken.optimize_messages()` pair-safely, attaches a `<cold_memory>` block, forwards to `:8080`, streams SSE back. |
 | Daemon | AF_UNIX `~/.cortexagent/control.sock` | `lib/daemon.py run` (systemd `cortexagent.service`) | Owns `:8080` + `:8081`. Manages session lifecycle, idle-unload (default `idle_unload_sec=0` = keep big loaded), adopts the overseer's tiny. CLI is a thin client over this socket. |
-| Overseer | always-on | `lib/overseer.py start` (systemd `cortexagent-overseer.service`, `Type=forking`) | Scheduler, warm→cold distillation, tiny-keepalive, watchdog, queue, calendar. Writes `overseer_state.json` + `overseer_queue.json` + `overseer_schedule.json`. Default tick = 30 s. Owns tiny `:8082` exclusively. |
+| Overseer | always-on | `lib/overseer.py start` (systemd `cortexagent-overseer.service`, `Type=forking`) | Scheduler, hot→cold distillation, tiny-keepalive, watchdog, queue, calendar. Writes `overseer_state.json` + `overseer_queue.json` + `overseer_schedule.json`. Default tick = 30 s. Owns tiny `:8082` exclusively. |
 | Tray | system tray | `lib/tray.py` (systemd `cortexagent-tray.service`, `Type=simple`, `Wants=` + `After=` overseer) | Owns overseer lifecycle (calls `start` on launch, `stop` on Quit). Hosts the popout dashboard. |
 | Webui | `127.0.0.1:8090` | `lib/webui.py serve` (in-process `ThreadingHTTPServer`) | 3D chat surface + dashboard, served by the daemon, shares session with CLI via SessionBridge. |
 | Diffusion | in-process on the same GPU | `lib/diffusion_backend.py` | SDXL / SD 1.5 / LTX-Video via `diffusers` in-process. Daemon unloads big to free VRAM, runs diffusion, reloads (~30 s swap). cuDNN off by default. |
-| Memory daemon | AF_UNIX `~/.cortexllm/memory.sock` | `~/.cortexllm/scripts/memory-daemon.py` | CortexLLM hot/warm/cold writes, no caps (per 2026-08-11 user directive). |
+| Memory daemon | AF_UNIX `~/.cortexllm/memory.sock` | `~/.cortexllm/scripts/memory-daemon.py` | CortexLLM hot/cold writes, no caps (per 2026-08-11 user directive). |
 
 #### 2.2 Request chain (the spine)
 
@@ -62,7 +62,7 @@ I will describe the architecture below. Your job in this section is to:
 User (CLI / webui / TUI / tray)
    │
    ▼
-cortexagent_call.py  →  lib/memory_thin.append()  (hot/warm mirror, no caps)
+cortexagent_call.py  →  lib/memory_thin.append()  (hot, no caps)
    │
    ▼
 cortex_routing.py    →  pre_flight_gate.classify_intent()  (intent + mode)
@@ -98,7 +98,6 @@ All UIs re-render via /webui-events (SSE) deduped by id
 #### 2.3 Memory model
 
 - **Hot** — `~/.config/cortexllm/memory/hot/cortexagent.jsonl`, every prompt/response, **no cap**.
-- **Warm** — `~/.config/cortexllm/memory/warm/cortexagent.warm.jsonl`, mirror of hot.
 - **Cold** — `~/.config/cortexllm/memory/cold/*.json`, curated facts by category, written by overseer's `_cold_distill()` every idle tick.
 - **SQLite** — `~/.config/cortexllm/cortexllm.db`, mirror for fast queries.
 - **Platform key** is always `"cortexagent"` (the in-tree `memory/mcp_server.py` is what the CLI talks to; the generic `~/cortexllm/repo` is the upstream package).
@@ -190,10 +189,10 @@ We have **three** user-facing surfaces. Below is what each is supposed to do. Te
 - Right-click → "Overseer Dashboard" → tkinter popout window.
 
 **Popout widget inventory (from `lib/tray_dashboard.py`):**
-- Banner: "CortexAgent · by GreyOK00 · overseer dashboard"
+- Banner: "CortexAgent · by the maintainer · overseer dashboard"
 - Left column: session identity, overseer state + dot, rotating tip
 - Mid column: tok/s sparkline (60-sample rolling), big-model step counter (▓▓░░ with pulse on update), minify savings (% saved + 60s sparkline + runs + tokens)
-- Right column: memory tier panel (hot H, warm W, cold C), alerts list, queue list
+- Right column: memory tier panel (hot H, cold C), alerts list, queue list
 - Footer bar: Refresh button (the only interactive control besides `R` and `Esc`)
 - Data sources: `overseer_state.json`, `big_model_steps.json`, `~/.cortexagent/minify_stats.json`, daemon `control.sock` for live VRAM
 
@@ -267,7 +266,7 @@ Threat model:
 | 5.12 | Network egress | The product is air-gapped by default. If MCP servers are enabled, the LLM can be tricked into fetching URLs (via the `firecrawl_proxy`, `playwright_brave_mcp`, `browser_control`, `webui_proxy_to_claude` surfaces). What is the egress policy? |
 | 5.13 | Model file integrity | GGUFs are loaded from `~/models/...`. Is there a hash check? What if the path is overwritten by another user on the same box? |
 | 5.14 | Browser automation | `lib/browser_control.py` drives a CDP-attached browser. If a web page contains a prompt injection, it can issue browser commands. Is the browser sandboxed? |
-| 5.15 | Hot/warm memory writes | The "no caps" rule means every prompt and response is appended. If an attacker controls the prompt, they have an unbounded log injection surface. The `printf %s` JSON-escape bug that was fixed 2026-08-10 is a class of bug — what other class-of-bug should we be watching for? |
+| 5.15 | Hot memory writes | The "no caps" rule means every prompt and response is appended. If an attacker controls the prompt, they have an unbounded log injection surface. The `printf %s` JSON-escape bug that was fixed 2026-08-10 is a class of bug — what other class-of-bug should we be watching for? |
 
 For each numbered area above, give:
 - **Severity** (CRITICAL / HIGH / MED / LOW)
@@ -281,7 +280,7 @@ This section is about *not breaking*. The product has eaten itself several times
 
 | # | Class | Question |
 |---|---|---|
-| 6.1 | Restart safety | If systemd kills the daemon mid-request, is there a state file that will be corrupted? (Sessions count? Minify stats? Bridge JSONL? Hot/warm JSONL?) |
+| 6.1 | Restart safety | If systemd kills the daemon mid-request, is there a state file that will be corrupted? (Sessions count? Minify stats? Bridge JSONL? Hot JSONL?) |
 | 6.2 | Power-cut safety | Same as 6.1 but harder — mid-write to an NDJSON line is recoverable; mid-write to a tmp+rename is not if the rename did not happen. Walk the write paths. |
 | 6.3 | Disk-fill safety | What happens when `~/.cortexagent` or `~/.config/cortexllm/memory` hits 100 %? Does any subsystem crash-loop? Does systemd restart-thrash? |
 | 6.4 | Port-bind races | Tiny `:8082` and big `:8080` and proxy `:8081` and webui `:8090` are all bound by independent processes. If two processes both try to bind, who wins? Is there a lock file? |
@@ -370,7 +369,7 @@ Independent of bugs and security, what *architectural* smells do you see? Exampl
 - The CLI/webui/tray are three processes that all read the same state files — is there a way to push state instead of poll?
 - The diffusers backend is in-process with the LLM backend — is that the right coupling? What if the user wants to use diffusers on a different GPU?
 - The grammar proxy is python — at 12 ms/request, is that the bottleneck? Should it be Rust?
-- The hot/warm/cold tiering is manual (the LLM is asked to write to cold, the overseer distills) — would automatic vector-based retrieval be better?
+- The hot/cold tiering is manual (the LLM is asked to write to cold, the overseer distills) — would automatic vector-based retrieval be better?
 
 For each smell:
 - **What is the smell?** (one sentence)
@@ -402,6 +401,6 @@ End with **5 questions** the maintainer should answer before any of the above is
 
 ---
 
-**Maintainer:** GreyOK00 ·
+**Maintainer:** the maintainer ·
 **License:** MIT ·
-**Repository:** https://github.com/greyok00/cortexagent
+**Repository:** `<repo>/cortexagent`

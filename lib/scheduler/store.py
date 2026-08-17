@@ -259,20 +259,21 @@ def _next_run(overrides: Dict) -> Optional[str]:
 
 def _make_event(event_type: str, task_id: str, **fields) -> Dict:
     """Create an event record."""
+    version = fields.get("version", 1)
+    data = {k: v for k, v in fields.items() if k != "version"}
+    # Compute checksum for integrity verification
+    content = json.dumps({"type": event_type, "task_id": task_id, **fields},
+                         sort_keys=True, default=str)
+    checksum = hashlib.sha256(content.encode()).hexdigest()[:16]
     return {
         "id": str(uuid.uuid4()),
         "type": event_type,
         "task_id": task_id,
-        "version": fields.get("version", 1),
+        "version": version,
         "timestamp": _now_iso(),
-        "data": {k: v for k, v in fields.items() if k != "version"},
-        "checksum": "",  # Computed below
+        "data": data,
+        "checksum": checksum,
     }
-    # Compute checksum (simple hash of content)
-    content = json.dumps({"type": event_type, "task_id": task_id, **fields},
-                         sort_keys=True, default=str)
-    event["checksum"] = hashlib.sha256(content.encode()).hexdigest()[:16]
-    return event
 
 
 def _append_event(event: Dict) -> None:
@@ -474,7 +475,8 @@ class Store:
                             next_run_at=task["next_run_at"],
                             ephemeral=task["ephemeral"], visible=task["visible"],
                             owner=task["owner"], idempotency_key=task["idempotency_key"],
-                            version=TASK_VERSION)
+                            version=TASK_VERSION,
+                            state=task["state"])
         
         return self._write(task["id"], event)
     
@@ -505,8 +507,8 @@ class Store:
         task = self._tasks[task_id]
         if task.get("version", 0) != expected_version:
             return {
-                "ok": False, "error": f"Stale version: expected {expected_version}, got {task['version']}",
-                "no_change": True, "current_version": task.get("version")
+                "ok": False, "error": f"Stale version: expected {expected_version}, got {task.get('version', 0)}",
+                "no_change": True, "current_version": task.get("version", 0)
             }
         
         new_version = task.get("version", 0) + 1
@@ -575,7 +577,30 @@ class Store:
             "task_id": task_id,
             "title": self._tasks[task_id].get("title", ""),
         }
-    
+
+    def record_execution(self, task_id: str, status: str,
+                         result: Optional[str] = None,
+                         execution_type: str = "scheduled") -> Dict:
+        """Append a terminal execution receipt for a finished task.
+
+        Counterpart to ``run_now``'s "pending" receipt. The overseer calls this
+        when a dispatched queue task completes so executions.jsonl reflects the
+        real outcome (the capsule reads it for status). ``status`` is one of
+        "completed" / "failed".
+        """
+        if task_id not in self._tasks:
+            return {"ok": False, "error": "Task not found", "no_change": True}
+        _atomic_append_ndjson(EXECUTIONS_FILE, {
+            "id": str(uuid.uuid4()),
+            "task_id": task_id,
+            "type": execution_type,
+            "status": status,
+            "started_at": _now_iso(),
+            "completed_at": _now_iso(),
+            "result": result,
+        })
+        return {"ok": True, "task_id": task_id, "status": status}
+
     # ── CANCEL ───────────────────────────────────────────────────────────────
     def cancel(self, task_id: str) -> Dict:
         """Cancel task (stop future execution, keep audit trail)."""

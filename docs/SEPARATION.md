@@ -39,8 +39,8 @@ propagated upstream.
 When you change a CortexAgent file that the "decoupled" test says is generic:
 
 1. **Identify the upstream target:**
-   - `slimtoken` → `~/slimtoken/repo/` (or github `greyok00/slimtoken`)
-   - `cortexllm` → `~/cortexllm/repo/` (or github `greyok00/cortexllm`)
+   - `slimtoken` → `~/slimtoken/repo/` (or github `<repo>/slimtoken`)
+   - `cortexllm` → `~/cortexllm/repo/` (or github `<repo>/cortexllm`)
 2. **Strip CortexAgent assumptions.** Remove any reference to:
    - `platform="cortexagent"` (use `platform="default"` or env-override)
    - `~/.cortexagent/`, `~/.config/cortexllm/memory/cortexagent.*`
@@ -117,7 +117,7 @@ When you upgrade `slimtoken` or `cortexllm`:
 | `lib/session_bridge.py` | Multi-voice chat under different usernames — CortexAgent UX |
 | `memory/mcp_server.py` (in-tree copy) | Knows `platform="cortexagent"` and the in-tree DB schema |
 | `lib/daemon.py` | 35B keepalive, no fallback swap, idle_unload=0 default — user prefs |
-| `lib/overseer.py` | Owns tiny on :8082, schedules warm→cold distillation, daemon watchdog |
+| `lib/overseer.py` | Owns tiny on :8082, schedules hot→cold distillation, daemon watchdog |
 | `lib/grammar_proxy.py` | Wraps slimtoken minify with CortexAgent prompt-shape rules + chunked grammar-strip |
 | `lib/webui.py` | 3D chat pane + nested overseer dashboard schema |
 | `lib/tui.py` | Textual streaming TUI with response_model blocks |

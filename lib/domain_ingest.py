@@ -7,7 +7,7 @@ dedup (idempotent re-ingest). Source is tracked per chunk so results can be
 cited back to origin.
 
 Chunk size is 200 words (~212 tokens) so each chunk fits the embedder's
-256-token context (MAX_SEQ in lib/domain_embed.py) without truncation —
+256-token context (MAX_SEQ in lib/domain_embed.py) with no truncation —
 a larger chunk would be cut to 256 tokens and its embedding would cover
 only part of the chunk.
 

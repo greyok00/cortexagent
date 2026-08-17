@@ -29,6 +29,29 @@ VERTICAL_BLOCKS = "▁▂▃▄▅▆▇█"
 HORIZONTAL_BLOCKS = "▏▎▍▌▋▊▉█"
 HEATMAP_DENSITY = " ░▒▓█"
 
+# BEAUTIFY-205: semantic roles cycled across chart series. Each series gets a
+# distinct color + a unique glyph pattern so multi-series charts are readable
+# in colorblind-safe terminals.
+SERIES_ROLES = ["accent", "success", "warn", "danger", "info", "muted"]
+SERIES_GLYPHS = ["█", "▓", "▒", "░", "▌", "▐"]
+
+
+def _series_style(palette: Optional[Dict[str, str]], index: int) -> Tuple[str, str, str]:
+    """Return (color, reset, glyph) for a series index.
+
+    BEAUTIFY-205: when a palette dict (role -> ANSI code) is supplied, each
+    series is colored with a cycling semantic role and given a unique glyph.
+    Without a palette, returns empty color/reset and the default block glyph
+    (backward compatible).
+    """
+    if not palette:
+        return "", "", "█"
+    role = SERIES_ROLES[index % len(SERIES_ROLES)]
+    color = palette.get(role, "")
+    reset = palette.get("reset", "")
+    glyph = SERIES_GLYPHS[index % len(SERIES_GLYPHS)]
+    return color, reset, glyph
+
 
 def _map_to_block(value: float, min_val: float, max_val: float,
                   block_set: str = VERTICAL_BLOCKS) -> str:
@@ -85,33 +108,39 @@ def sparkline(data: List[Union[int, float]], width: Optional[int] = None,
 
 
 def multi_sparkline(data: Dict[str, List[Union[int, float]]],
-                    width: int = 30, max_series: int = 6) -> str:
+                    width: int = 30, max_series: int = 6,
+                    palette: Optional[Dict[str, str]] = None) -> str:
     """Render a multi-series sparkline matrix.
-    
+
     Compares 4-6 metrics at a glance. Each row is one metric.
-    
+
     Args:
         data: Dict mapping metric name -> list of numeric values
         width: Target width in cells
         max_series: Maximum number of series to display
-    
+        palette: Optional dict (role -> ANSI code) to color each series
+                 (BEAUTIFY-205)
+
     Returns: Matrix string
     """
     if not data:
         return ""
-    
+
     # Limit to max_series
     items = list(data.items())[:max_series]
-    
+
     lines = []
-    for name, series in items:
+    for idx, (name, series) in enumerate(items):
+        color, reset, _ = _series_style(palette, idx)
         spark = sparkline(series, width)
         # Truncate name to fit
         max_name_len = 15
         if len(name) > max_name_len:
             name = name[:max_name_len - 1] + "…"
+        if color:
+            spark = f"{color}{spark}{reset}"
         lines.append(f"{name:<{max_name_len}} {spark}")
-    
+
     return "\n".join(lines)
 
 
@@ -193,47 +222,56 @@ def waffle(data: List[Union[int, float]],
 def bar_chart(data: Dict[str, Union[int, float]],
               width: int = 40,
               label_width: int = 15,
-              show_value: bool = True) -> str:
+              show_value: bool = True,
+              palette: Optional[Dict[str, str]] = None) -> str:
     """Render a horizontal bar chart with gradient.
-    
+
     Args:
         data: Dict mapping category -> numeric value
         width: Bar width in cells
         label_width: Width for category labels
         show_value: Whether to show the value at the end
-    
+        palette: Optional dict (role -> ANSI code) to color each bar with a
+                 unique glyph (BEAUTIFY-205)
+
     Returns: Bar chart string
     """
     if not data:
         return ""
-    
+
     max_val = max(data.values())
     if max_val == 0:
         return ""
-    
+
     lines = []
-    for name, value in data.items():
+    for idx, (name, value) in enumerate(data.items()):
+        color, reset, glyph = _series_style(palette, idx)
         # Truncate label
         if len(name) > label_width:
             name = name[:label_width - 1] + "…"
-        
+
         # Calculate bar length
         bar_len = int(value / max_val * width) if max_val > 0 else 0
-        
-        # Build bar with gradient
+
+        # Build bar with gradient (or a single unique glyph when colored)
         bar = ""
         for i in range(bar_len):
-            ratio = i / max(1, bar_len - 1) if bar_len > 1 else 1
-            block = _map_to_block(ratio * 100, 0, 100, HORIZONTAL_BLOCKS)
-            bar += block
-        
+            if color:
+                bar += glyph
+            else:
+                ratio = i / max(1, bar_len - 1) if bar_len > 1 else 1
+                block = _map_to_block(ratio * 100, 0, 100, HORIZONTAL_BLOCKS)
+                bar += block
+
         # Pad with empty
         bar += empty_char * (width - len(bar))
-        
+
         # Format value
         value_str = f" {value:g}" if show_value else ""
+        if color:
+            bar = f"{color}{bar}{reset}"
         lines.append(f"{name:<{label_width}} {bar} {value_str}")
-    
+
     return "\n".join(lines)
 
 
@@ -281,8 +319,116 @@ def heatmap(data: List[List[Union[int, float]]],
     if col_labels:
         label_row = "          " + "".join(f"{l:<1}" for l in col_labels)
         lines.append(label_row)
-    
+
     return "\n".join(lines)
+
+
+def calendar_heatmap(rows: Dict[str, List[Union[int, float]]],
+                     width: int = 24,
+                     density: str = HEATMAP_DENSITY) -> str:
+    """Render a calendar-style heatmap: one row per series, columns = time ticks.
+
+    BEAUTIFY-209: designed for memory×time views (e.g. one row per memory
+    tier — hot/cold — across the last N ticks). Each cell's density
+    reflects activity at that tick.
+
+    Args:
+        rows: Dict mapping row label -> list of values (one per tick)
+        width: Number of ticks to show (right-aligned, most recent last)
+        density: Density characters (light to dark)
+
+    Returns: Heatmap string
+    """
+    if not rows:
+        return ""
+
+    # Right-align each series to the most recent `width` ticks.
+    lines = []
+    for label, series in rows.items():
+        recent = series[-width:] if len(series) > width else series
+        if not recent:
+            continue
+        mn, mx = min(recent), max(recent)
+        cells = "".join(_map_to_block(v, mn, mx, density) for v in recent)
+        pad = " " * (width - len(cells))
+        lines.append(f"{label:<10} {pad}{cells}")
+
+    return "\n".join(lines)
+
+
+def flowchart(nodes: List[str], edges: List[Tuple[str, str]]) -> str:
+    """Render a data-driven flowchart (DAG) with box-drawing characters.
+
+    BEAUTIFY-208: nodes are laid out in topological layers (longest path from
+    sources) and rendered top-down as boxes connected by │ and ▼. Handles
+    linear chains, branches, and merges.
+
+    Args:
+        nodes: List of node labels
+        edges: List of (source, target) directed edges
+
+    Returns: Flowchart string
+    """
+    if not nodes:
+        return ""
+
+    # ── Topological layers (longest path from sources) ────────────────────
+    children: Dict[str, List[str]] = {n: [] for n in nodes}
+    indeg: Dict[str, int] = {n: 0 for n in nodes}
+    for src, tgt in edges:
+        if src in children and tgt in children:
+            children[src].append(tgt)
+            indeg[tgt] += 1
+
+    # Longest-path layering via DP over a topological order.
+    order: List[str] = []
+    stack = [n for n in nodes if indeg[n] == 0]
+    while stack:
+        n = stack.pop()
+        order.append(n)
+        for c in children[n]:
+            indeg[c] -= 1
+            if indeg[c] == 0:
+                stack.append(c)
+
+    layer: Dict[str, int] = {n: 0 for n in nodes}
+    for n in order:
+        for c in children[n]:
+            layer[c] = max(layer[c], layer[n] + 1)
+
+    max_layer = max(layer.values()) if layer else 0
+    by_layer: List[List[str]] = [[] for _ in range(max_layer + 1)]
+    for n in nodes:
+        by_layer[layer[n]].append(n)
+
+    # ── Render boxes per layer ────────────────────────────────────────────
+    def _box(label: str) -> List[str]:
+        w = max(3, len(label) + 2)
+        top = "┌" + "─" * w + "┐"
+        mid = "│ " + label + " " * (w - len(label) - 1) + "│"
+        bot = "└" + "─" * w + "┘"
+        return [top, mid, bot]
+
+    rendered: List[List[str]] = []
+    for layer_nodes in by_layer:
+        boxes = [_box(n) for n in layer_nodes]
+        # Join boxes horizontally with 2-space gaps.
+        rows = []
+        for r in range(3):
+            rows.append("  ".join(b[r] for b in boxes))
+        rendered.append(rows)
+
+    # ── Connect layers ────────────────────────────────────────────────────
+    out: List[str] = []
+    for li, rows in enumerate(rendered):
+        out.extend(rows)
+        if li < len(rendered) - 1:
+            # Vertical connector between this layer and the next.
+            width = max(len(r) for r in rows)
+            out.append(" " * (width // 2) + "│")
+            out.append(" " * (width // 2) + "▼")
+
+    return "\n".join(out)
 
 
 def gauge(value: float, min_val: float = 0, max_val: float = 100,
@@ -427,35 +573,41 @@ def box_plot(data: List[Union[int, float]]) -> str:
     return plot
 
 
-def funnel(data: List[Union[int, float]], labels: Optional[List[str]] = None) -> str:
+def funnel(data: List[Union[int, float]], labels: Optional[List[str]] = None,
+           palette: Optional[Dict[str, str]] = None) -> str:
     """Render a funnel (pipeline stages).
-    
+
     Args:
         data: List of numeric values (decreasing)
         labels: Optional labels for each stage
-    
+        palette: Optional dict (role -> ANSI code) to color each stage
+                 (BEAUTIFY-205)
+
     Returns: Funnel string
     """
     if not data:
         return ""
-    
+
     max_val = max(data)
     if max_val == 0:
         return ""
-    
+
     lines = []
     n = len(data)
     for i, (val, label) in enumerate(zip(data, labels or [])):
+        color, reset, glyph = _series_style(palette, i)
         width = int(val / max_val * 40)
-        bar = "█" * max(1, width)
-        
+        bar = glyph * max(1, width)
+
         # Taper effect
         if i > 0:
             bar = " " * (i * 2) + bar
-        
+
         name = label if labels and i < len(labels) else f"Stage {i + 1}"
+        if color:
+            bar = f"{color}{bar}{reset}"
         lines.append(f"{name:<10} {bar} {val}")
-    
+
     return "\n".join(lines)
 
 

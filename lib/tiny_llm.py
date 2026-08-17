@@ -41,6 +41,24 @@ def is_available(timeout: float = 3.0) -> bool:
         return False
 
 
+def _record_usage(data: dict) -> None:
+    """Record tiny-model token usage from an OpenAI-compatible response.
+
+    Request-chain item 5: the tiny path previously tracked no tokens. Reads the
+    ``usage`` block (prompt_tokens / completion_tokens) and feeds it to the
+    shared token tracker so tiny + proxy stats merge into one picture.
+    """
+    try:
+        usage = data.get("usage") or {}
+        tin = int(usage.get("prompt_tokens", 0))
+        tout = int(usage.get("completion_tokens", 0))
+        if tin or tout:
+            from lib.token_tracker import track_tiny_model_run
+            track_tiny_model_run(tin, tout)
+    except Exception:
+        pass  # token tracking is best-effort; never break the query
+
+
 # Default system prompt for the tiny LLM. Injects the operational variant
 # of the practical-reasoning profile so every call from the overseer (or
 # any other caller) gets plain, short, two-line answers without the caller
@@ -79,6 +97,7 @@ def query(prompt: str, system: str = "", max_tokens: int = 256,
         )
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read())
+        _record_usage(data)
         choices = data.get("choices") or [{}]
         content = choices[0].get("message", {}).get("content", "") or ""
         return content.strip()
@@ -233,6 +252,7 @@ def query_with_tools(messages: list, tools: list, max_tokens: int = 512,
         )
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read())
+        _record_usage(data)
         choices = data.get("choices") or [{}]
         message = choices[0].get("message", {}) or {}
         calls = _parse_tool_calls(message)

@@ -28,15 +28,18 @@ Usage:
 """
 from __future__ import annotations
 
+import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
 import time
-import uuid
+import urllib.request
+from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -54,6 +57,17 @@ from lib.response_model import (
     sanitize_terminal,
 )
 from lib.session_bridge import SessionBridge
+from lib.tui_status import (  # noqa: E402
+    MemoryView,
+    RuntimeView,
+    SlimTokenView,
+    StatusView,
+    WorkLineView,
+    WorkPhase,
+    empty_view,
+    phase_from_proxy_signal,
+    strip_render as render_status_strip,
+)
 
 # Session bridge: shared file for TUI ↔ webui chat sync
 _BRIDGE = SessionBridge()
@@ -79,6 +93,12 @@ ACCENT = "#C4B89B"
 BORDER = "rgba(128,128,128,0.12)"
 GREEN = "#4A8B5C"
 RED = "#C4554D"
+# Status strip panel accents. lib/tui_status.py emits these as 24-bit SGR
+# (CYAN / PURPLE / GREEN / YELLOW / RED); the CSS just needs matching hex
+# strings to keep the bordered panels visually consistent.
+CYAN_S = "#96DCFF"      # Runtime
+PURPLE_S = "#B48CC8"    # SlimToken
+YELLOW_S = "#DCB450"     # warming / stale
 
 CORTEX_THEME = Theme(
     name="cortexagent",
@@ -93,13 +113,6 @@ CORTEX_THEME = Theme(
 CSS = f"""
 Screen {{
     background: {BG};
-}}
-#topbar {{
-    dock: top;
-    height: 1;
-    background: {BG2};
-    color: {TEXT2};
-    padding: 0 1;
 }}
 #chat {{
     height: 1fr;
@@ -119,6 +132,20 @@ Screen {{
 }}
 #chat_input:focus {{
     border: tall {ACCENT};
+}}
+#status_work {{
+    dock: bottom;
+    height: auto;
+    background: {BG2};
+    color: {TEXT2};
+    padding: 0 1;
+}}
+#status_strip {{
+    dock: bottom;
+    height: auto;
+    background: {BG2};
+    color: {TEXT};
+    padding: 0 1;
 }}
 #footer_hint {{
     dock: bottom;
@@ -222,6 +249,206 @@ Screen {{
     margin: 0 0 0 2;
 }}
 """
+
+
+# ── StatusBuilder ────────────────────────────────────────────────────────────
+# Polls daemon control socket + grammar proxy /metrics + minify stats + memory
+# cold categories and produces a StatusView for the bottom strip.
+#
+# Designed so the renderer is 100% pure. Any failure here returns None fields
+# (the view model renders them as '—'); the strip never crashes the TUI.
+
+class StatusBuilder:
+    """Aggregate live state into a StatusView once per tick.
+
+    Reads are best-effort and cache their last-good values so a transient
+    daemon / proxy / DB outage doesn't blank the panel.
+    """
+
+    PROXY_PORT = int(os.environ.get("CORTEXAGENT_PROXY_PORT", "8081"))
+    PROXY_TIMEOUT = 0.4  # seconds
+    PROFILE = os.environ.get("CORTEXAGENT_PROFILE", "cortexagent")
+
+    def __init__(self) -> None:
+        self.last_ctx_used: Optional[int] = None
+        self.last_ctx_total: Optional[int] = None
+        self.last_out_tps: Optional[float] = None
+        self.last_in_tps: Optional[float] = None
+        self.last_proxy_up: bool = False
+        self.last_minify: Dict[str, Any] = {}
+        self.last_mem_total: Optional[int] = None
+        self.last_mem_active: Optional[int] = None
+        self.last_mem_categories: Tuple[str, ...] = ()
+        self.last_mem_available: bool = False
+
+    # ── Polls ───────────────────────────────────────────────────────────────────
+
+    def _proxy_metrics(self) -> Dict[str, Any]:
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{self.PROXY_PORT}/metrics",
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=self.PROXY_TIMEOUT) as r:
+                return json.loads(r.read())
+        except Exception:
+            return {}
+
+    def _minify_snapshot(self) -> Dict[str, Any]:
+        try:
+            p = Path.home() / ".cortexagent" / "minify_stats.json"
+            if not p.exists():
+                return {}
+            with p.open() as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            return {}
+
+    def _memory_snapshot(self) -> Tuple[Optional[int], Optional[int], Tuple[str, ...], bool]:
+        """Returns (groups_total, groups_active, category_labels, available)."""
+        try:
+            from memory.db import Database  # local import — DB optional
+            db = Database()
+            cats = db.get_cold_categories(self.PROFILE)
+            total = len(cats)
+            # Active = rows in the last 24h.
+            try:
+                cutoff = time.time() - 86400
+                recent = db.reader().execute(
+                    "SELECT DISTINCT category FROM Memory_Cold "
+                    "WHERE profile = ? AND timestamp > ?",
+                    (self.PROFILE, cutoff),
+                ).fetchall()
+                active = len(recent)
+            except Exception:
+                active = total
+            # Most-recent category labels (max 2).
+            try:
+                rows = db.reader().execute(
+                    "SELECT category FROM Memory_Cold WHERE profile = ? "
+                    "ORDER BY timestamp DESC LIMIT 2",
+                    (self.PROFILE,),
+                ).fetchall()
+                labels = tuple(r["category"] for r in rows
+                              if _safe_label(r["category"]))
+            except Exception:
+                labels = tuple(c for c in cats if _safe_label(c))[:2]
+            return (total, active, labels, True)
+        except Exception:
+            return (self.last_mem_total, self.last_mem_active,
+                    self.last_mem_categories, self.last_mem_available)
+
+    # ── Build ─────────────────────────────────────────────────────────────────
+
+    def build(
+        self,
+        *,
+        width: int,
+        worker_running: bool,
+        work: Optional[WorkLineView],
+        in_tps: Optional[float],
+        out_tps: Optional[float],
+        ctx_used: Optional[int],
+        ctx_total: Optional[int],
+        model_label: Optional[str],
+        phase: WorkPhase,
+    ) -> StatusView:
+        """Compose the StatusView for this tick.
+
+        All cache writes happen here; renderers downstream read frozen fields.
+        """
+        proxy = self._proxy_metrics()
+        if proxy:
+            self.last_proxy_up = True
+            # /metrics payload includes prompt_tokens / completion_tokens
+            # totals — but not a current budget figure. The grammar proxy
+            # also exposes ``current_in_tps`` / ``current_out_tps``.
+            self.last_out_tps = proxy.get("current_out_tps")
+            self.last_in_tps = proxy.get("current_in_tps")
+            # Total context is the configured budget, not the proxy's running
+            # counters; the daemon control socket usually exposes it via
+            # ``model.budget`` but we fall back to a sane constant.
+            if isinstance(proxy.get("model_budget"), int):
+                self.last_ctx_total = proxy["model_budget"]
+        else:
+            self.last_proxy_up = False
+        # Minify snapshot.
+        m = self._minify_snapshot()
+        if m:
+            self.last_minify = m
+        # Memory.
+        mem_total, mem_active, mem_labels, mem_available = self._memory_snapshot()
+        if mem_total is not None:
+            self.last_mem_total = mem_total
+            self.last_mem_active = mem_active
+            self.last_mem_categories = mem_labels
+            self.last_mem_available = mem_available
+        # Build views.
+        ctx_pct: Optional[float] = None
+        if self.last_ctx_total:
+            ctx_pct = round(100.0 * (ctx_used or 0) / self.last_ctx_total, 1)
+        runtime = RuntimeView(
+            ctx_pct=ctx_pct,
+            ctx_used_tokens=ctx_used or self.last_ctx_used,
+            ctx_total_tokens=self.last_ctx_total,
+            in_tps=in_tps if in_tps and in_tps > 0 else self.last_in_tps,
+            out_tps=out_tps if out_tps and out_tps > 0 else self.last_out_tps,
+            model_label=model_label,
+            phase=phase,
+        )
+        st = self.last_minify or {}
+        saved = st.get("tokens_saved") or 0
+        ratio = st.get("ratio_pct")
+        ran = bool(st.get("runs")) or saved > 0
+        slimtoken = SlimTokenView(
+            saved_pct=ratio,
+            tokens_saved=saved,
+            last_in_tokens=st.get("last_in_tokens"),
+            last_out_tokens=st.get("last_out_tokens"),
+            policy=os.environ.get("CORTEXAGENT_SLIMTOKEN_POLICY", "balanced"),
+            ran=ran,
+        )
+        memory = MemoryView(
+            available=mem_available,
+            groups_total=self.last_mem_total,
+            groups_active=self.last_mem_active,
+            category_labels=self.last_mem_categories,
+            detail_hint="use m for details" if mem_available else "m for details",
+        )
+        shortcuts: Tuple[Tuple[str, str], ...]
+        if work is not None:
+            shortcuts = (("l", "logs"), ("Esc", "cancel"))
+        else:
+            shortcuts = (
+                ("?", "help"), ("m", "memory"),
+                ("s", "slimtoken"), ("l", "logs"),
+            )
+        return StatusView(
+            runtime=runtime,
+            slimtoken=slimtoken,
+            memory=memory,
+            width=max(40, width),
+            work=work,
+            shortcuts=shortcuts,
+        )
+
+
+def _safe_label(category: str) -> bool:
+    """Filter out unsafe category strings before they reach the renderer.
+
+    The renderer must NEVER show raw memory content, IDs, timestamps, or
+    tokens — only pre-approved category labels. This helper enforces a tight
+    whitelist of literal category names.
+    """
+    if not category or not isinstance(category, str):
+        return False
+    # Whitelist: short, lowercase, ASCII, only ``[a-z0-9_-]`` plus spaces.
+    if len(category) > 24:
+        return False
+    if not re.fullmatch(r"[a-z0-9 _-]+", category):
+        return False
+    return True
 
 
 class TokenCounter:
@@ -524,13 +751,25 @@ class ChatScreen(Screen):
         self._bridge_seq: int = 0  # last seq read from bridge
         self._bridge_thread: Optional[threading.Thread] = None
         self._bridge_stop = threading.Event()
+        # ── Status strip caches (rebuilt every tick) ───────────────────────
+        self._status_builder = StatusBuilder()
+        self._last_proxy_status: Optional[int] = None
+        self._last_proxy_msg: str = ""
+        self._active_work: Optional[WorkLineView] = None
+        self._status_work: Optional[Static] = None
+        self._status_strip: Optional[Static] = None
 
     def compose(self) -> ComposeResult:
-        yield Label(id="topbar")
         self._banner = Static(self._banner_text(), classes="banner")
         with VerticalScroll(id="chat"):
             yield self._banner
         yield Input(id="chat_input", placeholder="Type a message…")
+        # Active-work line — present but empty until a request is in flight.
+        self._status_work = Static("", id="status_work", markup=False)
+        yield self._status_work
+        # 3-panel Codex-style status strip (Runtime / SlimToken / Memory).
+        self._status_strip = Static("", id="status_strip", markup=False)
+        yield self._status_strip
         yield Static(
             "[dim]? help · j/k scroll · enter send · ctrl+c cancel · ctrl+l clear[/]",
             id="footer_hint",
@@ -555,21 +794,130 @@ class ChatScreen(Screen):
         self._bridge_thread.start()
 
     def _tick(self) -> None:
-        bar = self.query_one("#topbar", Label)
-        elapsed = time.time() - self._session_start
+        """Render the bottom-of-screen 3-panel status strip every second.
+
+        Builds a StatusView from the cached panel state + the latest proxy /
+        minify / memory data, then writes it into #status_strip. The active
+        #status_work line is updated only when there is an in-flight request.
+        """
+        try:
+            view = self._status_builder.build(
+                width=self._terminal_width(),
+                worker_running=self._worker_running,
+                work=self._active_work,
+                in_tps=self.counter.rate,
+                out_tps=self._live_out_tps(),
+                ctx_used=self._ctx_used_tokens(),
+                ctx_total=self._ctx_total_tokens(),
+                model_label=self._safe_model_label(),
+                phase=self._resolved_phase(),
+            )
+        except Exception:
+            # Status strip must never crash the TUI.
+            return
+        if self._status_strip is not None:
+            self._status_strip.update(render_status_strip(view))
+        if self._status_work is not None:
+            self._status_work.update(self._active_work_card(view))
+
+    def _active_work_card(self, view: StatusView) -> str:
+        """Render the Cortex processing-core animation card, or "" when idle.
+
+        During an in-flight request the single-line work indicator is replaced
+        by the richer animated card (lib/processing_animation.py). Plain text
+        (the #status_work Static is markup=False) so the card's Unicode frames
+        render as-is. Never raises: any failure falls back to the plain work
+        label so the TUI stays up.
+        """
+        if self._active_work is None:
+            return ""
+        try:
+            from lib.processing_animation import (
+                render_card, stage_from_workphase, pick_frame,
+            )
+        except Exception:
+            return self._active_work.label or ""
+        w = self._active_work
+        rt, st = view.runtime, view.slimtoken
+        metrics: Dict[str, Any] = {}
+        if rt.out_tps:
+            metrics["tok_s"] = rt.out_tps
+        if st.ran and st.saved_pct is not None:
+            metrics["saved_pct"] = st.saved_pct
+            if st.tokens_saved:
+                metrics["saved"] = st.tokens_saved
+        stage = stage_from_workphase(w.phase.value)
+        reduced = os.environ.get("CORTEXAGENT_REDUCED_MOTION") == "1"
+        frame = pick_frame(stage, reduced_motion=reduced)
+        rows = render_card(
+            stage,
+            progress=w.progress,
+            metrics=metrics,
+            terminal_width=self._terminal_width(),
+            reduced_motion=reduced,
+            stage_index=None,
+            stage_total=5,
+            frame=frame,
+        )
+        return "\n".join(rows)
+
+    def _terminal_width(self) -> int:
+        try:
+            return max(40, self.app.size.width or 100)
+        except Exception:
+            return 100
+
+    def _safe_model_label(self) -> Optional[str]:
+        """Return the model label only when it's truly known.
+
+    Per spec: don't leak route aliases like ``cortex-big`` by default. Strip
+    common route prefixes and return ``None`` for unknown.
+        """
+        env = os.environ.get("CLAUDE_MODEL_NAME") or self._model or ""
+        if not env:
+            return None
+        low = env.lower()
+        if low.startswith("cortex-") or low in ("big", "tiny", "local", "overseer"):
+            return None
+        return env
+
+    def _resolved_phase(self) -> WorkPhase:
+        """Map panel state + last 503/WARMING signal to a WorkPhase.
+
+    The TUI's TurnPanel.state is one of idle/streaming/completed/failed/
+    cancelled. The active-work indicator should NOT appear when state is
+    idle or after a turn has finished — only during an actual in-flight
+    request, generating, warming, retrying, or waiting for a tool.
+        """
         p = self.active_panel
-        state = p.state if p else "idle"
-        parts = [f"CortexAgent · {CFG.author}", self._model, state]
-        if p:
-            if p.state == "streaming" and self._turn_start:
-                parts.append(f"{time.time() - self._turn_start:.0f}s")
-            elif p.elapsed:
-                parts.append(f"{p.elapsed:.0f}s")
-        if self.counter.total:
-            parts.append(f"{self.counter.rate:.0f} tok/s")
-            parts.append(f"{self.counter.total} tok")
-        parts.append(f"session {elapsed:.0f}s")
-        bar.update(" · ".join(parts))
+        if not p:
+            # Even without a panel, an explicit 503 Loading-model signal
+            # from the last request keeps WARMING visible briefly.
+            if self._last_proxy_status == 503 and \
+                    "loading model" in self._last_proxy_msg.lower():
+                return WorkPhase.WARMING
+            return WorkPhase.IDLE
+        # TurnPanel.state values is reactive (idle/streaming/completed/...).
+        if p.state == "streaming":
+            return WorkPhase.GENERATING
+        if p.state == "failed":
+            return WorkPhase.UNAVAILABLE
+        if p.state == "cancelled":
+            return WorkPhase.IDLE
+        if self._worker_running:
+            return WorkPhase.GENERATING
+        return WorkPhase.READY
+
+    def _ctx_used_tokens(self) -> Optional[int]:
+        """Best-effort current context token usage from the proxy /metrics."""
+        return self._status_builder.last_ctx_used
+
+    def _ctx_total_tokens(self) -> Optional[int]:
+        return self._status_builder.last_ctx_total
+
+    def _live_out_tps(self) -> Optional[float]:
+        """Best-effort decode rate from the proxy /metrics."""
+        return self._status_builder.last_out_tps
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self._send(event.value)
@@ -588,12 +936,10 @@ class ChatScreen(Screen):
         inp.value = ""
         inp.focus()
         self.history.append({"role": "user", "content": text, "metadata": {}})
-        # Forward to webui via bridge — username is "User" so the chat pane can
-        # label this entry under the local user even when both UIs are open.
+        # Forward to webui via bridge
         self._bridge_write({
-            "id": str(uuid.uuid4()),
+            "id": text[:40],
             "type": "message",
-            "username": "User",
             "content": text,
             "ts": datetime.now().isoformat(),
         })
@@ -690,12 +1036,9 @@ class ChatScreen(Screen):
             self.history.append,
             {"role": "assistant", "content": panel.stream, "metadata": meta},
         )
-        # Forward response to webui via bridge — username "Big Model" so the
-        # unified chat shows which voice said this.
+        # Forward response to webui via bridge
         self._bridge_write({
-            "id": str(uuid.uuid4()),
             "type": "response",
-            "username": "Big Model",
             "content": response_text,
             "from": "tui",
             "ts": datetime.now().isoformat(),

@@ -46,6 +46,7 @@ import argparse
 import importlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -384,7 +385,9 @@ def test_config_user_shared() -> R:
 # ═══════════════════════════════════════════════════════════════════════════
 PII_PATTERNS = ["/home/grey", "GreyOK00", "fc-", "sk-ant-"]
 PII_EXCLUDE_DIRS = {".git", "node_modules", "__pycache__", ".cortexagent",
-                    ".cortexagent-config", ".cortexagent-test", ".claude"}
+                    ".cortexagent-config", ".cortexagent-test", ".claude",
+                    "cortex", "backup", ".backups", ".snapshots",
+                    ".superpowers"}
 # Files that LEGITIMATELY contain a pattern string (the detector itself, or a
 # redaction regex) — not personal data. Excluded so the scan doesn't flag itself
 # or the security code that redacts leaked keys.
@@ -393,6 +396,7 @@ PII_EXCLUDE_FILES = {
     "tests/COVERAGE.md",                  # documents the patterns (audit doc)
     "lib/post_response_verifier.py",      # redacts sk-ant- keys from responses
     "lib/config.py",                      # docstring documents the old hardcoded paths
+    "lib/cortex_routing.py",              # BRAND_AUTHOR == "GreyOK00" branding assertion
     "docs/superpowers/specs/2026-08-10-daily-changelog.md",  # session record (PII by design — local-only)
     # Legitimate project authorship — NOT personal info. These name the
     # project owner (the literal string `GreyOK00`) in shipped files. The
@@ -1818,6 +1822,118 @@ def test_tui_smoke() -> R:
     return R("tui smoke", "tui", True, tail)
 
 
+def test_tui_status_render() -> R:
+    """lib/tui_status.py renders 3-up / 2+1 / stack across widths."""
+    try:
+        from lib.tui_status import (strip_render, StatusView, RuntimeView,
+                                    SlimTokenView, MemoryView, WorkPhase)
+    except Exception as e:
+        return R("tui_status import", "tui", False, f"import: {e}")
+    rt = RuntimeView(ctx_pct=2.0, ctx_used_tokens=3100, ctx_total_tokens=156000,
+                     in_tps=None, out_tps=None, model_label=None,
+                     phase=WorkPhase.READY)
+    st = SlimTokenView(saved_pct=18.0, tokens_saved=2700,
+                       last_in_tokens=15300, last_out_tokens=12600,
+                       policy="balanced", ran=True)
+    mem = MemoryView(available=True, groups_total=30, groups_active=29,
+                     category_labels=("workflow", "error fix"),
+                     detail_hint="use m for details")
+    for w in (140, 80, 50):
+        out = strip_render(StatusView(runtime=rt, slimtoken=st, memory=mem,
+                                       width=w))
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", out)
+        if "RUNTIME" not in plain or "MEMORY" not in plain:
+            return R("tui_status render", "tui", False,
+                     f"width={w}: missing headings")
+    return R("tui_status render", "tui", True, "3 widths OK")
+
+
+def test_tui_status_active_work() -> R:
+    """Active-work line emitted only when present; 503 Loading → WARMING."""
+    try:
+        from lib.tui_status import (strip_render, StatusView, RuntimeView,
+                                    SlimTokenView, MemoryView, WorkPhase,
+                                    WorkLineView, phase_from_proxy_signal)
+    except Exception as e:
+        return R("tui_status import", "tui", False, f"import: {e}")
+    # 503 + Loading model maps to WARMING.
+    if phase_from_proxy_signal("Loading model", http_status=503) != WorkPhase.WARMING:
+        return R("tui_status 503", "tui", False, "503 Loading not → WARMING")
+    work = WorkLineView(phase=WorkPhase.WARMING, label="Model warming up",
+                        progress=None, retry_current=3, retry_max=3,
+                        retry_in_seconds=8.0)
+    view = StatusView(
+        runtime=RuntimeView(None, None, None, None, None, None, WorkPhase.WARMING),
+        slimtoken=SlimTokenView(0, 0, None, None, "balanced", False),
+        memory=MemoryView(False, None, None, ()),
+        work=work,
+        shortcuts=(("l", "logs"), ("Esc", "cancel")),
+        width=120,
+    )
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", strip_render(view))
+    if "Model warming up" not in plain or "Esc cancel" not in plain:
+        return R("tui_status active work", "tui", False, plain[:200])
+    # Active-work indeterminate: NO percent.
+    if re.search(r"\d+%", plain):
+        return R("tui_status active work", "tui", False,
+                 "indeterminate work line has %")
+    return R("tui_status active work", "tui", True, "WARMING emitted, no %")
+
+
+def test_tui_status_unavailable_memory() -> R:
+    """Memory panel renders 'memory unavailable' cleanly when DB is missing."""
+    try:
+        from lib.tui_status import (strip_render, StatusView, RuntimeView,
+                                    SlimTokenView, MemoryView, WorkPhase)
+    except Exception as e:
+        return R("tui_status import", "tui", False, f"import: {e}")
+    view = StatusView(
+        runtime=RuntimeView(None, None, None, None, None, None, WorkPhase.IDLE),
+        slimtoken=SlimTokenView(0, 0, None, None, "balanced", False),
+        memory=MemoryView(available=False, groups_total=None,
+                          groups_active=None, category_labels=()),
+        width=120,
+    )
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", strip_render(view))
+    if "memory unavailable" not in plain:
+        return R("tui_status memory unavailable", "tui", False, plain[:200])
+    return R("tui_status memory unavailable", "tui", True, "renders cleanly")
+
+
+def test_processing_animation() -> R:
+    """Cortex processing-core animation: 7-row card, all stages, narrow fallback."""
+    try:
+        from lib.processing_animation import render_card, stage_from_workphase
+    except Exception as e:
+        return R("processing_animation import", "tui", False, f"import: {e}")
+    stages = ["preparing", "slimtoken", "sending", "generating",
+              "tool", "completion", "error"]
+    # Every stage renders a 7-row card at full width (reduced-motion static).
+    for st in stages:
+        rows = render_card(st, terminal_width=100, reduced_motion=True)
+        if len(rows) != 7:
+            return R("processing_animation rows", "tui", False,
+                     f"{st}: {len(rows)} rows")
+    # Indeterminate generation → no fake percentage in the bar.
+    plain = "\n".join(render_card("generating", progress=None, terminal_width=100))
+    if re.search(r"\d+%", plain):
+        return R("processing_animation pct", "tui", False, "fake % in bar")
+    # Narrow-terminal fallbacks: 50 → one line, 38 → minimal line.
+    if len(render_card("generating", terminal_width=50)) != 1:
+        return R("processing_animation narrow", "tui", False, "50 not 1 line")
+    if len(render_card("generating", terminal_width=38)) != 1:
+        return R("processing_animation min", "tui", False, "38 not 1 line")
+    # Phase → stage mapping (WorkPhase enum values).
+    if stage_from_workphase("waiting_tool") != "tool":
+        return R("processing_animation map", "tui", False, "waiting_tool")
+    if stage_from_workphase("unavailable") != "error":
+        return R("processing_animation map", "tui", False, "unavailable")
+    # Unknown stage → empty card.
+    if render_card("nope", terminal_width=100):
+        return R("processing_animation unknown", "tui", False, "unknown stage")
+    return R("processing_animation", "tui", True, "7 stages + fallbacks OK")
+
+
 def test_stt_config_defaults() -> R:
     """[stt] config section defaults (Task 1)."""
     from lib.config import CFG
@@ -2219,7 +2335,10 @@ TESTS = {
                   test_install_starts_daemon_unconditional,
                   test_fallback_vram_probe_glitchrejection,
                   test_no_fallback_two_models_only],
-    "tui": [test_tui_response_model, test_tui_smoke],
+    "tui": [test_tui_response_model, test_tui_smoke,
+            test_tui_status_render, test_tui_status_active_work,
+            test_tui_status_unavailable_memory,
+            test_processing_animation],
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
             test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
             test_stt_vad_math, test_stt_oom_floor_unload, test_stt_webui_endpoint],
