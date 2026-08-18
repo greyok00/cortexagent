@@ -3,1530 +3,767 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>CORTEXAGENT</title>
+<title>CORTEXAGENT — Prompt Pipeline</title>
 <style>
-  /* ── Design Tokens (UI Framework — Luxury Brand) ── */
-  :root {
-    --bg-primary: #000000;
-    --bg-secondary: #0A0A0A;
-    --bg-tertiary: #141414;
-    --surface: rgba(20,20,20,0.55);
-    --text-primary: #FFFFFF;
-    --text-secondary: #A0A0A0;
-    --text-tertiary: #666666;
-    --accent: #C9A84C;
-    --accent-hover: #D4B85C;
-    --accent-soft: rgba(201,168,76,0.18);
-    --border: rgba(201,168,76,0.18);
-    --border-strong: rgba(201,168,76,0.35);
-    /* BEAUTIFY-210: semantic status colors aligned with the CLI palette
-       (lib/semantic_palette.py) so the same data reads consistently across
-       CLI / webui / tray. */
-    --success: #9ECE6A;
-    --error: #F7768E;
-    --warning: #E0AF68;
-    --info: #7AA2F7;
-    --accent-teal: #7FD4C9;
-    --radius: 14px;
-    --font: 'Helvetica Neue', 'Inter', Arial, sans-serif;
-    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    --transition: 600ms cubic-bezier(0.25, 0.1, 0.25, 1);
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
-  body {
-    font-family: var(--font); background: var(--bg-primary);
-    color: var(--text-primary); font-weight: 300;
-    letter-spacing: 0.04em; line-height: 1.6;
-    overflow: hidden;
-  }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { color: var(--accent-hover); }
-  button { font: inherit; cursor: pointer; }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.22); border-radius: 6px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(201,168,76,0.4); }
+:root {
+  --bg: #050505; --bg2: #0a0a0a; --bg3: #141414;
+  --text: #fff; --text2: #aaa; --text3: #555;
+  --gold: #C9A84C; --gold-glow: rgba(201,168,76,0.25);
+  --green: #9ECE6A; --red: #F7768E; --blue: #7AA2F7;
+  --purple: #BB9AF3; --cyan: #7FD4C9; --orange: #E0AF68;
+  --radius: 12px;
+  --font: 'Helvetica Neue', 'Inter', Arial, sans-serif;
+  --mono: 'SF Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  display: flex; flex-direction: column;
+}
+a { color: var(--gold); text-decoration: none; }
 
-  /* ── 3D Canvas ── */
-  #cortex {
-    position: fixed; inset: 0; width: 100%; height: 100%;
-    z-index: 0; display: block;
-  }
+/* ── Loading ─────────────────────────────────────────────── */
+#loader {
+  position: fixed; inset: 0; z-index: 100; display: flex;
+  align-items: center; justify-content: center;
+  flex-direction: column; gap: 18px; background: var(--bg);
+  transition: opacity 0.6s ease;
+}
+#loader.fade { opacity: 0; pointer-events: none; }
+.ring {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 1.5px solid rgba(201,168,76,0.15);
+  border-top-color: var(--gold); animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loader span { font-size: 11px; letter-spacing: 0.25em; color: var(--text3); text-transform: uppercase; }
 
-  /* ── Loading overlay ── */
-  #loading {
-    position: fixed; inset: 0; z-index: 100; display: flex;
-    flex-direction: column; align-items: center; justify-content: center;
-    gap: 18px; background: var(--bg-primary);
-    transition: opacity 0.8s ease; cursor: progress;
-  }
-  #loading.fade { opacity: 0; pointer-events: none; }
-  .ring {
-    width: 46px; height: 46px; border-radius: 50%;
-    border: 1.5px solid rgba(201,168,76,0.12);
-    border-top-color: var(--accent);
-    animation: spin 0.9s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-label {
-    font-size: 11px; letter-spacing: 0.28em; text-transform: uppercase;
-    color: var(--text-tertiary);
-  }
+/* ── Top bar ─────────────────────────────────────────────── */
+#topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; background: var(--bg2);
+  border-bottom: 1px solid rgba(201,168,76,0.1);
+}
+#topbar .logo { font-size: 13px; font-weight: 600; letter-spacing: 0.18em; color: var(--gold); }
+#topbar .status { font-size: 11px; color: var(--text3); }
+#topbar .status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); margin-right: 5px; vertical-align: middle; }
+#topbar .status .dot.offline { background: var(--red); }
 
-  /* ── HUD (top bar) ── */
-  #hud {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
-    display: flex; align-items: center; gap: 14px;
-    padding: 16px 22px; pointer-events: none;
-  }
-  #hud > * { pointer-events: auto; }
-  .brand { display: flex; align-items: center; gap: 12px; }
-  .brand .logo {
-    width: 30px; height: 30px; border-radius: 8px;
-    box-shadow: 0 0 18px rgba(201,168,76,0.25);
-  }
-  .brand h1 {
-    font-size: 13px; font-weight: 700; letter-spacing: 0.22em;
-    text-transform: uppercase; color: var(--accent); margin: 0;
-  }
-  .brand h1 small {
-    display: block; font-size: 9px; letter-spacing: 0.34em;
-    color: var(--text-tertiary); font-weight: 400; margin-top: 2px;
-  }
-  .status-chip {
-    margin-left: auto; display: flex; align-items: center; gap: 8px;
-    font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
-    color: var(--text-tertiary);
-    background: var(--surface);
-    background: rgba(18,18,18,0.55);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
-    border: 1px solid var(--border);
-    padding: 7px 14px; border-radius: 999px;
-    transition: color var(--transition), border-color var(--transition);
-  }
-  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-tertiary); }
-  .status-chip.online { color: var(--success); border-color: rgba(111,207,151,0.4); }
-  .status-chip.online .status-dot { background: var(--success); box-shadow: 0 0 10px var(--success); }
-  .status-chip.offline { color: var(--error); border-color: rgba(229,115,115,0.35); }
-  .status-chip.offline .status-dot { background: var(--error); }
-  .ctx-bar {
-    margin-top: 2px; width: 120px; height: 2px; border-radius: 2px;
-    background: rgba(255,255,255,0.08); overflow: hidden; display: none;
-  }
-  .ctx-bar > i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width 0.6s ease; }
-  .status-chip.online .ctx-bar { display: block; }
+/* ── Main stage ──────────────────────────────────────────── */
+#main { flex: 1; display: flex; overflow: hidden; }
 
-  /* ── Shared glass surface ── */
-  .glass {
-    background: rgba(12,12,12,0.62);
-    backdrop-filter: blur(22px) saturate(150%);
-    -webkit-backdrop-filter: blur(22px) saturate(150%);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: 0 24px 70px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
-  }
-  .spacer { flex: 1; }
+/* ── Pipeline column (left) ──────────────────────────────── */
+#pipeline {
+  flex: 0 0 420px; padding: 20px 16px; overflow-y: auto;
+  border-right: 1px solid rgba(201,168,76,0.06);
+}
+#pipeline h2 {
+  font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--text3); margin-bottom: 14px;
+}
+.stage {
+  display: flex; gap: 14px; padding: 12px 14px; margin-bottom: 6px;
+  background: var(--bg2); border-radius: var(--radius);
+  border: 1px solid rgba(201,168,76,0.04);
+  transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+  cursor: pointer; position: relative; overflow: hidden;
+}
+.stage:hover { border-color: rgba(201,168,76,0.15); background: var(--bg3); }
+.stage.active {
+  border-color: var(--gold);
+  background: rgba(201,168,76,0.06);
+  box-shadow: 0 0 20px rgba(201,168,76,0.08);
+}
+.stage.active .stage-glow { opacity: 1; }
+.stage .stage-glow {
+  position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(ellipse at left, var(--gold-glow), transparent 70%);
+  transition: opacity 0.5s ease; pointer-events: none;
+}
+.stage .num {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+  background: var(--bg3); color: var(--text3);
+  border: 1.5px solid rgba(201,168,76,0.1);
+  transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.stage.active .num {
+  background: var(--gold); color: #000;
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgba(201,168,76,0.4);
+}
+.stage.done .num { border-color: var(--green); color: var(--green); background: rgba(154,206,106,0.1); }
+.stage .info { flex: 1; min-width: 0; }
+.stage .info .name { font-size: 13px; font-weight: 500; margin-bottom: 2px; transition: color 0.3s; }
+.stage.active .info .name { color: var(--gold); }
+.stage .info .detail { font-size: 11px; color: var(--text3); margin-bottom: 4px; transition: all 0.5s ease; }
+.stage .info .tokens { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.stage .arrow {
+  position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+  width: 1px; height: 8px; background: rgba(201,168,76,0.15);
+  transition: opacity 0.3s;
+}
+.stage.done .arrow { background: var(--green); opacity: 0.3; }
+.stage:last-child .arrow { display: none; }
 
-  /* ── Toolbar: model tabs + load + t/s + VRAM ── */
-  #toolbar {
-    position: fixed; top: 70px; left: 22px; right: 22px; z-index: 18;
-    display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
-    padding: 10px 12px;
-  }
-  .model-tabs { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
-  .mtab {
-    display: flex; align-items: center; gap: 8px; padding: 6px 11px;
-    border: 1px solid var(--border); border-radius: 10px;
-    background: rgba(255,255,255,0.03); color: var(--text-tertiary);
-    text-align: left; transition: border-color var(--transition), background var(--transition);
-  }
-  .mtab .ico { font-size: 15px; flex: 0 0 auto; }
-  .mtab .lab { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
-  .mtab .lab b { font-size: 12px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
-  .mtab .lab small { font-size: 10px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
-  .mtab:hover { border-color: var(--accent); }
-  .mtab.active { background: var(--accent-soft); border-color: var(--border-strong); box-shadow: 0 0 0 1px var(--accent) inset; }
-  .btn-load {
-    padding: 8px 12px; border-radius: 10px; color: var(--text-secondary);
-    font-size: 12.5px; font-weight: 600; background: rgba(255,255,255,0.03);
-    border: 1px solid var(--border); white-space: nowrap;
-  }
-  .btn-load:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-  .btn-load:disabled { opacity: .5; cursor: not-allowed; }
-  .tps {
-    display: flex; align-items: center; gap: 7px; padding: 4px 11px;
-    border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03);
-    white-space: nowrap;
-  }
-  .tps .lbl { font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .07em; }
-  .tps .num { font-size: 16px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
-  .tps .avg { font-size: 10px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .tps.off .num { color: var(--text-tertiary); }
-  .vram {
-    font-size: 11px; color: var(--text-secondary); background: rgba(255,255,255,0.03);
-    border: 1px solid var(--border); padding: 4px 9px; border-radius: 999px;
-    font-variant-numeric: tabular-nums; white-space: nowrap;
-  }
-  .vram.off { color: var(--text-tertiary); }
-  #tool-status { font-size: 12px; color: var(--text-secondary); white-space: nowrap; min-width: 76px; text-align: right; }
-  .icon-btn { padding: 8px; border-radius: 8px; color: var(--text-secondary); background: transparent; border: none; }
-  .icon-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
-  .icon-btn.recording { color: #ff4d4d; animation: pulse 1s infinite; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .tool-nav-btn { display: none; }
+/* ── SlimToken sub-stages ────────────────────────────────── */
+.stages-sub {
+  margin-top: 6px; margin-left: 42px;
+  display: none; opacity: 0;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  transform: translateY(-6px);
+}
+.stages-sub.open { display: block; opacity: 1; transform: translateY(0); }
+.stages-sub .sub-stage {
+  display: flex; gap: 10px; padding: 8px 12px; margin-bottom: 3px;
+  background: var(--bg3); border-radius: 8px;
+  border: 1px solid rgba(201,168,76,0.03);
+  transition: all 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.stages-sub .sub-stage .num {
+  width: 22px; height: 22px; font-size: 10px;
+}
+.stages-sub .sub-stage.active { border-color: var(--gold); background: rgba(201,168,76,0.05); }
+.stages-sub .sub-stage.active .num { background: var(--gold); color: #000; border-color: var(--gold); }
 
-  /* ── Sessions sidebar (glass) ── */
-  #sidebar {
-    position: fixed; left: 22px; top: 136px; bottom: 22px; width: 232px; z-index: 16;
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  .sb-brand {
-    display: flex; align-items: center; gap: 9px; padding: 14px 14px 8px;
-    font-weight: 600; font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
-    color: var(--text-secondary);
-  }
-  .sb-brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
-  .new-chat {
-    margin: 4px 12px 8px; padding: 10px 12px; background: var(--accent-soft);
-    border: 1px solid var(--border-strong); display: flex; align-items: center; gap: 8px;
-    font-size: 13px; border-radius: 10px; color: var(--accent);
-  }
-  .new-chat:hover { border-color: var(--accent); }
-  .chat-list { flex: 1; overflow: auto; padding: 0 8px; }
-  .chat-item {
-    padding: 9px 10px; border-radius: 8px; font-size: 13px; color: var(--text-secondary);
-    display: flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; overflow: hidden;
-  }
-  .chat-item:hover { background: rgba(255,255,255,0.04); color: var(--text-primary); }
-  .chat-item.active { background: var(--accent-soft); color: var(--text-primary); }
-  .chat-item .ttl { overflow: hidden; text-overflow: ellipsis; flex: 1; }
-  .chat-item .del { opacity: 0; font-size: 15px; padding: 0 4px; background: none; border: none; }
-  .chat-item:hover .del { opacity: .7; }
-  .chat-item .del:hover { opacity: 1; color: var(--error); }
-  .sb-foot { padding: 10px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-tertiary); }
+/* ── Detail column (right) ───────────────────────────────── */
+#detail {
+  flex: 1; padding: 24px 32px; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+#detail .detail-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+}
+#detail .detail-header h1 {
+  font-size: 22px; font-weight: 300; letter-spacing: 0.08em;
+  transition: color 0.5s ease;
+}
+#detail .detail-header .badge {
+  font-size: 10px; padding: 3px 10px; border-radius: 20px;
+  background: var(--bg3); border: 1px solid rgba(201,168,76,0.12);
+  color: var(--text2);
+}
+#detail .detail-content { flex: 1; min-height: 0; font-size: 14px; line-height: 1.7; color: var(--text2); }
+#detail .detail-content p { margin-bottom: 14px; }
+#detail .detail-content code {
+  font-family: var(--mono); background: var(--bg3);
+  padding: 2px 6px; border-radius: 4px; font-size: 13px;
+}
+#detail .detail-content pre {
+  background: var(--bg2); padding: 16px; border-radius: 8px;
+  overflow-x: auto; margin: 14px 0;
+  border: 1px solid rgba(201,168,76,0.06);
+}
+#detail .detail-content pre code { background: none; padding: 0; }
 
-  /* ── Chat view ── */
-  #chat-area {
-    position: fixed; left: 266px; right: 354px; top: 136px; bottom: 22px; z-index: 15;
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  .chat-view { flex: 1; overflow: auto; padding: 18px 0 8px; display: flex; flex-direction: column; gap: 18px; }
-  .msg { max-width: 760px; width: 100%; margin: 0 auto; padding: 0 20px; display: flex; gap: 12px; }
-  .msg .ava {
-    width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
-    display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;
-  }
-  .msg.user .ava { background: var(--accent); color: #1a1408; }
-  .msg.ai .ava { background: rgba(255,255,255,0.05); color: var(--accent); border: 1px solid var(--border); }
-  .msg .body { flex: 1; min-width: 0; line-height: 1.6; font-size: 14px; overflow-wrap: anywhere; }
-  .msg.user .body {
-    background: var(--accent-soft); border: 1px solid var(--border);
-    padding: 10px 14px; border-radius: 14px; border-bottom-right-radius: 3px; white-space: pre-wrap;
-  }
-  .msg.ai .body { padding-top: 6px; }
-  .msg.ai .body pre {
-    background: rgba(0,0,0,0.5); border: 1px solid var(--border); border-radius: 8px;
-    padding: 11px 13px; overflow: auto; margin: 9px 0; font-size: 12.5px; font-family: var(--mono);
-  }
-  .msg.ai .body code { font-family: var(--mono); font-size: 13px; background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 5px; }
-  .msg.ai .think {
-    font-size: 12px; color: var(--text-tertiary); font-style: italic;
-    border-left: 2px solid var(--border-strong); padding: 2px 10px; margin: 0 0 8px; line-height: 1.5;
-  }
-  .msg.ai .think summary { cursor: pointer; color: var(--text-secondary); font-style: normal; font-weight: 600; user-select: none; }
-  .msg.ai .think div { white-space: pre-wrap; margin-top: 2px; }
-  .typewriter::after { content: '▋'; animation: blink 1s steps(2) infinite; color: var(--accent); }
-  @keyframes blink { 50% { opacity: 0; } }
-  .msg .body img, .msg .body video { max-width: 100%; border-radius: 12px; margin: 8px 0; display: block; border: 1px solid var(--border); background: #000; }
-  .composer { padding: 8px 20px 12px; }
-  .composer .wrap {
-    max-width: 760px; margin: 0 auto; background: rgba(0,0,0,0.4);
-    border: 1px solid var(--border-strong); border-radius: 14px; padding: 8px 8px 8px 14px;
-    display: flex; align-items: flex-end; gap: 10px;
-  }
-  .composer textarea {
-    flex: 1; border: none; background: transparent; resize: none; max-height: 200px;
-    min-height: 24px; line-height: 1.5; padding: 6px 0; color: var(--text-primary);
-    font-family: var(--font); font-weight: 300;
-  }
-  .composer textarea:focus { outline: none; border: none; }
-  .composer textarea::placeholder { color: var(--text-tertiary); }
-  .send-btn {
-    width: 36px; height: 36px; border-radius: 10px; background: var(--accent); color: #1a1408;
-    display: flex; align-items: center; justify-content: center; font-size: 16px; border: none;
-  }
-  .send-btn:hover { background: var(--accent-hover); }
-  .send-btn:disabled { background: var(--text-tertiary); cursor: not-allowed; }
-  .attachments { max-width: 760px; margin: 8px auto 0; display: flex; flex-wrap: wrap; gap: 6px; }
-  .attachments .chip {
-    display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.04);
-    border: 1px solid var(--border); border-radius: 10px; padding: 4px 10px; font-size: 12px; color: var(--text-secondary);
-  }
-  .attachments .chip b { color: var(--text-primary); font-weight: 600; }
-  .attachments .chip .x { cursor: pointer; color: var(--text-tertiary); font-weight: 700; padding: 0 2px; background: none; border: none; }
-  .attachments .chip .x:hover { color: var(--error); }
-  .hint-composer { max-width: 760px; margin: 6px auto 0; font-size: 11px; color: var(--text-tertiary); text-align: center; letter-spacing: .06em; }
+/* ── Animated flow visualization ─────────────────────────── */
+#flow-viz {
+  margin-top: 20px; padding: 20px; background: var(--bg2);
+  border-radius: var(--radius); border: 1px solid rgba(201,168,76,0.06);
+  position: relative; min-height: 200px; overflow: hidden;
+}
+#flow-canvas { width: 100%; height: 200px; }
 
-  /* ── Overseer side pane (glass) ── */
-  #pane {
-    position: fixed; right: 22px; top: 136px; bottom: 22px; width: 320px; z-index: 16;
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  .pane-head { display: flex; align-items: center; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-  .pane-title { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text-secondary); }
-  .pane-body { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
-  .pane-body .card { width: 100%; }
-  .pane-body .card .row { flex-wrap: wrap; }
-  .pane-body .card .row .v { max-width: 100%; }
+/* ── Token counter ───────────────────────────────────────── */
+.token-counter {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 16px; padding: 12px 16px;
+  background: var(--bg2); border-radius: 8px;
+  border: 1px solid rgba(201,168,76,0.06);
+}
+.token-counter .label { font-size: 11px; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; }
+.token-counter .val { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--gold); }
+.token-counter .bar {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: rgba(201,168,76,0.08); margin-left: 12px; overflow: hidden;
+}
+.token-counter .bar .fill {
+  height: 100%; border-radius: 3px;
+  background: var(--gold);
+  transition: width 0.8s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
 
-  /* ── Cards / pills (overseer) ── */
-  .card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 13px 14px; }
-  .card h3 { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 9px; font-weight: 600; }
-  .card .row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 12.5px; border-bottom: 1px solid var(--border); }
-  .card .row:last-child { border-bottom: none; }
-  .card .row .k { color: var(--text-tertiary); }
-  .card .row .v { color: var(--text-primary); text-align: right; overflow-wrap: anywhere; }
-  .pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-  .pill.ok { background: rgba(111,207,151,0.12); color: var(--success); }
-  .pill.bad { background: rgba(229,115,115,0.14); color: var(--error); }
-  .pill.warn { background: rgba(242,201,76,0.12); color: var(--warning); }
-  .pill.mut { background: rgba(255,255,255,0.05); color: var(--text-secondary); }
-  .sched-x { margin-left: 8px; background: none; border: none; color: var(--text-tertiary); cursor: pointer; font-size: 12px; font-weight: 700; padding: 0 4px; }
-  .sched-x:hover { color: var(--error); }
-  .sched-add { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; font-size: 12px; }
-  .sched-add input, .sched-add select {
-    background: rgba(0,0,0,0.4); border: 1px solid var(--border); color: var(--text-primary);
-    border-radius: 8px; padding: 4px 8px; font-size: 12px; min-width: 0; outline: none; font-family: var(--font);
-  }
-  .sched-add input:focus, .sched-add select:focus { border-color: var(--accent); }
-  .sched-add .btn { background: var(--accent); border: none; border-radius: 8px; padding: 4px 12px; color: #1a1408; font-weight: 700; cursor: pointer; white-space: nowrap; }
-  .sched-add .btn:hover { background: var(--accent-hover); }
-  .empty { color: var(--text-tertiary); font-size: 12.5px; }
+/* ── Navigation controls ─────────────────────────────────── */
+#nav-ctrl {
+  display: flex; gap: 8px; margin-top: 20px;
+}
+#nav-ctrl button {
+  padding: 8px 18px; border-radius: 8px; border: 1px solid rgba(201,168,76,0.15);
+  background: var(--bg2); color: var(--text2); font-family: var(--font);
+  font-size: 12px; cursor: pointer; transition: all 0.3s;
+}
+#nav-ctrl button:hover { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.06); }
+#nav-ctrl button.active { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.1); }
+#nav-ctrl button.play-btn { background: var(--gold); color: #000; border-color: var(--gold); font-weight: 600; }
+#nav-ctrl button.play-btn:hover { background: var(--gold-hover); }
 
-
-  /* ── Scheduler table styles ─────────────────────────────────────────── */
-  .sched-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: 8px 0 4px;
-    padding: 4px 0;
-  }
-  .sched-header h3 {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin: 0;
-  }
-  .sched-header span {
-    font-size: 11px;
-    color: var(--text-tertiary);
-  }
-  .sched-table {
-    background: rgba(0,0,0,0.3);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 12px;
-  }
-  .sched-table table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-  .sched-table thead {
-    background: rgba(0,0,0,0.4);
-  }
-  .sched-table th {
-    padding: 8px 12px;
-    text-align: left;
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--border);
-  }
-  .sched-table td {
-    padding: 8px 12px;
-    border-bottom: 1px solid rgba(201,168,76,0.1);
-    vertical-align: middle;
-  }
-  .sched-table tbody tr:last-child td {
-    border-bottom: none;
-  }
-  .sched-table tbody tr:hover {
-    background: rgba(201,168,76,0.05);
-  }
-  .sched-name {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 120px;
-  }
-  .sched-title {
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  .sched-time {
-    font-weight: 500;
-    color: var(--accent);
-    min-width: 100px;
-  }
-  .sched-desc {
-    color: var(--text-tertiary);
-    font-size: 11px;
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .sched-status {
-    min-width: 80px;
-  }
-  .sched-x {
-    background: none;
-    border: 1px solid transparent;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    font-size: 10px;
-    padding: 2px;
-    border-radius: 4px;
-    transition: all 0.2s;
-    opacity: 0;
-  }
-  .sched-name:hover .sched-x {
-    opacity: 1;
-  }
-  .sched-x:hover {
-    border-color: var(--border-strong);
-    color: var(--text-primary);
-    background: rgba(201,168,76,0.1);
-  }
-
-
-  /* ── Full-screen card picker ── */
-  .overlay { position: fixed; inset: 0; background: rgba(6,7,9,.93); z-index: 60; display: flex; flex-direction: column; }
-  .overlay.hide { display: none; }
-  .overlay-head { display: flex; align-items: center; gap: 14px; padding: 16px 26px; border-bottom: 1px solid var(--border); }
-  .overlay-head h2 { font-size: 16px; }
-  .overlay-body { flex: 1; overflow: auto; padding: 24px 26px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; max-width: 1200px; width: 100%; margin: 0 auto; align-content: start; }
-  .pick-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03); cursor: pointer; }
-  .pick-card:hover { border-color: var(--accent); }
-  .pick-card input { width: 16px; height: 16px; accent-color: var(--accent); flex: 0 0 auto; }
-  .pick-card .pc-t b { font-size: 13px; color: var(--text-primary); }
-  .pick-card .pc-t small { display: block; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
-  .pick-card.on { border-color: var(--accent); }
-  .refresh { padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-secondary); background: transparent; }
-  .refresh:hover { border-color: var(--accent); color: var(--text-primary); }
-
-  /* ── Responsive: panels collapse into overlays ── */
-  .close-btn { display: none; background: none; border: none; color: var(--text-tertiary); font-size: 15px; padding: 4px; }
-  .close-btn:hover { color: var(--text-primary); }
-  @media (max-width: 1100px) {
-    .tool-nav-btn { display: flex; }
-    #toolbar { left: 12px; right: 12px; top: 62px; flex-wrap: wrap; }
-    #sidebar { display: none; }
-    body.chats-open #sidebar { display: flex; left: 12px; top: 118px; bottom: 12px; width: min(240px, 74vw); z-index: 40; }
-    #pane { display: none; }
-    body.pane-open #pane { display: flex; right: 12px; top: 118px; bottom: 12px; width: min(320px, 80vw); z-index: 40; }
-    #chat-area { left: 12px; right: 12px; top: 118px; bottom: 12px; }
-    #hud { padding: 12px 14px; }
-    .brand h1 { font-size: 11px; }
-    .ctx-bar { width: 80px; }
-    #sidebar .close-btn, #pane .close-btn { display: flex; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    * { animation-duration: 0.01ms !important; }
-  }
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(201,168,76,0.3); }
 </style>
 </head>
 <body>
-<canvas id="cortex"></canvas>
 
-<div id="loading">
+<!-- Loading -->
+<div id="loader">
   <div class="ring"></div>
-  <div class="loading-label">Booting Cortex</div>
+  <span>Initializing pipeline…</span>
 </div>
 
-<div id="hud">
-  <div class="brand">
-    <svg class="logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="CortexAgent">
-      <defs>
-        <linearGradient id="wolfGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#A0A0A0"/>
-          <stop offset="100%" stop-color="#505050"/>
-        </linearGradient>
-      </defs>
-      <!-- Stylized grey wolf head, minimalist geometric -->
-      <path d="M32 4 L42 22 L50 18 L48 32 L58 38 L44 42 L48 58 L32 48 L16 58 L20 42 L6 38 L16 32 L14 18 L22 22 Z"
-            fill="url(#wolfGrad)" opacity="0.95"/>
-      <!-- Eye sockets -->
-      <circle cx="26" cy="30" r="3" fill="#141414" opacity="0.6"/>
-      <circle cx="38" cy="30" r="3" fill="#141414" opacity="0.6"/>
-      <!-- Pupils -->
-      <circle cx="26.5" cy="29.5" r="1.5" fill="#C9A84C" opacity="0.9"/>
-      <circle cx="38.5" cy="29.5" r="1.5" fill="#C9A84C" opacity="0.9"/>
-      <!-- Nose -->
-      <path d="M30 38 L32 40 L34 38 Z" fill="#303030"/>
-      <!-- Mouth line -->
-      <path d="M28 42 Q32 44 36 42" stroke="#404040" stroke-width="1.2" fill="none"/>
-      <!-- Cheek lines -->
-      <path d="M20 36 L24 34" stroke="#404040" stroke-width="0.8" opacity="0.5"/>
-      <path d="M44 36 L40 34" stroke="#404040" stroke-width="0.8" opacity="0.5"/>
-    </svg>
-    <h1>CortexAgent<small>Neural Interface</small></h1>
-  </div>
-  <div class="status-chip offline" id="status">
-    <span class="status-dot"></span><span id="status-text">Offline</span>
-    <div class="ctx-bar"><i id="ctx-fill"></i></div>
-  </div>
+<!-- Top bar -->
+<div id="topbar">
+  <div class="logo">CORTEXAGENT</div>
+  <div class="status"><span class="dot" id="status-dot"></span><span id="status-text">Connecting…</span></div>
 </div>
 
-<div id="toolbar" class="glass">
-  <button class="icon-btn tool-nav-btn" id="btn-chats" title="Sessions">💬</button>
-  <div class="model-tabs" id="tabs"></div>
-  <button class="btn-load" id="load" title="Load model into memory (keep alive 30m)">⚡ Load</button>
-  <div class="spacer"></div>
-  <div class="tps off" id="tps" title="tokens/second — live, via cortexagent proxy">
-    <span class="lbl">t/s</span><span class="num" id="tps-num">—</span><span class="avg" id="tps-avg"></span>
+<!-- Main -->
+<div id="main">
+  <!-- Pipeline stages (left) -->
+  <div id="pipeline">
+    <h2>Prompt Pipeline</h2>
+    <div id="stages-list"></div>
+    <div id="sub-stages-container"></div>
   </div>
-  <span class="vram off" id="vram-chip" title="GPU VRAM active/total">🖥 —</span>
-  <button class="icon-btn tool-nav-btn" id="btn-pane" title="Overseer pane">🛰</button>
-  <span id="tool-status">ready</span>
-</div>
 
-<aside id="sidebar" class="glass">
-  <div class="sb-brand"><span class="dot"></span> Sessions <button class="close-btn" id="sb-close" title="Close">✕</button></div>
-  <button class="new-chat" id="new-chat">＋ New chat</button>
-  <div class="chat-list" id="chat-list"></div>
-  <div class="sb-foot">persistent · localhost only</div>
-</aside>
-
-<section id="chat-area" class="glass">
-  <div class="chat-view" id="chat"></div>
-  <div class="composer">
-    <div class="wrap">
-      <button class="icon-btn" id="attach" title="Attach a file">📎</button>
-      <button class="icon-btn" id="mic" title="Hold to speak">🎙️</button>
-      <input type="file" id="file-input" multiple hidden>
-      <textarea id="input" rows="1" placeholder="Message the cortex…"></textarea>
-      <button class="send-btn" id="send" title="Send">➤</button>
+  <!-- Detail view (right) -->
+  <div id="detail">
+    <div class="detail-header">
+      <h1 id="detail-title">Select a stage</h1>
+      <span class="badge" id="detail-badge">Stage 0 of 10</span>
     </div>
-    <div class="attachments" id="attachments"></div>
-    <div class="hint-composer">Enter to send · Shift+Enter newline · drag to orbit · scroll to zoom</div>
+    <div class="detail-content" id="detail-content">
+      <p>Click any stage in the pipeline to see how Cortex Agent processes your prompt through each transformation layer. Press <code>Space</code> or the <code>▶ Play</code> button to auto-advance through all stages.</p>
+    </div>
+
+    <!-- Flow visualization canvas -->
+    <div id="flow-viz">
+      <canvas id="flow-canvas"></canvas>
+    </div>
+
+    <!-- Token counter + minify -->
+    <div class="token-counter">
+      <span class="label">Tokens</span>
+      <span class="val" id="token-val">—</span>
+      <div class="bar"><div class="fill" id="token-fill" style="width: 0%"></div></div>
+    </div>
+    <!-- Minify savings (shown when proxy has data) -->
+    <div class="token-counter" style="margin-top:8px">
+      <span class="label">SlimToken</span>
+      <span class="val" id="minify-saved" style="font-size:14px">waiting…</span>
+    </div>
+
+    <!-- Navigation -->
+    <div id="nav-ctrl">
+      <button onclick="goStage(currentStage - 1)">← Prev</button>
+      <button class="play-btn" id="play-btn" onclick="togglePlay()">▶ Play All</button>
+      <button onclick="goStage(currentStage + 1)">Next →</button>
+      <button onclick="resetStages()">↺ Reset</button>
+    </div>
   </div>
-</section>
+</div>
 
-<aside id="pane" class="glass">
-  <div class="pane-head">
-    <span class="pane-title">🛰 System</span>
-    <div class="spacer"></div>
-    <button class="close-btn" id="pane-close" title="Close">✕</button>
-    <button class="icon-btn" id="pane-refresh" title="Refresh now">↻</button>
-  </div>
-  <div class="pane-body" id="pane-body"><div class="empty">Loading…</div></div>
-</aside>
+<script>
+// ════════════════════════════════════════════════════════════════
+//  CORTEXAGENT PROMPT PIPELINE VISUALIZATION
+//  Shows the 10-stage pipeline that transforms a user prompt
+//  through SlimToken minification, token budget enforcement,
+//  and delivery — with animated transitions between each.
+// ════════════════════════════════════════════════════════════════
 
-<script type="importmap">
-{
-  "imports": {
-    "three": "/static/three.module.min.js",
-    "three/addons/": "/static/addons/"
-  }
-}
-</script>
-<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-// ── Renderer / scene / camera ──────────────────────────────────────────
-const canvas = document.getElementById('cortex');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 100);
-camera.position.set(0, 1.5, 15);
-
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.07;
-controls.enablePan = false;
-controls.autoRotate = !reducedMotion;
-controls.autoRotateSpeed = 0.45;
-controls.minDistance = 8;
-controls.maxDistance = 28;
-
-// ── Glow texture (radial) ───────────────────────────────────────────────
-function glowTex() {
-  const c = document.createElement('canvas'); c.width = c.height = 128;
-  const g = c.getContext('2d');
-  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grd.addColorStop(0, 'rgba(255,255,255,1)');
-  grd.addColorStop(0.25, 'rgba(255,255,255,0.85)');
-  grd.addColorStop(0.6, 'rgba(255,255,255,0.18)');
-  grd.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-const tex = glowTex();
-const GOLD = new THREE.Color(0xC9A84C);
-const GOLD_DIM = new THREE.Color(0x6b5a2a);
-
-// ── Build the cortex: nodes on a fibonacci sphere + inner core ─────────
-const N = 168;
-const nodes = [];
-const R = 6.4;
-for (let i = 0; i < N; i++) {
-  const inner = i < 96;
-  const r = inner ? R * (0.30 + 0.65 * (i / 96)) : R + (Math.random() - 0.5) * 0.8;
-  const t = i / N;
-  const phi = Math.acos(1 - 2 * t);
-  const theta = Math.PI * (1 + Math.sqrt(5)) * i;
-  const jitter = inner ? 0 : 0.6;
-  nodes.push(new THREE.Vector3(
-    r * Math.sin(phi) * Math.cos(theta) + (Math.random() - 0.5) * jitter,
-    r * Math.cos(phi) + (Math.random() - 0.5) * jitter,
-    r * Math.sin(phi) * Math.sin(theta) + (Math.random() - 0.5) * jitter
-  ));
-}
-
-// ── Edges: connect nearby nodes ────────────────────────────────────────
-const edges = [];
-const edgePos = [];
-const THRESH = 2.7;
-for (let i = 0; i < N; i++) {
-  for (let j = i + 1; j < N; j++) {
-    const d = nodes[i].distanceTo(nodes[j]);
-    if (d < THRESH && Math.random() < 0.62) {
-      edges.push({ a: i, b: j });
-      edgePos.push(nodes[i].x, nodes[i].y, nodes[i].z, nodes[j].x, nodes[j].y, nodes[j].z);
-    }
-  }
-}
-
-const cortex = new THREE.Group();
-scene.add(cortex);
-
-// node points
-const nodeGeom = new THREE.BufferGeometry();
-const nodeArr = new Float32Array(N * 3);
-nodes.forEach((p, i) => { nodeArr[i*3]=p.x; nodeArr[i*3+1]=p.y; nodeArr[i*3+2]=p.z; });
-nodeGeom.setAttribute('position', new THREE.BufferAttribute(nodeArr, 3));
-const nodeMat = new THREE.PointsMaterial({
-  size: 0.26, map: tex, color: GOLD, transparent: true, depthWrite: false,
-  blending: THREE.AdditiveBlending, sizeAttenuation: true, opacity: 0.95
-});
-const nodePoints = new THREE.Points(nodeGeom, nodeMat);
-cortex.add(nodePoints);
-
-// edges
-const edgeGeom = new THREE.BufferGeometry();
-edgeGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(edgePos), 3));
-const edgeMat = new THREE.LineBasicMaterial({ color: GOLD_DIM, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending });
-const edgeLines = new THREE.LineSegments(edgeGeom, edgeMat);
-cortex.add(edgeLines);
-
-// central core glow
-const coreMat = new THREE.SpriteMaterial({ map: tex, color: GOLD, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
-const core = new THREE.Sprite(coreMat); core.scale.set(4.5, 4.5, 1); cortex.add(core);
-
-// ── Pulses: pool of points travelling along edges ──────────────────────
-const P = 70;
-const pulsePos = new Float32Array(P * 3);
-const pulseGeom = new THREE.BufferGeometry();
-pulseGeom.setAttribute('position', new THREE.BufferAttribute(pulsePos, 3));
-const pulseMat = new THREE.PointsMaterial({
-  size: 0.62, map: tex, color: 0xfff0c8, transparent: true, depthWrite: false,
-  blending: THREE.AdditiveBlending, sizeAttenuation: true, opacity: 0.9
-});
-const pulsePoints = new THREE.Points(pulseGeom, pulseMat);
-cortex.add(pulsePoints);
-const pulses = [];
-for (let i = 0; i < P; i++) {
-  pulses.push({ edge: (Math.random() * edges.length) | 0, t: Math.random(), speed: 0.18 + Math.random() * 0.22 });
-}
-
-// ── Thinking intensity (0..1), spikes on send/response, decays ─────────
-let think = 0;
-function setThink(v) { think = Math.max(think, v); }
-
-// ── Animation loop ─────────────────────────────────────────────────────
-let last = performance.now();
-let running = true;
-function frame(now) {
-  if (!running) return;
-  requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
-
-  for (let i = 0; i < P; i++) {
-    const p = pulses[i];
-    p.t += dt * p.speed * (0.45 + think * 3.2);
-    if (p.t >= 1) { p.t = 0; p.edge = (Math.random() * edges.length) | 0; }
-    const e = edges[p.edge]; if (!e) continue;
-    const a = nodes[e.a], b = nodes[e.b];
-    pulsePos[i*3]   = a.x + (b.x - a.x) * p.t;
-    pulsePos[i*3+1] = a.y + (b.y - a.y) * p.t;
-    pulsePos[i*3+2] = a.z + (b.z - a.z) * p.t;
-  }
-  pulseGeom.attributes.position.needsUpdate = true;
-
-  nodeMat.size = 0.26 + think * 0.16;
-  nodeMat.opacity = 0.85 + think * 0.15;
-  edgeMat.opacity = 0.22 + think * 0.5;
-  coreMat.opacity = 0.45 + think * 0.45;
-  core.scale.setScalar(4.5 + think * 2.2);
-  controls.autoRotateSpeed = (reducedMotion ? 0 : 0.45) + think * 2.4;
-  if (!reducedMotion) cortex.rotation.y += dt * 0.04;
-
-  think *= 0.986;
-  controls.update();
-  renderer.render(scene, camera);
-}
-requestAnimationFrame(frame);
-
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-document.addEventListener('visibilitychange', () => {
-  running = !document.hidden;
-  if (running) { last = performance.now(); requestAnimationFrame(frame); }
-});
-
-// Fade out loader after first frame
-requestAnimationFrame(() => {
-  const l = document.getElementById('loading');
-  l.classList.add('fade');
-  setTimeout(() => l.remove(), 900);
-});
-
-// ══════════════════════════════════════════════════════════════════════
-//  Merged UI — all elements of the 8095 tray (model tabs, t/s, chat,
-//  sessions, overseer cards), restyled with the 8090 gold/glass theme.
-//  Every backend call goes through 8090's proxied /api/* endpoints with
-//  the webui auth token.
-// ══════════════════════════════════════════════════════════════════════
-const TOKEN = new URLSearchParams(location.search).get('token') || '';
 const $ = id => document.getElementById(id);
-const tabBar = $('tabs'), statusEl = $('tool-status'), input = $('input'), send = $('send');
-const chatEl = $('chat'), chatList = $('chat-list');
-const attachBtn = $('attach'), fileInput = $('file-input'), attachWrap = $('attachments');
 
-function authHeaders(json = true) {
-  const h = {};
-  if (TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
-  if (json) h['Content-Type'] = 'application/json';
-  return h;
-}
-async function api(url, opts = {}) {
-  const headers = authHeaders(!(opts.body instanceof FormData));
-  if (opts.headers) Object.assign(headers, opts.headers);
-  return fetch(url, Object.assign({}, opts, { headers }));
-}
-
-let models = [];
-let activeModel = null;
-let busy = false;
-let tabsData = [];
-const DIFFUSION = new Set(['image', 'video']);
-let attached = [];        // {name,url,kind,size,content} from /api/upload
-
-// ── HUD status chip (8090's own /status poll) ─────────────────────────
-const statusChip = document.getElementById('status');
-const statusText = document.getElementById('status-text');
-const ctxFill = document.getElementById('ctx-fill');
-const ctxLabel = document.getElementById('ctx-label');
-
-async function loadStatus() {
-  try {
-    const r = await fetch('/status', { headers: authHeaders() });
-    if (!r.ok) { statusText.textContent = 'Auth Required'; statusChip.className = 'status-chip offline'; return; }
-    const j = await r.json();
-    statusText.textContent = `${j.profile || 'default'} · ${j.model || 'local'}`;
-    statusChip.className = 'status-chip online';
-    if (j.context_used_tokens != null && j.context_max_tokens) {
-      const pct = Math.min(100, (j.context_used_tokens / j.context_max_tokens) * 100);
-      ctxFill.style.width = pct.toFixed(1) + '%';
-      if (ctxLabel) ctxLabel.textContent = `${j.context_used_tokens}/${j.context_max_tokens}`;
-    } else if (ctxLabel) {
-      ctxLabel.textContent = j.model || 'local';
-    }
-  } catch (e) {
-    statusText.textContent = 'Offline';
-    statusChip.className = 'status-chip offline';
+// ── Pipeline stage definitions ──────────────────────────────
+const STAGES = [
+  {
+    name: "COLLECT",
+    sub: "prompt_intake",
+    desc: "Collect the user's prompt and build the initial token component set. The raw prompt text is parsed into typed blocks: system, user request, tool schemas, and any attachments or retrieval results.",
+    detail: `<p>Your prompt arrives and is immediately parsed into <strong>typed token components</strong>. Each block is categorized by source and priority:</p>
+<p><code>system</code> — The core policy and behavioral rules (pinned, never compressed)<br>
+<code>user</code> — Your actual request (pinned, never compressed)<br>
+<code>tool_schema</code> — Available tool definitions and parameters<br>
+<code>retrieval</code> — Context from search, memory, or file lookups (high priority)<br>
+<code>history</code> — Previous conversation turns (compressible)<br>
+<code>tool_output</code> — Tool execution results (compressible)</p>
+<p>The pipeline assigns each block a <strong>priority tier</strong> — pinned, high, compressible, or discardable — which determines how SlimToken will handle it later.</p>`,
+    color: "#7AA2F7",
+    tokenEst: 3200
+  },
+  {
+    name: "COMPOSE",
+    sub: "frame_assemble",
+    desc: "Frame the collected blocks with the active policy, reserving output capacity and validating the request structure.",
+    detail: `<p>The compose stage takes the typed blocks and applies the <strong>policy frame</strong>. This stage:</p>
+<p>• Reserves output token capacity (<code>max_output_tokens</code>) from the context window<br>
+• Validates that a usable user request exists<br>
+• Sums total tokens against the input budget<br>
+• Marks the request as <span style="color: var(--green)">valid</span> or flags errors</p>
+<p>The policy determines how much room is left for the response. For example, a 156,000-token window with 3,431 output reserved gives <code>152,569</code> tokens of input budget.</p>`,
+    color: "#9ECE6A",
+    tokenEst: 3200
+  },
+  {
+    name: "FRAME_OF_REF",
+    sub: "frame_of_ref",
+    desc: "Determine the model's frame of reference — which profile, system instructions, and behavioral constraints apply for this request.",
+    detail: `<p>The frame of reference stage selects the active <strong>system profile</strong> and behavioral constraints based on the current route and model identity. This includes:</p>
+<p>• Model-specific system instructions (e.g., CortexAgent profile rules)<br>
+• Behavioral constraints from skills and policies<br>
+• Output contracts and response format requirements<br>
+• Tool authorization and capability flags</p>
+<p>This frame is <strong>pinned</strong> — it's always preserved through minification because it defines how the model should behave.</p>`,
+    color: "#BB9AF3",
+    tokenEst: 1842
+  },
+  {
+    name: "MEMORY_CHECK",
+    sub: "memory_check",
+    desc: "Check hot memory and previous minification runs for patterns that might affect compression.",
+    detail: `<p>This stage checks whether SlimToken has <strong>seen similar prompts before</strong> and whether cached optimizations apply:</p>
+<p>• Hot memory cache lookup — did this prompt structure appear recently?<br>
+• Minify run history — what's the typical savings percentage?<br>
+• Pattern matching — are there predictable tool outputs that can be deduplicated?</p>
+<p>If patterns match, the pipeline can apply <span style="color: var(--orange)">aggressive optimization</span> with confidence. If not, it falls back to conservative defaults.</p>`,
+    color: "#E0AF68",
+    tokenEst: 3200
+  },
+  {
+    name: "SLIMTOKEN",
+    sub: "slimtoken_minify",
+    desc: "Apply the SlimToken minification pipeline — the core compression engine that removes redundancy while preserving pinned content.",
+    detail: `<p><strong>SLIMTOKEN</strong> is the heart of Cortex Agent's context optimization. It runs 7 sub-stages:</p>
+<p><code>1. TOOLS</code> — Minify tool definitions, stripping unused parameters and simplifying schemas<br>
+<code>2. SYSTEM</code> — Remove filler phrases, blank-line bloat, and redundant instructions from system prompt<br>
+<code>3. MESSAGES</code> — Minify per-message content, stripping leading filler ("Sure!", "Here is the code:", etc.)<br>
+<code>4. DEDUP</code> — Detect and stub duplicate tool_results using content-hash fingerprinting<br>
+<code>5. DISTILL</code> — Compress older conversation turns, keeping only essential information<br>
+<code>5b. DOM</code> — Prune large HTML tool results (optional — strips tags, keeps text)<br>
+<code>6. BUDGET</code> — Hard token budget enforcement — if over limit, drops oldest history</p>
+<p>All stages are <strong>pair-safe</strong>: a failure in one stage doesn't break inference. Results are recorded in stats so you can see exactly what was saved.</p>`,
+    color: "#C9A84C",
+    tokenEst: 2400,
+    hasSubStages: true
+  },
+  {
+    name: "TOOL_ROUTING",
+    sub: "tool_routing",
+    desc: "Route the optimized prompt to the appropriate tool — determine which tools the model should execute and in what order.",
+    detail: `<p>After minification, the pipeline determines <strong>which tools</strong> the model needs to invoke:</p>
+<p>• Analyzes tool schemas against the current request<br>
+• Builds the tool_call structure with typed parameters<br>
+• Registers tool results for the next iteration<br>
+• Handles multi-step tool chains (e.g., read → analyze → write)</p>
+<p>Tool routing is <strong>high priority</strong> — it's never compressed because missing a tool call breaks functionality.</p>`,
+    color: "#7FD4C9",
+    tokenEst: 2856
+  },
+  {
+    name: "FINALIZE",
+    sub: "context_fit",
+    desc: "Validate the optimized request fits the context window and is provider-ready.",
+    detail: `<p>The finalize stage performs the final <strong>sanity checks</strong>:</p>
+<p>• <code>valid</code>: Does the request fit in the budget?<br>
+• <code>fits</code>: After minification, does it still fit?<br>
+• <code>schema_valid</code>: Are all tool schemas well-formed?<br>
+• <code>template_applied</code>: Is the provider template correct?</p>
+<p>If the request doesn't fit, finalize triggers a <span style="color: var(--red)">hard drop</span> — the oldest history turns are removed until it fits. This is SlimToken's budget backstop.</p>`,
+    color: "#9ECE6A",
+    tokenEst: 2400
+  },
+  {
+    name: "PREFILL",
+    sub: "prefill",
+    desc: "Send the optimized prompt to the model for input token evaluation (prefill phase).",
+    detail: `<p>The prefill phase is the <strong>fast first pass</strong> where the model reads your entire optimized prompt:</p>
+<p>• Input token count: <code>input_tokens</code> — how many tokens the model processes<br>
+• Input TPS: <code>input_tps</code> — tokens per second during prefill<br>
+• GPU memory: VRAM used during prefill</p>
+<p>This is typically very fast — a few hundred tokens per second on consumer hardware. The model builds its internal state representations from your prompt.</p>`,
+    color: "#7AA2F7",
+    tokenEst: 2400
+  },
+  {
+    name: "DECODE",
+    sub: "decode",
+    desc: "The model generates the response token-by-token — the slow, compute-intensive phase.",
+    detail: `<p>Decode is the <strong>slow phase</strong> where the model produces output token by token:</p>
+<p>• Output tokens: <code>output_tokens</code> — total generated<br>
+• Output TPS: <code>output_tps</code> — decoding speed<br>
+• Latency: time from first token to last</p>
+<p>The pipeline tracks <strong>real-time TPS</strong> so you can see if the model is running slow (e.g., due to VRAM pressure or CPU contention). Output minification also runs here, stripping filler phrases from the response.</p>`,
+    color: "#F7768E",
+    tokenEst: 0
+  },
+  {
+    name: "DELIVER",
+    sub: "stream_out",
+    desc: "Stream the completed response to the user — the final delivery stage.",
+    detail: `<p>Deliver sends the response to your active session:</p>
+<p>• Streaming: Response arrives incrementally via SSE<br>
+• Status: <code>success</code> or <code>error</code> with details<br>
+• Token cost: Total tokens consumed for this request</p>
+<p>The response is also logged for the <strong>cost ledger</strong>, tracking cumulative token usage across all requests. This data powers the dashboard metrics and helps optimize future prompts.</p>`,
+    color: "#C9A84C",
+    tokenEst: 0
   }
-}
+];
 
-// ── Model tabs ─────────────────────────────────────────────────────────
-async function loadState() {
-  try {
-    const r = await api('/api/state'); const j = await r.json();
-    models = j.models || []; activeModel = j.active_model;
-    tabsData = j.tabs || [];
-    renderTabs();
-    if (!activeModel && models.length) {
-      activeModel = models[0]; renderTabs();
-      await api('/api/active', { method: 'POST', body: JSON.stringify({ model: activeModel }) });
-    }
-    updateAttachAccept();
-    statusEl.textContent = models.length ? (activeModel || 'pick a model') : 'no models';
-  } catch (e) { statusEl.textContent = 'backend offline'; }
-}
-function renderTabs() {
-  tabBar.innerHTML = '';
-  tabsData.forEach(t => {
-    const b = document.createElement('button');
-    b.className = 'mtab' + (t.value === activeModel ? ' active' : '');
-    b.title = t.label;
-    b.innerHTML = `<span class="ico">${t.icon}</span><span class="lab"><b>${escapeHtml(t.short)}</b><small>${escapeHtml(t.value)}</small></span>`;
-    b.onclick = () => setActive(t.value);
-    tabBar.appendChild(b);
+const SUB_STAGES = [
+  { name: "TOOLS", desc: "Minify tool definitions — strip unused params, simplify schemas" },
+  { name: "SYSTEM", desc: "Remove filler, blank lines, and redundant instructions" },
+  { name: "MESSAGES", desc: "Strip leading filler phrases from per-message content" },
+  { name: "DEDUP", desc: "Fingerprint content, stub duplicate tool_results" },
+  { name: "DISTILL", desc: "Compress older conversation turns (max chars)" },
+  { name: "DOM", desc: "Prune large HTML tool results (optional)" },
+  { name: "BUDGET", desc: "Hard token budget enforcement — drop oldest if over limit" }
+];
+
+// ── State ───────────────────────────────────────────────────
+let currentStage = 0;
+let playing = false;
+let playInterval = null;
+let animating = false;
+
+// ── Build stage list ────────────────────────────────────────
+function buildStages() {
+  const list = $('stages-list');
+  list.innerHTML = '';
+  STAGES.forEach((stage, i) => {
+    const div = document.createElement('div');
+    div.className = 'stage';
+    div.dataset.stage = i;
+    div.innerHTML = `
+      <div class="stage-glow"></div>
+      <div class="num">${i + 1}</div>
+      <div class="info">
+        <div class="name">${stage.name}</div>
+        <div class="detail">${stage.sub}</div>
+        <div class="tokens">${i < STAGES.length - 1 ? stage.tokenEst.toLocaleString() + ' tok' : '—'}</div>
+      </div>
+      <div class="arrow"></div>
+    `;
+    div.addEventListener('click', () => goStage(i));
+    list.appendChild(div);
   });
 }
-async function setActive(m) {
-  activeModel = m; renderTabs(); updateAttachAccept();
-  await api('/api/active', { method: 'POST', body: JSON.stringify({ model: m }) });
-}
 
-// Per-model capability: whether the active model can see images.
-function activeVision() { const t = tabsData.find(t => t.value === activeModel); return !!(t && t.vision); }
-const TEXT_ACCEPT = 'text/plain,.txt,.md,.py,.json,.csv,.log,.sh,.yaml,.yml,.toml,.ini,.xml,.html,.css,.js,.ts,.c,.h,.cpp,.java,.go,.rs,.sql';
-function updateAttachAccept() {
-  const vision = activeVision();
-  fileInput.accept = vision ? '' : TEXT_ACCEPT;
-  attachBtn.title = vision
-    ? 'Attach a file (text, image, video)'
-    : 'Attach a text file — this model can’t see images';
-}
-
-// ── tokens/second (live, proxied) ──────────────────────────────────────
-async function pollTps() {
-  let j;
-  try { j = await (await api('/api/tps')).json(); } catch { j = {}; }
-  const el = $('tps');
-  const vramEl = $('vram-chip');
-  if (j && j.proxy_up) {
-    el.classList.remove('off');
-    $('tps-num').textContent = (j.current_tok_s || 0).toFixed(1);
-    if (j.avg15m_tok_s != null)      $('tps-avg').textContent = '15m ' + (j.avg15m_tok_s).toFixed(1);
-    else if (j.avg_tok_s)            $('tps-avg').textContent = 'avg ' + (j.avg_tok_s).toFixed(1);
-    else                             $('tps-avg').textContent = 'req ' + (j.requests || 0);
-    el.title = `current ${(j.current_tok_s || 0).toFixed(1)} t/s · last 15m ${j.avg15m_tok_s != null ? (j.avg15m_tok_s).toFixed(1) : '—'} · lifetime ${(j.avg_tok_s || 0).toFixed(1)} · requests ${j.requests || 0}`;
-    if (j.vram_used_mib) {
-      vramEl.classList.remove('off');
-      vramEl.textContent = '🖥 ' + (j.vram_used_mib / 1024).toFixed(1) + '/' + (j.vram_total_mib / 1024).toFixed(0) + 'G';
-      vramEl.title = `GPU VRAM ${(j.vram_used_mib / 1024).toFixed(1)} / ${(j.vram_total_mib / 1024).toFixed(0)} GB active/total`;
-    }
-  } else {
-    el.classList.add('off');
-    $('tps-num').textContent = '—';
-    $('tps-avg').textContent = 'proxy offline';
-    el.title = 'cortexagent proxy not answering — t/s unavailable';
-    vramEl.classList.add('off');
-    vramEl.textContent = '🖥 —';
-    vramEl.title = 'proxy offline — VRAM unknown';
-  }
-}
-
-// ── Sessions (localStorage, shared with the tray UI) ──────────────────
-const LS_KEY = 'ollama-tray-chats-v1';
-let chats = {};
-let activeId = null;
-function loadChats() { try { chats = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { chats = {}; } }
-function saveChats() { localStorage.setItem(LS_KEY, JSON.stringify(chats)); }
-function newChat() {
-  const id = 'c' + Date.now();
-  chats[id] = { title: 'New chat', model: activeModel, messages: [], created: Date.now() };
-  activeId = id; saveChats(); renderList(); renderChat();
-}
-function pickChat(id) { activeId = id; if (chats[id].model) setActive(chats[id].model); renderList(); renderChat(); }
-function delChat(id, e) { e.stopPropagation(); delete chats[id]; if (activeId === id) activeId = null; saveChats(); renderList(); renderChat(); }
-function cur() { return activeId && chats[activeId] ? chats[activeId] : null; }
-
-function renderList() {
-  chatList.innerHTML = '';
-  const ids = Object.keys(chats).sort((a, b) => chats[b].created - chats[a].created);
-  if (!ids.length) { chatList.innerHTML = '<div class="empty" style="padding:10px">No sessions yet</div>'; return; }
-  ids.forEach(id => {
-    const c = chats[id]; const d = document.createElement('div');
-    d.className = 'chat-item' + (id === activeId ? ' active' : '');
-    d.innerHTML = `<span class="ttl"></span><span class="del" title="delete">🗑</span>`;
-    d.querySelector('.ttl').textContent = c.title || 'New chat';
-    d.onclick = () => pickChat(id);
-    d.querySelector('.del').onclick = (e) => delChat(id, e);
-    chatList.appendChild(d);
+// ── Build sub-stages for SLIMTOKEN ──────────────────────────
+function buildSubStages() {
+  const container = $('sub-stages-container');
+  container.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'stages-sub';
+  div.id = 'slimtoken-sub';
+  SUB_STAGES.forEach((sub, i) => {
+    const s = document.createElement('div');
+    s.className = 'sub-stage';
+    s.dataset.sub = i;
+    s.innerHTML = `
+      <div class="num">${i + 1}</div>
+      <div class="info">
+        <div class="name">${sub.name}</div>
+        <div class="detail">${sub.desc}</div>
+      </div>
+    `;
+    s.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showSubStageDetail(i);
+    });
+    div.appendChild(s);
   });
+  container.appendChild(div);
 }
-function renderChat() {
-  chatEl.innerHTML = ''; const c = cur();
-  if (!c) { chatEl.innerHTML = '<div class="empty" style="margin:auto">Start a new chat</div>'; return; }
-  c.messages.forEach(m => addMsg(m.role, m.content || '', false, m.media || null));
-}
-$('new-chat').onclick = newChat;
 
-// ── Rendering ──────────────────────────────────────────────────────────
-function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function renderMd(text) {
-  let out = '', last = 0, rest = text, m;
-  const re = /```(\w*)\n?([\s\S]*?)```/g;
-  while ((m = re.exec(text))) {
-    out += escapeHtml(text.slice(last, m.index)).replace(/\n/g, '<br>');
-    out += `<pre><code>${escapeHtml(m[2])}</code></pre>`;
-    last = m.index + m[0].length;
-  }
-  out += escapeHtml(text.slice(last)).replace(/\n/g, '<br>');
-  return out;
+// ── Show sub-stage detail ───────────────────────────────────
+function showSubStageDetail(subIdx) {
+  const sub = SUB_STAGES[subIdx];
+  $('detail-title').textContent = `SLIMTOKEN → ${sub.name}`;
+  $('detail-badge').textContent = `Sub-stage ${subIdx + 1} of ${SUB_STAGES.length}`;
+  $('detail-content').innerHTML = `
+    <p><strong>${sub.name}</strong> — ${sub.desc}</p>
+    <p>Each SlimToken sub-stage operates independently: a failure in one doesn't break inference. Results are recorded in the pipeline stats.</p>
+    <pre><code>{ "stage": "${sub.name}", "action": "minify", "pair_safe": true }</code></pre>
+  `;
 }
-function renderAssist(think, ans) {
-  let h = '';
-  if (think) h += `<details class="think" open><summary>🧠 thinking</summary><div>${escapeHtml(think)}</div></details>`;
-  return h + renderMd(ans);
+
+// ── Go to stage ─────────────────────────────────────────────
+function goStage(idx) {
+  if (idx < 0 || idx >= STAGES.length) return;
+  currentStage = idx;
+  updateUI();
+  animateTransition();
 }
-function addMsg(role, text, animate, media, username) {
-  const d = document.createElement('div'); d.className = 'msg ' + (role === 'user' ? 'user' : 'ai');
-  // Unified session: show each voice's name (you, Big Model, Overseer, …)
-  const ava = role === 'user' ? 'You' : (username || 'Big Model');
-  d.innerHTML = `<div class="ava">${ava}</div><div class="body"></div>`;
-  const body = d.querySelector('.body');
-  if (media) {
-    body.innerHTML = (media.media_type === 'video'
-      ? `<video controls src="${media.url}"></video>`
-      : `<img src="${media.url}">`)
-      + `<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px"><a href="${media.url}" target="_blank" rel="noopener">open full size ↗</a></p>`
-      + (text ? '<br>' + renderMd(text) : '');
+
+// ── Update all UI elements ──────────────────────────────────
+function updateUI() {
+  const stage = STAGES[currentStage];
+  
+  // Update stage list
+  document.querySelectorAll('.stage').forEach((el, i) => {
+    el.classList.remove('active');
+    if (i < currentStage) el.classList.add('done');
+    else el.classList.remove('done');
+    if (i === currentStage) el.classList.add('active');
+  });
+
+  // Update detail header
+  $('detail-title').textContent = `${currentStage + 1}. ${stage.name}`;
+  $('detail-badge').textContent = `Stage ${currentStage + 1} of ${STAGES.length}`;
+  
+  // Update detail content
+  $('detail-content').innerHTML = stage.detail;
+
+  // Update token counter
+  const tokenVal = $('token-val');
+  const tokenFill = $('token-fill');
+  if (stage.tokenEst > 0) {
+    tokenVal.textContent = stage.tokenEst.toLocaleString();
+    tokenFill.style.width = Math.min(100, (stage.tokenEst / 4000) * 100) + '%';
+    tokenFill.style.background = stage.color;
   } else {
-    body.innerHTML = renderMd(text);
+    tokenVal.textContent = '—';
+    tokenFill.style.width = '0%';
   }
-  if (animate) body.classList.add('typewriter');
-  chatEl.appendChild(d); chatEl.scrollTop = chatEl.scrollHeight;
-  return body;
+
+  // Show/hide sub-stages for SLIMTOKEN
+  const subContainer = $('sub-stages-container');
+  if (stage.name === 'SLIMTOKEN') {
+    subContainer.style.display = 'block';
+    setTimeout(() => {
+      $('slimtoken-sub').classList.add('open');
+    }, 10);
+  } else {
+    $('slimtoken-sub').classList.remove('open');
+    setTimeout(() => { subContainer.style.display = 'none'; }, 400);
+  }
+
+  // Animate flow canvas
+  drawFlow(stage);
 }
 
-// ── Send / stream ──────────────────────────────────────────────────────
-async function sendMsg() {
-  if (busy) return;
-  const text = input.value.trim();
-  if (!text && !attached.length) return;
-  if (!activeModel) { statusEl.textContent = 'pick a model first'; return; }
-  if (!cur()) newChat();
-  const c = cur();
-  busy = true; send.disabled = true; statusEl.textContent = 'thinking…';
-  input.value = ''; autosize();
-  setThink(1.0);                       // cortex lights up while thinking
-
-  // Attached text files get injected into the prompt (chat AND diffusion).
-  const attachTexts = attached.filter(a => a.kind === 'text')
-    .map(a => `\n\n[Attached file: ${a.name}]\n${a.content || ''}`).join('');
-  let msgText = text;
-  if (attachTexts) msgText = (text ? text + '\n\n' : '') + '--- attached files ---' + attachTexts;
-
-  c.messages.push({ role: 'user', content: msgText });
-  (c.history = c.history || []).push(msgText);
-  if (c.history.length > 100) c.history.shift();
-  c.recallIdx = null;
-  if (c.title === 'New chat') c.title = (text || attached[0]?.name || 'New chat').slice(0, 40);
-  addMsg('user', msgText, false); renderList();
-  const aiBody = addMsg('assistant', '', true);
-  let thinkAcc = '', acc = '';
-  try {
-    if (DIFFUSION.has(activeModel)) {
-      // image/video → generation endpoint (status streamed as NDJSON)
-      const ep = activeModel === 'image' ? '/api/image' : '/api/video';
-      const res = await api(ep, { method: 'POST', body: JSON.stringify({ prompt: msgText }) });
-      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
-      let mediaUrl = null, mediaType = activeModel;
-      while (true) {
-        const { value, done } = await reader.read(); if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n'); buf = lines.pop();
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const j = JSON.parse(line);
-            if (j.status) { acc = j.status; aiBody.innerHTML = renderAssist(thinkAcc, acc); }
-            if (j.url) { mediaUrl = j.url; mediaType = j.media || activeModel; }
-            if (j.error) { acc += '\n[error: ' + j.error + ']'; aiBody.innerHTML = renderAssist(thinkAcc, acc); }
-          } catch (e) { /* one bad NDJSON line shouldn't kill the stream */ }
-        }
-        chatEl.scrollTop = chatEl.scrollHeight;
+// ── Play/Pause ──────────────────────────────────────────────
+function togglePlay() {
+  playing = !playing;
+  const btn = $('play-btn');
+  if (playing) {
+    btn.textContent = '⏸ Pause';
+    btn.classList.add('playing');
+    playInterval = setInterval(() => {
+      goStage(currentStage + 1);
+      if (currentStage >= STAGES.length - 1) {
+        togglePlay();
       }
-      if (mediaUrl) {
-        aiBody.innerHTML = (mediaType === 'video'
-          ? `<video controls src="${mediaUrl}"></video>`
-          : `<img src="${mediaUrl}">`)
-          + `<p style="font-size:12px;color:var(--text-tertiary);margin-top:6px"><a href="${mediaUrl}" target="_blank" rel="noopener">open full size ↗</a></p>`;
-        c.messages.push({ role: 'assistant', content: '', media: { url: mediaUrl, media_type: mediaType } });
-      } else {
-        c.messages.push({ role: 'assistant', content: acc });
+    }, 3000);
+  } else {
+    btn.textContent = '▶ Play All';
+    btn.classList.remove('playing');
+    clearInterval(playInterval);
+  }
+}
+
+function resetStages() {
+  if (playing) togglePlay();
+  currentStage = 0;
+  document.querySelectorAll('.stage').forEach(el => el.classList.remove('done', 'active'));
+  goStage(0);
+}
+
+// ── Animated transition ─────────────────────────────────────
+function animateTransition() {
+  animating = true;
+  setTimeout(() => { animating = false; }, 500);
+}
+
+// ── Flow canvas — animated token flow visualization ────────
+let flowCtx, flowCanvas;
+let flowParticles = [];
+let flowTarget = 0.5;
+let flowCurrent = 0;
+
+function initCanvas() {
+  flowCanvas = $('flow-canvas');
+  flowCtx = flowCanvas.getContext('2d');
+  flowCanvas.width = flowCanvas.offsetWidth * (window.devicePixelRatio || 1);
+  flowCanvas.height = flowCanvas.offsetHeight * (window.devicePixelRatio || 1);
+  flowCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  
+  // Create particles
+  for (let i = 0; i < 40; i++) {
+    flowParticles.push({
+      x: Math.random() * flowCanvas.offsetWidth,
+      y: Math.random() * flowCanvas.offsetHeight,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      size: Math.random() * 3 + 1,
+      alpha: Math.random() * 0.5 + 0.1
+    });
+  }
+}
+
+function drawFlow(stage) {
+  flowCurrent = stage.tokenEst / 4000;
+  flowTarget = flowCurrent;
+}
+
+function animateFlow() {
+  const w = flowCanvas.offsetWidth;
+  const h = flowCanvas.offsetHeight;
+  flowCtx.clearRect(0, 0, w, h);
+  
+  // Smooth interpolation
+  flowCurrent += (flowTarget - flowCurrent) * 0.05;
+  
+  // Background gradient based on stage color
+  const stage = STAGES[currentStage];
+  const gradient = flowCtx.createRadialGradient(w/2, h/2, 0, w/2, h/2, w * 0.6);
+  gradient.addColorStop(0, stage.color + '10');
+  gradient.addColorStop(1, 'transparent');
+  flowCtx.fillStyle = gradient;
+  flowCtx.fillRect(0, 0, w, h);
+  
+  // Draw particles
+  flowParticles.forEach(p => {
+    // Speed based on token count
+    const speed = 0.3 + flowCurrent * 2;
+    p.x += p.vx * speed;
+    p.y += p.vy * speed;
+    
+    if (p.x < 0) p.x = w;
+    if (p.x > w) p.x = 0;
+    if (p.y < 0) p.y = h;
+    if (p.y > h) p.y = 0;
+    
+    flowCtx.beginPath();
+    flowCtx.arc(p.x, p.y, p.size * (0.5 + flowCurrent), 0, Math.PI * 2);
+    flowCtx.fillStyle = stage.color + Math.floor(p.alpha * (0.3 + flowCurrent * 0.7)).toString(16).padStart(2, '0');
+    flowCtx.fill();
+  });
+  
+  // Draw connection lines
+  flowCtx.strokeStyle = stage.color + '15';
+  flowCtx.lineWidth = 0.5;
+  for (let i = 0; i < flowParticles.length; i++) {
+    for (let j = i + 1; j < flowParticles.length; j++) {
+      const dx = flowParticles[i].x - flowParticles[j].x;
+      const dy = flowParticles[i].y - flowParticles[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 80) {
+        flowCtx.beginPath();
+        flowCtx.moveTo(flowParticles[i].x, flowParticles[i].y);
+        flowCtx.lineTo(flowParticles[j].x, flowParticles[j].y);
+        flowCtx.stroke();
+      }
+    }
+  }
+  
+  // Draw stage label
+  flowCtx.fillStyle = stage.color;
+  flowCtx.font = '600 16px Helvetica Neue, Inter, Arial, sans-serif';
+  flowCtx.fillText(stage.name, 20, 30);
+  
+  // Draw token count
+  flowCtx.font = '300 12px Helvetica Neue, Inter, Arial, sans-serif';
+  flowCtx.fillStyle = '#666';
+  const desc = stage.desc.substring(0, 80) + (stage.desc.length > 80 ? '…' : '');
+  flowCtx.fillText(desc, 20, 52);
+  
+  requestAnimationFrame(animateFlow);
+}
+
+// ── Real-time data from webui API (poll every 3s) ─────────
+// Uses relative paths so it works both on :8090 and via :8093 proxy.
+async function updateFromProxy() {
+  try {
+    // Fetch from the webui's own /api/tps endpoint (proxies to grammar proxy internally)
+    const resp = await fetch('/api/tps');
+    const data = await resp.json();
+    const valEl = $('token-val');
+    const fillEl = $('token-fill');
+    const statusEl = $('status-text');
+    if (data.proxy_up) {
+      // Show real-time TPS from proxy
+      const tps = data.current_out_tps || 0;
+      valEl.textContent = tps.toFixed(1) + ' t/s';
+      fillEl.style.width = Math.min(100, (tps / 80) * 100) + '%';
+      fillEl.style.background = '#7AA2F7';
+      if (statusEl && !statusEl.classList?.contains('badge')) {
+        statusEl.textContent = data.requests + ' req · ' + tps.toFixed(1) + ' t/s';
       }
     } else {
-      // chat model → streaming llama.cpp chat. Non-vision models never get
-      // image content — strip any multimodal parts before sending.
-      let msgs = c.messages;
-      if (!activeVision()) {
-        const dropped = attached.filter(a => a.kind === 'image' || a.kind === 'video').length;
-        if (dropped) statusEl.textContent = `this model can’t see images — ${dropped} attachment(s) not sent`;
-        msgs = c.messages.map(m => {
-          if (Array.isArray(m.content)) {
-            const t = m.content.filter(p => p && p.type === 'text').map(p => p.text || '').join('\n');
-            return t ? { ...m, content: t } : null;
+      valEl.textContent = '—';
+      fillEl.style.width = '0%';
+    }
+    // Merge overseer stats: token tracking, minify
+    try {
+      const ov = await fetch('/api/overseer').then(r => r.json());
+      if (ov.minify && ov.minify.runs > 0) {
+        const saved = ov.minify.savings || 0;
+        const pct = saved > 0 ? (ov.minify.savings_pct || 0) : 0;
+        // Append minify savings to status if available
+        if (statusEl) {
+          const savedEl = document.getElementById('minify-saved');
+          if (savedEl) {
+            savedEl.textContent = pct.toFixed(0) + '% saved · ' + ov.minify.runs + ' minifies';
           }
-          return m;
-        }).filter(Boolean);
-      }
-      const res = await api('/api/chat', { method: 'POST', body: JSON.stringify({ model: activeModel, messages: msgs }) });
-      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
-      while (true) {
-        const { value, done } = await reader.read(); if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n'); buf = lines.pop();
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const j = JSON.parse(line);
-            if (j.message && j.message.content) {
-              if (j.message.thinking) { thinkAcc += j.message.content; }
-              else { acc += j.message.content; setThink(0.55); }
-              aiBody.innerHTML = renderAssist(thinkAcc, acc);
-            }
-            if (j.error) { acc += '\n[error: ' + j.error + ']'; aiBody.innerHTML = renderAssist(thinkAcc, acc); }
-          } catch (e) { /* tolerate single bad NDJSON line */ }
         }
-        chatEl.scrollTop = chatEl.scrollHeight;
       }
-      c.messages.push({ role: 'assistant', content: acc });
-    }
-  } catch (e) { aiBody.innerHTML = '[stream error: ' + e + ']'; }
-  finally {
-    // ALWAYS reset composer state — even on stream errors — so the user can
-    // resend. Without this, the chat button stays disabled if any exception
-    // escapes the try/catch above (e.g. reader.read() rejects).
-    aiBody.classList.remove('typewriter');
-    attached = []; renderAttachments();
-    saveChats();
-    statusEl.textContent = 'ready'; busy = false; send.disabled = false;
-    setThink(0.2);
+    } catch(e) {}
+  } catch(e) {
+    // API unreachable — keep showing last known state
+    console.warn('[webui] API update failed:', e.message);
   }
 }
-send.onclick = sendMsg;
 
-// ── Enter-to-send (robust — always catches Enter, even if input loses focus) ──
-document.addEventListener('keydown', e => {
-  // Global Enter catch — sends if textarea has text (handles lost focus)
-  if (e.key === 'Enter' && !e.shiftKey) {
-    if (input.value.trim()) {
-      e.preventDefault();
-      sendMsg();
-    }
+// ── Status check via webui's own /health ───────────────────
+async function checkStatus() {
+  try {
+    const resp = await fetch('/health');
+    $('status-dot').classList.toggle('offline', !resp.ok);
+    $('status-text').textContent = resp.ok ? 'connected' : 'disconnected';
+  } catch(e) {
+    $('status-dot').classList.add('offline');
+    $('status-text').textContent = 'disconnected';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════════════
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowLeft') goStage(currentStage - 1);
+  if (e.code === 'ArrowRight') goStage(currentStage + 1);
+});
+
+// Build and start
+buildStages();
+buildSubStages();
+goStage(0);
+
+window.addEventListener('resize', () => {
+  if (flowCanvas) {
+    flowCanvas.width = flowCanvas.offsetWidth * (window.devicePixelRatio || 1);
+    flowCanvas.height = flowCanvas.offsetHeight * (window.devicePixelRatio || 1);
   }
 });
 
-input.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); return; }
-  // ↑ / ↓ recall previously sent messages in this chat (terminal-style)
-  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    const c = cur(); if (!c) return;
-    const h = c.history || (c.history = []);
-    if (!h.length) return;
-    if (e.key === 'ArrowUp') {
-      if (c.recallIdx == null) c.recallIdx = h.length;
-      if (c.recallIdx > 0) { c.recallIdx--; input.value = h[c.recallIdx]; }
-    } else {
-      if (c.recallIdx == null) return;
-      c.recallIdx++;
-      if (c.recallIdx >= h.length) { c.recallIdx = null; input.value = ''; }
-      else input.value = h[c.recallIdx];
-    }
-    e.preventDefault(); autosize();
-  }
-});
+// Hide loader
+setTimeout(() => { $('loader').classList.add('fade'); }, 600);
 
-// Clicking anywhere in the composer focuses the input (stays focused)
-const composer = document.querySelector('.composer');
-if (composer) composer.addEventListener('mousedown', e => {
-  if (e.target === composer || e.target.classList.contains('composer')) {
-    input.focus();
-  }
-});
-function autosize() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 200) + 'px'; }
-input.addEventListener('input', autosize);
-input.addEventListener('click', () => input.focus());
+initCanvas();
+animateFlow();
 
-// ── STT: hold-to-record mic button ─────────────────────────────────────
-const micBtn = document.getElementById('mic');
-let mediaRecorder = null, micChunks = [], micActive = false;
-
-async function startMic() {
-  if (micActive) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    micChunks = [];
-    mediaRecorder.ondataavailable = e => { if (e.data.size) micChunks.push(e.data); };
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(micChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-      stream.getTracks().forEach(t => t.stop());
-      micBtn.classList.remove('recording');
-      micBtn.textContent = '🎙️';
-      try {
-        const res = await api('/api/stt', { method: 'POST', body: blob });
-        const j = await res.json();
-        if (j && j.text) {
-          const input = document.getElementById('input');
-          input.value = (input.value ? input.value + ' ' : '') + j.text;
-          input.focus();
-        }
-      } catch (e) { console.error('stt error', e); }
-    };
-    mediaRecorder.start();
-    micActive = true;
-    micBtn.classList.add('recording');
-    micBtn.textContent = '🔴';
-  } catch (e) { console.error('mic error', e); }
-}
-function stopMic() {
-  if (mediaRecorder && micActive) { mediaRecorder.stop(); micActive = false; }
-}
-micBtn.addEventListener('mousedown', startMic);
-micBtn.addEventListener('mouseup', stopMic);
-micBtn.addEventListener('mouseleave', stopMic);
-
-// ── File attach ────────────────────────────────────────────────────────
-attachBtn.onclick = () => fileInput.click();
-fileInput.onchange = async () => {
-  if (!fileInput.files.length) return;
-  const fd = new FormData();
-  for (const f of fileInput.files) fd.append('files', f);
-  fileInput.value = '';
-  try {
-    statusEl.textContent = 'uploading…';
-    const r = await api('/api/upload', { method: 'POST', body: fd });
-    const j = await r.json();
-    if (j.files) attached.push(...j.files);
-  } catch { statusEl.textContent = 'upload failed'; }
-  renderAttachments(); statusEl.textContent = 'ready';
-};
-function renderAttachments() {
-  attachWrap.innerHTML = '';
-  attached.forEach((a, i) => {
-    const chip = document.createElement('span'); chip.className = 'chip';
-    const ico = a.kind === 'text' ? '📄' : a.kind === 'image' ? '🖼️' : a.kind === 'video' ? '🎬' : '📦';
-    chip.innerHTML = `<b>${escapeHtml(a.name)}</b><span style="color:var(--text-tertiary);font-size:11px">${ico} ${(a.size / 1024).toFixed(0)}KB</span><span class="x" title="remove">✕</span>`;
-    chip.querySelector('.x').onclick = () => { attached.splice(i, 1); renderAttachments(); };
-    attachWrap.appendChild(chip);
-  });
-}
-
-// ── Load ───────────────────────────────────────────────────────────────
-$('load').onclick = async () => {
-  if (!activeModel) return; statusEl.textContent = 'loading ' + activeModel + '…';
-  try {
-    const res = await api('/api/load', { method: 'POST', body: JSON.stringify({ model: activeModel }) });
-    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
-    while (true) {
-      const { value, done } = await reader.read(); if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split('\n'); buf = lines.pop();
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try { const j = JSON.parse(line); if (j.status) statusEl.textContent = j.status; } catch {}
-      }
-    }
-  } catch { statusEl.textContent = 'load failed'; }
-};
-
-// ── Overseer side pane ─────────────────────────────────────────────────
-function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function pill(label, kind) { return `<span class="pill ${kind}">${esc(label)}</span>`; }
-function boolPill(v) { return v ? pill('running', 'ok') : pill('stopped', 'bad'); }
-function statusKind(s) { return ({ queued: 'mut', running: 'warn', completed: 'ok', failed: 'bad', PENDING: 'mut', RUNNING: 'warn', COMPLETED: 'ok', FAILED: 'bad' })[s] || 'mut'; }
-function rows(pairs) { return pairs.map(([k, v]) => `<div class="row"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`).join(''); }
-function card(title, inner) { return `<div class="card"><h3>${title}</h3>${inner}</div>`; }
-function logPre(lines) { return `<pre style="background:rgba(0,0,0,0.5);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:11.5px;font-family:var(--mono);overflow:auto;max-height:180px;color:var(--text-secondary);white-space:pre-wrap">${esc((lines || []).join('\n')) || '—'}</pre>`; }
-
-// 5 business-readable cards. We dropped the picker and the 14-card sprawl —
-// business users want to see what's healthy, what it's doing, what's queued,
-// what's running, and recent activity. That's it.
-const PANE_CARDS = ['health', 'activity', 'tasks', 'sessions', 'canary', 'logs'];
-
-function makeCards(j) {
-  const ov = j.overseer || {}, dm = j.daemon || {}, vr = j.vram || {};
-  const big = dm.big || {}, tiny = dm.tiny || {}, px = dm.proxy || {};
-  let bigV = boolPill(big.running);
-  if (big.fallback) bigV += ' ' + pill('fallback', 'warn');
-
-  // ── 1. System health ──────────────────────────────────────────────────
-  const healthRows = [];
-  healthRows.push(['Big model', bigV]);
-  healthRows.push(['Tiny model', boolPill(tiny.running)]);
-  healthRows.push(['Proxy', boolPill(px.running)]);
-  healthRows.push(['Overseer', boolPill(ov.running)]);
-  const sessCount = dm.active_sessions ?? 0;
-  const sessLbl = `${sessCount} active`;
-  healthRows.push(['Sessions', sessLbl]);
-  const idleSec = dm.idle_sec ?? 0;
-  const unloadSec = dm.idle_unload_sec ?? 0;
-  healthRows.push(['Idle', `${idleSec}s · unload at ${unloadSec}s`]);
-
-  // ── 2. Activity ───────────────────────────────────────────────────────
-  const usedPct = vr.total_mb ? Math.round(vr.used_mb / vr.total_mb * 100) : 0;
-  const freeGb = vr.free_mb ? (vr.free_mb / 1024).toFixed(1) : null;
-  // vram_by_proc from /status payload (separate endpoint, but the same JSON
-  // shape as the daemon status, so we can render it the same way).
-  const vbp = j.vram_by_proc || {};
-  const bigGb = vbp.big_mib ? (vbp.big_mib / 1024).toFixed(1) : '—';
-  const tinyGb = vbp.tiny_mib ? (vbp.tiny_mib / 1024).toFixed(1) : '—';
-  const othGb  = vbp.other_mib ? (vbp.other_mib / 1024).toFixed(1) : '0.0';
-  const minify = j.minify || {};
-  const minifyRuns = minify.runs ?? 0;
-  const minifySaved = minify.tokens_saved ?? 0;
-  const minifyPct = minify.ratio_pct ?? 0;
-  const activityRows = [
-    ['GPU used', vr.used_mb ? `${(vr.used_mb / 1024).toFixed(1)} GB (${usedPct}%)` : '—'],
-    ['GPU free', freeGb ? `${freeGb} GB` : '—'],
-    ['big / tiny / other', `${bigGb} / ${tinyGb} / ${othGb} GB`],
-    ['tokens in / out', `${j.current_in_tps ?? 0} · ${j.current_out_tps ?? 0} t/s`],
-    ['minify', minifyRuns ? `−${minifyPct}% (${minifySaved} tok over ${minifyRuns} runs)` : '—'],
-  ];
-  const bar = `<div style="height:6px;background:rgba(255,255,255,0.05);border-radius:6px;margin-top:8px"><div style="height:6px;background:var(--accent);border-radius:6px;width:${usedPct}%"></div></div>`;
-
-// ── 3. Scheduler helpers (normalize old+new formats, beautify display) ────
-
-
-// ── 3. Scheduler helpers & display ──────────────────────────────────────
-
-function schedLabel(s) {
-  const trigger = s.trigger || s.schedule_type || '';
-  const val = s.schedule_value || '';
-  const icons = {
-    cron: '🔄', daily: '🌅', weekly: '📅', date: '📌', interval: '⏱', manual: '👤'
-  };
-  const icon = icons[trigger] || '🕐';
-  let time = '—';
-  
-  // Handle empty/missing schedule value
-  if (!val || val === '') {
-    // No schedule value means this is a one-shot or manual task
-    if (trigger === 'manual' || trigger === '') {
-      return `${icon} One-shot`;
-    }
-    return `${icon} Pending`;
-  }
-  
-  // Format based on trigger type
-  time = formatTimeTrigger(trigger, val);
-  return `${icon} ${time}`;
-}
-
-function formatTimeTrigger(trigger, val) {
-  if (trigger === 'cron') {
-    if (val === '* * * * *') return 'Every minute';
-    if (val === '*/5 * * * *') return 'Every 5 min';
-    if (val === '*/15 * * * *') return 'Every 15 min';
-    if (val === '*/30 * * * *') return 'Every 30 min';
-    return val;
-  }
-  if (trigger === 'daily') {
-    const parts = (val || '').split(':');
-    if (parts.length >= 2) {
-      const h = parseInt(parts[0]) || 0, m = parseInt(parts[1]) || 0;
-      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-    }
-    return 'Daily';
-  }
-  if (trigger === 'weekly') {
-    const parts = (val || '').split(':');
-    const dayMap = {mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun'};
-    const day = dayMap[(parts[0]||'').toLowerCase()] || parts[0] || '—';
-    if (parts.length >= 3) {
-      const h = parseInt(parts[1]) || 0, m = parseInt(parts[2]) || 0;
-      return `${day} ${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-    }
-    return day;
-  }
-  if (trigger === 'date') {
-    try {
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) return d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
-    } catch {}
-    return val;
-  }
-  if (trigger === 'interval') {
-    const sec = parseInt(val);
-    if (!isNaN(sec)) {
-      if (sec >= 86400) return `Every ${sec / 86400}d`;
-      if (sec >= 3600) return `Every ${sec / 3600}h`;
-      if (sec >= 60) return `Every ${sec / 60}m`;
-      return `Every ${sec}s`;
-    }
-    return 'Interval';
-  }
-  if (trigger === 'manual') return 'Manual';
-  return trigger || '—';
-}
-
-function toggleCodeBlock(el) {
-  const codeBlocks = el.querySelectorAll('pre, [data-code-block]');
-  codeBlocks.forEach(block => {
-    block.style.display = block.style.display === 'none' ? 'block' : 'none';
-  });
-}
-
-function schedDesc(s) {
-  let cmd = s.command || '';
-  let prompt = s.prompt || '';
-  const payload = s.payload || {};
-  if (!cmd && payload.command) cmd = payload.command;
-  if (!prompt && payload.prompt) prompt = payload.prompt;
-
-  let parts = [];
-  if (cmd) {
-    parts.push(`<span style="cursor:pointer" onclick="toggleCodeBlock(this.closest('tr'))" title="toggle code">[👁]</span> cmd: ${esc(cmd).length > 60 ? esc(cmd).slice(0, 57) + '…' : esc(cmd)}`);
-  } else if (prompt) {
-    parts.push('prompt: ' + (esc(prompt).length > 60 ? esc(prompt).slice(0, 57) + '…' : esc(prompt)));
-  }
-
-  const last = s.last_run || s.last_run_at || '';
-  if (last) {
-    try {
-      const ago = Math.round((Date.now() - new Date(last).getTime()) / 60000);
-      parts.push(ago > 1440 ? (ago / 1440).toFixed(1) + 'd ago' : ago + 'm ago');
-    } catch {
-      parts.push('last: ' + esc(last));
-    }
-  }
-
-  return parts.join(' · ');
-}
-
-function normalizeTasks(raw) {
-  // Normalize old (overseer JSON) and new (scheduler store) formats
-  const seen = new Map();
-  const tasks = (raw || []).map(s => ({
-    name: s.title || s.name || 'unnamed',
-    enabled: s.enabled !== false,
-    trigger: s.trigger || s.schedule_type || '',
-    schedule_value: s.schedule_value || '',
-    command: s.command || (s.payload && s.payload.command) || '',
-    prompt: s.prompt || (s.payload && s.payload.prompt) || '',
-    last_run: s.last_run || s.last_run_at || '',
-    state: s.state || '',
-    kind: s.kind || '',
-    payload: s.payload || {},
-  }));
-
-  // Deduplicate by title/name (case-insensitive), keeping the one with schedule info
-  tasks.forEach(t => {
-    const key = t.name.toLowerCase();
-    if (!seen.has(key) || t.schedule_value) {
-      seen.set(key, t);
-    }
-  });
-
-  return Array.from(seen.values());
-}
-
-// ── 3. Tasks (queue + schedule combined) ──────────────────────────────
-const norm = normalizeTasks(j.schedule || []);
-
-let schedHtml = '';
-if (norm.length === 0) {
-  schedHtml = '<div class="empty">No scheduled tasks</div>';
-} else {
-  schedHtml = '<div class="sched-table"><table>';
-  schedHtml += '<thead><tr><th>Name</th><th>Schedule</th><th>Description</th><th>Status</th></tr></thead>';
-  schedHtml += '<tbody>';
-  norm.forEach(s => {
-    const off = s.enabled ? '' : pill('off', 'mut');
-    const btn = `<button class="sched-x" data-sched="${esc(s.name)}" title="remove ${esc(s.name)}">✕</button>`;
-    const label = schedLabel(s);
-    const desc = schedDesc(s);
-    const status = s.enabled ? pill('active', 'ok') : pill('paused', 'warn');
-    schedHtml += '<tr>';
-    schedHtml += `<td class="sched-name"><span class="sched-title">${esc(s.name)}</span>${off}${btn}</td>`;
-    schedHtml += `<td class="sched-time">${label}</td>`;
-    schedHtml += `<td class="sched-desc">${desc || '—'}</td>`;
-    schedHtml += `<td class="sched-status">${status}</td>`;
-    schedHtml += '</tr>';
-  });
-  schedHtml += '</tbody></table></div>';
-}
-
-const tasksInner = `<div class="sched-header"><h3>Scheduled Tasks</h3><span>${norm.length} active</span></div>${schedHtml}${schedAddForm()}<div class="sched-header" style="margin-top:12px"><h3>Queue</h3><span>${j.queue?.length || 0} items</span></div>${qRows}`;
-
-  // ── 4. Sessions (only our own stack) ──────────────────────────────────
-// ── 4. Sessions (only our own stack) ──────────────────────────────────
-  // Show ONLY the processes that are actually CortexAgent-owned per the
-  // hard isolation rule (no generic claude, no ollama shells).
-  const procs = j.processes || [];
-  const procRows = procs.map(p => {
-    const tag = ({big:'Big model',tiny:'Tiny model',daemon:'Daemon',overseer:'Overseer',
-                  proxy:'Proxy',webui:'Webui',diffusion:'Diffusion'}[p.kind] || p.kind);
-    const upMins = Math.floor((p.uptime_s||0) / 60);
-    return `<div class="row"><span class="k">${esc(tag)} · pid ${p.pid} · ${upMins}m</span><span class="v" style="font-size:11px">${esc(p.cmd)}</span></div>`;
-  }).join('') || '<div class="empty">no CortexAgent processes</div>';
-
-  // ── 5. Recent activity (merged overseer + daemon logs) ─────────────────
-  const logsInner = `<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px">overseer.log</div>${logPre(j.logs?.overseer)}<div style="font-size:11px;color:var(--text-tertiary);margin:8px 0 4px">daemon.log</div>${logPre(j.logs?.daemon)}`;
-
-  // ── 6. Canary hits (file-format tripwires — fires when a PNG/PDF canary
-  // is opened in a viewer that resolves the embedded beacon URL) ─────────
-  const hits = j.canary_hits || [];
-  const hitsRows = hits.length === 0
-    ? '<div class="empty">no canary hits yet — open a canary file to fire one</div>'
-    : hits.slice(0, 20).map(h => {
-        const ts = esc(h.ts || '?');
-        const fid = esc(h.file_id || '?');
-        const ip = esc(h.src_ip || '?');
-        const ua = esc((h.ua || '').slice(0, 60));
-        const matched = h.matched_osint || [];
-        const matchPill = matched.length
-          ? ' ' + pill('matched: ' + esc(matched.map(m => m.label || m.name || '?').join(', ')), 'warn')
-          : '';
-        return `<div class="row"><span class="k">${ts}${matchPill}</span><span class="v" style="font-size:12px"><b>${fid}</b> · ${ip}<br><span style="color:var(--text-tertiary);font-size:11px">${ua}</span></span></div>`;
-      }).join('');
-  const canaryInner = `<div class="row"><span class="k" style="font-weight:600">Beacons (${hits.length})</span><a class="v" href="http://127.0.0.1:8092/hits.html" target="_blank" style="color:var(--accent);font-size:12px">open tracker →</a></div>${hitsRows}<div class="row" style="margin-top:8px;font-size:11px;color:var(--text-tertiary)">PNG/PDF canaries fire when opened in viewers that resolve embedded URLs. See <code>~/honeypot/</code>.</div>`;
-
-  return {
-    health:   card('System health', rows(healthRows)),
-    activity: card('Activity', rows(activityRows) + bar),
-    tasks:    card('Tasks', tasksInner),
-    sessions: card('CortexAgent sessions (' + procs.length + ')', procRows),
-    canary:   card('🐦 canary hits', canaryInner),
-    logs:     card('Recent activity', logsInner),
-  };
-}
-
-let lastOverseer = null;
-async function refreshOverseer(quiet) {
-  const body = $('pane-body');
-  const scrollTop = body.scrollTop;
-  if (!quiet) body.innerHTML = '<div class="empty">Loading…</div>';
-  let j;
-  try {
-    const [ovR, stR] = await Promise.all([
-      fetch('/api/overseer').then(r => r.json()),
-      fetch('/status').then(r => r.json()).catch(() => ({})),
-    ]);
-    // merge /status (vram_by_proc, minify, tps) into the overseer payload
-    j = { ...ovR, ...stR };
-  } catch { if (!quiet) body.innerHTML = '<div class="empty">endpoints unavailable</div>'; return; }
-  lastOverseer = j;
-  const cards = makeCards(j);
-  body.innerHTML = PANE_CARDS.map(id => cards[id]).filter(Boolean).join('');
-  body.scrollTop = scrollTop;
-}
-
-// ── Schedule: remove / add (via the overseer.py CLI, the sanctioned mutation path) ──
-function schedAddForm() {
-  return `<div class="sched-add">
-    <input id="s-add-name" placeholder="name" style="width:100px">
-    <select id="s-add-type"><option value="cron">cron</option><option value="daily">daily</option><option value="weekly">weekly</option><option value="date">date</option></select>
-    <input id="s-add-val" placeholder="0 9 * * *" style="flex:1">
-    <input id="s-add-cmd" placeholder="command or prompt text" style="flex:2">
-    <button class="btn" id="s-add-btn">＋ Add</button>
-  </div>`;
-}
-async function schedRemove(name) {
-  await api('/api/schedule/remove', { method: 'POST', body: JSON.stringify({ name }) });
-  await refreshOverseer(true);
-}
-async function schedAdd() {
-  const name = $('s-add-name').value.trim(), typ = $('s-add-type').value;
-  const val = $('s-add-val').value.trim(), cmd = $('s-add-cmd').value.trim();
-  if (!name || !val) { statusEl.textContent = 'schedule needs a name + cron/daily/weekly/date value'; return; }
-  const looksCmd = /^[a-z0-9_.\/\-]+(\s+[^\s]+)*$/.test(cmd) && !cmd.endsWith('?');
-  const body = { name, schedule_type: typ, schedule_value: val, task_type: looksCmd ? 'command' : 'prompt',
-                 command: looksCmd ? cmd : '', prompt: looksCmd ? '' : cmd };
-  try {
-    const r = await api('/api/schedule/add', { method: 'POST', body: JSON.stringify(body) });
-    const j = await r.json();
-    statusEl.textContent = j.message || (j.ok ? 'added ✓' : 'add failed');
-  } catch { statusEl.textContent = 'add failed'; }
-  await refreshOverseer(true);
-}
-// one-time delegation on the pane body (innerHTML is rebuilt, the node isn't)
-$('pane-body').addEventListener('click', (e) => {
-  const x = e.target.closest('.sched-x'); if (x) return void schedRemove(x.dataset.sched);
-  if (e.target.id === 's-add-btn') return void schedAdd();
-});
-
-// Card picker dropped — side pane is now 5 fixed business cards (System
-// health / Activity / Tasks / Sessions / Recent activity). The only side-pane
-// controls remaining are refresh + close.
-
-$('pane-refresh').onclick = () => refreshOverseer();
-
-// ── Session bridge (unified multi-agent chat) ──────────────────────────
-// Subscribes to /webui-events (SSE) and renders bridge events from any origin
-// (webui / TUI / overseer) under each event's `username` field. The TUI
-// (lib/tui.py) writes "User" / "Big Model" events; the overseer can write
-// "Overseer" events for scheduled-task activity. Dedupe by event id so SSE
-// reconnects don't double-print. The local sent-message path already appends
-// the user role directly, so we skip type=message events we authored ourselves.
-const _seenBridgeIds = new Set();
-let _bridgeSrc = null;
-function _ensureBridgeConnected() {
-  if (_bridgeSrc && _bridgeSrc.readyState !== 2 /* CLOSED */) return _bridgeSrc;
-  // EventSource can't carry custom headers — pass the auth token in the
-  // query string (the server side accepts it via `_check_auth`).
-  const tok = (localStorage.getItem('cortexagent-token') || '').trim();
-  const qs = tok ? '?token=' + encodeURIComponent(tok) : '';
-  _bridgeSrc = new EventSource('/webui-events' + qs);
-  _bridgeSrc.onmessage = (e) => {
-    let ev;
-    try { ev = JSON.parse(e.data); } catch { return; }
-    if (!ev || !ev.id || _seenBridgeIds.has(ev.id)) return;
-    _seenBridgeIds.add(ev.id);
-    if (_seenBridgeIds.size > 500) {
-      const arr = [..._seenBridgeIds]; _seenBridgeIds.clear();
-      arr.slice(-200).forEach(i => _seenBridgeIds.add(i));
-    }
-    // Render only message/response (not response_done — that's a marker, not text).
-    if (ev.type !== 'message' && ev.type !== 'response') return;
-    const c = cur();
-    if (!c) return;
-    // Webui-authored user messages are already rendered by the local sendMsg
-    // flow — skip to avoid double-printing.
-    if (ev.from === 'webui' && ev.type === 'message') return;
-    const uname = ev.username || (ev.type === 'response' ? 'Big Model' : 'You');
-    const role = uname === 'You' ? 'user' : 'assistant';
-    c.messages.push({ role, content: ev.content || '' });
-    addMsg(role, ev.content || '', false, null, uname);
-    chatEl.scrollTop = chatEl.scrollHeight;
-  };
-  _bridgeSrc.onerror = () => {
-    // EventSource auto-reconnects; if the connection ends (server shutdown)
-    // we try a full re-establish after 3s.
-    setTimeout(() => { try { _bridgeSrc && _bridgeSrc.close(); } catch {}
-                       _bridgeSrc = null; _ensureBridgeConnected(); }, 3000);
-  };
-  return _bridgeSrc;
-}
-
-// ── Mobile toggles ─────────────────────────────────────────────────────
-$('btn-chats').onclick = () => document.body.classList.toggle('chats-open');
-$('btn-pane').onclick = () => document.body.classList.toggle('pane-open');
-$('sb-close').onclick = () => document.body.classList.remove('chats-open');
-$('pane-close').onclick = () => document.body.classList.remove('pane-open');
-
-// ── Boot ───────────────────────────────────────────────────────────────
-loadChats(); renderList(); renderChat(); autosize();
-await loadState();
-pollTps(); setInterval(pollTps, 2000);
-setInterval(loadState, 30000);
-refreshOverseer();
-setInterval(() => refreshOverseer(true), 20000);
-loadStatus(); setInterval(loadStatus, 15000);
-// Unified session bridge — TUI/overseer events stream in here.
-_ensureBridgeConnected();
+// Start real-time polling
+checkStatus();
+updateFromProxy();
+setInterval(checkStatus, 5000);
+setInterval(updateFromProxy, 3000);
 </script>
 </body>
 </html>
