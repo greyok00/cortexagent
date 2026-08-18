@@ -62,3 +62,28 @@ def test_block_feedback_write_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(sc, "FIREWALL_STATE", tmp_path / "state.json")
     out = sc._block_feedback("1.2.3.4", "test")
     assert "fail" in out.lower() or "⚠" in out
+
+
+def test_block_feedback_applied(tmp_path, monkeypatch):
+    """Success path: the root helper already applied the rule, so the status
+    reads 'Blocked <ip> ✓' instead of 'queued'."""
+    import json
+    monkeypatch.setattr(sc, "FIREWALL_COMMANDS", tmp_path / "cmds.jsonl")
+    monkeypatch.setattr(sc, "FIREWALL_STATE", tmp_path / "state.json")
+    # Simulate the root helper's write: NDJSON with ip + ok keys.
+    result = tmp_path / "firewall_commands_result.jsonl"
+    result.write_text(json.dumps(
+        {"action": "block", "ip": "1.2.3.4", "ok": True, "msg": "Rule inserted"}
+    ) + "\n")
+    out = sc._block_feedback("1.2.3.4", "manual: test")
+    assert out == "Blocked 1.2.3.4 ✓"
+
+
+def test_block_feedback_pending_when_no_result(tmp_path, monkeypatch):
+    """Write succeeds but no matching result yet → queued, not applied."""
+    monkeypatch.setattr(sc, "FIREWALL_COMMANDS", tmp_path / "cmds.jsonl")
+    monkeypatch.setattr(sc, "FIREWALL_STATE", tmp_path / "state.json")
+    # No result file at all.
+    out = sc._block_feedback("1.2.3.4", "manual: test")
+    assert "Blocked" not in out
+    assert "queued" in out
