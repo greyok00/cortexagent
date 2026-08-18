@@ -585,61 +585,6 @@ def _make_window() -> None:
     )
     plan_text.pack(fill="x")
 
-    # ── Severity filter row (single row of chips) ──
-    sev_filter = tk.Frame(inner, bg=BG_PANEL)
-    sev_filter.pack(fill="x", padx=16, pady=(8, 4))
-    sev_state: dict[str, tk.BooleanVar] = {
-        k: tk.BooleanVar(value=True) for k in SEV_COLOR
-    }
-    sev_chip_refs: dict[str, dict] = {}
-
-    def _rebuild_alerts():
-        """Re-render the alert list after a filter change."""
-        alerts = _merge_and_sort(limit=200)
-        filtered = [a for a in _filter_alerts(alerts)
-                    if _alert_id(a) not in dismissed_ids]
-        _render_alerts(filtered, in_place=True)
-
-    def _make_filter_chip(parent, sev: str):
-        color = SEV_COLOR[sev]
-        icon = SEV_ICON[sev]
-        chip = tk.Frame(parent, bg=BG_CHIP, bd=0, relief="flat",
-                        highlightbackground=color, highlightthickness=1,
-                        cursor="hand2")
-        icon_l = tk.Label(chip, text=icon, bg=BG_CHIP, fg=color,
-                          font=("-size", 11, "-weight", "bold"))
-        icon_l.pack(side="left", padx=(8, 2), pady=4)
-        text_l = tk.Label(chip, text=sev.upper(), bg=BG_CHIP, fg=color,
-                          font=("-size", 10, "-weight", "bold"))
-        text_l.pack(side="left", padx=(0, 4), pady=4)
-        cnt_l = tk.Label(chip, text="0", bg=BG_CHIP, fg=color,
-                         font=("-size", 11, "-weight", "bold"))
-        cnt_l.pack(side="right", padx=(0, 8), pady=4)
-        holder = {"chip": chip, "icon": icon_l, "text": text_l, "cnt": cnt_l,
-                  "on": True, "color": color, "var": sev_state[sev]}
-
-        def _flip(_e=None):
-            holder["on"] = not holder["on"]
-            sev_state[sev].set(holder["on"])
-            if holder["on"]:
-                bg = BG_CHIP
-                fg = color
-            else:
-                bg = BG_DIM
-                fg = "#3a3a5e"
-            for w in (chip, icon_l, text_l, cnt_l):
-                w.configure(bg=bg, fg=fg)
-            _rebuild_alerts()
-
-        for w in (chip, icon_l, text_l, cnt_l):
-            w.bind("<Button-1>", _flip)
-            w.bind("<Button-3>", _flip)
-        sev_chip_refs[sev] = holder
-        return chip
-
-    for sev in SEV_ORDER:
-        _make_filter_chip(sev_filter, sev).pack(side="left", padx=(0, 4), pady=2)
-
     # ── Action row (4 compact buttons) ──
     action_row = tk.Frame(inner, bg=BG_PANEL)
     action_row.pack(fill="x", padx=16, pady=(8, 8))
@@ -760,11 +705,6 @@ def _make_window() -> None:
         return (a.get("ts", ""), a.get("source", ""), a.get("kind", ""),
                 a.get("detail", "")[:80])
 
-    def _filter_alerts(alerts):
-        allowed = {k for k, v in sev_state.items() if v.get()}
-        return [a for a in alerts
-                if str(a.get("severity", "info")).lower() in allowed]
-
     def _build_card(parent, alert):
         sev = str(alert.get("severity", "info")).lower()
         color = SEV_COLOR.get(sev, "#5ac8fa")
@@ -864,13 +804,13 @@ def _make_window() -> None:
         if key == "block":
             ip = _extract_ip(str(alert.get("detail", "")))
             if not ip:
-                status_sub.configure(text="⚠ no IP found in detail to block")
+                _set_feedback("⚠ no IP found in detail to block")
                 return
-            status_sub.configure(text=_block_feedback(ip, f"manual: {alert.get('kind', '?')}"))
+            _set_feedback(_block_feedback(ip, f"manual: {alert.get('kind', '?')}"))
         elif key == "audit":
             _open_log()
         elif key == "ack":
-            status_sub.configure(text="✓ Acknowledged (noted in session)")
+            _set_feedback("✓ Acknowledged (noted in session)")
         elif key == "dismiss":
             _dismiss(alert)
 
@@ -882,12 +822,19 @@ def _make_window() -> None:
     def _open_log(_e=None):
         # Minimal placeholder — Task 4 replaces this with a real xdg-open of
         # the overseer log.
-        status_sub.configure(text="📜 opening audit log…")
+        _set_feedback("📜 opening audit log…")
 
-    # ── Footer (1 line) ──
+    # ── Footer (live action feedback) ──
+    last_action: list = ["Ready"]
+
+    def _set_feedback(text: str) -> None:
+        """Persistent bottom line — the result of the last user action."""
+        last_action[0] = text
+        footer.configure(text=text, fg=FG_BRIGHT)
+
     footer = tk.Label(inner,
-                      text="—", bg=BG_PANEL, fg=FG_DIM,
-                      font=("-size", 10), anchor="w")
+                      text="Ready", bg=BG_PANEL, fg=FG_BRIGHT,
+                      font=("-size", 11), anchor="w")
     footer.pack(fill="x", padx=16, pady=(4, 12))
 
     # Mouse wheel
@@ -905,15 +852,6 @@ def _make_window() -> None:
     # ── Periodic refresh ──
     last_poll_ts: list = [time.time()]
 
-    def _update_chips(alerts):
-        counts = {k: 0 for k in SEV_ORDER}
-        for a in alerts:
-            s = str(a.get("severity", "info")).lower()
-            if s in counts:
-                counts[s] += 1
-        for sev, refs in sev_chip_refs.items():
-            refs["cnt"].configure(text=str(counts.get(sev, 0)))
-
     def _update_status(alerts):
         if not alerts:
             sev_dot.configure(fg="#5ac8fa", text="●")
@@ -928,18 +866,14 @@ def _make_window() -> None:
         max_sev = next((s for s in SEV_ORDER if s in severities), "info")
         color = SEV_COLOR[max_sev]
         sev_dot.configure(fg=color, text="●")
+        status_main.configure(text=_severity_bar(alerts), fg=FG_BRIGHT)
+        status_sub.configure(
+            text=f"Watching · max {max_sev.upper()} · refresh 2s")
+        # Action plan banner (keep the existing priority logic untouched):
         crit_n = sum(1 for a in alerts
                      if str(a.get("severity", "")).lower() == "critical")
         high_n = sum(1 for a in alerts
                      if str(a.get("severity", "")).lower() == "high")
-        crit_txt = f" · {crit_n} critical" if crit_n else ""
-        high_txt = f" · {high_n} high" if high_n else ""
-        status_main.configure(text=f"{len(alerts)} alerts{crit_txt}{high_txt}",
-                              fg=FG_BRIGHT)
-        status_sub.configure(
-            text=f"Watching · max severity: {max_sev.upper()} · refresh 2s")
-        # Action plan banner
-        # Priority: blocked-source IP needed, then critical, then high.
         ips_needing_block: set = set()
         for a in alerts:
             if a.get("source") == "firewall" and a.get("kind") == "port-scan":
@@ -950,35 +884,29 @@ def _make_window() -> None:
             plan_text.configure(
                 text=f"🛡 Action: 1 IP needs blocking ({ips_needing_block.pop()}). "
                      "Click the alert card to block.",
-                bg="#3a1010", fg="#ff8080", cursor="hand2")
+                bg="#3a1010", fg="#ff8080")
         elif crit_n > 0:
             plan_text.configure(
                 text=f"⚠️ Action: review {crit_n} critical alert{'s' if crit_n != 1 else ''}.",
-                bg="#3a2010", fg="#ffaa50", cursor="hand2")
+                bg="#3a2010", fg="#ffaa50")
         elif high_n > 0:
             plan_text.configure(
                 text=f"⚠️ Action: review {high_n} high-severity alert{'s' if high_n != 1 else ''}.",
-                bg="#3a3010", fg="#ffd54f", cursor="hand2")
+                bg="#3a3010", fg="#ffd54f")
         else:
             plan_text.configure(
                 text="✅ No critical action — review new alerts at your pace.",
-                bg="#1a3050", fg="#5ac8fa", cursor="hand2")
+                bg="#1a3050", fg="#5ac8fa")
 
     def _update_footer(alerts):
-        n = len(alerts)
-        blocked = _blocked_count()
-        age = _format_age(time.time() - last_poll_ts[0])
-        footer.configure(
-            text=f"📡 {n} alerts · ⏱ last refresh {age} · 🛡 {blocked} blocked source{'s' if blocked != 1 else ''}"
-        )
+        footer.configure(text=last_action[0], fg=FG_BRIGHT)
 
     def _apply_filters():
         alerts = _merge_and_sort(limit=200)
         last_poll_ts[0] = time.time()
-        # Drop per-session dismissals, then the severity filter.
-        filtered = [a for a in _filter_alerts(alerts)
-                    if _alert_id(a) not in dismissed_ids]
-        _update_chips(alerts)
+        # Per-session dismissals only — severity filtering is gone (Dismiss is
+        # the only removal now).
+        filtered = [a for a in alerts if _alert_id(a) not in dismissed_ids]
         _update_status(filtered)
         _update_footer(filtered)
         _render_alerts(filtered, in_place=True)
