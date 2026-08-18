@@ -820,9 +820,23 @@ def _make_window() -> None:
         _apply_filters()
 
     def _open_log(_e=None):
-        # Minimal placeholder — Task 4 replaces this with a real xdg-open of
-        # the overseer log.
-        _set_feedback("📜 opening audit log…")
+        log_candidates = [
+            Path.home() / "security-reports" / "overseer" / "overseer.log",
+            HONEYPOT_LOG,
+            RECORDRELIEF_FEED,
+        ]
+        target = next((p for p in log_candidates if p.exists()), None)
+        if not target:
+            _set_feedback("⚠ no log file found to open")
+            return
+        try:
+            subprocess.Popen(
+                ["xdg-open", str(target)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            _set_feedback(f"📄 Opened {target.name}")
+        except Exception as e:
+            _set_feedback(f"⚠ could not open log: {e}")
 
     # ── Footer (live action feedback) ──
     last_action: list = ["Ready"]
