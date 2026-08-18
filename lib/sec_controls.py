@@ -821,7 +821,8 @@ def _make_window() -> None:
 
     def _open_log(_e=None):
         log_candidates = [
-            Path.home() / "security-reports" / "overseer" / "overseer.log",
+            Path.home() / ".cortexagent" / "logs" / "overseer.log",   # live overseer log
+            Path.home() / "security-reports" / "overseer" / "overseer.log",  # fallback artifact
             HONEYPOT_LOG,
             RECORDRELIEF_FEED,
         ]
