@@ -55,7 +55,10 @@ def test_human_frame_unknown_kind_falls_back_to_default():
 
 
 def test_block_feedback_write_failure(tmp_path, monkeypatch):
-    monkeypatch.setattr(sc, "FIREWALL_COMMANDS",
-                        tmp_path / "nonexistent_dir" / "cmds.jsonl")
+    blocker = tmp_path / "not_a_dir"          # a regular file
+    blocker.write_text("x")
+    # FIREWALL_COMMANDS = a path INSIDE that file → parent mkdir fails
+    monkeypatch.setattr(sc, "FIREWALL_COMMANDS", blocker / "cmds.jsonl")
+    monkeypatch.setattr(sc, "FIREWALL_STATE", tmp_path / "state.json")
     out = sc._block_feedback("1.2.3.4", "test")
     assert "fail" in out.lower() or "⚠" in out
