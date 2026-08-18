@@ -81,6 +81,33 @@ survive the refresh, and give visible feedback. No stats board, no browser.
 7. **Dismiss removes from view.** Drop the alert from the live in-memory list so
    acted-on alerts disappear (per-session only; does not edit the source logs).
 
+### Human reframing (the whole point)
+
+The console must read like a person told you what happened, not like a log line.
+Every alert kind gets plain-language text in the card body — "what happened,
+why it matters, what to do" — so you can act without decoding raw JSON.
+
+Default frame (no special kind):
+
+> **Something touched the system** — an alert fired from `<source>`. This is
+> the system flagging an event it thinks is worth your attention. Open the
+> detail to see the exact message before deciding what to do.
+
+Per-kind frames (extend the existing `REFRAMINGS` table):
+
+| kind | Human frame |
+|------|-------------|
+| `port-scan` | **"An IP probed N ports in under a minute — reconnaissance. They were hunting for open services to attack."** → Block |
+| `canary.token.trigger` | **"A decoy credential/URL was used. Someone read or clicked a trap we planted — a confirmed intrusion signal."** → Block |
+| `rkhunter.warning` | **"A system file changed. Could be a legit update or tampering — verify before dismissing."** → Investigate |
+| `unauth.read` | **"Something read a sensitive file without credentials. Check the source."** → Block / Investigate |
+| `mit.exception` | **"The mitigation workflow hit an unexpected condition. Check the automation logs."** → Investigate |
+| `watchdog.ping` | **"The watcher checked in — it's alive. Nothing to do."** → (no actions) |
+| `backup.complete` | **"Nightly backup finished."** → (no actions) |
+
+Card body shows the human frame in the user's own words, with the raw detail
+collapsed under it. Actions match what a person would actually do next.
+
 ### What is kept (unchanged)
 
 - `_read_honeypot_log` / `_read_recordrelief_feed` / `_merge_and_sort`
