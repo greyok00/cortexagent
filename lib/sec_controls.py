@@ -349,6 +349,96 @@ def _blocked_count() -> int:
         return 0
 
 
+# ── Pure-logic helpers (Action Console) ───────────────────────────────────────
+# These take plain alert data and return strings — no tkinter — so they're
+# unit-testable headlessly. The window code calls these to build its labels.
+
+def _severity_bar(alerts: list[dict]) -> str:
+    """'🔴 2 critical · 1 high · 3 low' — only nonzero severities, critical
+    first. Returns 'All clear' when there are no alerts."""
+    if not alerts:
+        return "All clear"
+    counts: dict[str, int] = {k: 0 for k in SEV_ORDER}
+    for a in alerts:
+        s = str(a.get("severity", "info")).lower()
+        if s in counts:
+            counts[s] += 1
+    parts = []
+    for sev in SEV_ORDER:
+        n = counts[sev]
+        if n > 0:
+            parts.append(f"{SEV_ICON.get(sev, '•')} {n} {sev}")
+    return " · ".join(parts) if parts else "All clear"
+
+
+_DEFAULT_FRAME = (
+    "Something touched the system — an alert fired from {source}. "
+    "This is the system flagging an event it thinks is worth your attention. "
+    "Open the detail to see the exact message before deciding what to do."
+)
+
+
+def _human_frame(alert: dict) -> tuple[str, str, list[tuple[str, str]]]:
+    """Return (title, human_body, actions) for an alert.
+
+    Uses the REFRAMINGS table when the kind is known; otherwise falls back to
+    a generic plain-language frame. `actions` is a list of (key, label) where
+    key is one of block / audit / ack / dismiss.
+    """
+    kind = str(alert.get("kind", ""))
+    r = REFRAMINGS.get(kind)
+    if not r:
+        src = alert.get("source", "?")
+        return (
+            str(alert.get("kind", "alert")).replace(".", " ").replace("_", " ").title() or "Alert",
+            _DEFAULT_FRAME.format(source=src),
+            [("dismiss", "✕ Dismiss")],
+        )
+    title = r["title"]
+    body = r["summary"]
+    ip = _extract_ip(str(alert.get("detail", "")))
+    ports = alert.get("ports")
+    if not ports:
+        m = re.search(r"(\d+)\s+distinct ports", str(alert.get("detail", "")))
+        ports = int(m.group(1)) if m else 0
+    try:
+        body = body.format(ip=ip, n_ports=ports)
+    except Exception:
+        pass
+    actions = list(r.get("actions", []))
+    if not any(k == "dismiss" for k, _ in actions):
+        actions.append(("dismiss", "✕ Dismiss"))
+    return title, body, actions
+
+
+def _block_feedback(ip: str, reason: str) -> str:
+    """Queue a block and return a short user-facing status string.
+
+    Reads firewall_commands_result.jsonl after writing so we can report whether
+    the root helper applied the rule yet.
+    """
+    if not _queue_block(ip, reason):
+        return "⚠ block command write failed"
+    applied = False
+    try:
+        result_path = FIREWALL_COMMANDS.parent / "firewall_commands_result.jsonl"
+        if result_path.exists():
+            with result_path.open() as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if rec.get("ip") == ip and rec.get("ok"):
+                        applied = True
+    except OSError:
+        pass
+    return f"Blocked {ip} ✓" if applied else f"Block queued for {ip} (helper applying)"
+
+
 # ── Window construction ──────────────────────────────────────────────────────
 
 def _make_window() -> None:
