@@ -701,7 +701,6 @@ def _make_window() -> None:
                 except OSError as e:
                     status_sub.configure(text=f"⚠️ clear failed: {path.name}: {e}")
             confirm.destroy()
-            _expanded_id[0] = None
             _apply_filters()
             status_sub.configure(
                 text=f"🗑 Cleared · {', '.join(cleared) or 'nothing to clear'}"
@@ -755,9 +754,6 @@ def _make_window() -> None:
     list_frame = tk.Frame(inner, bg=BG_DEEP, bd=0)
     list_frame.pack(padx=16, pady=(0, 8), fill="x")
 
-    # Track which alert (by ts+detail) is currently expanded
-    _expanded_id: list = [None]
-
     def _alert_id(a: dict) -> tuple:
         return (a.get("ts", ""), a.get("source", ""), a.get("kind", ""),
                 a.get("detail", "")[:80])
@@ -771,172 +767,54 @@ def _make_window() -> None:
         sev = str(alert.get("severity", "info")).lower()
         color = SEV_COLOR.get(sev, "#5ac8fa")
         icon = SEV_ICON.get(sev, "•")
-        reframe = _get_reframe(alert.get("kind", ""), alert)
-        ref_title = reframe["title"] if reframe else (
-            str(alert.get("kind", "alert")).replace(".", " ").replace("_", " ")
-            .title() or "Alert")
+        title, body, actions = _human_frame(alert)
 
         card = tk.Frame(parent, bg=BG_ROW, bd=0, relief="flat",
-                        highlightbackground=color, highlightthickness=1,
-                        cursor="hand2")
-
-        # Header row: sev icon + title + ts
+                        highlightbackground=color, highlightthickness=1)
         head = tk.Frame(card, bg=BG_ROW)
         head.pack(fill="x", padx=10, pady=(8, 0))
         tk.Label(head, text=icon, bg=BG_ROW, fg=color,
-                 font=("-size", 14, "-weight", "bold")).pack(side="left", padx=(0, 8))
-        tk.Label(head, text=ref_title, bg=BG_ROW, fg=FG_BRIGHT,
-                 font=("-size", 13, "-weight", "bold"),
-                 anchor="w").pack(side="left", fill="x", expand=True)
+                 font=("-size", 15, "-weight", "bold")).pack(side="left", padx=(0, 8))
+        title_l = tk.Label(head, text=title, bg=BG_ROW, fg=FG_BRIGHT,
+                           font=("-size", 15, "-weight", "bold"), anchor="w")
+        title_l.pack(side="left", fill="x", expand=True)
         tk.Label(head, text=_format_hms(alert.get("ts", "")),
-                 bg=BG_ROW, fg=FG_DIM, font=("-size", 10)).pack(side="right")
+                 bg=BG_ROW, fg=FG_DIM, font=("-size", 11)).pack(side="right")
 
-        # Source + kind label
-        meta = tk.Label(card,
-                        text=f"{alert.get('source', '?')}  ·  {alert.get('kind', '?')}",
-                        bg=BG_ROW, fg=FG_MUTED, font=("-size", 10), anchor="w")
-        meta.pack(fill="x", padx=10, pady=(0, 6))
+        preview_l = tk.Label(card, text=body, bg=BG_ROW, fg=FG_BRIGHT,
+                             font=("-size", 13), wraplength=win_w - 60,
+                             justify="left", anchor="w")
+        preview_l.pack(fill="x", padx=10, pady=(6, 6))
 
-        # Truncated preview
-        preview_text = str(alert.get("detail", ""))
-        if len(preview_text) > 180:
-            preview_text = preview_text[:180] + "…"
-        preview = tk.Label(card, text=preview_text, bg=BG_ROW, fg=FG_BRIGHT,
-                           font=("-size", 11), wraplength=win_w - 60,
-                           justify="left", anchor="w")
-        preview.pack(fill="x", padx=10, pady=(0, 8))
-
-        # Hover feedback on the card
-        def _enter(_e=None):
-            for w in (card, head, meta, preview):
-                w.configure(bg=BG_HOVER)
-        def _leave(_e=None):
-            for w in (card, head, meta, preview):
-                w.configure(bg=BG_ROW)
-        for w in (card, head, meta, preview):
-            w.bind("<Enter>", _enter)
-            w.bind("<Leave>", _leave)
-
-        # Track all child widgets so we can recolor them on hover / expand
-        return card, {
-            "card": card, "head": head, "meta": meta, "preview": preview,
-            "all_widgets": [card, head, meta, preview],
-        }
-
-    def _build_expanded(parent, alert, refs):
-        """Build the expanded detail panel under a card. Returned widget is
-        already packed; caller hides it via pack_forget() to collapse."""
-        sev = str(alert.get("severity", "info")).lower()
-        color = SEV_COLOR.get(sev, "#5ac8fa")
-        reframe = _get_reframe(alert.get("kind", ""), alert)
-        ip = _extract_ip(str(alert.get("detail", ""))) if reframe else None
-
-        body = tk.Frame(parent, bg="#161628",
-                        highlightbackground=color, highlightthickness=0)
-        inner_w = win_w - 60
-
-        # Reframing summary (if known)
-        if reframe:
-            s = reframe["summary"]
-            try:
-                s = s.format(**reframe)
-            except Exception:
-                pass
-            tk.Label(
-                body, text="📖  " + s, bg="#161628", fg="#ffd58a",
-                font=("-size", 12), wraplength=inner_w, justify="left",
-                anchor="w",
-            ).pack(fill="x", padx=14, pady=(12, 8))
-
-        # Full untruncated detail
-        tk.Label(
-            body, text="DETAIL", bg="#161628", fg=FG_DIM,
-            font=("-size", 9, "-weight", "bold"), anchor="w",
-        ).pack(fill="x", padx=14, pady=(0, 2))
-        tk.Label(
-            body, text=str(alert.get("detail", "—")),
-            bg="#161628", fg=FG_BRIGHT, font=("-size", 11),
-            wraplength=inner_w, justify="left", anchor="w",
-        ).pack(fill="x", padx=14, pady=(0, 8))
-
-        # Token if present
-        if alert.get("token"):
-            tk.Label(
-                body, text=f"token: {alert['token']}",
-                bg="#161628", fg="#808090", font=("-size", 10), anchor="w",
-            ).pack(fill="x", padx=14)
-
-        # Raw JSON in a text widget
-        tk.Label(body, text="RAW JSON", bg="#161628", fg=FG_DIM,
-                 font=("-size", 9, "-weight", "bold"), anchor="w").pack(
-            fill="x", padx=14, pady=(6, 2))
-        try:
-            raw = json.dumps(alert, indent=2, ensure_ascii=False)
-        except Exception:
-            raw = repr(alert)
-        raw_box = tk.Text(body, height=min(10, max(3, raw.count("\n") + 1)),
-                          bg="#0a0a18", fg="#a0a0c0",
-                          font=("TkFixedFont", 9), relief="flat", bd=0,
-                          wrap="word")
-        raw_box.insert("1.0", raw)
-        raw_box.configure(state="disabled")
-        raw_box.pack(fill="x", padx=14, pady=(0, 8))
-
-        # Action buttons
-        actions = (reframe["actions"] if reframe else []) + [
-            ("dismiss", "✕ Dismiss")
-        ]
-        btn_row = tk.Frame(body, bg="#161628")
-        btn_row.pack(fill="x", padx=14, pady=(4, 12))
-
-        def do_block():
-            if not ip:
-                status_sub.configure(text="⚠️ no IP found in detail to block")
-                return
-            if _queue_block(ip, f"manual: {alert.get('kind', '?')}"):
-                status_sub.configure(text=f"🛡 Block queued for {ip} (root helper will apply)")
-            else:
-                status_sub.configure(text="⚠️ block command write failed")
-
-        def do_ack():
-            status_sub.configure(text="✓ Acknowledged (noted in log)")
-
-        def do_dismiss():
-            _expanded_id[0] = None
-            _apply_filters()
-
-        handlers = {
-            "block": do_block,
-            "audit": lambda: status_sub.configure(
-                text="🔍 Audit log — see ~/security-reports/overseer/overseer.log"),
-            "ack": do_ack,
-            "dismiss": do_dismiss,
-        }
+        # Action row — real buttons, visible immediately (no expand step).
+        btn_row = tk.Frame(card, bg=BG_ROW)
+        btn_row.pack(fill="x", padx=10, pady=(0, 8))
         for act_key, act_label in actions:
-            bg = {
-                "block": "#b71c1c", "audit": "#0d47a1",
-                "ack": "#37474f", "dismiss": "#444",
-            }.get(act_key, "#444")
-            b = tk.Label(btn_row, text=act_label, bg=bg, fg="white",
-                         font=("-size", 11, "-weight", "bold"),
-                         padx=10, pady=6, cursor="hand2", relief="flat")
-            b.pack(side="left", padx=(0, 6))
-            orig_bg = bg
-            b.bind("<Enter>", lambda _e, w=b: w.configure(bg=_lighten(orig_bg)))
-            b.bind("<Leave>", lambda _e, w=b: w.configure(bg=orig_bg))
-            b.bind("<Button-1>", lambda _e, h=handlers.get(act_key): h() if h else None)
+            if act_key not in ("block", "audit", "ack", "dismiss"):
+                continue
+            if act_key == "block" and not _extract_ip(str(alert.get("detail", ""))):
+                continue
+            bg = {"block": "#b71c1c", "audit": "#0d47a1",
+                  "ack": "#37474f", "dismiss": "#444"}.get(act_key, "#444")
+            b = _small_btn(btn_row, act_label, bg,
+                           lambda _e, k=act_key, a=alert: _on_action(k, a))
+            b.pack(side="left", padx=(0, 6), fill="x", expand=True)
 
-        return body
+        return card, {
+            "card": card, "head": head, "title_l": title_l, "preview_l": preview_l,
+            "all_widgets": [card, head, title_l, preview_l],
+        }
 
-    # State for the current rendered list
+    # State for the current rendered list + per-session dismissals.
     card_widgets: list = []  # list of (card, refs, body, alert)
+    dismissed_ids: set = set()  # _alert_id tuples removed from the session view
 
-    def _render_alerts(alerts):
-        # Clear old
-        for c in card_widgets:
-            c[0].destroy()
-        card_widgets.clear()
+    def _render_alerts(alerts, in_place=True):
+        # Nothing to show: drop every card and show the empty hint.
         if not alerts:
+            for c in list(card_widgets):
+                c[0].destroy()
+            card_widgets.clear()
             empty = tk.Label(
                 list_frame,
                 text="🟢 No alerts match current filters.",
@@ -945,46 +823,59 @@ def _make_window() -> None:
             empty.pack(fill="x", padx=10)
             card_widgets.append((empty, None, None, None))
             return
-        # Newest first
+        # Key existing cards by alert id so we can patch them in place.
+        by_id = {}
+        for c in list(card_widgets):
+            if c[2] is not None and c[3] is not None:
+                by_id[_alert_id(c[3])] = c
+        seen: set = set()
         for a in reversed(alerts):
-            card, refs = _build_card(list_frame, a)
-            card.pack(fill="x", padx=4, pady=3)
-            entry = [card, refs, None, a]
-            card_widgets.append(entry)
             aid = _alert_id(a)
-            # Bind click → expand
-            for w in refs["all_widgets"]:
-                w.bind("<Button-1>",
-                       lambda _e, e=entry, k=aid: _toggle_expand(e, k))
+            seen.add(aid)
+            if aid in by_id:
+                card, refs, _body, old = by_id[aid]
+                sev = str(a.get("severity", "info")).lower()
+                color = SEV_COLOR.get(sev, "#5ac8fa")
+                title, body, _actions = _human_frame(a)
+                refs["title_l"].configure(text=title, fg=FG_BRIGHT)
+                refs["preview_l"].configure(text=body)
+                for w in (refs["card"], refs["head"], refs["title_l"], refs["preview_l"]):
+                    w.configure(highlightbackground=color)
+                entry = [card, refs, _body, a]
+                card_widgets[card_widgets.index(by_id[aid])] = entry
+            else:
+                card, refs = _build_card(list_frame, a)
+                card.pack(fill="x", padx=4, pady=3)
+                card_widgets.append([card, refs, None, a])
+        # Remove cards whose alert no longer exists (dismissed / filtered out).
+        for c in list(card_widgets):
+            if c[3] is not None and _alert_id(c[3]) not in seen:
+                c[0].destroy()
+                card_widgets.remove(c)
 
-    def _toggle_expand(entry, aid):
-        if _expanded_id[0] is None or _expanded_id[0] != aid:
-            # Collapse any currently expanded
-            for c in card_widgets:
-                if c[2] is not None:
-                    c[2].destroy()
-                    c[2] = None
-            # Expand this one
-            body = _build_expanded(list_frame, entry[3], entry[1])
-            body.pack(fill="x", padx=4, pady=(0, 4),
-                      after=entry[0])  # immediately under its card
-            entry[2] = body
-            _expanded_id[0] = aid
-            # Scroll so the expanded panel is visible. ``after=entry[0]``
-            # already puts it under the card; we just need to bring the
-            # card into view (the expansion extends the content down).
-            root.update_idletasks()
-            try:
-                card_y = entry[0].winfo_y()
-                canvas.yview_moveto(max(0, (card_y - 80) / max(1, inner.winfo_height())))
-            except Exception:
-                pass
-        else:
-            # Collapse
-            if entry[2] is not None:
-                entry[2].destroy()
-                entry[2] = None
-            _expanded_id[0] = None
+    def _on_action(key, alert):
+        if key == "block":
+            ip = _extract_ip(str(alert.get("detail", "")))
+            if not ip:
+                status_sub.configure(text="⚠ no IP found in detail to block")
+                return
+            status_sub.configure(text=_block_feedback(ip, f"manual: {alert.get('kind', '?')}"))
+        elif key == "audit":
+            _open_log()
+        elif key == "ack":
+            status_sub.configure(text="✓ Acknowledged (noted in session)")
+        elif key == "dismiss":
+            _dismiss(alert)
+
+    def _dismiss(alert):
+        """Remove an alert from the session view (never edits source logs)."""
+        dismissed_ids.add(_alert_id(alert))
+        _apply_filters()
+
+    def _open_log(_e=None):
+        # Minimal placeholder — Task 4 replaces this with a real xdg-open of
+        # the overseer log.
+        status_sub.configure(text="📜 opening audit log…")
 
     # ── Footer (1 line) ──
     footer = tk.Label(inner,
@@ -1077,11 +968,13 @@ def _make_window() -> None:
     def _apply_filters():
         alerts = _merge_and_sort(limit=200)
         last_poll_ts[0] = time.time()
-        filtered = _filter_alerts(alerts)
+        # Drop per-session dismissals, then the severity filter.
+        filtered = [a for a in _filter_alerts(alerts)
+                    if _alert_id(a) not in dismissed_ids]
         _update_chips(alerts)
-        _update_status(alerts)
-        _update_footer(alerts)
-        _render_alerts(filtered)
+        _update_status(filtered)
+        _update_footer(filtered)
+        _render_alerts(filtered, in_place=True)
 
     def _refresh():
         try:
@@ -1091,17 +984,6 @@ def _make_window() -> None:
         finally:
             if root.winfo_exists():
                 root.after(2000, _refresh)
-
-    # Make the action plan banner clickable (when actionable)
-    def _plan_click(_e=None):
-        # If a "needs blocking" plan, expand the first firewall card
-        if plan_text.cget("text").startswith("🛡 Action"):
-            for entry in card_widgets:
-                a = entry[3]
-                if a and a.get("source") == "firewall" and a.get("kind") == "port-scan":
-                    _toggle_expand(entry, _alert_id(a))
-                    return
-    plan_text.bind("<Button-1>", _plan_click)
 
     _apply_filters()
     root.after(2000, _refresh)
