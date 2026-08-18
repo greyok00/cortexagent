@@ -10,18 +10,17 @@ the two local security feeds:
 Layout (top → bottom, single scrollable column):
 
   ┌─ Title bar  (draggable, ✕ to close)
-  ├─ Status header  ─ big severity dot + alert count + last update
-  ├─ Action plan banner ─ one-line summary of recommended action (or "All clear")
-  ├─ Severity filter row  ─ 5 live-count chips (click to mute a severity)
-  ├─ Action row  ─ Refresh · Pause · Dashboard · Clear  (4 compact buttons)
-  ├─ Alert stream  ─ live cards, click to expand → full detail + actions
-  └─ Footer  ─ 1-line: "X alerts · last refresh Ys ago · Y blocked sources"
+  ├─ Status header  ─ severity dot + severity bar (e.g. "🔴 2 critical · 1 high")
+  ├─ Action plan banner ─ one-line recommended action (or "All clear")
+  ├─ Action row  ─ Pause · Refresh · Clear  (3 compact buttons)
+  ├─ Alert stream  ─ human-framed cards with inline Block / Investigate / Dismiss
+  └─ Footer  ─ live action feedback ("Blocked 1.2.3.4 ✓" / "Ready")
 
 What it does that the v1 did NOT:
 
-  - Each alert is a clickable CARD. Click → row expands inline to show
-    the full untruncated detail, raw JSON, and a Block / Acknowledge /
-    Dismiss action trio. No more dead detail panel.
+  - Each alert is a CARD showing a plain-language human frame, with working
+    Block / Investigate (audit) / Dismiss buttons right on the card — no
+    click-to-expand step. No more dead detail panel.
   - Per-alert plain-language reframing for known kinds (port-scan,
     canary.token.trigger, rkhunter.warning, mit.exception, etc.). The
     reframing lives in a small table at the top of the file and is
@@ -31,6 +30,10 @@ What it does that the v1 did NOT:
   - The Block button writes a real entry to firewall_commands.jsonl
     (the root helper picks it up) — works for any alert that has an
     IP in the detail. No more "what does this button do" mystery.
+  - The 2s refresh patches cards in place, so a click on a button
+    survives the next refresh (widgets are keyed by alert id).
+  - The old stats board (count header, severity chips, count footer)
+    is gone. The footer is now a live feedback line for the last action.
   - All the dead empty space from v1 is gone. The list IS the
     content. Compact 820×2000 with everything visible.
 
@@ -39,16 +42,13 @@ Dock-style, no-focus pattern copied from lib/stt_controls.py.
 from __future__ import annotations
 
 import json
-import os
 import re
-import socket
 import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import tkinter as tk
 
@@ -57,7 +57,6 @@ HONEYPOT_LOG = Path.home() / "honeypot" / "alerts.log"
 RECORDRELIEF_FEED = (
     Path.home() / "Documents" / "RecordRelief" / "webapp" / "data" / "alerts.json"
 )
-HONEYPOT_DIR = Path.home() / "honeypot"
 FIREWALL_COMMANDS = (
     Path.home() / "security-reports" / "overseer" / "firewall_commands.jsonl"
 )
@@ -86,19 +85,13 @@ SEV_ORDER = ("critical", "high", "medium", "low", "info")
 BG_DEEP   = "#0f0f1f"
 BG_PANEL  = "#1a1a2e"
 BG_BAR    = "#3a3a5e"
-BG_CHIP   = "#252540"
 BG_ROW    = "#20203a"
-BG_HOVER  = "#2a2a4a"
-BG_DIM    = "#181828"
 FG_DIM    = "#808090"
 FG_MUTED  = "#a0a0c0"
 FG_BRIGHT = "#e0e0e0"
-FG_LINK   = "#5ac8fa"
 
-# RecordRelief webapp
-RECORDRELIEF_WEBAPP_DIR = Path.home() / "Documents" / "RecordRelief" / "webapp"
+# RecordRelief webapp (URL kept: sec_tray.py:222 uses it for the tray's own menu)
 RECORDRELIEF_URL = "http://127.0.0.1:8787/"
-RECORDRELIEF_PORT = 8787
 
 
 # ── Per-kind plain-language reframing ────────────────────────────────────────
@@ -204,42 +197,6 @@ def _merge_and_sort(limit: int = 200) -> list[dict]:
     return combined[-limit:]
 
 
-# ── Webapp helper ────────────────────────────────────────────────────────────
-
-def _is_webapp_up() -> bool:
-    try:
-        with socket.create_connection(
-            ("127.0.0.1", RECORDRELIEF_PORT), timeout=0.4
-        ):
-            return True
-    except OSError:
-        return False
-
-
-def _ensure_webapp() -> bool:
-    if _is_webapp_up():
-        return True
-    if not RECORDRELIEF_WEBAPP_DIR.exists():
-        return False
-    serve = RECORDRELIEF_WEBAPP_DIR / "serve.sh"
-    if not serve.exists():
-        return False
-    try:
-        subprocess.Popen(
-            ["bash", str(serve), str(RECORDRELIEF_PORT)],
-            cwd=str(RECORDRELIEF_WEBAPP_DIR),
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    except OSError:
-        return False
-    for _ in range(15):
-        if _is_webapp_up():
-            return True
-        time.sleep(0.2)
-    return False
-
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 _IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -253,50 +210,11 @@ def _extract_ip(text: str) -> str | None:
     return m.group(0) if m else None
 
 
-def _parse_ts(ts: str) -> datetime | None:
-    if not ts or "T" not in ts:
-        return None
-    try:
-        return datetime.fromisoformat(ts)
-    except ValueError:
-        return None
-
-
-def _format_age(seconds: float) -> str:
-    if seconds < 5:
-        return "just now"
-    if seconds < 60:
-        return f"{int(seconds)}s ago"
-    if seconds < 3600:
-        return f"{int(seconds // 60)}m ago"
-    if seconds < 86400:
-        return f"{int(seconds // 3600)}h ago"
-    return f"{int(seconds // 86400)}d ago"
-
-
 def _format_hms(ts: str) -> str:
     if not ts or "T" not in ts:
         return ts or "—"
     time_part = ts.split("T", 1)[1]
     return time_part.split(".", 1)[0].rsplit("-", 1)[0].rsplit("+", 1)[0]
-
-
-def _get_reframe(kind: str, alert: dict) -> dict | None:
-    """Return the reframing dict for `kind`, or None if no reframing known."""
-    r = REFRAMINGS.get(kind)
-    if not r:
-        return None
-    out = dict(r)
-    # Try to substitute IP + port count
-    detail = str(alert.get("detail", ""))
-    ip = _extract_ip(detail)
-    out["ip"] = ip
-    ports = alert.get("ports")
-    if not ports:
-        m = re.search(r"(\d+)\s+distinct ports", detail)
-        ports = int(m.group(1)) if m else 0
-    out["n_ports"] = ports
-    return out
 
 
 # ── Block command (writes to firewall_commands.jsonl) ────────────────────────
@@ -336,16 +254,6 @@ def _queue_block(ip: str, reason: str) -> bool:
     except OSError:
         pass
     return True
-
-
-def _blocked_count() -> int:
-    """How many IPs are currently in the firewall's block state."""
-    try:
-        if not FIREWALL_STATE.exists():
-            return 0
-        return len(json.loads(FIREWALL_STATE.read_text()).get("blocked", {}))
-    except Exception:
-        return 0
 
 
 # ── Pure-logic helpers (Action Console) ───────────────────────────────────────
@@ -585,7 +493,7 @@ def _make_window() -> None:
     )
     plan_text.pack(fill="x")
 
-    # ── Action row (4 compact buttons) ──
+    # ── Action row (3 compact buttons) ──
     action_row = tk.Frame(inner, bg=BG_PANEL)
     action_row.pack(fill="x", padx=16, pady=(8, 8))
     paused: dict = {"v": False}
@@ -600,20 +508,6 @@ def _make_window() -> None:
             w.configure(text="▶", bg="#2e7d32")
         else:
             w.configure(text="⏸", bg="#f57c00")
-
-    def on_open_dashboard(_e=None):
-        try:
-            up = _ensure_webapp()
-            if not up:
-                status_sub.configure(
-                    text=f"⚠️ webapp not running on :{RECORDRELIEF_PORT} — start serve.sh?"
-                )
-                return
-            subprocess.Popen(["xdg-open", RECORDRELIEF_URL],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            status_sub.configure(text="🌐 Dashboard opened · click 🛡 Security tab")
-        except Exception as e:
-            status_sub.configure(text=f"⚠️ open failed: {e}")
 
     def on_refresh(_e=None):
         _apply_filters()
@@ -687,13 +581,11 @@ def _make_window() -> None:
     pause_lbl["w"].pack(side="left", padx=(0, 4), fill="x", expand=True)
     _small_btn(action_row, "🔄 Refresh", "#37474f", on_refresh).pack(
         side="left", padx=4, fill="x", expand=True)
-    _small_btn(action_row, "🌐 Dashboard", "#0d47a1", on_open_dashboard).pack(
-        side="left", padx=4, fill="x", expand=True)
     _small_btn(action_row, "🗑 Clear", "#b71c1c", on_clear_logs).pack(
         side="left", padx=(4, 0), fill="x", expand=True)
 
     # ── Alert stream ──
-    stream_label = tk.Label(inner, text="📡  Alert stream  ·  click a card to inspect",
+    stream_label = tk.Label(inner, text="📡  Alert stream",
                             bg=BG_PANEL, fg=FG_MUTED,
                             font=("-size", 11, "-weight", "bold"), anchor="w")
     stream_label.pack(fill="x", padx=16, pady=(4, 4))
