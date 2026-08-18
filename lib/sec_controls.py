@@ -196,7 +196,6 @@ def _read_recordrelief_feed(limit: int = 200) -> list[dict]:
         return data[-limit:]
     except (OSError, json.JSONDecodeError):
         return []
-    return []
 
 
 def _merge_and_sort(limit: int = 200) -> list[dict]:
@@ -596,7 +595,10 @@ def _make_window() -> None:
 
     def _rebuild_alerts():
         """Re-render the alert list after a filter change."""
-        _render_alerts(_filter_alerts(_merge_and_sort()))
+        alerts = _merge_and_sort(limit=200)
+        filtered = [a for a in _filter_alerts(alerts)
+                    if _alert_id(a) not in dismissed_ids]
+        _render_alerts(filtered, in_place=True)
 
     def _make_filter_chip(parent, sev: str):
         color = SEV_COLOR[sev]
@@ -823,6 +825,11 @@ def _make_window() -> None:
             empty.pack(fill="x", padx=10)
             card_widgets.append((empty, None, None, None))
             return
+        # Clear any lingering empty-state placeholder before showing cards.
+        for c in list(card_widgets):
+            if c[3] is None:
+                c[0].destroy()
+                card_widgets.remove(c)
         # Key existing cards by alert id so we can patch them in place.
         by_id = {}
         for c in list(card_widgets):
