@@ -56,6 +56,12 @@ _OVERSEER = _REPO_ROOT / "lib" / "overseer.py"
 _CLI = _REPO_ROOT / "engine" / "cli.py"
 _LAUNCHER = _REPO_ROOT / "bin" / "cortexagent"
 
+# Tray menu label literals — TITLE CASE (each major word capitalized).
+# No period, no emoji, no all-caps. Pinned by feedback-tray-label-format.md.
+# Edit the memory, not these.
+_LABEL_START = "Start Main Model"
+_LABEL_STOP = "Stop Main Model"
+
 # Set by _run_gui once the pystray icon exists. The SIGTERM/SIGINT handler
 # uses it to stop the icon so `systemctl stop` / `pkill -f lib.tray` cleanly
 # removes the tray instead of leaving a stuck icon until systemd force-kills.
@@ -157,30 +163,18 @@ def _start_big() -> str:
 def _is_big_running() -> bool:
     """Best-effort check: is the big model currently loaded?
 
-    Tries the daemon control socket's status first; falls back to inspecting
-    the model_backend cache. Returns True only if we can positively confirm
-    the model is loaded. Never raises.
+    Reads the real daemon status payload (control.send_request('status')
+    returns {'big': {'running': bool, ...}, ...}). Never raises.
     """
     try:
         from lib import control
         r = control.send_request("status", timeout=5)
         if r.get("ok"):
-            # Status payload may carry a 'big_loaded' / 'models_loaded' flag.
-            payload = r.get("payload") or {}
-            for key in ("big_loaded", "primary_loaded", "models_loaded"):
-                v = payload.get(key)
-                if isinstance(v, bool):
-                    return v
-                if isinstance(v, str) and v.lower() in ("big", "primary", "loaded"):
-                    return True
+            big = r.get("big") or {}
+            return bool(big.get("running"))
     except Exception:
         pass
-    try:
-        from lib.model_backend import _loaded_models  # type: ignore
-        return any("big" in str(k).lower() or "primary" in str(k).lower()
-                   for k in (_loaded_models() if callable(_loaded_models) else []))
-    except Exception:
-        return False
+    return False
 
 
 def _toggle_big() -> str:
@@ -403,8 +397,13 @@ def _run_gui(quit_event: threading.Event) -> None:
         _launch_cli()
 
     def on_toggle_big(icon, item):
-        """Tray click → toggle the PRIMARY MODEL (start if stopped, stop if running)."""
+        """Tray click → toggle the primary model (start if stopped, stop if running).
+        Rebuilds the menu so the label flips between 'Start' and 'Stop'."""
         _toast(icon, _toggle_big(), "ok")
+        try:
+            icon.update_menu()
+        except Exception:
+            pass
 
     def on_open_webui(icon, item):
         """Tray click → token visualization webui at :8090 (pipeline-viz)."""
@@ -471,12 +470,14 @@ def _run_gui(quit_event: threading.Event) -> None:
         except Exception as e:
             _toast(icon, f"Failed to open browser console: {e}", "info")
 
+    big_label = _LABEL_STOP if _is_big_running() else _LABEL_START
+
     menu = Menu(
         MI("CortexAgent", None, enabled=False),
         Menu.SEPARATOR,
         MI("Open Browser Automation", on_browser_console),
         Menu.SEPARATOR,
-        MI("PRIMARY MODEL", on_toggle_big),
+        MI(big_label, on_toggle_big),
         Menu.SEPARATOR,
         MI("Token Visualization", on_open_webui),
         Menu.SEPARATOR,
