@@ -37,6 +37,43 @@ cortexagent
 
 ---
 
+## Browser automation (generic, any site)
+
+The agent can drive your real browser (Brave on `127.0.0.1:9222`) through 10 generic tools registered in the tool registry:
+
+| Tool | What it does |
+|---|---|
+| `brave_status` | CDP reachability + open tab count |
+| `brave_tabs` | List open tabs (index, title, url) |
+| `brave_navigate` | Navigate a tab to a URL |
+| `brave_fetch` | Fetch page text via the browser (good for JS-heavy sites) |
+| `brave_click` | Click by CSS selector or accessible text |
+| `brave_type` | Type into an element; optionally press Enter |
+| `brave_evaluate` | Evaluate JS and return the result |
+| `brave_snapshot` | Return the accessibility tree |
+| `brave_fill_send` | Fill a shadow-DOM controlled component and press Enter |
+| `brave_health` | Engine health: calls, reconnects, retries, failures, last-call latency |
+
+All tools are site-agnostic — no embedded URLs, no site markers, no canned messages in the engine. Site-specific automation lives in standalone scripts under `scripts/`.
+
+The engine itself (`lib/browser_control.py`) is hardened:
+
+- per-tab websocket pool with one-shot retry on transient errors
+- per-target locks so different tabs run in parallel; same tab serializes
+- 150 ms TTL cache on the tab list so bursts don't re-hit `/json`
+- atexit cleanup so process death doesn't leak sockets on the browser
+- read-only `health()` + `bin/cortexagent-browser-health` for observability
+
+It **never** restarts Brave, **never** touches the CDP port, **never** closes your open tabs.
+
+```bash
+bin/cortexagent-browser-health           # human summary
+bin/cortexagent-browser-health --json    # machine-readable
+bin/cortexagent-browser-health --watch 2 # live ticker (Ctrl-C to stop)
+```
+
+---
+
 ## Speech-to-text popout
 
 Dictate to CortexAgent with a floating control window you use **with the mouse and your voice only** — no keyboard required.
