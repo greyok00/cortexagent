@@ -154,6 +154,42 @@ def _start_big() -> str:
         return f"start failed: {e}"
 
 
+def _is_big_running() -> bool:
+    """Best-effort check: is the big model currently loaded?
+
+    Tries the daemon control socket's status first; falls back to inspecting
+    the model_backend cache. Returns True only if we can positively confirm
+    the model is loaded. Never raises.
+    """
+    try:
+        from lib import control
+        r = control.send_request("status", timeout=5)
+        if r.get("ok"):
+            # Status payload may carry a 'big_loaded' / 'models_loaded' flag.
+            payload = r.get("payload") or {}
+            for key in ("big_loaded", "primary_loaded", "models_loaded"):
+                v = payload.get(key)
+                if isinstance(v, bool):
+                    return v
+                if isinstance(v, str) and v.lower() in ("big", "primary", "loaded"):
+                    return True
+    except Exception:
+        pass
+    try:
+        from lib.model_backend import _loaded_models  # type: ignore
+        return any("big" in str(k).lower() or "primary" in str(k).lower()
+                   for k in (_loaded_models() if callable(_loaded_models) else []))
+    except Exception:
+        return False
+
+
+def _toggle_big() -> str:
+    """Toggle the primary model: stop if running, start if not."""
+    if _is_big_running():
+        return _stop_big()
+    return _start_big()
+
+
 def _reload_models() -> str:
     _log("reloading models (all)…", "🔄", CYAN)
     rc, out = _run_cli("models", "reload", "all", timeout=300)
@@ -366,11 +402,15 @@ def _run_gui(quit_event: threading.Event) -> None:
     def on_cli(icon, item):
         _launch_cli()
 
+    def on_toggle_big(icon, item):
+        """Tray click → toggle the PRIMARY MODEL (start if stopped, stop if running)."""
+        _toast(icon, _toggle_big(), "ok")
+
     def on_open_webui(icon, item):
-        """Tray click → 8090 webui (the single dashboard, per R5)."""
+        """Tray click → token visualization webui at :8090 (pipeline-viz)."""
         import webbrowser
-        webbrowser.open("http://127.0.0.1:8090/")
-        _log("opened webui: http://127.0.0.1:8090/", "🌐", CYAN)
+        webbrowser.open("http://127.0.0.1:8090/pipeline-viz.html")
+        _log("opened token visualization: http://127.0.0.1:8090/pipeline-viz.html", "🌐", CYAN)
 
     def on_dashboard(icon, item):
         """Tray click → popout overseer dashboard (NOT the :8090 webui).
@@ -419,20 +459,26 @@ def _run_gui(quit_event: threading.Event) -> None:
         except Exception as e:
             _toast(icon, f"Failed to open STT controls: {e}", "info")
 
+    # ── Open browser console window ───────────────────────────────────────
+    def on_browser_console(icon, item):
+        """Open the floating browser-automation chat console."""
+        try:
+            import importlib
+            import lib.browser_console as _bc
+            _bc = importlib.reload(_bc)
+            _bc.open_in_thread()
+            _toast(icon, "Browser console opened", "ok")
+        except Exception as e:
+            _toast(icon, f"Failed to open browser console: {e}", "info")
+
     menu = Menu(
         MI("CortexAgent", None, enabled=False),
         Menu.SEPARATOR,
-        MI("STT Controls", on_stt_controls),
-        MI("Overseer dashboard", on_dashboard),
-        MI("Launch CLI", on_cli),
+        MI("Open Browser Automation", on_browser_console),
         Menu.SEPARATOR,
-        MI("Stop big model", on_stop_big),
-        MI("Start big model", on_start_big),
+        MI("PRIMARY MODEL", on_toggle_big),
         Menu.SEPARATOR,
-        MI("Reload models", on_reload),
-        MI("Restart overseer", on_restart_ov),
-        MI("Reload config", on_reload_cfg),
-        MI("Open webui (8090)", on_open_webui),
+        MI("Token Visualization", on_open_webui),
         Menu.SEPARATOR,
         MI("Quit", on_quit),
     )
