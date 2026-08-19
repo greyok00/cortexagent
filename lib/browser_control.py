@@ -23,6 +23,7 @@ Usage:
 """
 from __future__ import annotations
 
+import atexit
 import json
 import sys
 import threading
@@ -36,13 +37,51 @@ import websocket  # websocket-client
 CDP_HTTP = "http://127.0.0.1:9222"
 CDP_URL = CDP_HTTP  # alias kept for the MCP server import
 
+# Per-target locks: serialize within one tab (one websocket), parallelize across
+# tabs. Falls back to a module-level lock for non-target-scoped ops.
 _lock = threading.RLock()
+_target_locks: Dict[str, threading.RLock] = {}
+_target_locks_guard = threading.Lock()
 _ws_cache: Dict[str, Any] = {}    # targetId -> websocket
 _id_counter: Dict[str, int] = {}  # targetId -> next message id
+
+# Short-TTL cache for /json so a burst of resolve_tab calls hits the network
+# at most once. Tab list is cheap to fetch but pointless to repeat inside a
+# tool batch. ~150ms covers a typical MCP burst without losing freshness.
+_TABS_TTL_SEC = 0.15
+_tabs_cache: List[Dict[str, Any]] = []
+_tabs_cache_at: float = 0.0
+
+_atexit_registered = False
+
+
+def _atexit_close() -> None:
+    """Best-effort cleanup at interpreter exit so we don't leak sockets on the
+    browser side when our process dies. Idempotent."""
+    try:
+        close()
+    except Exception:
+        pass
+
+
+if not _atexit_registered:
+    atexit.register(_atexit_close)
+    _atexit_registered = True
 
 
 def _http_json(path: str) -> Any:
     return json.load(urllib.request.urlopen(CDP_HTTP + path, timeout=5))
+
+
+def _lock_for(target_id: str) -> threading.RLock:
+    """Return a per-target RLock. Lazily created under a guard so two callers
+    asking for the same target get the same lock."""
+    with _target_locks_guard:
+        lk = _target_locks.get(target_id)
+        if lk is None:
+            lk = threading.RLock()
+            _target_locks[target_id] = lk
+        return lk
 
 
 def _next_id(target_id: str) -> int:
@@ -51,8 +90,32 @@ def _next_id(target_id: str) -> int:
 
 
 def _get_ws(target_id: str) -> Any:
-    """Return a live page-level websocket for target_id, reconnecting if dead."""
+    """Return a live page-level websocket for target_id, reconnecting if dead.
+
+    Validates the cached socket's target is still in the browser's tab list
+    (handles navigation / tab close without disturbing anything else). Sets a
+    socket recv timeout so a hung tab cannot block past the caller's deadline.
+    """
     ws = _ws_cache.get(target_id)
+    if ws is not None:
+        # Cheap liveness check: target id must still exist in /json.
+        try:
+            tabs = _http_json("/json")
+        except Exception:
+            # /json failed — assume cached socket may be stale; drop and reconnect.
+            try: ws.close()
+            except Exception: pass
+            _ws_cache.pop(target_id, None)
+            ws = None
+            _invalidate_tabs_cache()  # refresh on the way back up
+        else:
+            still_alive = any(t.get("id") == target_id for t in tabs)
+            if not still_alive:
+                try: ws.close()
+                except Exception: pass
+                _ws_cache.pop(target_id, None)
+                ws = None
+                _invalidate_tabs_cache()
     if ws is not None:
         return ws
     tabs = _http_json("/json")
@@ -60,50 +123,82 @@ def _get_ws(target_id: str) -> Any:
     if not ws_url:
         raise RuntimeError(f"tab {target_id} not found")
     ws = websocket.create_connection(ws_url, timeout=2, suppress_origin=True)
+    ws.settimeout(2.0)  # recv-level timeout; caller's deadline still wins via the loop
     ws.send(json.dumps({"id": _next_id(target_id), "method": "Runtime.enable"}))
     ws.send(json.dumps({"id": _next_id(target_id), "method": "Page.enable"}))
     _ws_cache[target_id] = ws
+    _invalidate_tabs_cache()  # a fresh connect implies the cache may be stale
     return ws
 
 
 def _eval(target_id: str, expression: str, timeout: float = 8.0) -> Any:
-    """Evaluate JS in a tab, returning the result value (or None)."""
-    with _lock:
-        ws = _get_ws(target_id)
-        msg_id = _next_id(target_id)
-        ws.send(json.dumps({"id": msg_id, "method": "Runtime.evaluate",
-                            "params": {"expression": expression, "returnByValue": True}}))
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+    """Evaluate JS in a tab, returning the result value (or None).
+
+    One-shot retry: if the first attempt times out or the socket errors, the
+    cached socket is evicted and we make one more attempt on a fresh socket
+    before giving up. This rides out transient tab navigation / socket churn
+    without disturbing anything else (no browser restart, no tab close).
+    """
+    for attempt in (1, 2):
+        with _lock_for(target_id):
             try:
-                msg = json.loads(ws.recv())
-            except Exception:
-                _ws_cache.pop(target_id, None)  # socket died — reconnect next call
+                ws = _get_ws(target_id)
+            except RuntimeError:
                 return None
-            if msg.get("id") == msg_id:
-                r = msg.get("result", {})
-                if "exceptionDetails" in r:
-                    return None
-                return r.get("result", {}).get("value")
-        return None
+            try:
+                ws.settimeout(max(0.5, timeout))
+                msg_id = _next_id(target_id)
+                ws.send(json.dumps({"id": msg_id, "method": "Runtime.evaluate",
+                                    "params": {"expression": expression, "returnByValue": True}}))
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    try:
+                        msg = json.loads(ws.recv())
+                    except (websocket.WebSocketTimeoutException, TimeoutError, OSError, ValueError):
+                        break  # recv timed out or socket died — retry once
+                    except Exception:
+                        break
+                    if msg.get("id") == msg_id:
+                        r = msg.get("result", {})
+                        if "exceptionDetails" in r:
+                            return None
+                        return r.get("result", {}).get("value")
+            except Exception:
+                pass
+            _ws_cache.pop(target_id, None)
+        # end of attempt — fall through to retry
+    return None
 
 
 def _cmd(target_id: str, method: str, params: Dict[str, Any], timeout: float = 10.0) -> Any:
-    """Send a CDP command (non-evaluate) and return the result dict (or None)."""
-    with _lock:
-        ws = _get_ws(target_id)
-        msg_id = _next_id(target_id)
-        ws.send(json.dumps({"id": msg_id, "method": method, "params": params}))
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+    """Send a CDP command (non-evaluate) and return the result dict (or None).
+
+    Same one-shot retry semantics as _eval.
+    """
+    for attempt in (1, 2):
+        with _lock_for(target_id):
             try:
-                msg = json.loads(ws.recv())
-            except Exception:
-                _ws_cache.pop(target_id, None)
+                ws = _get_ws(target_id)
+            except RuntimeError:
                 return None
-            if msg.get("id") == msg_id:
-                return msg.get("result", {})
-        return None
+            try:
+                ws.settimeout(max(0.5, timeout))
+                msg_id = _next_id(target_id)
+                ws.send(json.dumps({"id": msg_id, "method": method, "params": params}))
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    try:
+                        msg = json.loads(ws.recv())
+                    except (websocket.WebSocketTimeoutException, TimeoutError, OSError, ValueError):
+                        break
+                    except Exception:
+                        break
+                    if msg.get("id") == msg_id:
+                        return msg.get("result", {})
+            except Exception:
+                pass
+            _ws_cache.pop(target_id, None)
+    return None
 
 
 def close() -> None:
@@ -116,6 +211,10 @@ def close() -> None:
                 pass
         _ws_cache.clear()
         _id_counter.clear()
+        _tabs_cache.clear()
+        _tabs_cache_at = 0.0
+    with _target_locks_guard:
+        _target_locks.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -123,10 +222,27 @@ def close() -> None:
 # ---------------------------------------------------------------------------
 
 def list_tabs() -> List[Dict[str, Any]]:
-    """Return [{index, id, title, url}] for every open page tab."""
-    tabs = _http_json("/json")
-    return [{"index": i, "id": t.get("id"), "title": t.get("title", ""), "url": t.get("url", "")}
-            for i, t in enumerate(tabs) if t.get("type") == "page"]
+    """Return [{index, id, title, url}] for every open page tab.
+
+    Cached for ~150ms so a burst of resolve_tab calls inside one tool batch
+    does not re-hit /json every time.
+    """
+    global _tabs_cache, _tabs_cache_at
+    now = time.time()
+    if _tabs_cache and (now - _tabs_cache_at) < _TABS_TTL_SEC:
+        return _tabs_cache
+    raw = _http_json("/json")
+    _tabs_cache = [{"index": i, "id": t.get("id"), "title": t.get("title", ""),
+                    "url": t.get("url", "")}
+                   for i, t in enumerate(raw) if t.get("type") == "page"]
+    _tabs_cache_at = now
+    return _tabs_cache
+
+
+def _invalidate_tabs_cache() -> None:
+    """Force the next list_tabs() to refetch /json. Used by new_tab()."""
+    global _tabs_cache_at
+    _tabs_cache_at = 0.0
 
 
 def find_tab(url_prefix: str) -> Optional[str]:
@@ -166,6 +282,7 @@ def new_tab(url: str = "") -> str:
         CDP_HTTP + "/json/new?" + urllib.parse.quote(url or "about:blank"), method="PUT")
     with urllib.request.urlopen(req, timeout=5) as r:
         info = json.load(r)
+    _invalidate_tabs_cache()  # new tab must be visible to the next resolve_tab
     return info.get("id")
 
 
