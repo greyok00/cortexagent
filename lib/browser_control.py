@@ -52,6 +52,20 @@ _TABS_TTL_SEC = 0.15
 _tabs_cache: List[Dict[str, Any]] = []
 _tabs_cache_at: float = 0.0
 
+# Lightweight in-process metrics. Read via health(). Counters are atomic enough
+# for observability purposes (no exactness needed). Zero behavior change to
+# callers — pure observation.
+_metrics_lock = threading.Lock()
+_metrics: Dict[str, Any] = {
+    "calls": 0,            # total _eval / _cmd calls
+    "reconnects": 0,       # websocket reconnects (stale target or first connect)
+    "json_fetches": 0,     # /json HTTP round-trips (cache misses + liveness checks)
+    "retries": 0,          # one-shot retries inside _eval / _cmd
+    "failures": 0,         # calls returning None due to error or timeout
+    "last_call_ms": 0.0,   # wall-clock duration of the most recent call
+    "started_at": time.time(),
+}
+
 _atexit_registered = False
 
 
@@ -70,6 +84,8 @@ if not _atexit_registered:
 
 
 def _http_json(path: str) -> Any:
+    with _metrics_lock:
+        _metrics["json_fetches"] += 1
     return json.load(urllib.request.urlopen(CDP_HTTP + path, timeout=5))
 
 
@@ -128,6 +144,8 @@ def _get_ws(target_id: str) -> Any:
     ws.send(json.dumps({"id": _next_id(target_id), "method": "Page.enable"}))
     _ws_cache[target_id] = ws
     _invalidate_tabs_cache()  # a fresh connect implies the cache may be stale
+    with _metrics_lock:
+        _metrics["reconnects"] += 1
     return ws
 
 
@@ -139,12 +157,17 @@ def _eval(target_id: str, expression: str, timeout: float = 8.0) -> Any:
     before giving up. This rides out transient tab navigation / socket churn
     without disturbing anything else (no browser restart, no tab close).
     """
+    t0 = time.time()
+    with _metrics_lock:
+        _metrics["calls"] += 1
+    last = None
     for attempt in (1, 2):
         with _lock_for(target_id):
             try:
                 ws = _get_ws(target_id)
             except RuntimeError:
-                return None
+                last = None
+                break
             try:
                 ws.settimeout(max(0.5, timeout))
                 msg_id = _next_id(target_id)
@@ -161,13 +184,25 @@ def _eval(target_id: str, expression: str, timeout: float = 8.0) -> Any:
                     if msg.get("id") == msg_id:
                         r = msg.get("result", {})
                         if "exceptionDetails" in r:
-                            return None
-                        return r.get("result", {}).get("value")
+                            last = None
+                            break
+                        last = r.get("result", {}).get("value")
+                        break
             except Exception:
                 pass
             _ws_cache.pop(target_id, None)
-        # end of attempt — fall through to retry
-    return None
+            if attempt == 1:
+                with _metrics_lock:
+                    _metrics["retries"] += 1
+                continue
+            break
+        # loop ends naturally after attempt 1 (continue) or attempt 2 (break)
+    dt_ms = (time.time() - t0) * 1000.0
+    with _metrics_lock:
+        _metrics["last_call_ms"] = dt_ms
+        if last is None:
+            _metrics["failures"] += 1
+    return last
 
 
 def _cmd(target_id: str, method: str, params: Dict[str, Any], timeout: float = 10.0) -> Any:
@@ -175,12 +210,17 @@ def _cmd(target_id: str, method: str, params: Dict[str, Any], timeout: float = 1
 
     Same one-shot retry semantics as _eval.
     """
+    t0 = time.time()
+    with _metrics_lock:
+        _metrics["calls"] += 1
+    last = None
     for attempt in (1, 2):
         with _lock_for(target_id):
             try:
                 ws = _get_ws(target_id)
             except RuntimeError:
-                return None
+                last = None
+                break
             try:
                 ws.settimeout(max(0.5, timeout))
                 msg_id = _next_id(target_id)
@@ -194,11 +234,47 @@ def _cmd(target_id: str, method: str, params: Dict[str, Any], timeout: float = 1
                     except Exception:
                         break
                     if msg.get("id") == msg_id:
-                        return msg.get("result", {})
+                        last = msg.get("result", {})
+                        break
             except Exception:
                 pass
             _ws_cache.pop(target_id, None)
-    return None
+            if attempt == 1:
+                with _metrics_lock:
+                    _metrics["retries"] += 1
+                continue
+            break
+    dt_ms = (time.time() - t0) * 1000.0
+    with _metrics_lock:
+        _metrics["last_call_ms"] = dt_ms
+        if last is None:
+            _metrics["failures"] += 1
+    return last
+
+
+def health() -> Dict[str, Any]:
+    """Return a snapshot of the engine's runtime metrics + CDP reachability.
+
+    Generic — reports counts and latencies, no site data. Safe to call from
+    any consumer (tools, doctor, scripts). Never raises.
+    """
+    snap: Dict[str, Any] = {}
+    with _metrics_lock:
+        snap.update(_metrics)
+    snap["uptime_sec"] = time.time() - snap.get("started_at", time.time())
+    snap.pop("started_at", None)
+    snap["cached_sockets"] = len(_ws_cache)
+    snap["cached_tab_list_age_ms"] = int((time.time() - _tabs_cache_at) * 1000) if _tabs_cache else -1
+    # Live reachability probe (cheap, ~ms): if it fails, surface as not reachable.
+    try:
+        with urllib.request.urlopen(CDP_HTTP + "/json/version", timeout=2) as r:
+            info = json.load(r)
+        snap["cdp_reachable"] = True
+        snap["browser"] = info.get("Browser", "")
+    except Exception as e:
+        snap["cdp_reachable"] = False
+        snap["cdp_error"] = str(e)[:200]
+    return snap
 
 
 def close() -> None:
