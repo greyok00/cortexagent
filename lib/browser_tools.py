@@ -25,7 +25,7 @@ if str(_LIB) not in sys.path:
 
 from browser_control import (  # noqa: E402
     CDP_URL, close, list_tabs, navigate, fetch, click, type_text,
-    evaluate, snapshot, fill_and_send,
+    evaluate, snapshot, fill_and_send, health,
 )
 
 from lib.tool_registry import register_tool  # noqa: E402
@@ -75,6 +75,8 @@ _TOOL_DEFS = [
       "class_fragment": {"type": "string", "description": "Substring of the element's class (e.g. 'embeddedMessagingInputFooterTextArea')."},
       "submit": {"type": "boolean", "description": "Press Enter after filling (default true)."},
       "tab": _TAB}, ["text"]),
+    ("brave_health", "Return engine health: CDP reachability, tab count, reconnect count, average call latency, cached sockets. Generic — no site data.",
+     {}, []),
 ]
 
 
@@ -167,6 +169,24 @@ def _handle_fill_send(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": f"Fill/send failed: {e}"}
 
 
+def _handle_health(args: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        h = health()
+        if not h.get("cdp_reachable"):
+            return {"ok": False, "output": "", "error": h.get("cdp_error", "CDP unreachable")}
+        # Format as a compact, scannable multiline string.
+        lines = [
+            f"CDP: {h.get('browser', '?')}",
+            f"  reachable: yes   uptime: {h.get('uptime_sec', 0):.1f}s",
+            f"  calls: {h.get('calls', 0)}   reconnects: {h.get('reconnects', 0)}   retries: {h.get('retries', 0)}   failures: {h.get('failures', 0)}",
+            f"  /json fetches: {h.get('json_fetches', 0)}   cached_sockets: {h.get('cached_sockets', 0)}",
+            f"  last_call: {h.get('last_call_ms', 0):.1f}ms",
+        ]
+        return {"ok": True, "output": "\n".join(lines), "error": ""}
+    except Exception as e:
+        return {"ok": False, "output": "", "error": f"Health check failed: {e}"}
+
+
 _HANDLERS = {
     "brave_status": _handle_status,
     "brave_tabs": _handle_tabs,
@@ -177,6 +197,7 @@ _HANDLERS = {
     "brave_evaluate": _handle_evaluate,
     "brave_snapshot": _handle_snapshot,
     "brave_fill_send": _handle_fill_send,
+    "brave_health": _handle_health,
 }
 
 
