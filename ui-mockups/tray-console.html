@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CortexAgent tray popup → console</title>
+<title>Tray popup · Tk mockup</title>
 <style>
   :root {
     --bg:      #0a0c10;
@@ -229,7 +229,7 @@
             <b>sshd</b> — 10 baseline deviations<br>
             <b>sysctl</b> — 11/17 match · 5 differ
           </div>
-          <button class="btn" onclick="window.open('cortexagent-console.html','CortexAgent','width=1320,height=820')">Open full console →</button>
+          <button class="btn" onclick="alert('in production: focus Brave window + raise to front')">Focus Brave ⤴</button>
         </div>
 
         <div class="soar">
@@ -243,19 +243,13 @@
 
     <!-- The tray menu -->
     <div class="tray-menu">
-      <div class="item" onclick="window.open('cortexagent-console.html','CortexAgent','width=1320,height=820')">
+      <div class="item" onclick="alert('in production: focus Brave window + raise to front')">
         <span class="dot"></span>
-        <span>3 hardening failures · open console</span>
+        <span>3 hardening failures · focus Brave</span>
         <span class="kbd">⌘⇧H</span>
       </div>
       <div class="item"><span class="dot ok"></span><span>SIEM · 1,847 events</span></div>
       <div class="item"><span class="dot ok"></span><span>SOAR · 12 runs 24h</span></div>
-      <div class="sep"></div>
-      <div class="item" onclick="window.open('cortexagent-console.html','CortexAgent','width=1320,height=820')">
-        <span>◆ Open full CortexAgent console</span><span class="kbd">⌘⇧A</span>
-      </div>
-      <div class="item"><span>Open OSINT portal</span><span class="kbd">⌘⇧O</span></div>
-      <div class="item"><span>Open pipeline</span><span class="kbd">⌘⇧P</span></div>
       <div class="sep"></div>
       <div class="item"><span>Pause automation</span></div>
       <div class="item"><span>Quit</span></div>
@@ -273,25 +267,27 @@
   </div>
 
   <div class="notes">
-    <h3>Tray popup → full console flow</h3>
+    <h3>Tray popup — scope &amp; behaviour</h3>
     <ul>
-      <li><b>This popup is the collapsed tray window.</b> 720×480, lives next to the tray icon.
+      <li><b>This popup is the only tray surface.</b> 720×480, lives next to the tray icon.
           Shows the 9-check strip + an attention callout + 3 most-recent SOAR runs. That's the
           entire "do I need to act?" question in one frame.</li>
-      <li><b>"Open full console →"</b> opens
-          <a href="cortexagent-console.html"><code>cortexagent-console.html</code></a>
-          (1320×820 Tauri-window mockup) — full console with sidebar nav across Security/Agent/OSINT/Cases,
-          live status bar across surfaces, embedded xterm.js terminal at the bottom.</li>
-      <li><b>From the tray menu</b> the item <b>"◆ Open full CortexAgent console"</b> (⌘⇧A)
-          does the same. The "3 hardening failures · open console" item (⌘⇧H) also opens
-          the console and lands on the Security tab.</li>
-      <li><b>In production this becomes:</b> tray icon → right-click menu (Tk popup like
-          <code>sec_tray.py</code>) → click opens the Tauri WebviewWindow at 1320×820 with the
-          same layout. The Tauri app keeps a tray icon for the always-visible collapsed state.</li>
-      <li><b>Pattern reuse:</b> the existing <code>sec_tray.py</code> 372-line Tk popup stays
-          as the tray collapsed view (with its severity-color padlock). The Tauri app is the
-          expanded view. Both share the same data sources (SIEM db, big-model status, etc.).</li>
-      <li><b>No auth in either view:</b> localhost-only; webui bound to <code>127.0.0.1</code>,
+      <li><b>Production = Tk.</b> The popup is implemented in <code>sec_tray.py</code> as a Tk
+          window — <b>not</b> a web console. It opens, gets focus, and falls back to a
+          click-through state so the user can keep monitoring the Brave browser window without
+          the popup eating input.</li>
+      <li><b>"Focus Brave" button</b> raises the Brave window back to front. The 9-check strip
+          is read-only and updates every ~60 s from the SIEM/SOAR feed.</li>
+      <li><b>Three separate projects — do not mix:</b>
+          <ul>
+            <li>(1) this tray popup — Tk — lives in <code>cortexagent/lib/sec_tray.py</code></li>
+            <li>(2) OSINT tool — Flask + SQLCipher — <code>http://127.0.0.1:9999</code></li>
+            <li>(3) Security-tool UI / SIEM + SOAR — cockpit HMI — separate process</li>
+          </ul>
+          The popup can show status for (2) and (3) via read-only API calls but it does not
+          embed or open them.
+      </li>
+      <li><b>No auth in any view:</b> localhost-only; everything bound to <code>127.0.0.1</code>,
           never <code>0.0.0.0</code> (per the localhost-only binding rule).</li>
     </ul>
   </div>
