@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tray popup · cards variant</title>
+<link rel="stylesheet" href="../_elements/elements.css">
+<style>
+  /* Compact Stat Block */
+  :root {
+    --el-bg: #1a1a1a;
+    --el-panel: #252525;
+    --el-panel-2: #2e2e2e;
+    --el-line: #3a3a3a;
+    --el-ink: #e8e8e8;
+    --el-ink-soft: #999;
+    --el-accent: #ff8c42;
+    --el-ok: #7fbf7f;
+    --el-warn: #e6c060;
+    --el-fail: #e06c5a;
+    --el-live: #ff8c42;
+  }
+  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 13px/1.5 var(--el-font-body); }
+  .popup { width: 672px; height: 372px; padding: 14px; background: var(--el-panel); border: 1px solid var(--el-line); border-radius: 6px; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--el-line); }
+  .head h1 { font: 700 14px/1 var(--el-font-display); margin: 0; }
+  .head h1 small { font: 11px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 10px; height: 240px; }
+  .card {
+    background: var(--el-panel-2);
+    border: 1px solid var(--el-line);
+    border-radius: 4px;
+    padding: 10px 12px;
+    overflow: hidden;
+    position: relative;
+    cursor: pointer;
+    transition: all 200ms ease;
+  }
+  .card:hover, .card.locked {
+    height: auto;
+    min-height: 100px;
+    max-height: 240px;
+    overflow: auto;
+    z-index: 5;
+    box-shadow: 0 4px 16px rgba(0,0,0,.6);
+    border-color: var(--el-accent);
+  }
+  .card .head { font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.08em; text-transform: uppercase; margin: 0; padding: 0; border: 0; }
+  .card .head .badge { float: right; font-size: 10px; color: var(--el-ink-soft); }
+  .card .body { margin-top: 6px; font: 11px var(--el-font-mono); color: var(--el-ink); }
+  .card .detail { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--el-line); }
+  .card:hover .detail, .card.locked .detail { display: block; }
+  .spark { width: 100%; height: 24px; }
+  .mini { display: flex; flex-direction: column; gap: 4px; }
+  .mini-bar { font: 10px var(--el-font-mono); display: grid; grid-template-columns: 50px 1fr 40px; gap: 8px; align-items: center; }
+  .mini-bar .track { height: 6px; background: var(--el-line); border-radius: 3px; overflow: hidden; }
+  .mini-bar .fill { display: block; height: 100%; background: var(--el-accent); }
+  .run { font: 10px var(--el-font-mono); padding: 3px 6px; border-left: 2px solid var(--el-line); margin-top: 3px; }
+  .run.HIGH { border-left-color: var(--el-fail); }
+  .run.OK { border-left-color: var(--el-ok); }
+  .run .lvl { color: var(--el-accent); font-weight: 700; }
+  .foot { font: 10px var(--el-font-mono); color: var(--el-ink-soft); margin-top: 10px; text-align: center; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+<div class="popup">
+
+  <div class="head">
+    <h1>Tray popup · hover cards <small>click to lock · 6 status blocks</small></h1>
+    <button class="el-btn" onclick="alert('Raising Brave window')">Focus Brave ⤴</button>
+  </div>
+
+  <div class="grid">
+
+    <div class="card">
+      <div class="head">AUDITD <span class="badge">FAIL</span></div>
+      <div class="body">overflow · 0 events / 60 s</div>
+      <div class="detail">
+        <svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none">
+          <polyline points="0,4 10,8 20,18 30,22 40,20 50,12 60,8 70,4 80,2 90,6 100,8" fill="none" stroke="var(--el-fail)" stroke-width="1.5"/>
+        </svg>
+        <div class="body" style="margin-top:6px;color:var(--el-ink-soft);">peak 22 events @ 10:47</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head">NFT <span class="badge">FAIL</span></div>
+      <div class="body">drop rule missing</div>
+      <div class="detail">
+        <div class="mini">
+          <div class="mini-bar"><span>sshd</span><span class="track"><span class="fill" style="width:38%;background:var(--el-ok);"></span></span><span>38%</span></div>
+          <div class="mini-bar"><span>nft</span><span class="track"><span class="fill" style="width:84%;background:var(--el-fail);"></span></span><span>84%</span></div>
+          <div class="mini-bar"><span>auditd</span><span class="track"><span class="fill" style="width:62%;background:var(--el-warn);"></span></span><span>62%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head">SSHD <span class="badge">OK</span></div>
+      <div class="body">147 attempts · 0 breaches</div>
+      <div class="detail">
+        <svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none">
+          <polyline points="0,18 10,20 20,14 30,8 40,12 50,6 60,4 70,8 80,2 90,4 100,6" fill="none" stroke="var(--el-ok)" stroke-width="1.5"/>
+        </svg>
+        <div class="body" style="margin-top:6px;color:var(--el-ink-soft);">top: 198.51.100.42 (KEV)</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head">SOAR runs <span class="badge">3</span></div>
+      <div class="body">last · 11:13 block-src</div>
+      <div class="detail">
+        <div class="run HIGH"><span class="lvl">HIGH</span> 11:13 · block-src · 0.8 s</div>
+        <div class="run OK"><span class="lvl">OK</span> 10:47 · isolate-host · 5m 12s</div>
+        <div class="run HIGH"><span class="lvl">HIGH</span> 09:22 · enrich-cve · 3.4 s</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head">OSINT :9999 <span class="badge">4 cases</span></div>
+      <div class="body" data-hover-detail data-detail="4 cases open · CASE-01 active · 12 facts">read-only · CASE-01 active</div>
+      <div class="detail">
+        <div class="body" style="color:var(--el-ink-soft);">CASE-01 · Reinhart trust trace</div>
+        <div class="body" style="color:var(--el-ink-soft);">CASE-02 · assessor refresh</div>
+        <div class="body" style="color:var(--el-ink-soft);">CASE-04 · Q4 cohort</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head">SECURITY-UI <span class="badge">7 ev</span></div>
+      <div class="body" data-hover-detail data-detail="7 events · 2 staged rules · last 11:13">read-only · 2 staged</div>
+      <div class="detail">
+        <div class="body" style="color:var(--el-ink-soft);">3 CRIT · 4 HIGH</div>
+        <div class="body" style="color:var(--el-warn);">2 rules waiting on approval</div>
+        <div class="body" style="color:var(--el-ink-soft);">last event 11:13:18</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="foot">— click a card to lock open · 6 status blocks · monitor-only —</div>
+</div>
+<script src="../_elements/elements.js"></script>
+</body>
+</html>

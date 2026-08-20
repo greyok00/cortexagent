@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tray popup · timeline variant</title>
+<link rel="stylesheet" href="../_elements/elements.css">
+<style>
+  /* Polaroid Wall — warm paper */
+  :root {
+    --el-bg: #faf3e3;
+    --el-panel: #f1e8d0;
+    --el-panel-2: #e8dec2;
+    --el-line: #d4c69b;
+    --el-ink: #3a2e22;
+    --el-ink-soft: #7a6952;
+    --el-accent: #b8693c;
+    --el-ok: #5a7a4a;
+    --el-warn: #c18a2c;
+    --el-fail: #a83232;
+    --el-live: #b8693c;
+  }
+  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 14px/1.5 var(--el-font-body); }
+  .popup { width: 672px; height: 372px; padding: 16px; background: var(--el-panel); border: 1px solid var(--el-line); border-radius: 6px; box-shadow: 0 4px 24px rgba(0,0,0,.18); }
+  .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--el-line); }
+  .head h1 { font: 700 15px/1 var(--el-font-display); margin: 0; }
+  .head h1 small { font: 11px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
+  .section-label { font: 700 10px var(--el-font-mono); color: var(--el-ink-soft); letter-spacing: 0.14em; text-transform: uppercase; margin: 12px 0 6px; }
+  .strip { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+  .strip .el-pill { justify-content: center; padding: 4px 6px; font-size: 10px; }
+  .cross { display: flex; gap: 12px; padding: 8px 0; }
+  .runs { display: flex; flex-direction: column; gap: 4px; }
+  .run { font: 11px var(--el-font-mono); padding: 4px 8px; border-left: 3px solid var(--el-line); background: var(--el-panel-2); display: grid; grid-template-columns: 64px 110px 1fr; gap: 12px; }
+  .run.HIGH { border-left-color: var(--el-fail); }
+  .run.OK { border-left-color: var(--el-ok); }
+  .run .lvl { color: var(--el-accent); font-weight: 700; }
+  .run.HIGH .lvl { color: var(--el-fail); }
+  .run.OK .lvl { color: var(--el-ok); }
+  .foot { font: 10px var(--el-font-mono); color: var(--el-ink-soft); margin-top: 12px; text-align: center; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+<div class="popup">
+
+  <div class="head">
+    <h1>Tray popup <small>monitor-only · read-only cross-status</small></h1>
+    <button class="el-btn" onclick="alert('Raising Brave window')">Focus Brave ⤴</button>
+  </div>
+
+  <div class="section-label">Recent events · timeline</div>
+  <div class="el-timeline-h" style="margin: 6px 0 4px;">
+    <span class="ev CRIT"><span class="t">11:13</span><span class="rule">block-src</span><span class="txt">KEV CVE</span></span>
+    <span class="ev CRIT"><span class="t">11:02</span><span class="rule">nft-fail</span><span class="txt">drop</span></span>
+    <span class="ev CRIT"><span class="t">10:47</span><span class="rule">isolate</span><span class="txt">host-07</span></span>
+    <span class="ev HIGH"><span class="t">10:18</span><span class="rule">auditd</span><span class="txt">overflow</span></span>
+    <span class="ev HIGH"><span class="t">09:55</span><span class="rule">enrich</span><span class="txt">CVE</span></span>
+    <span class="ev HIGH"><span class="t">09:22</span><span class="rule">scan</span><span class="txt">path err</span></span>
+    <span class="ev OK"><span class="t">08:14</span><span class="rule">agent</span><span class="txt">401 vs 402</span></span>
+    <span class="ev OK"><span class="t">07:51</span><span class="rule">backup</span><span class="txt">nightly</span></span>
+    <span class="ev OK"><span class="t">07:02</span><span class="rule">update</span><span class="txt">CVE feed</span></span>
+    <span class="ev OK"><span class="t">06:30</span><span class="rule">heart</span><span class="txt">beat</span></span>
+  </div>
+
+  <div class="section-label">9-check status</div>
+  <div class="strip">
+    <span class="el-pill fail"><span class="el-dot fail"></span>auditd</span>
+    <span class="el-pill fail"><span class="el-dot fail"></span>nft</span>
+    <span class="el-pill fail"><span class="el-dot fail"></span>apparmor</span>
+    <span class="el-pill fail"><span class="el-dot fail"></span>integrity</span>
+    <span class="el-pill warn"><span class="el-dot warn"></span>firewall</span>
+    <span class="el-pill ok"><span class="el-dot ok"></span>dns</span>
+    <span class="el-pill ok"><span class="el-dot ok"></span>sshd</span>
+    <span class="el-pill ok"><span class="el-dot ok"></span>fapolicy</span>
+    <span class="el-pill ok"><span class="el-dot ok"></span>lockdown</span>
+  </div>
+
+  <div class="section-label">Cross-status · read-only</div>
+  <div class="cross">
+    <span class="el-pill ok" data-hover-detail data-detail="OSINT :9999 · 4 cases open · 12 facts in CASE-01">OSINT :9999 · 4 cases</span>
+    <span class="el-pill warn" data-hover-detail data-detail="Security-UI · 7 events / 2 staged rules · last 11:13">Security-UI · 7 events</span>
+  </div>
+
+  <div class="section-label">Recent SOAR runs</div>
+  <div class="runs">
+    <div class="run HIGH"><span class="lvl">HIGH</span><span>11:13 · block-src</span><span>KEV CVE-2025-30872 — 0.8 s</span></div>
+    <div class="run OK"><span class="lvl">OK</span><span>10:47 · isolate-host</span><span>workstation-07 quarantined — 5m 12s</span></div>
+    <div class="run HIGH"><span class="lvl">HIGH</span><span>09:22 · enrich-cve</span><span>CVE-2025-30901 — 3.4 s</span></div>
+  </div>
+
+  <div class="foot">— monitor-only · read-only cross-status · no cross-project launches —</div>
+</div>
+</body>
+</html>
