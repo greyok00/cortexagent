@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Three projects · UI mockup sprint</title>
+<link rel="stylesheet" href="_elements/elements.css">
+<style>
+  :root {
+    --el-bg: #0d1015;
+    --el-panel: #161a21;
+    --el-panel-2: #1c2128;
+    --el-line: #2a323d;
+    --el-ink: #dde6f0;
+    --el-ink-soft: #8b9aaa;
+    --el-accent: #ffb000;
+    --el-ok: #5fe09a;
+    --el-warn: #ffd166;
+    --el-fail: #ff5a52;
+  }
+  body { margin: 0; padding: 32px; background: var(--el-bg); color: var(--el-ink); font: 14px/1.5 var(--el-font-body); }
+  .head { padding-bottom: 18px; border-bottom: 2px solid var(--el-line); margin-bottom: 28px; }
+  .head h1 { font: 700 24px/1 var(--el-font-display); margin: 0; }
+  .head h1 small { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 10px; letter-spacing: 0.06em; }
+  .head p { color: var(--el-ink-soft); margin: 8px 0 0; font-size: 13px; max-width: 720px; }
+  .section-label { font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 14px; padding-bottom: 6px; border-bottom: 1px dashed var(--el-line); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  .card { background: var(--el-panel); border: 1px solid var(--el-line); padding: 18px; }
+  .card .chip { display: inline-block; font: 700 10px var(--el-font-mono); letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 8px; margin-bottom: 10px; }
+  .card.popup .chip { background: #b8693c; color: #fff; }
+  .card.osint .chip { background: #58a6ff; color: #fff; }
+  .card.security .chip { background: #ff5a52; color: #fff; }
+  .card h2 { font: 700 16px/1.2 var(--el-font-display); margin: 0 0 4px; }
+  .card .sub { font: 11px var(--el-font-mono); color: var(--el-ink-soft); margin-bottom: 14px; }
+  .card .vars { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+  .card .var { display: grid; grid-template-columns: 90px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--el-line); font: 11px var(--el-font-mono); }
+  .card .var:last-child { border-bottom: 0; }
+  .card .var .hero { color: var(--el-accent); font-weight: 700; }
+  .card .var .path { color: var(--el-ink-soft); }
+  .card .var .path a { color: var(--el-accent); text-decoration: none; border-bottom: 1px dotted var(--el-accent); }
+  .card .var .path a:hover { color: var(--el-ok); }
+  .card .foot { font: 10px var(--el-font-mono); color: var(--el-ink-soft); padding-top: 10px; border-top: 1px solid var(--el-line); }
+  .lib-card { background: var(--el-panel); border: 1px solid var(--el-line); padding: 18px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .lib-card .lib-col h3 { font: 700 10px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 6px; }
+  .lib-card .lib-col a { display: block; font: 11px var(--el-font-mono); padding: 3px 0; color: var(--el-ink-soft); text-decoration: none; border-bottom: 1px dashed var(--el-line); }
+  .lib-card .lib-col a:hover { color: var(--el-accent); }
+  .rules { background: var(--el-panel); border: 1px solid var(--el-line); border-left: 3px solid var(--el-fail); padding: 16px 20px; margin-top: 28px; }
+  .rules h3 { font: 700 11px var(--el-font-mono); color: var(--el-fail); letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 10px; }
+  .rules ul { margin: 0; padding: 0 0 0 18px; font: 12px var(--el-font-mono); color: var(--el-ink); }
+  .rules li { padding: 3px 0; color: var(--el-ink); }
+  .rules li b { color: var(--el-accent); }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>Three projects · UI mockup sprint <small>2026-08-20 · 12 mockups · shared library</small></h1>
+  <p>Three independent projects (popup · OSINT · Security-UI). Each has 4 layout variants using the same data — different HERO elements, different aesthetics. Pick the layout that fits how you want to use it. <b>No cross-project navigation.</b></p>
+</div>
+
+<div class="section-label">Project cards</div>
+
+<div class="grid">
+
+  <div class="card popup">
+    <span class="chip">Project 1</span>
+    <h2>Tray popup</h2>
+    <div class="sub">Tk · monitor-only · 720×420</div>
+    <div class="vars">
+      <div class="var"><span class="hero">timeline</span><span class="path"><a href="popup/popup-1-timeline.html">popup-1-timeline.html</a> · Polaroid Wall · horizontal events</span></div>
+      <div class="var"><span class="hero">gauges</span><span class="path"><a href="popup/popup-2-gauges.html">popup-2-gauges.html</a> · Cockpit Panel · 3×3 gauges</span></div>
+      <div class="var"><span class="hero">palette</span><span class="path"><a href="popup/popup-3-palette.html">popup-3-palette.html</a> · Console-Log · ⌘K live filter</span></div>
+      <div class="var"><span class="hero">cards</span><span class="path"><a href="popup/popup-4-cards.html">popup-4-cards.html</a> · Compact Stat · hover-expand 6 cards</span></div>
+    </div>
+    <div class="foot">Strict: only action = Focus Brave. Cross-status pills are read-only.</div>
+  </div>
+
+  <div class="card osint">
+    <span class="chip">Project 2</span>
+    <h2>OSINT · 127.0.0.1:9999</h2>
+    <div class="sub">Flask + SQLCipher · search + LLM extract + cases</div>
+    <div class="vars">
+      <div class="var"><span class="hero">stack</span><span class="path"><a href="osint/osint-1-stack.html">osint-1-stack.html</a> · Casebook Notebook · cards + drawer</span></div>
+      <div class="var"><span class="hero">graph</span><span class="path"><a href="osint/osint-2-graph.html">osint-2-graph.html</a> · Polaroid Wall · entity graph 8 nodes</span></div>
+      <div class="var"><span class="hero">table</span><span class="path"><a href="osint/osint-3-table.html">osint-3-table.html</a> · Compact Stat · sortable + multi-select</span></div>
+      <div class="var"><span class="hero">command</span><span class="path"><a href="osint/osint-4-command.html">osint-4-command.html</a> · Console-Log · ⌘K inline extract stream</span></div>
+    </div>
+    <div class="foot">Same dataset: CASE-01 Reinhart trust, 4 cases open, 22 facts.</div>
+  </div>
+
+  <div class="card security">
+    <span class="chip">Project 3</span>
+    <h2>Security-UI · 127.0.0.1:8093</h2>
+    <div class="sub">SIEM + SOAR · aviation HMI · timeline-first</div>
+    <div class="vars">
+      <div class="var"><span class="hero">split</span><span class="path"><a href="security/sec-1-split.html">security/sec-1-split.html</a> · Cockpit · timeline + tabs</span></div>
+      <div class="var"><span class="hero">grid</span><span class="path"><a href="security/sec-2-grid.html">security/sec-2-grid.html</a> · Console-Log · bento 8 boxes</span></div>
+      <div class="var"><span class="hero">accordion</span><span class="path"><a href="security/sec-3-accordion.html">security/sec-3-accordion.html</a> · Compact Stat · exclusive sections</span></div>
+      <div class="var"><span class="hero">stack</span><span class="path"><a href="security/sec-4-stack.html">security/sec-4-stack.html</a> · Cockpit paper · timeline-first</span></div>
+    </div>
+    <div class="foot">Same dataset: 7 events (3 CRIT/3 HIGH/1 OK), 6 rules, 2 staged, 5 runs.</div>
+  </div>
+
+</div>
+
+<div class="section-label">Shared element library</div>
+
+<div class="lib-card">
+  <div class="lib-col">
+    <h3>Display</h3>
+    <a href="_elements/elements-demo.html#display">pill · dot · big-num</a>
+    <a>gauge (vertical + radial)</a>
+    <a>sparkline · barograph</a>
+  </div>
+  <div class="lib-col">
+    <h3>Lists</h3>
+    <a>timeline h/v · accordion</a>
+    <a>kanban · table · card</a>
+    <a>hover-card · chip · row</a>
+  </div>
+  <div class="lib-col">
+    <h3>Containers + viz</h3>
+    <a>panel · tabs · drawer · bento</a>
+    <a>entity-graph · treemap · mini-bar/line</a>
+    <a>palette (live filter) · drag/drop</a>
+  </div>
+</div>
+
+<p style="font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin: 14px 0 0;">
+  ↳ Full demo page with every element in isolation:
+  <a href="_elements/elements-demo.html" style="color:var(--el-accent);text-decoration:none;border-bottom:1px dotted var(--el-accent);">_elements/elements-demo.html</a>
+</p>
+
+<div class="rules">
+  <h3>Hard rules (per spec)</h3>
+  <ul>
+    <li>No project is named "CortexAgent" — that's a separate real project.</li>
+    <li>Tray popup = Tk, NOT a web console. <b>Only action: Focus Brave.</b></li>
+    <li>Cross-status pills in popup are <b>read-only</b> — they never open other projects.</li>
+    <li>No cross-project navigation. Each project's mockups stay in their own folder.</li>
+    <li>Mockups are review material, not implementations. Real code is untouched.</li>
+    <li>Localhost-only bindings: 9999 (OSINT), 8093 (Security). 9999 ≠ 8093.</li>
+  </ul>
+</div>
+
+</body>
+</html>
