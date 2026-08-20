@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OSINT · graph variant</title>
+<link rel="stylesheet" href="../_elements/elements.css">
+<style>
+  /* Polaroid Wall — warm paper (graph variant) */
+  :root {
+    --el-bg: #faf3e3;
+    --el-panel: #f1e8d0;
+    --el-panel-2: #e8dec2;
+    --el-line: #d4c69b;
+    --el-ink: #3a2e22;
+    --el-ink-soft: #7a6952;
+    --el-accent: #b8693c;
+    --el-ok: #5a7a4a;
+    --el-warn: #c18a2c;
+    --el-fail: #a83232;
+    --el-live: #b8693c;
+  }
+  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 14px/1.5 var(--el-font-body); }
+  .layout { display: grid; grid-template-columns: 280px 1fr 280px; gap: 16px; min-height: 100vh; }
+  .head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 2px solid var(--el-line); margin-bottom: 8px; }
+  .head h1 { font: 700 18px/1 var(--el-font-display); margin: 0; }
+  .head h1 small { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
+  .panel { background: var(--el-panel); border: 1px solid var(--el-line); padding: 14px; height: fit-content; }
+  .panel h3 { font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--el-line); }
+  .filter-row { padding: 6px 0; border-bottom: 1px dashed var(--el-line); font: 12px var(--el-font-mono); cursor: pointer; }
+  .filter-row:hover { background: var(--el-panel-2); }
+  .filter-row .count { float: right; color: var(--el-ink-soft); }
+  .graph { background: var(--el-panel); border: 1px solid var(--el-line); padding: 14px; min-height: 700px; position: relative; }
+  .graph h3 { font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 10px; }
+  .graph-canvas { width: 100%; height: 620px; position: relative; background: var(--el-bg); border: 1px dashed var(--el-line); }
+  .graph-canvas .node { position: absolute; padding: 8px 14px; background: var(--el-panel-2); border: 1px solid var(--el-line); border-left: 3px solid var(--el-accent); font: 12px var(--el-font-display); cursor: pointer; transition: transform 200ms; }
+  .graph-canvas .node:hover { transform: scale(1.08); border-left-color: var(--el-fail); z-index: 5; }
+  .graph-canvas .node.person { border-left-color: var(--el-warn); }
+  .graph-canvas .node.trust { border-left-color: var(--el-accent); }
+  .graph-canvas .node.property { border-left-color: var(--el-ok); }
+  .graph-canvas .node.filing { border-left-color: var(--el-ink-soft); }
+  .graph-canvas .node small { display: block; font: 10px var(--el-font-mono); color: var(--el-ink-soft); margin-top: 2px; }
+  .graph-canvas svg.edges { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  .timeline-mini { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--el-line); }
+  .timeline-mini .ev { display: grid; grid-template-columns: 70px 1fr; gap: 8px; padding: 3px 0; font: 11px var(--el-font-mono); border-left: 2px solid var(--el-line); padding-left: 6px; margin-bottom: 4px; }
+  .timeline-mini .ev.person { border-left-color: var(--el-warn); }
+  .timeline-mini .ev.trust { border-left-color: var(--el-accent); }
+  .timeline-mini .ev.property { border-left-color: var(--el-ok); }
+  .timeline-mini .ev .t { color: var(--el-ink-soft); }
+  .selected-detail { font: 12px var(--el-font-mono); }
+  .selected-detail .src { color: var(--el-ink-soft); padding: 3px 0; border-bottom: 1px dashed var(--el-line); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <div class="head">
+    <h1>OSINT · entity graph <small>127.0.0.1:9999 · click any node to expand</small></h1>
+    <div style="display:flex;gap:8px;">
+      <input class="el-search" value='"reinhart" AND "larkspur"' style="width:280px;">
+      <button class="el-btn">Search ▸</button>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <h3>Entity types · filter</h3>
+    <div class="filter-row"><span style="color:var(--el-warn);">●</span> person <span class="count">2</span></div>
+    <div class="filter-row"><span style="color:var(--el-accent);">●</span> trust <span class="count">1</span></div>
+    <div class="filter-row"><span style="color:var(--el-ok);">●</span> property <span class="count">2</span></div>
+    <div class="filter-row"><span style="color:var(--el-ink-soft);">●</span> filings <span class="count">3</span></div>
+
+    <h3 style="margin-top:18px;">Date range</h3>
+    <div class="filter-row">2024-09 <span class="count">2</span></div>
+    <div class="filter-row">2025-03 <span class="count">2</span></div>
+    <div class="filter-row">2025-04 <span class="count">1</span></div>
+
+    <h3 style="margin-top:18px;">Selected · CASE-01</h3>
+    <div class="selected-detail">
+      <div class="src">Reinhart Family Trust</div>
+      <div class="src">→ Margaret Reinhart</div>
+      <div class="src">→ 120 Ward St Larkspur</div>
+      <div class="src">→ Quitclaim #M-2025-018442</div>
+      <div class="src">→ CA sec.state filing</div>
+    </div>
+  </aside>
+
+  <main class="graph">
+    <h3>Entity graph · 8 nodes · 7 edges</h3>
+    <div class="graph-canvas">
+      <svg class="edges" viewBox="0 0 800 620" preserveAspectRatio="xMidYMid meet">
+        <line x1="120" y1="120" x2="320" y2="160" stroke="var(--el-line)" stroke-width="1.5"/>
+        <line x1="120" y1="120" x2="280" y2="320" stroke="var(--el-line)" stroke-width="1.5"/>
+        <line x1="320" y1="160" x2="500" y2="240" stroke="var(--el-line)" stroke-width="1.5"/>
+        <line x1="280" y1="320" x2="500" y2="240" stroke="var(--el-line)" stroke-width="1.5"/>
+        <line x1="500" y1="240" x2="700" y2="120" stroke="var(--el-line)" stroke-width="1.5"/>
+        <line x1="500" y1="240" x2="700" y2="360" stroke="var(--el-line)" stroke-width="1.5"/>
+        <line x1="280" y1="320" x2="700" y2="360" stroke="var(--el-line)" stroke-width="1.5"/>
+        <line x1="120" y1="120" x2="500" y2="240" stroke="var(--el-line)" stroke-width="1.5" stroke-dasharray="3 3"/>
+      </svg>
+
+      <span class="node person" style="left:60px;top:100px;">Margaret Reinhart<small>person · Coldwell Banker Marin</small></span>
+      <span class="node trust" style="left:270px;top:140px;">Reinhart Family Trust<small>trust · 2024-09-22</small></span>
+      <span class="node property" style="left:220px;top:300px;">120 Ward St<small>property · Larkspur CA 94939</small></span>
+      <span class="node person" style="left:450px;top:220px;">R. Larkspur<small>person · trustee</small></span>
+      <span class="node filing" style="left:640px;top:100px;">CA sec.state filing<small>filing · 2024-09</small></span>
+      <span class="node filing" style="left:640px;top:340px;">Marin Recorder<small>filing · #M-2025-018442</small></span>
+      <span class="node filing" style="left:430px;top:460px;">Larkspur public notice<small>filing · 2025-04</small></span>
+      <span class="node property" style="left:120px;top:480px;">quitclaim deed<small>property · 2025-03-14</small></span>
+    </div>
+
+    <div class="timeline-mini">
+      <h3>Mini timeline · events</h3>
+      <div class="ev trust"><span class="t">2024-09-22</span><span>Trust established · R. Larkspur trustee</span></div>
+      <div class="ev property"><span class="t">2025-03-14</span><span>Quitclaim recorded · 120 Ward St</span></div>
+      <div class="ev person"><span class="t">2025-04-02</span><span>Public notice · 30-day objection window</span></div>
+    </div>
+  </main>
+
+  <aside class="panel">
+    <h3>Cases · 4 open</h3>
+    <div class="filter-row">CASE-01 · Reinhart trust <span class="count">12</span></div>
+    <div class="filter-row">CASE-02 · assessor refresh <span class="count">5</span></div>
+    <div class="filter-row">CASE-03 · Larkspur 2024 <span class="count">8</span></div>
+    <div class="filter-row">CASE-04 · Q4 cohort <span class="count">3</span></div>
+
+    <h3 style="margin-top:18px;">Legend</h3>
+    <div class="filter-row"><span style="color:var(--el-warn);">●</span> person</div>
+    <div class="filter-row"><span style="color:var(--el-accent);">●</span> trust</div>
+    <div class="filter-row"><span style="color:var(--el-ok);">●</span> property</div>
+    <div class="filter-row"><span style="color:var(--el-ink-soft);">●</span> filing</div>
+  </aside>
+
+</div>
+</body>
+</html>
