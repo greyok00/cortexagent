@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security · Console Log + Tree — variant 2</title>
+<style>
+  /* ============================================================
+     SECURITY — TERMINAL CONSOLE WITH SUBSYSTEM TREE
+     Variant 2 of the security dashboard.
+     Subject: live hardening status + CVE feed.
+     Aesthetic: console log aesthetic (monospace, scrollable),
+     with a subsystem tree on the left for drill-down.
+     ============================================================ */
+  :root {
+    --bg:       #050708;
+    --bg-2:     #0a0d10;
+    --panel:    #0e1216;
+    --line:     #1c2228;
+    --ink:      #d4dae3;
+    --mute:     #6a7684;
+    --amber:    #ffb000;
+    --red:      #ff5a52;
+    --green:    #6ee29a;
+    --yellow:   #ffd166;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); margin: 0;
+               font: 13px/1.5 "IBM Plex Mono", "JetBrains Mono", "Courier New", monospace;
+               font-variant-numeric: tabular-nums; }
+  body { background-image:
+    radial-gradient(ellipse at top, rgba(255,176,0,0.03) 0%, transparent 60%); }
+
+  header {
+    padding: 10px 20px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 18px;
+    background: var(--bg-2);
+  }
+  header .dot-r { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+  header .dot-y { width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
+  header .dot-g { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  header .title { font-weight: 700; letter-spacing: 0.06em; color: var(--ink); }
+  header .path  { color: var(--mute); }
+  header .right { margin-left: auto; color: var(--mute); font-size: 11px; letter-spacing: 0.06em; }
+
+  .layout { display: grid; grid-template-columns: 280px 1fr 360px; min-height: calc(100vh - 41px); }
+
+  /* left: subsystem tree */
+  .tree {
+    border-right: 1px solid var(--line); padding: 16px 0;
+    background: var(--bg-2); overflow-y: auto;
+  }
+  .tree h3 {
+    margin: 0 16px 8px; font-size: 11px; color: var(--mute);
+    letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .tree .row {
+    display: grid; grid-template-columns: 14px 1fr auto;
+    gap: 6px; align-items: center; padding: 4px 16px;
+    cursor: pointer; font-size: 12px;
+  }
+  .tree .row:hover { background: rgba(255,255,255,0.03); }
+  .tree .row.on { background: rgba(255,176,0,0.08); border-left: 2px solid var(--amber); padding-left: 14px; }
+  .tree .row .caret { color: var(--mute); }
+  .tree .row .name { color: var(--ink); }
+  .tree .row .pill {
+    font-size: 10px; padding: 1px 6px; letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .pill.ok  { color: var(--green); }
+  .pill.fail{ color: var(--red); }
+  .pill.warn{ color: var(--yellow); }
+  .pill.unk { color: var(--mute); }
+  .tree .group { color: var(--mute); font-size: 10px; text-transform: uppercase;
+                  letter-spacing: 0.14em; padding: 14px 16px 4px; }
+
+  /* center: log + status panel */
+  main { padding: 0; overflow: auto; background: var(--bg); }
+  main .section { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  main h2 {
+    margin: 0 0 12px; font-size: 11px; color: var(--amber);
+    letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
+  }
+  main h2 .count { color: var(--mute); margin-left: 8px; font-weight: 400; }
+
+  .checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .check {
+    border: 1px solid var(--line); padding: 10px 12px;
+    background: var(--bg-2);
+  }
+  .check .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .check .name { font-weight: 700; font-size: 12px; color: var(--ink); }
+  .check .st   { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .check .msg  { font-size: 11px; color: var(--mute); margin-top: 6px; line-height: 1.45; }
+
+  /* log scroll */
+  .log {
+    font-size: 11px; line-height: 1.6; max-height: 280px;
+    overflow-y: auto; background: var(--bg-2);
+    border: 1px solid var(--line); padding: 10px 14px;
+  }
+  .log .l { display: grid; grid-template-columns: 64px 56px 80px 1fr;
+            gap: 8px; padding: 2px 0; }
+  .log .l:hover { background: rgba(255,255,255,0.03); }
+  .log .t { color: var(--mute); }
+  .log .lvl { font-weight: 700; letter-spacing: 0.08em; }
+  .log .lvl.CRIT { color: var(--red); }
+  .log .lvl.HIGH { color: var(--amber); }
+  .log .lvl.OK   { color: var(--green); }
+  .log .src { color: var(--mute); }
+  .log .msg { color: var(--ink); }
+  .log .msg .hl { background: rgba(255,176,0,0.18); color: var(--amber); padding: 0 2px; }
+
+  /* right: CVE feed */
+  .feed { border-left: 1px solid var(--line); padding: 16px 18px;
+          background: var(--bg-2); overflow-y: auto; }
+  .feed h3 { margin: 0 0 12px; font-size: 11px; color: var(--amber);
+             letter-spacing: 0.14em; text-transform: uppercase; }
+  .feed .item { padding: 10px 0; border-bottom: 1px dashed var(--line); }
+  .feed .item:last-child { border-bottom: 0; }
+  .feed .item .top {
+    display: flex; gap: 8px; align-items: baseline;
+    font-size: 11px; margin-bottom: 4px;
+  }
+  .feed .item .cve { color: var(--amber); font-weight: 700; }
+  .feed .item .sev { font-size: 9px; padding: 1px 6px; letter-spacing: 0.08em;
+                      text-transform: uppercase; }
+  .feed .item .sev.crit { color: var(--bg); background: var(--red); }
+  .feed .item .sev.high { color: var(--bg); background: var(--amber); }
+  .feed .item .sev.med  { color: var(--bg); background: var(--yellow); }
+  .feed .item .desc { font-size: 11px; color: var(--mute); line-height: 1.5; }
+  .feed .item .desc b { color: var(--ink); }
+  .feed .item .meta {
+    margin-top: 6px; display: flex; gap: 12px;
+    font-size: 10px; color: var(--mute);
+  }
+  .feed .item .meta span b { color: var(--ink); }
+  .feed .empty { color: var(--mute); font-style: italic; padding: 20px 0;
+                  text-align: center; font-size: 11px; }
+
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+    .tree, .feed { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+  <span class="title">cortexagent · security console</span>
+  <span class="path">/hardening · 127.0.0.1:8093</span>
+  <span class="right">refresh 60s · 2026-08-20 11:13:42 -07:00</span>
+</header>
+
+<div class="layout">
+
+  <nav class="tree">
+    <h3>Subsystems</h3>
+    <div class="group">— Hardening</div>
+    <div class="row on"><span class="caret">▾</span><span class="name">kernel/lsms</span><span class="pill ok">ok</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">auditd</span><span class="pill warn">warn</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">capabilities</span><span class="pill ok">ok</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">nftables</span><span class="pill fail">fail</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">sysctl</span><span class="pill fail">fail</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">sshd</span><span class="pill fail">fail</span></div>
+    <div class="group">— Network</div>
+    <div class="row"><span class="caret">▸</span><span class="name">dnsmasq</span><span class="pill ok">ok</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">dns_blocklist</span><span class="pill ok">ok</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">unbound</span><span class="pill unk">n/a</span></div>
+    <div class="group">— Intel</div>
+    <div class="row"><span class="caret">▸</span><span class="name">NVD</span><span class="pill ok">ok</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">KEV</span><span class="pill ok">ok</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">EPSS</span><span class="pill ok">ok</span></div>
+    <div class="group">— Response</div>
+    <div class="row"><span class="caret">▸</span><span class="name">SIEM</span><span class="pill ok">ok</span></div>
+    <div class="row"><span class="caret">▸</span><span class="name">SOAR</span><span class="pill ok">ok</span></div>
+  </nav>
+
+  <main>
+    <div class="section">
+      <h2>Hardening Posture <span class="count">9 checks · 3 fail · 1 warn · 1 unknown</span></h2>
+      <div class="checks">
+        <div class="check"><div class="top"><span class="name">auditd</span><span class="st pill warn">warn</span></div><div class="msg">auditctl not queryable (auditd not running?)</div></div>
+        <div class="check"><div class="top"><span class="name">capabilities</span><span class="st pill ok">ok</span></div><div class="msg">0 binaries with risky caps (scanned /usr/*)</div></div>
+        <div class="check"><div class="top"><span class="name">dns_blocklist</span><span class="st pill ok">ok</span></div><div class="msg">98,062 block entries in /etc/hosts.adblock</div></div>
+        <div class="check"><div class="top"><span class="name">dnsmasq</span><span class="st pill ok">ok</span></div><div class="msg">running · resolv.conf→127.0.0.1 true</div></div>
+        <div class="check"><div class="top"><span class="name">lsms</span><span class="st pill ok">ok</span></div><div class="msg">10 active: lockdown, capability, landlock, yama, apparmor, tomoyo, bpf, ipe, ima, evm</div></div>
+        <div class="check"><div class="top"><span class="name">nftables</span><span class="st pill fail">fail</span></div><div class="msg">nft list failed: Operation not permitted (need root)</div></div>
+        <div class="check"><div class="top"><span class="name">sshd</span><span class="st pill fail">fail</span></div><div class="msg">10 baseline deviations</div></div>
+        <div class="check"><div class="top"><span class="name">sysctl</span><span class="st pill fail">fail</span></div><div class="msg">11/17 match · 5 differ · 1 missing</div></div>
+        <div class="check"><div class="top"><span class="name">unbound</span><span class="st pill unk">n/a</span></div><div class="msg">unbound not installed</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>SOAR · Last Playbook Runs <span class="count">5 shown</span></h2>
+      <div class="log">
+        <div class="l"><span class="t">11:13:18</span><span class="lvl HIGH">HIGH</span><span class="src">soar</span><span class="msg">playbook <span class="hl">block-source-ip</span> triggered on 198.51.100.42 (KEV CVE-2025-30872)</span></div>
+        <div class="l"><span class="t">10:47:02</span><span class="lvl OK">OK</span><span class="src">soar</span><span class="msg">playbook <span class="hl">isolate-host</span> completed · host quarantined 5m 12s</span></div>
+        <div class="l"><span class="t">09:22:54</span><span class="lvl HIGH">HIGH</span><span class="src">soar</span><span class="msg">playbook <span class="hl">enrich-cve</span> · 12 CVEs annotated with EPSS + KEV</span></div>
+        <div class="l"><span class="t">08:14:31</span><span class="lvl CRIT">CRIT</span><span class="src">soar</span><span class="msg">playbook <span class="hl">notify-desktop</span> · 2 users paged</span></div>
+        <div class="l"><span class="t">07:01:09</span><span class="lvl OK">OK</span><span class="src">soar</span><span class="msg">playbook <span class="hl">verify-block</span> · 198.51.100.42 confirmed blocked at egress</span></div>
+        <div class="l"><span class="t">06:42:18</span><span class="lvl HIGH">HIGH</span><span class="src">soar</span><span class="msg">playbook <span class="hl">auto-quarantine</span> · process stopped, hash archived</span></div>
+        <div class="l"><span class="t">05:11:46</span><span class="lvl OK">OK</span><span class="src">soar</span><span class="msg">playbook <span class="hl">log-archive</span> · 1,847 events to cold storage</span></div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="feed">
+    <h3>CVEs · last 7d</h3>
+    <div class="empty">no critical CVEs in local cache</div>
+
+    <h3 style="margin-top:20px;">Recent KEV entries</h3>
+    <div class="item">
+      <div class="top"><span class="cve">CVE-2025-30872</span><span class="sev crit">crit</span></div>
+      <div class="desc"><b>linux-kernel · io_uring</b> local privesc via race in IORING_OP_RECV. KEV: yes · EPSS: 0.94</div>
+      <div class="meta"><span>CVSS <b>8.8</b></span><span>exploited <b>in-the-wild</b></span><span>2026-08-19</span></div>
+    </div>
+    <div class="item">
+      <div class="top"><span class="cve">CVE-2025-30418</span><span class="sev high">high</span></div>
+      <div class="desc"><b>curl · TLS session-cache</b> memory disclosure on reused TLS 1.2 sessions. KEV: yes · EPSS: 0.61</div>
+      <div class="meta"><span>CVSS <b>7.5</b></span><span>patched 8.4.0</span><span>2026-08-17</span></div>
+    </div>
+    <div class="item">
+      <div class="top"><span class="cve">CVE-2025-30102</span><span class="sev med">med</span></div>
+      <div class="desc"><b>python-cryptography</b> DoS via crafted PKCS7. Local-only impact. KEV: no · EPSS: 0.21</div>
+      <div class="meta"><span>CVSS <b>5.3</b></span><span>fix: 42.0.4</span><span>2026-08-15</span></div>
+    </div>
+  </aside>
+
+</div>
+
+</body>
+</html>

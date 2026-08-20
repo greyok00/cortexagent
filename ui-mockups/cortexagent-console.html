@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CortexAgent Console · Tauri window mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Garamond:ital,wght@0,400;0,600;1,400;1,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&family=Charter:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+<style>
+  /* ─────────────────────────────────────────────────────────
+     THEME SYSTEM
+     A theme re-skins the WHOLE window: chrome, sidebar, main,
+     terminal, status bars. The same 9 themes from themes.json.
+     ───────────────────────────────────────────────────────── */
+  :root,
+  [data-theme="graphite"] {
+    /* default — industrial aviation HMI */
+    --bg:        #0d1015;
+    --panel:     #131826;
+    --panel-2:   #11151b;
+    --line:      #2a3142;
+    --line-2:    #1f2a35;
+    --ink:       #e6e9f0;
+    --ink-soft:  #94a3b8;
+    --mute:      #5a6478;
+    --accent:    #ffb000;
+    --accent-dim:#b07700;
+    --ok:        #5fe09a;
+    --warn:      #ffd166;
+    --fail:      #ff5a52;
+    --teal:      #0e7c86;
+    --sage:      #6b8068;
+    --paper:     #0d1015;       /* same as bg — chrome doesn't pretend to be paper */
+    --shadow:    0 20px 60px rgba(0,0,0,0.55);
+    --font-body: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Plex Mono", monospace;
+    --font-display: "Space Grotesk", "Inter", sans-serif;
+    --font-serif: "Fraunces", Georgia, serif;
+    --radius:    4px;
+  }
+
+  /* ── Cockpit Panel (aviation HMI) — same as default but a hair cleaner ── */
+  [data-theme="cockpit"] {
+    --bg:        #0a0c10;
+    --panel:     #131826;
+    --accent:    #ffb000;
+  }
+
+  /* ── Paper Schematic (textbook figure) — re-skin whole window to paper ── */
+  [data-theme="paper"] {
+    --bg:        #fbf6ec;
+    --panel:     #f3ede1;
+    --panel-2:   #ebe3d1;
+    --line:      #0a1929;
+    --line-2:    #cdd8e0;
+    --ink:       #0a1929;
+    --ink-soft:  #085459;
+    --mute:      #6a7c8a;
+    --accent:    #b85a2c;
+    --accent-dim:#a64b2a;
+    --ok:        #5b8a51;
+    --warn:      #c8743b;
+    --fail:      #b04a2a;
+    --teal:      #0e7c86;
+    --sage:      #6b8068;
+    --paper:     #fbf6ec;
+    --shadow:    0 4px 20px rgba(10,25,41,0.15);
+    --font-body: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+    --font-display: "Fraunces", serif;
+    --font-serif: "Fraunces", serif;
+    --radius:    0px;
+  }
+
+  /* ── Casebook Notebook (warm paper) — full re-skin to cream ── */
+  [data-theme="casebook"] {
+    --bg:        #f3ede1;
+    --panel:     #ede5d2;
+    --panel-2:   #e8e0cf;
+    --line:      #1a1a1a;
+    --line-2:    #a89c80;
+    --ink:       #1a1a1a;
+    --ink-soft:  #3a3a3a;
+    --mute:      #8a7c60;
+    --accent:    #a64b2a;
+    --accent-dim:#7d3a1f;
+    --ok:        #6b8068;
+    --warn:      #c8743b;
+    --fail:      #b04a2a;
+    --teal:      #085459;
+    --sage:      #6b8068;
+    --paper:     #f3ede1;
+    --shadow:    0 4px 16px rgba(60,40,10,0.10);
+    --font-body: "Garamond", "EB Garamond", serif;
+    --font-mono: "JetBrains Mono", monospace;
+    --font-display: "Garamond", serif;
+    --font-serif: "Garamond", serif;
+    --radius:    1px;
+  }
+
+  /* ── Polaroid Wall — warm cream bg, dark wall accent ── */
+  [data-theme="polaroid"] {
+    --bg:        #1f1a17;
+    --panel:     #2a221d;
+    --panel-2:   #231c18;
+    --line:      #d6c89e;
+    --line-2:    #3a2e26;
+    --ink:       #f3e9d3;
+    --ink-soft:  #d6c89e;
+    --mute:      #8a7a64;
+    --accent:    #ff7c5a;
+    --accent-dim:#b04a2a;
+    --ok:        #7ab4d6;
+    --warn:      #c9a227;
+    --fail:      #ff5a52;
+    --teal:      #7ab4d6;
+    --sage:      #6b8068;
+    --paper:     #efe5cf;
+    --shadow:    0 20px 60px rgba(0,0,0,0.6);
+    --font-body: "Charter", Georgia, serif;
+    --font-mono: "JetBrains Mono", monospace;
+    --font-display: "Charter", serif;
+    --font-serif: "Charter", serif;
+    --radius:    2px;
+  }
+
+  /* ── Live Pulse — deep navy + breathing warm ── */
+  [data-theme="live-pulse"] {
+    --bg:        #0e1419;
+    --panel:     #131c25;
+    --panel-2:   #0a1117;
+    --line:      #1f2a35;
+    --line-2:    #2a3540;
+    --ink:       #e6e9f0;
+    --ink-soft:  #94a3b8;
+    --mute:      #5a6478;
+    --accent:    #ffb000;
+    --accent-dim:#b07700;
+    --ok:        #5fe09a;
+    --warn:      #ffd166;
+    --fail:      #ff5a52;
+    --teal:      #38bdf8;
+    --sage:      #6b8068;
+    --paper:     #0e1419;
+    --shadow:    0 20px 60px rgba(0,0,0,0.55);
+    --font-body: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+    --font-display: "Space Grotesk", sans-serif;
+    --font-serif: "Fraunces", serif;
+    --radius:    4px;
+  }
+
+  /* ── History Diff — warm paper, git-log style ── */
+  [data-theme="history"] {
+    --bg:        #f5efe3;
+    --panel:     #ebe3d1;
+    --panel-2:   #e8e0cf;
+    --line:      #0a1929;
+    --line-2:    #cdd8e0;
+    --ink:       #0a1929;
+    --ink-soft:  #085459;
+    --mute:      #6a7c8a;
+    --accent:    #b85a2c;
+    --accent-dim:#a64b2a;
+    --ok:        #5b8a51;
+    --warn:      #c8743b;
+    --fail:      #b04a2a;
+    --teal:      #0e7c86;
+    --sage:      #6b8068;
+    --paper:     #f5efe3;
+    --shadow:    0 4px 20px rgba(10,25,41,0.15);
+    --font-body: "Fraunces", serif;
+    --font-mono: "JetBrains Mono", monospace;
+    --font-display: "Fraunces", serif;
+    --font-serif: "Fraunces", serif;
+    --radius:    0px;
+  }
+
+  /* ── Console Log (terminal-style) — black bg + Plex Mono ── */
+  [data-theme="console-log"] {
+    --bg:        #0a0c10;
+    --panel:     #11151b;
+    --panel-2:   #06080b;
+    --line:      #1f2a35;
+    --line-2:    #2a3142;
+    --ink:       #e6e9f0;
+    --ink-soft:  #94a3b8;
+    --mute:      #5a6478;
+    --accent:    #ffb000;
+    --accent-dim:#b07700;
+    --ok:        #5fe09a;
+    --warn:      #ffd166;
+    --fail:      #ff5a52;
+    --teal:      #38bdf8;
+    --sage:      #6b8068;
+    --paper:     #0a0c10;
+    --shadow:    0 20px 60px rgba(0,0,0,0.55);
+    --font-body: "Plex Mono", monospace;
+    --font-mono: "Plex Mono", "JetBrains Mono", monospace;
+    --font-display: "Plex Mono", monospace;
+    --font-serif: "Plex Mono", monospace;
+    --radius:    0px;
+  }
+
+  /* ── Compact Stat Block — flat dense grid ── */
+  [data-theme="compact"] {
+    --bg:        #0a0c10;
+    --panel:     #131826;
+    --panel-2:   #11151b;
+    --line:      #2a3142;
+    --line-2:    #1f2a35;
+    --ink:       #e6e9f0;
+    --ink-soft:  #94a3b8;
+    --mute:      #5a6478;
+    --accent:    #ffb000;
+    --accent-dim:#b07700;
+    --ok:        #5fe09a;
+    --warn:      #ffd166;
+    --fail:      #ff5a52;
+    --teal:      #38bdf8;
+    --sage:      #6b8068;
+    --paper:     #0a0c10;
+    --shadow:    0 20px 60px rgba(0,0,0,0.55);
+    --font-body: "Space Grotesk", sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+    --font-display: "Space Grotesk", sans-serif;
+    --font-serif: "Space Grotesk", sans-serif;
+    --radius:    0px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--mute);
+               font: 13px/1.45 var(--font-body); color: var(--ink);
+               min-height: 100vh; padding: 24px;
+               transition: background 200ms; }
+
+  /* page header outside the window */
+  .page-head {
+    max-width: 1320px; margin: 0 auto 14px;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .page-head .title {
+    font: 700 14px/1 var(--font-mono);
+    color: var(--ink); letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .page-head .meta {
+    font: 11px var(--font-mono); color: var(--mute);
+  }
+
+  /* ─── THE WINDOW ─── */
+  .window {
+    max-width: 1320px; height: 820px;
+    margin: 0 auto;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-rows: 36px 36px 1fr 220px 24px;
+    grid-template-columns: 200px 1fr;
+    grid-template-areas:
+      "titlebar titlebar"
+      "status   status"
+      "sidebar  main"
+      "sidebar  terminal"
+      "statusbar statusbar";
+    overflow: hidden;
+    color: var(--ink);
+    font-family: var(--font-body);
+    transition: background 200ms, color 200ms, border-color 200ms;
+  }
+
+  /* ─── TITLEBAR ─── */
+  .titlebar {
+    grid-area: titlebar;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; padding: 0 14px; gap: 14px;
+    -webkit-user-select: none; user-select: none;
+  }
+  .titlebar .grip {
+    width: 14px; height: 14px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+    border-radius: 2px;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .titlebar .app {
+    font: 700 11px/1 var(--font-mono);
+    letter-spacing: 0.16em; color: var(--accent); text-transform: uppercase;
+  }
+  .titlebar .crumbs {
+    font: 11px var(--font-mono); color: var(--ink-soft);
+    letter-spacing: 0.04em;
+  }
+  .titlebar .crumbs .sep { color: var(--mute); margin: 0 6px; }
+  .titlebar .theme-pill {
+    margin-left: auto; padding: 3px 10px;
+    border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink-soft);
+    font: 700 9px/1 var(--font-mono); letter-spacing: 0.14em;
+    text-transform: uppercase; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .titlebar .theme-pill:hover { color: var(--accent); border-color: var(--accent); }
+  .titlebar .theme-pill .av {
+    width: 14px; height: 14px; border-radius: 2px;
+    background: var(--accent);
+  }
+  .titlebar .ctrls { display: flex; gap: 0; }
+  .titlebar .ctrls span {
+    width: 28px; height: 36px; display: flex; align-items: center; justify-content: center;
+    color: var(--ink-soft); cursor: pointer; font-size: 14px;
+  }
+  .titlebar .ctrls span:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 4%, transparent); }
+  .titlebar .ctrls span.close:hover { color: var(--fail); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+
+  /* ─── STATUS BAR (top) ─── */
+  .status-bar {
+    grid-area: status;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px;
+  }
+  .status-bar .pill {
+    padding: 6px 12px; display: flex; align-items: center; gap: 8px;
+    border-right: 1px solid var(--line);
+    font: 10px var(--font-mono); color: var(--ink-soft);
+    letter-spacing: 0.04em;
+  }
+  .status-bar .pill:last-child { border-right: 0; }
+  .status-bar .pill .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--mute);
+    box-shadow: 0 0 6px currentColor;
+  }
+  .status-bar .pill.ok    .dot { background: var(--ok); }
+  .status-bar .pill.fail  .dot { background: var(--fail); }
+  .status-bar .pill.warn  .dot { background: var(--warn); }
+  .status-bar .pill.live  .dot {
+    background: var(--accent);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.5; transform: scale(0.85); }
+  }
+  .status-bar .pill .name { color: var(--ink); font-weight: 700; }
+  .status-bar .pill .val  { color: var(--accent); margin-left: auto; font-weight: 700; }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    grid-area: sidebar;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 12px 0;
+    overflow: auto;
+  }
+  .sidebar .group {
+    padding: 0 12px 6px;
+    font: 700 9px/1 var(--font-mono);
+    color: var(--mute); letter-spacing: 0.18em; text-transform: uppercase;
+    margin: 14px 0 6px;
+  }
+  .sidebar .group:first-child { margin-top: 0; }
+  .sidebar .nav { display: flex; flex-direction: column; }
+  .sidebar .nav button {
+    appearance: none; border: 0; background: transparent;
+    text-align: left; cursor: pointer;
+    padding: 7px 12px; display: flex; align-items: center; gap: 10px;
+    color: var(--ink-soft);
+    font: 13px/1 var(--font-body);
+    border-left: 2px solid transparent;
+    transition: background 120ms, color 120ms;
+  }
+  .sidebar .nav button:hover {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    color: var(--ink);
+  }
+  .sidebar .nav button.active {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent);
+    border-left-color: var(--accent);
+  }
+  .sidebar .nav button .ico {
+    width: 16px; text-align: center; color: var(--mute); font-size: 13px;
+  }
+  .sidebar .nav button.active .ico { color: var(--accent); }
+  .sidebar .nav button .badge {
+    margin-left: auto; padding: 1px 6px;
+    background: var(--fail); color: var(--paper);
+    font: 700 9px/1.4 var(--font-mono); border-radius: 2px;
+  }
+  .sidebar .nav button .badge.ok   { background: var(--ok); }
+  .sidebar .nav button .badge.warn { background: var(--warn); }
+
+  /* ─── MAIN ─── */
+  .main {
+    grid-area: main;
+    background: var(--bg);
+    overflow: auto;
+    position: relative;
+  }
+  .tab-pane { display: none; height: 100%; overflow: auto; }
+  .tab-pane.active { display: block; }
+
+  /* =========================================================
+     SECURITY TAB — TIMELINE-FIRST (recommended framing)
+     ========================================================= */
+  .sec-tab {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 12px;
+    height: 100%;
+  }
+  .sec-tab .timeline-pane h3 {
+    margin: 0 0 8px;
+    font: 700 11px/1 var(--font-mono); letter-spacing: 0.14em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .sec-tab .timeline-pane h3 .sub {
+    color: var(--ink-soft); font-weight: 400; letter-spacing: 0.04em;
+    margin-left: 6px; text-transform: none;
+  }
+  .sec-tab .filters {
+    display: flex; gap: 6px; margin-bottom: 10px;
+  }
+  .sec-tab .filters .chip {
+    padding: 4px 10px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--ink-soft);
+    font: 700 9px/1 var(--font-mono); letter-spacing: 0.12em;
+    text-transform: uppercase; cursor: pointer;
+  }
+  .sec-tab .filters .chip:hover { color: var(--ink); }
+  .sec-tab .filters .chip.on {
+    background: var(--accent); color: var(--paper); border-color: var(--accent);
+  }
+
+  .sec-tab .timeline { display: flex; flex-direction: column; gap: 4px; }
+  .sec-tab .event {
+    display: grid; grid-template-columns: 60px 18px 100px 1fr 80px;
+    gap: 10px; padding: 8px 10px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--mute);
+    cursor: pointer; transition: background 100ms;
+  }
+  .sec-tab .event:hover { background: var(--panel-2); }
+  .sec-tab .event.selected { background: var(--panel-2); border-left-color: var(--accent); }
+  .sec-tab .event.HIGH    { border-left-color: var(--warn); }
+  .sec-tab .event.CRIT    { border-left-color: var(--fail); }
+  .sec-tab .event.OK      { border-left-color: var(--ok); }
+  .sec-tab .event .t {
+    font: 10px var(--font-mono); color: var(--ink-soft); letter-spacing: 0.04em;
+  }
+  .sec-tab .event .lvl {
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.08em;
+  }
+  .sec-tab .event.HIGH .lvl { color: var(--warn); }
+  .sec-tab .event.CRIT .lvl { color: var(--fail); }
+  .sec-tab .event.OK   .lvl { color: var(--ok); }
+  .sec-tab .event .rule {
+    font: 700 11px/1.2 var(--font-mono); color: var(--accent);
+  }
+  .sec-tab .event .txt {
+    font: 12px/1.4 var(--font-body); color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .sec-tab .event .src {
+    font: 10px var(--font-mono); color: var(--ink-soft);
+    text-align: right; letter-spacing: 0.04em;
+  }
+
+  .sec-tab .saved-views {
+    margin-top: 12px;
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .sec-tab .saved-views .view {
+    padding: 3px 8px; border: 1px dashed var(--line-2);
+    font: italic 11px/1.3 var(--font-serif); color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .sec-tab .saved-views .view:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* detail pane (right side) */
+  .sec-tab .detail {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 12px 14px; overflow: auto;
+  }
+  .sec-tab .detail .head {
+    padding-bottom: 8px; border-bottom: 1px dashed var(--line-2);
+    margin-bottom: 10px;
+  }
+  .sec-tab .detail .head .lvl {
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.16em;
+    padding: 2px 8px; display: inline-block;
+  }
+  .sec-tab .detail .head .lvl.HIGH { background: var(--warn); color: var(--paper); }
+  .sec-tab .detail .head .lvl.CRIT { background: var(--fail); color: var(--paper); }
+  .sec-tab .detail .head .lvl.OK   { background: var(--ok); color: var(--paper); }
+  .sec-tab .detail .head .rule {
+    font: 600 16px/1.2 var(--font-serif); margin-top: 8px;
+  }
+  .sec-tab .detail .head .when {
+    font: 10px var(--font-mono); color: var(--ink-soft);
+    letter-spacing: 0.04em; margin-top: 4px;
+  }
+  .sec-tab .detail h4 {
+    margin: 12px 0 4px;
+    font: 700 9px/1 var(--font-mono); letter-spacing: 0.16em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .sec-tab .detail .row {
+    font: 12px/1.4 var(--font-body); color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .sec-tab .detail .row .k {
+    color: var(--ink-soft); margin-right: 6px;
+  }
+  .sec-tab .detail .cve-link {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 8px 10px; background: var(--panel-2);
+    border-left: 2px solid var(--accent);
+    margin-bottom: 6px;
+  }
+  .sec-tab .detail .cve-link .id {
+    font: 700 11px var(--font-mono); color: var(--accent);
+  }
+  .sec-tab .detail .cve-link .desc {
+    font: 12px var(--font-body); color: var(--ink);
+  }
+  .sec-tab .detail .actions {
+    margin-top: 14px; display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .sec-tab .detail .actions button {
+    padding: 6px 10px; border: 1px solid var(--accent); background: transparent;
+    color: var(--accent);
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.14em;
+    text-transform: uppercase; cursor: pointer;
+  }
+  .sec-tab .detail .actions button:hover {
+    background: var(--accent); color: var(--paper);
+  }
+  .sec-tab .detail .actions button.primary {
+    background: var(--accent); color: var(--paper);
+  }
+
+  /* =========================================================
+     SOAR TAB (formerly "playbook" — renamed to "rules")
+     ========================================================= */
+  .soar-tab { padding: 16px; }
+  .soar-tab h3 {
+    margin: 0 0 8px;
+    font: 700 11px/1 var(--font-mono); letter-spacing: 0.14em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .soar-tab .approval-queue {
+    background: color-mix(in srgb, var(--warn) 8%, var(--panel));
+    border: 1px solid var(--warn); padding: 10px 12px;
+    margin-bottom: 14px;
+  }
+  .soar-tab .approval-queue .head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+  }
+  .soar-tab .approval-queue .head .name {
+    font: 700 10px var(--font-mono); letter-spacing: 0.14em;
+    color: var(--warn); text-transform: uppercase;
+  }
+  .soar-tab .approval-queue .item {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 8px;
+    padding: 4px 0; font: 12px var(--font-body); color: var(--ink);
+    align-items: center;
+  }
+  .soar-tab .approval-queue .item .name { font-weight: 600; }
+  .soar-tab .approval-queue .item button {
+    padding: 4px 8px; border: 1px solid var(--ink); background: transparent;
+    color: var(--ink); cursor: pointer;
+    font: 700 9px/1 var(--font-mono); letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .soar-tab .approval-queue .item .approve {
+    background: var(--ok); border-color: var(--ok); color: var(--paper);
+  }
+  .soar-tab .approval-queue .item .reject {
+    background: transparent; border-color: var(--fail); color: var(--fail);
+  }
+
+  .soar-tab .rules-list {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+    margin-bottom: 14px;
+  }
+  .soar-tab .rule {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 10px 12px;
+  }
+  .soar-tab .rule .name {
+    font: 600 13px var(--font-body); color: var(--ink);
+    margin-bottom: 2px;
+  }
+  .soar-tab .rule .meta {
+    font: 10px var(--font-mono); color: var(--ink-soft);
+    letter-spacing: 0.04em; margin-bottom: 8px;
+  }
+  .soar-tab .rule .desc {
+    font: 11px/1.4 var(--font-body); color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+  .soar-tab .rule .actions { display: flex; gap: 4px; }
+  .soar-tab .rule .actions button {
+    padding: 4px 8px; border: 1px solid var(--line); background: transparent;
+    color: var(--ink-soft); cursor: pointer;
+    font: 700 9px/1 var(--font-mono); letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .soar-tab .rule .actions button:hover { color: var(--accent); border-color: var(--accent); }
+  .soar-tab .rule .actions button.run {
+    background: var(--accent); color: var(--paper); border-color: var(--accent);
+  }
+
+  /* manual runner + history diff */
+  .soar-tab .runner, .soar-tab .history {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 10px 12px; margin-bottom: 12px;
+  }
+  .soar-tab .runner form {
+    display: grid; grid-template-columns: 1fr 120px 80px; gap: 8px;
+    align-items: center;
+  }
+  .soar-tab .runner select, .soar-tab .runner input {
+    padding: 6px 8px; background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--ink); font: 12px var(--font-body); outline: none;
+  }
+  .soar-tab .runner button {
+    padding: 6px 12px; background: var(--accent); color: var(--paper);
+    border: 0; cursor: pointer;
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .soar-tab .history .row {
+    display: grid; grid-template-columns: 60px 80px 1fr 60px 60px;
+    gap: 8px; padding: 4px 0;
+    font: 11px var(--font-mono); color: var(--ink);
+    border-bottom: 1px dotted var(--line-2); align-items: center;
+  }
+  .soar-tab .history .row .when { color: var(--ink-soft); }
+  .soar-tab .history .row .rule { color: var(--accent); font-weight: 700; }
+  .soar-tab .history .row .stat { text-align: right; color: var(--ink-soft); }
+  .soar-tab .history .row .stat.ok   { color: var(--ok); }
+  .soar-tab .history .row .stat.fail { color: var(--fail); }
+  .soar-tab .history .row .diff {
+    color: var(--ink-soft); font-size: 10px;
+  }
+  .soar-tab .history .row .diff b { color: var(--ink); }
+
+  /* =========================================================
+     AGENT TAB — inline prompt + live run
+     ========================================================= */
+  .agent-tab {
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 12px; height: 100%;
+  }
+  .agent-tab .prompt {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 10px 12px;
+  }
+  .agent-tab .prompt .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .agent-tab .prompt .head .lbl {
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.14em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .agent-tab .prompt textarea {
+    width: 100%; min-height: 50px;
+    padding: 8px 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink);
+    font: 13px/1.4 var(--font-serif); font-style: italic;
+    outline: none; resize: vertical;
+  }
+  .agent-tab .prompt .row {
+    display: flex; gap: 8px; margin-top: 8px; align-items: center;
+  }
+  .agent-tab .prompt .row button {
+    padding: 6px 14px; background: var(--accent); color: var(--paper);
+    border: 0; cursor: pointer;
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .agent-tab .prompt .row .toggle {
+    margin-left: auto; display: flex; gap: 6px;
+  }
+  .agent-tab .prompt .row .toggle label {
+    display: flex; align-items: center; gap: 4px;
+    font: 10px var(--font-mono); color: var(--ink-soft);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    cursor: pointer;
+  }
+  .agent-tab .prompt .row .toggle input { accent-color: var(--accent); }
+
+  .agent-tab .stages {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+  }
+  .agent-tab .stage {
+    border: 1.2px solid var(--line); padding: 8px 8px 6px;
+    background: var(--panel); min-height: 80px; position: relative;
+  }
+  .agent-tab .stage.done { background: color-mix(in srgb, var(--sage) 18%, var(--panel)); }
+  .agent-tab .stage.active {
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+    box-shadow: 0 0 0 2px var(--accent) inset;
+  }
+  .agent-tab .stage .chip {
+    position: absolute; top: -1px; left: -1px;
+    width: 20px; height: 16px; background: var(--ink); color: var(--paper);
+    font: 700 9px/16px var(--font-mono); text-align: center;
+  }
+  .agent-tab .stage.done .chip { background: var(--sage); }
+  .agent-tab .stage.active .chip { background: var(--accent); }
+  .agent-tab .stage .lbl {
+    margin-top: 22px;
+    font: 700 9px/1 var(--font-mono); letter-spacing: 0.14em;
+    color: var(--ink); text-transform: uppercase;
+  }
+  .agent-tab .stage .lane {
+    margin-top: 6px; padding-top: 4px;
+    border-top: 1px dashed var(--line-2);
+    display: flex; flex-wrap: wrap; gap: 2px;
+    min-height: 20px;
+  }
+  .agent-tab .stage .lane .tok {
+    padding: 1px 5px; font: 700 8px/1.3 var(--font-mono);
+    background: var(--ink); color: var(--paper); border-radius: 1px;
+  }
+  .agent-tab .stage .lane .tok.hit { background: var(--sage); }
+  .agent-tab .stage .lane .tok.gen { background: var(--accent); }
+
+  .agent-tab .reply {
+    border: 1px solid var(--line); background: var(--panel);
+    padding: 10px 14px; flex: 1;
+    overflow: auto;
+  }
+  .agent-tab .reply .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px dashed var(--line-2); padding-bottom: 4px;
+    margin-bottom: 6px;
+  }
+  .agent-tab .reply .head .lbl {
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.14em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .agent-tab .reply .head .stat {
+    font: 10px var(--font-mono); color: var(--ink-soft);
+    letter-spacing: 0.04em;
+  }
+  .agent-tab .reply .body {
+    font: 13px/1.5 var(--font-body); color: var(--ink);
+    min-height: 36px;
+  }
+  .agent-tab .reply .body .em {
+    font-style: italic; font-family: var(--font-serif); color: var(--accent);
+  }
+  .agent-tab .reply .body .caret {
+    display: inline-block; width: 6px; height: 12px; background: var(--accent);
+    vertical-align: text-bottom; animation: blink 0.9s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .agent-tab .history-row {
+    display: grid; grid-template-columns: 60px 80px 1fr 60px;
+    gap: 8px; padding: 5px 10px;
+    background: var(--panel); border: 1px solid var(--line);
+    align-items: center; cursor: pointer;
+  }
+  .agent-tab .history-row .hash {
+    font: 700 10px var(--font-mono); color: var(--accent);
+  }
+  .agent-tab .history-row .when {
+    font: 10px var(--font-mono); color: var(--ink-soft);
+  }
+  .agent-tab .history-row .txt {
+    font: 11px var(--font-body); color: var(--ink);
+  }
+  .agent-tab .history-row .ms {
+    text-align: right; font: 10px var(--font-mono); color: var(--ink-soft);
+  }
+
+  /* =========================================================
+     OSINT TAB — inline search + extract
+     ========================================================= */
+  .osint-tab {
+    padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 10px; height: 100%;
+  }
+  .osint-tab .search-bar {
+    display: grid; grid-template-columns: 1fr 120px 100px; gap: 8px;
+  }
+  .osint-tab .search-bar input {
+    padding: 8px 12px; background: var(--paper);
+    border: 1px solid var(--line);
+    font: italic 14px var(--font-serif); color: var(--ink); outline: none;
+  }
+  .osint-tab .search-bar select {
+    padding: 6px 8px; background: var(--panel); border: 1px solid var(--line);
+    color: var(--ink); font: 12px var(--font-body); outline: none;
+  }
+  .osint-tab .search-bar button {
+    padding: 8px 12px; background: var(--accent); color: var(--paper);
+    border: 0; cursor: pointer;
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .osint-tab .extract {
+    background: var(--paper); border: 1px solid var(--line);
+    padding: 10px 14px; position: relative;
+  }
+  .osint-tab .extract::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 4px; background: var(--accent);
+  }
+  .osint-tab .extract .tag {
+    font: 700 10px/1 var(--font-mono); letter-spacing: 0.16em;
+    color: var(--accent); text-transform: uppercase;
+    padding: 2px 6px; border: 1px solid var(--accent);
+    display: inline-block; margin-bottom: 4px;
+  }
+  .osint-tab .extract .summary {
+    font: italic 14px/1.4 var(--font-serif); color: var(--ink); margin: 0;
+  }
+  .osint-tab .extract .summary b { font-weight: 700; color: var(--accent); }
+
+  .osint-tab .gallery {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+  }
+  .osint-tab .gallery .img {
+    aspect-ratio: 4/3; background: var(--panel-2); border: 1px solid var(--line);
+    position: relative; overflow: hidden;
+  }
+  .osint-tab .gallery .img svg { width: 100%; height: 100%; display: block; }
+
+  .osint-tab .facts {
+    display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .osint-tab .facts .chip {
+    padding: 3px 8px; background: var(--panel);
+    border: 1px solid var(--line);
+    font: italic 11px/1.3 var(--font-serif); color: var(--ink);
+    cursor: pointer;
+  }
+  .osint-tab .facts .chip.added { background: var(--sage); color: var(--paper); border-color: var(--sage); }
+
+  .osint-tab .case-mgr {
+    display: grid; grid-template-columns: 1fr 280px; gap: 10px;
+    flex: 1; min-height: 0;
+  }
+  .osint-tab .results {
+    background: var(--paper); border: 1px solid var(--line);
+    overflow: auto;
+  }
+  .osint-tab .result {
+    display: grid; grid-template-columns: 24px 1fr auto; gap: 8px;
+    padding: 8px 10px; border-bottom: 1px dashed var(--line-2);
+    cursor: grab;
+  }
+  .osint-tab .result .idx {
+    font: 700 11px var(--font-mono); color: var(--accent);
+  }
+  .osint-tab .result .title {
+    font: 600 12px var(--font-body); color: var(--ink);
+  }
+  .osint-tab .result .url {
+    font: 10px var(--font-mono); color: var(--ink-soft);
+    letter-spacing: 0.04em; margin-top: 2px;
+  }
+  .osint-tab .result .snippet {
+    font: 11px/1.4 var(--font-body); color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .osint-tab .result .actions {
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .osint-tab .result .actions button {
+    padding: 3px 7px; border: 1px solid var(--line); background: var(--bg);
+    color: var(--ink-soft); cursor: pointer;
+    font: 700 8px/1 var(--font-mono); letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .osint-tab .result .actions button:hover { color: var(--accent); }
+  .osint-tab .result .actions button.saved {
+    background: var(--sage); color: var(--paper); border-color: var(--sage);
+  }
+  .osint-tab .case-panel {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 10px 12px; overflow: auto;
+  }
+  .osint-tab .case-panel .id {
+    font: 700 10px var(--font-mono); color: var(--sage);
+    letter-spacing: 0.14em;
+  }
+  .osint-tab .case-panel .name {
+    font: 600 13px var(--font-body); color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .osint-tab .case-panel .drop {
+    border: 2px dashed var(--line);
+    background: var(--bg); padding: 14px;
+    text-align: center; margin-bottom: 10px;
+  }
+  .osint-tab .case-panel .drop.over {
+    border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  }
+  .osint-tab .case-panel .drop .ic {
+    font-size: 18px; color: var(--accent);
+  }
+  .osint-tab .case-panel .drop .hint {
+    font: italic 11px var(--font-serif); color: var(--ink-soft);
+  }
+  .osint-tab .case-panel ul {
+    list-style: none; padding: 0; margin: 0 0 10px;
+  }
+  .osint-tab .case-panel ul li {
+    display: grid; grid-template-columns: 60px 1fr auto; gap: 6px;
+    padding: 4px 0; border-bottom: 1px dotted var(--line-2);
+    font: 11px var(--font-body); color: var(--ink);
+  }
+  .osint-tab .case-panel ul li .badge {
+    font: 700 9px var(--font-mono); color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+  .osint-tab .case-panel ul li .x { cursor: pointer; color: var(--ink-soft); }
+  .osint-tab .case-panel ul li .x:hover { color: var(--fail); }
+  .osint-tab .case-panel .bulk {
+    display: flex; gap: 4px; flex-wrap: wrap;
+  }
+  .osint-tab .case-panel .bulk button {
+    flex: 1; padding: 5px 6px; border: 1px solid var(--line);
+    background: transparent; color: var(--ink-soft); cursor: pointer;
+    font: 700 9px/1 var(--font-mono); letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
+  .osint-tab .case-panel .bulk button:hover { color: var(--accent); }
+  .osint-tab .case-panel .bulk button.primary {
+    background: var(--accent); color: var(--paper); border-color: var(--accent);
+  }
+
+  /* =========================================================
+     SETTINGS TAB — theme picker
+     ========================================================= */
+  .settings-tab {
+    padding: 16px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .settings-tab h3 {
+    margin: 0;
+    font: 700 11px/1 var(--font-mono); letter-spacing: 0.14em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .settings-tab .theme-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+  .settings-tab .theme-card {
+    border: 2px solid var(--line); padding: 12px;
+    background: var(--panel); cursor: pointer;
+    transition: border-color 120ms;
+  }
+  .settings-tab .theme-card:hover { border-color: var(--ink-soft); }
+  .settings-tab .theme-card.active { border-color: var(--accent); }
+  .settings-tab .theme-card .av {
+    width: 100%; aspect-ratio: 1;
+    border: 1px solid var(--line-2);
+    margin-bottom: 8px;
+    background: var(--bg);
+  }
+  .settings-tab .theme-card .av img {
+    width: 100%; height: 100%; display: block; object-fit: cover;
+  }
+  .settings-tab .theme-card .name {
+    font: 600 13px var(--font-display); color: var(--ink);
+  }
+  .settings-tab .theme-card .desc {
+    font: 11px/1.4 var(--font-body); color: var(--ink-soft);
+    margin-top: 4px;
+  }
+  .settings-tab .theme-card .pick {
+    margin-top: 6px;
+    font: 700 9px/1 var(--font-mono); letter-spacing: 0.14em;
+    color: var(--accent); text-transform: uppercase;
+  }
+
+  /* =========================================================
+     TERMINAL DOCK
+     ========================================================= */
+  .terminal {
+    grid-area: terminal;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+  .terminal .term-bar {
+    height: 26px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; padding: 0 10px; gap: 8px;
+    font: 700 10px/1 var(--font-mono);
+    color: var(--ink-soft); letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .terminal .term-bar .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+    box-shadow: 0 0 6px var(--ok);
+  }
+  .terminal .term-bar .info { color: var(--accent); margin-left: 6px; }
+
+  .terminal #xterm {
+    flex: 1; padding: 6px 8px;
+    background: var(--bg);
+  }
+  .terminal .xterm-viewport { background: var(--bg) !important; }
+
+  /* ─── BOTTOM STATUSBAR ─── */
+  .statusbar {
+    grid-area: statusbar;
+    background: var(--panel-2);
+    border-top: 1px solid var(--line);
+    padding: 0 12px;
+    display: flex; align-items: center; gap: 16px;
+    font: 10px var(--font-mono);
+    color: var(--ink-soft); letter-spacing: 0.04em;
+  }
+  .statusbar .right { margin-left: auto; display: flex; gap: 12px; }
+  .statusbar .pill { display: flex; align-items: center; gap: 4px; }
+  .statusbar .pill .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--ok);
+  }
+
+  /* ─── SETTINGS MODAL (overlay) ─── */
+  .modal {
+    position: absolute; inset: 0;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    display: none; align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  .modal.on { display: flex; }
+  .modal .panel {
+    width: 720px; max-height: 80%;
+    background: var(--panel); border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    overflow: auto; padding: 18px 22px;
+    box-shadow: var(--shadow);
+  }
+  .modal .panel .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 12px;
+    padding-bottom: 8px; border-bottom: 1px dashed var(--line-2);
+  }
+  .modal .panel .head .lbl {
+    font: 700 14px/1 var(--font-mono); letter-spacing: 0.14em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .modal .panel .head .x {
+    cursor: pointer; color: var(--ink-soft); font-size: 16px;
+  }
+  .modal .panel .head .x:hover { color: var(--fail); }
+
+  /* legend */
+  .legend {
+    max-width: 1320px; margin: 14px auto 0;
+    padding: 12px 16px; background: var(--panel);
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    font: 12px/1.5 var(--font-body); color: var(--ink-soft);
+  }
+  .legend h3 {
+    margin: 0 0 6px;
+    font: 700 10px/1 var(--font-mono);
+    color: var(--accent); letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .legend b { color: var(--ink); }
+  .legend code {
+    background: var(--bg); padding: 1px 6px;
+    font: 11px var(--font-mono); color: var(--accent);
+  }
+  .legend ul { margin: 6px 0 0; padding-left: 18px; }
+  .legend li { margin-bottom: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .status-bar .pill.live .dot,
+    .agent-tab .reply .body .caret { animation: none; }
+  }
+  @media (max-width: 1200px) {
+    .window { grid-template-columns: 160px 1fr; }
+    .status-bar { grid-template-columns: repeat(3, 1fr); }
+    .soar-tab .rules-list { grid-template-columns: 1fr; }
+    .settings-tab .theme-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body data-theme="graphite">
+
+<div class="page-head">
+  <div class="title">▣ CortexAgent Console · Tauri window mockup</div>
+  <div class="meta">1320 × 820 · 6 regions · 5 tabs + Settings · xterm.js embedded</div>
+</div>
+
+<!-- ============ THE WINDOW ============ -->
+<div class="window" role="application" aria-label="CortexAgent Console">
+
+  <!-- ── Titlebar ── -->
+  <div class="titlebar">
+    <div class="grip" aria-hidden="true"></div>
+    <div class="app">CortexAgent</div>
+    <div class="crumbs">
+      <span>console</span><span class="sep">›</span><span id="crumb-tab">security</span>
+    </div>
+    <div class="theme-pill" id="theme-pill" title="Change theme">
+      <span class="av"></span>
+      <span id="theme-name">graphite</span>
+    </div>
+    <div class="ctrls" aria-label="window controls">
+      <span title="Settings" id="open-settings">⚙</span>
+      <span title="minimize">▁</span>
+      <span title="maximize">▢</span>
+      <span title="close" class="close">×</span>
+    </div>
+  </div>
+
+  <!-- ── Top status bar ── -->
+  <div class="status-bar">
+    <div class="pill ok">
+      <span class="dot"></span>
+      <span class="name">BIG MODEL</span>
+      <span class="val">Qwen3.6 35B</span>
+    </div>
+    <div class="pill live">
+      <span class="dot"></span>
+      <span class="name">PIPELINE</span>
+      <span class="val">live</span>
+    </div>
+    <div class="pill fail">
+      <span class="dot"></span>
+      <span class="name">SECURITY</span>
+      <span class="val">3 fail</span>
+    </div>
+    <div class="pill warn">
+      <span class="dot"></span>
+      <span class="name">SIEM 24h</span>
+      <span class="val">1,847 ev</span>
+    </div>
+    <div class="pill ok">
+      <span class="dot"></span>
+      <span class="name">SOAR</span>
+      <span class="val">12 runs</span>
+    </div>
+    <div class="pill ok">
+      <span class="dot"></span>
+      <span class="name">CASES</span>
+      <span class="val">3 open</span>
+    </div>
+  </div>
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="group">Surfaces</div>
+    <div class="nav">
+      <button class="active" data-tab="sec">
+        <span class="ico">▣</span><span>Security</span>
+        <span class="badge">3</span>
+      </button>
+      <button data-tab="soar">
+        <span class="ico">⚡</span><span>SOAR</span>
+        <span class="badge warn">2</span>
+      </button>
+      <button data-tab="agent">
+        <span class="ico">◇</span><span>Agent</span>
+      </button>
+      <button data-tab="osint">
+        <span class="ico">◫</span><span>OSINT</span>
+      </button>
+      <button data-tab="cases">
+        <span class="ico">⛁</span><span>Cases</span>
+        <span class="badge ok">3</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main pane ── -->
+  <main class="main">
+
+    <!-- ═══════════════ SECURITY TAB ═══════════════ -->
+    <section class="tab-pane active" id="tab-sec">
+      <div class="sec-tab">
+
+        <!-- Left: timeline -->
+        <div class="timeline-pane">
+          <h3>What just happened? <span class="sub">— click any to inspect</span></h3>
+
+          <div class="filters">
+            <button class="chip on" data-filter="all">ALL</button>
+            <button class="chip" data-filter="CRIT">CRIT</button>
+            <button class="chip" data-filter="HIGH">HIGH</button>
+            <button class="chip" data-filter="OK">OK</button>
+          </div>
+
+          <div class="timeline" id="sec-timeline">
+            <div class="event CRIT selected" data-evt="evt-1">
+              <span class="t">11:13:18</span>
+              <span class="lvl">CRIT</span>
+              <span class="rule">block-src</span>
+              <span class="txt">198.51.100.42 — KEV CVE-2025-30872 — SSH brute-force</span>
+              <span class="src">siem</span>
+            </div>
+            <div class="event HIGH" data-evt="evt-2">
+              <span class="t">10:47:02</span>
+              <span class="lvl">HIGH</span>
+              <span class="rule">isolate-host</span>
+              <span class="txt">workstation-07 quarantined — outbound C2 detected</span>
+              <span class="src">soar</span>
+            </div>
+            <div class="event HIGH" data-evt="evt-3">
+              <span class="t">09:22:54</span>
+              <span class="lvl">HIGH</span>
+              <span class="rule">enrich-cve</span>
+              <span class="txt">12 CVEs annotated — 4 cross-linked to active alerts</span>
+              <span class="src">siem</span>
+            </div>
+            <div class="event OK" data-evt="evt-4">
+              <span class="t">08:14:11</span>
+              <span class="lvl">OK</span>
+              <span class="rule">agent-run</span>
+              <span class="txt">Rule 401 vs 402 — admissibility — 9 hot tokens</span>
+              <span class="src">agent</span>
+            </div>
+            <div class="event CRIT" data-evt="evt-5">
+              <span class="t">07:31:00</span>
+              <span class="lvl">CRIT</span>
+              <span class="rule">sshd-baseline</span>
+              <span class="txt">10 baseline deviations detected — PermitRootLogin yes</span>
+              <span class="src">auditd</span>
+            </div>
+            <div class="event OK" data-evt="evt-6">
+              <span class="t">06:58:43</span>
+              <span class="lvl">OK</span>
+              <span class="rule">harden-nft</span>
+              <span class="txt">draft ruleset for review — 12 rules, 3 require approval</span>
+              <span class="src">agent</span>
+            </div>
+            <div class="event HIGH" data-evt="evt-7">
+              <span class="t">05:11:22</span>
+              <span class="lvl">HIGH</span>
+              <span class="rule">osint-extract</span>
+              <span class="txt">14 results → 4 facts + 8 images — saved to CASE-01</span>
+              <span class="src">osint</span>
+            </div>
+          </div>
+
+          <div class="saved-views">
+            <span class="view">▸ SSH failures last 24h</span>
+            <span class="view">▸ Outbound C2</span>
+            <span class="view">▸ KEV cross-linked</span>
+            <span class="view">+ save current</span>
+          </div>
+        </div>
+
+        <!-- Right: detail -->
+        <div class="detail" id="sec-detail">
+          <div class="head">
+            <span class="lvl CRIT">CRIT</span>
+            <div class="rule">block-src</div>
+            <div class="when">2026-08-20 11:13:18 EDT · 0.8 s · 1 rule fired</div>
+          </div>
+
+          <h4>What happened</h4>
+          <div class="row"><span class="k">Source IP:</span>198.51.100.42</div>
+          <div class="row"><span class="k">Target:</span>sshd (workstation-07)</div>
+          <div class="row"><span class="k">Attempts:</span>147 in 60 s (brute-force pattern)</div>
+
+          <h4>Cross-linked CVE</h4>
+          <div class="cve-link">
+            <span class="id">CVE-2025-30872</span>
+            <span class="desc">OpenSSH 9.7 — auth bypass via crafted KEXINIT — CVSS 9.8 — KEV listed</span>
+          </div>
+          <div class="row"><span class="k">EPSS:</span>0.74 (top 1%)</div>
+          <div class="row"><span class="k">Vendor:</span>OpenBSD · patched in 9.8</div>
+
+          <h4>Related events · 4</h4>
+          <div class="row">11:09:14 · CRIT · same source IP · sshd</div>
+          <div class="row">11:09:08 · CRIT · same source IP · sshd</div>
+          <div class="row">11:08:53 · HIGH · nft · auto-block staged</div>
+          <div class="row">11:08:42 · HIGH · siem · alert raised</div>
+
+          <div class="actions">
+            <button class="primary">Create case from event</button>
+            <button>Open CVE in NVD</button>
+            <button>Pin to dashboard</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ═══════════════ SOAR TAB ═══════════════ -->
+    <section class="tab-pane" id="tab-soar">
+      <div class="soar-tab">
+
+        <h3>Pending approval <span style="color:var(--ink-soft); font-weight:400; letter-spacing:0.04em;">— rules waiting on you</span></h3>
+        <div class="approval-queue">
+          <div class="head">
+            <span class="name">⚠ 2 rules need human OK</span>
+            <span style="font:10px var(--font-mono); color:var(--ink-soft);">staged · 5m ago</span>
+          </div>
+          <div class="item">
+            <span><b>block-src</b> on 198.51.100.42 · auto-triggered by KEV CVE-2025-30872</span>
+            <button class="approve">Approve</button>
+            <button class="reject">Reject</button>
+          </div>
+          <div class="item">
+            <span><b>isolate-host</b> on workstation-07 · outbound C2 detected</span>
+            <button class="approve">Approve</button>
+            <button class="reject">Reject</button>
+          </div>
+        </div>
+
+        <h3>Rules</h3>
+        <div class="rules-list">
+          <div class="rule">
+            <div class="name">block-src</div>
+            <div class="meta">9 runs · last 0.8 s · 100% success</div>
+            <div class="desc">Block a source IP at the nftables level when KEV-listed CVE traffic is detected.</div>
+            <div class="actions">
+              <button class="run">Run �</button>
+              <button>Edit</button>
+              <button>Disable</button>
+            </div>
+          </div>
+          <div class="rule">
+            <div class="name">isolate-host</div>
+            <div class="meta">3 runs · last 5m 12s · 100% success</div>
+            <div class="desc">Quarantine a host by revoking its VPN cert + adding it to a nftables drop set.</div>
+            <div class="actions">
+              <button class="run">Run ▸</button>
+              <button>Edit</button>
+              <button>Disable</button>
+            </div>
+          </div>
+          <div class="rule">
+            <div class="name">enrich-cve</div>
+            <div class="meta">42 runs · last 3.4 s · avg 11 CVEs</div>
+            <div class="desc">Pull NVD + KEV + EPSS + GHSA for a list of CVE IDs and merge into SIEM.</div>
+            <div class="actions">
+              <button class="run">Run ▸</button>
+              <button>Edit</button>
+              <button>Disable</button>
+            </div>
+          </div>
+          <div class="rule">
+            <div class="name">harden-nft</div>
+            <div class="meta">7 runs · last 2.4 s · drafts rules</div>
+            <div class="desc">Generate a hardening nftables ruleset for review (never applied automatically).</div>
+            <div class="actions">
+              <button class="run">Run ▸</button>
+              <button>Edit</button>
+              <button>Disable</button>
+            </div>
+          </div>
+          <div class="rule">
+            <div class="name">osint-extract</div>
+            <div class="meta">18 runs · last 1.85 s · 14→4 facts</div>
+            <div class="desc">Run LLM extraction on SearXNG results: summary, image gallery, fact chips.</div>
+            <div class="actions">
+              <button class="run">Run �</button>
+              <button>Edit</button>
+              <button>Disable</button>
+            </div>
+          </div>
+          <div class="rule">
+            <div class="name">scan-baseline</div>
+            <div class="meta">daily · last 1m 02s</div>
+            <div class="desc">Compare current hardening state against the saved baseline; report deltas.</div>
+            <div class="actions">
+              <button class="run">Run ▸</button>
+              <button>Edit</button>
+              <button>Disable</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="runner">
+          <h3>Run a rule manually</h3>
+          <form>
+            <select>
+              <option>block-src</option>
+              <option>isolate-host</option>
+              <option>enrich-cve</option>
+              <option>harden-nft</option>
+              <option>osint-extract</option>
+              <option>scan-baseline</option>
+            </select>
+            <input type="text" placeholder="parameters (e.g. src=198.51.100.42)" />
+            <button type="button">Run ▸</button>
+          </form>
+        </div>
+
+        <div class="history">
+          <h3>Run history · 24h</h3>
+          <div class="row"><span class="when">11:13:18</span><span class="rule">block-src</span><span class="diff">src=198.51.100.42 · KEV CVE-2025-30872 → <b>added to nft:1</b></span><span class="stat ok">✓ ok</span><span class="stat">0.8 s</span></div>
+          <div class="row"><span class="when">10:47:02</span><span class="rule">isolate-host</span><span class="diff">host=workstation-07 → <b>VPN revoked, nft added</b></span><span class="stat ok">✓ ok</span><span class="stat">5m 12s</span></div>
+          <div class="row"><span class="when">09:22:54</span><span class="rule">enrich-cve</span><span class="diff">12 CVE IDs → <b>12 enriched, 4 cross-linked</b></span><span class="stat ok">✓ ok</span><span class="stat">3.4 s</span></div>
+          <div class="row"><span class="when">08:00:00</span><span class="rule">scan-baseline</span><span class="diff">9 checks → <b>6 ok, 3 fail</b></span><span class="stat fail">✗ fail</span><span class="stat">1m 02s</span></div>
+          <div class="row"><span class="when">05:11:22</span><span class="rule">osint-extract</span><span class="diff">14 results → <b>4 facts + 8 images</b></span><span class="stat ok">✓ ok</span><span class="stat">1.85 s</span></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ═══════════════ AGENT TAB ═══════════════ -->
+    <section class="tab-pane" id="tab-agent">
+      <div class="agent-tab">
+
+        <div class="prompt">
+          <div class="head">
+            <span class="lbl">▸ Prompt</span>
+            <span style="font:10px var(--font-mono); color:var(--ink-soft);">SlimToken · Memory · Overseer</span>
+          </div>
+          <textarea id="agent-prompt">Rule 401 vs 402 — admissibility</textarea>
+          <div class="row">
+            <button id="agent-run">Run ▸</button>
+            <button id="agent-reset" style="background:transparent;color:var(--ink);border:1px solid var(--line);">Reset</button>
+            <div class="toggle">
+              <label><input type="checkbox" checked>memory</label>
+              <label><input type="checkbox" checked>SlimToken</label>
+              <label><input type="checkbox" checked>retriever</label>
+              <label><input type="checkbox">voice</label>
+              <label><input type="checkbox" checked>overseer</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="stages" id="agent-stages">
+          <div class="stage" data-stage="1">
+            <div class="chip">1</div><div class="lbl">Input</div>
+            <div class="lane" id="ag-lane-1"></div>
+          </div>
+          <div class="stage" data-stage="2">
+            <div class="chip">2</div><div class="lbl">Tokenize</div>
+            <div class="lane" id="ag-lane-2"></div>
+          </div>
+          <div class="stage" data-stage="3">
+            <div class="chip">3</div><div class="lbl">SlimToken</div>
+            <div class="lane" id="ag-lane-3"></div>
+          </div>
+          <div class="stage" data-stage="4">
+            <div class="chip">4</div><div class="lbl">Retrieve</div>
+            <div class="lane" id="ag-lane-4"></div>
+          </div>
+          <div class="stage" data-stage="5">
+            <div class="chip">5</div><div class="lbl">Generate</div>
+            <div class="lane" id="ag-lane-5"></div>
+          </div>
+        </div>
+
+        <div class="reply">
+          <div class="head">
+            <span class="lbl">▸ Reply · streaming</span>
+            <span class="stat" id="ag-stat">17 → 9 tokens · 3 mem hits · 1.85 s</span>
+          </div>
+          <div class="body" id="ag-body"><span class="caret"></span></div>
+        </div>
+
+        <div>
+          <h3 style="margin:4px 0 6px; font:700 10px/1 var(--font-mono); letter-spacing:0.14em; color:var(--accent); text-transform:uppercase;">Recent runs · click to re-run</h3>
+          <div class="history-row">
+            <span class="hash">a1f9c2</span>
+            <span class="when">11:13 EDT</span>
+            <span class="txt">Rule 401 vs 402 — admissibility</span>
+            <span class="ms">1853 ms</span>
+          </div>
+          <div class="history-row" style="margin-top:4px;">
+            <span class="hash">b4e7a0</span>
+            <span class="when">10:42 EDT</span>
+            <span class="txt">Migrate docs/v2 → docs/v3 paths</span>
+            <span class="ms">2401 ms</span>
+          </div>
+          <div class="history-row" style="margin-top:4px;">
+            <span class="hash">7d3c91</span>
+            <span class="when">09:18 EDT</span>
+            <span class="txt">SIEM rule — block-source-ip baseline</span>
+            <span class="ms">942 ms</span>
+          </div>
+        </div>
+
+        <div class="reply" style="flex:0; min-height:0;">
+          <div class="head">
+            <span class="lbl">▸ Memory inspector · last run</span>
+            <span class="stat">3 hits · top-k=5</span>
+          </div>
+          <div style="font:12px/1.5 var(--font-body); color:var(--ink); padding:6px 0;">
+            <div><span style="color:var(--ink-soft);font-family:var(--font-mono);font-size:10px;">[0.91]</span> <b>memory#442</b> · "Rule 401 — balancing test — Daubert…" <span style="color:var(--ink-soft);">(2024-03-14)</span></div>
+            <div><span style="color:var(--ink-soft);font-family:var(--font-mono);font-size:10px;">[0.84]</span> <b>memory#118</b> · "Federal Rules — 2024 amendment summary" <span style="color:var(--ink-soft);">(2024-09-02)</span></div>
+            <div><span style="color:var(--ink-soft);font-family:var(--font-mono);font-size:10px;">[0.71]</span> <b>rag:civil-procedure</b> · "Admissibility — overview" <span style="color:var(--ink-soft);">(2025-01-08)</span></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ═══════════════ OSINT TAB ═══════════════ -->
+    <section class="tab-pane" id="tab-osint">
+      <div class="osint-tab">
+
+        <div class="search-bar">
+          <input id="osint-q" value='"reinhart" AND "larkspur" 2024..2026'>
+          <select>
+            <option>searxng · all</option>
+            <option>searxng · news</option>
+            <option>searxng · legal</option>
+            <option>searxng · images</option>
+          </select>
+          <button>Search ▸</button>
+        </div>
+
+        <div class="extract">
+          <div class="tag">✦ LLM extract · 14 → {4 facts, 8 images}</div>
+          <p class="summary">
+            Across the <b>14 results</b>, the LLM pass surfaced a coherent single story:
+            <b>Margaret Reinhart</b> (Larkspur, CA) executed a quitclaim deed on a Larkspur
+            property in <b>2025-03</b>, with the grantee listed as <b>"Reinhart Family Trust
+            c/o R. Larkspur."</b>
+          </p>
+        </div>
+
+        <div class="gallery">
+          <div class="img"><svg viewBox="0 0 80 60"><rect width="80" height="60" fill="#cdb89a"/><rect x="6" y="6" width="68" height="40" fill="#9c8463"/><text x="40" y="32" text-anchor="middle" font-size="6" fill="#f3ede1" font-family="JetBrains Mono">RECORDER</text></svg></div>
+          <div class="img"><svg viewBox="0 0 80 60"><rect width="80" height="60" fill="#dad1bd"/><rect x="14" y="20" width="22" height="28" fill="#b85a2c"/><rect x="42" y="22" width="26" height="22" fill="#085459"/></svg></div>
+          <div class="img"><svg viewBox="0 0 80 60"><rect width="80" height="60" fill="#f3ede1"/><rect x="6" y="6" width="68" height="48" fill="#fff7e3" stroke="#a89c80"/><text x="40" y="22" text-anchor="middle" font-size="5" fill="#1a1a1a" font-family="Garamond">GRANTOR: M. REINHART</text><text x="40" y="32" text-anchor="middle" font-size="5" fill="#1a1a1a" font-family="Garamond">GRANTEE: RFT</text></svg></div>
+          <div class="img"><svg viewBox="0 0 80 60"><rect width="80" height="60" fill="#e8e0cf"/><circle cx="40" cy="30" r="18" fill="#6b8068"/><text x="40" y="34" text-anchor="middle" font-size="14" font-family="Garamond" fill="#f3ede1" font-style="italic">MR</text></svg></div>
+          <div class="img"><svg viewBox="0 0 80 60"><rect width="80" height="60" fill="#085459"/><text x="40" y="22" text-anchor="middle" font-size="5" fill="#f3ede1" font-family="Garamond">REINHART</text><text x="40" y="32" text-anchor="middle" font-size="5" fill="#f3ede1" font-family="Garamond">FAMILY</text><text x="40" y="42" text-anchor="middle" font-size="5" fill="#f3ede1" font-family="Garamond">TRUST</text></svg></div>
+          <div class="img"><svg viewBox="0 0 80 60"><rect width="80" height="60" fill="#c8b88f"/><path d="M 0 36 L 12 24 L 24 32 L 36 20 L 52 28 L 80 16 L 80 60 L 0 60 Z" fill="#6b8068"/><path d="M 32 28 L 40 20 L 48 28 L 48 36 L 32 36 Z" fill="#1a1a1a"/></svg></div>
+        </div>
+
+        <div class="facts">
+          <span class="chip">Quitclaim 2025-03-14 <b style="font:9px var(--font-mono); color:var(--ink-soft); margin-left:4px;">deeds</b></span>
+          <span class="chip added">Grantee c/o R. Larkspur <b style="font:9px var(--font-mono); color:var(--paper); margin-left:4px; opacity:0.7;">deeds</b></span>
+          <span class="chip">120 Ward St · 94939 <b style="font:9px var(--font-mono); color:var(--ink-soft); margin-left:4px;">public-notice</b></span>
+          <span class="chip">Trust est. 2024-09 <b style="font:9px var(--font-mono); color:var(--ink-soft); margin-left:4px;">sec.state</b></span>
+        </div>
+
+        <div class="case-mgr">
+          <div class="results" id="osint-results">
+            <div class="result" draggable="true">
+              <span class="idx">01.</span>
+              <div>
+                <div class="title">Marin County Recorder — Doc #M-2025-018442</div>
+                <div class="url">recorder.marin-co.gov/…/2025/018442.pdf</div>
+                <div class="snippet"><b>Quitclaim deed</b>. Grantor: <b>Margaret Reinhart</b>. Grantee: Reinhart Family Trust c/o R. Larkspur. Recorded <b>2025-03-14</b>.</div>
+              </div>
+              <div class="actions">
+                <button class="saved">✓ Saved</button>
+                <button>Re-extract</button>
+              </div>
+            </div>
+            <div class="result" draggable="true">
+              <span class="idx">02.</span>
+              <div>
+                <div class="title">Reinhart Family Trust — formation filing</div>
+                <div class="url">bizfileonline.sos.ca.gov/…/trust/2024-09</div>
+                <div class="snippet">Trust established <b>2024-09-22</b>. Settlor: Margaret Reinhart. Trustee: R. Larkspur. Situs: 120 Ward St, Larkspur CA.</div>
+              </div>
+              <div class="actions">
+                <button class="saved">✓ Saved</button>
+                <button>Re-extract</button>
+              </div>
+            </div>
+            <div class="result" draggable="true">
+              <span class="idx">03.</span>
+              <div>
+                <div class="title">Larkspur city notice — trust situs address</div>
+                <div class="url">larkspur.gov/public-notices/…/2025-04-02</div>
+                <div class="snippet">Public notice naming R. Larkspur as trustee of record for the parcel at 120 Ward St.</div>
+              </div>
+              <div class="actions">
+                <button>Save</button>
+                <button>Re-extract</button>
+              </div>
+            </div>
+            <div class="result" draggable="true">
+              <span class="idx">04.</span>
+              <div>
+                <div class="title">Redfin — 120 Ward St, Larkspur</div>
+                <div class="url">redfin.com/zipcode-94939/120-ward-st</div>
+                <div class="snippet">Off-market; last transfer 2025-03-14 from Margaret Reinhart to Reinhart Family Trust.</div>
+              </div>
+              <div class="actions">
+                <button>Save</button>
+                <button>Re-extract</button>
+              </div>
+            </div>
+            <div class="result" draggable="true">
+              <span class="idx">05.</span>
+              <div>
+                <div class="title">LinkedIn — M. Reinhart, Larkspur CA</div>
+                <div class="url">linkedin.com/in/margaret-reinhart-larkspur</div>
+                <div class="snippet">Realtor, Coldwell Banker, Marin County since 2019. Profile lists Larkspur, CA.</div>
+              </div>
+              <div class="actions">
+                <button class="saved">✓ Saved</button>
+                <button>Re-extract</button>
+              </div>
+            </div>
+            <div class="result">
+              <span class="idx">06.</span>
+              <div>
+                <div class="title">Larkspur Town Talk — 2024-09-22 obit (different Reinhart)</div>
+                <div class="url">larkspur-towntalk.com/2024/09/22/obit-reinhart</div>
+                <div class="snippet">Obituary for Edward Reinhart, age 88. <i>(not the same Reinhart; filtered as noise.)</i></div>
+              </div>
+              <div class="actions">
+                <button>Save</button>
+                <button>Re-extract</button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="case-panel">
+            <div class="id">▣ CASE-01 · active</div>
+            <div class="name">Reinhart / Larkspur — quitclaim &amp; trust trace</div>
+
+            <div class="drop" id="osint-drop">
+              <div class="ic">⤓</div>
+              <div class="hint">drag result rows here</div>
+            </div>
+
+            <ul id="osint-saved">
+              <li><span class="badge">DOC</span><span>#01 Marin Recorder — quitclaim</span><span class="x">×</span></li>
+              <li><span class="badge">DOC</span><span>#02 Reinhart Family Trust filing</span><span class="x">×</span></li>
+              <li><span class="badge">PROFILE</span><span>M. Reinhart — Coldwell Banker</span><span class="x">×</span></li>
+              <li><span class="badge">FACT</span><span>Grantee c/o R. Larkspur</span><span class="x">×</span></li>
+            </ul>
+
+            <div class="bulk">
+              <button>Export PDF</button>
+              <button>Export JSON</button>
+              <button class="primary">Close case</button>
+            </div>
+
+            <div style="margin-top:10px; font:11px var(--font-body); color:var(--ink-soft);">
+              <div style="font:700 9px var(--font-mono); letter-spacing:0.14em; color:var(--accent); text-transform:uppercase; margin-bottom:4px;">Other cases</div>
+              CASE-02 · 2024 Q3 cohort<br>
+              CASE-03 · Marin Co. assessor
+            </div>
+          </aside>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ═══════════════ CASES TAB ═══════════════ -->
+    <section class="tab-pane" id="tab-cases">
+      <div class="soar-tab" style="padding:16px;">
+        <h3>Open cases</h3>
+        <div class="rules-list" style="grid-template-columns:1fr;">
+          <div class="rule" style="border-left:3px solid var(--accent);">
+            <div class="name">CASE-01 · Reinhart / Larkspur — quitclaim &amp; trust trace</div>
+            <div class="meta">5 saved items · 6 images · 4 facts · last edit 11:13 EDT</div>
+            <div class="desc">Tracing Margaret Reinhart's 2025-03 quitclaim to R. Larkspur as trustee. Cross-referenced with Marin Co. recorder, sec.state.ca.gov trust filing, Redfin parcel, and public-notice records.</div>
+            <div class="actions">
+              <button class="run">Open ▸</button>
+              <button>Export PDF</button>
+              <button>Close case</button>
+            </div>
+          </div>
+          <div class="rule">
+            <div class="name">CASE-02 · 2024 Q3 cohort analysis</div>
+            <div class="meta">12 items · 2 images · last edit 2026-08-18</div>
+            <div class="desc">Comparing cohort behavior across 2024 Q3 — focus on retention drivers.</div>
+            <div class="actions">
+              <button class="run">Open ▸</button>
+              <button>Export</button>
+              <button>Close</button>
+            </div>
+          </div>
+          <div class="rule">
+            <div class="name">CASE-03 · Marin Co. assessor index — refresh</div>
+            <div class="meta">3 items · 0 images · last edit 2026-08-15</div>
+            <div class="desc">Quarterly refresh of assessor index cross-reference for active cases.</div>
+            <div class="actions">
+              <button class="run">Open ▸</button>
+              <button>Export</button>
+              <button>Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ SETTINGS MODAL �══════════════ -->
+    <div class="modal" id="settings-modal">
+      <div class="panel">
+        <div class="head">
+          <span class="lbl">� Settings · Theme</span>
+          <span class="x" id="close-settings">×</span>
+        </div>
+        <p style="font:12px/1.5 var(--font-body); color:var(--ink-soft); margin:0 0 12px;">
+          Pick a theme — the whole window re-skins (chrome, sidebar, main pane, terminal, status bars).
+          Persistent in <code style="font:11px var(--font-mono); color:var(--accent);">localStorage</code>.
+        </p>
+        <div class="theme-grid" id="theme-grid">
+          <div class="theme-card active" data-theme="graphite">
+            <div class="av"><div style="width:100%;height:100%;background:linear-gradient(135deg,#0d1015,#131826);display:flex;align-items:center;justify-content:center;color:#ffb000;font:700 14px 'JetBrains Mono',monospace;">C</div></div>
+            <div class="name">Graphite</div>
+            <div class="desc">Default — aviation HMI. Industrial, amber-on-graphite, Plex Mono. The workhorse.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+          <div class="theme-card" data-theme="cockpit">
+            <div class="av"><img src="themes/security-cockpit/avatar.svg" alt="Cockpit Panel"></div>
+            <div class="name">Cockpit Panel</div>
+            <div class="desc">9 vertical instruments + big 3/9 central readout + 24h barograph.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+          <div class="theme-card" data-theme="paper">
+            <div class="av"><img src="themes/agent-paper/avatar.svg" alt="Paper Schematic"></div>
+            <div class="name">Paper Schematic</div>
+            <div class="desc">Textbook figure — white paper, Fraunces serif, teal ink, mathematical notation.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+          <div class="theme-card" data-theme="casebook">
+            <div class="av"><img src="themes/osint-casebook/avatar.svg" alt="Casebook Notebook"></div>
+            <div class="name">Casebook Notebook</div>
+            <div class="desc">Warm paper, Garamond italic, red margin line, numbered entries, margin notes.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+          <div class="theme-card" data-theme="polaroid">
+            <div class="av"><img src="themes/osint-polaroid/avatar.svg" alt="Polaroid Wall"></div>
+            <div class="name">Polaroid Wall</div>
+            <div class="desc">Dark corkboard, slightly-rotated warm cards with rust + teal pinheads.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+          <div class="theme-card" data-theme="live-pulse">
+            <div class="av"><img src="themes/agent-live/avatar.svg" alt="Live Pulse"></div>
+            <div class="name">Live Pulse</div>
+            <div class="desc">Deep navy + breathing warm accent + live token strip.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+          <div class="theme-card" data-theme="history">
+            <div class="av"><img src="themes/agent-history/avatar.svg" alt="History Diff"></div>
+            <div class="name">History Diff</div>
+            <div class="desc">Git-log style history on warm-white paper — Fraunces + commit-hash accents.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+          <div class="theme-card" data-theme="console-log">
+            <div class="av"><img src="themes/security-console/avatar.svg" alt="Console Log"></div>
+            <div class="name">Console Log</div>
+            <div class="desc">Three-column terminal layout — subsystem tree, live events, KEV feed.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+          <div class="theme-card" data-theme="compact">
+            <div class="av"><img src="themes/security-compact/avatar.svg" alt="Compact Stat Block"></div>
+            <div class="name">Compact Stat Block</div>
+            <div class="desc">All status in one viewport — flat dense grid, oversized red failure cell.</div>
+            <div class="pick">▸ PICK</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── Terminal dock ── -->
+  <div class="terminal">
+    <div class="term-bar">
+      <span class="dot"></span>
+      <span>TERMINAL</span>
+      <span class="info">bash · /home/grey · 80×24</span>
+    </div>
+    <div id="xterm"></div>
+  </div>
+
+  <!-- ── Bottom statusbar ── -->
+  <div class="statusbar">
+    <div class="pill"><span class="dot"></span><span>READY</span></div>
+    <div>history 1,847 · 42 runs today</div>
+    <div class="right">
+      <div>theme: <span id="theme-status">graphite</span></div>
+      <div>·</div>
+      <div>11:13:42 EDT</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <h3>Console anatomy · 6 regions · 5 tabs + Settings</h3>
+  <ul>
+    <li><b>titlebar</b> — Tauri chrome + theme pill (click to open Settings) + window controls</li>
+    <li><b>status bar (top)</b> — 6 live pills across surfaces: model, pipeline, sec, siem, soar, cases</li>
+    <li><b>sidebar</b> — Surface nav only (Security / SOAR / Agent / OSINT / Cases). No raw URL list.</li>
+    <li><b>main</b> — One tab per surface, each carrying useful features (NOT just stats)</li>
+    <li><b>terminal</b> — Real embedded xterm.js running bash; pinned at bottom</li>
+    <li><b>statusbar (bottom)</b> — current theme + history + clock</li>
+  </ul>
+  <p style="margin:8px 0 0;">
+    <b>Theme picker:</b> click the theme pill in the titlebar (or the gear icon) → Settings modal
+    opens with all 9 themes. Picking one re-skins the entire window (chrome, sidebar, main,
+    terminal, status bars) — not just one pane. Persistent in localStorage.
+  </p>
+</div>
+
+<!-- xterm.js -->
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+
+<script>
+// ────────────────────────────────────────────
+// 1) TAB SWITCHING
+// ────────────────────────────────────────────
+const tabs = document.querySelectorAll('.sidebar .nav button[data-tab]');
+const panes = document.querySelectorAll('.tab-pane');
+const crumb = document.getElementById('crumb-tab');
+const TAB_LABELS = {
+  sec: 'security', soar: 'soar · rules', agent: 'agent · pipeline',
+  osint: 'osint · search', cases: 'cases', settings: 'settings'
+};
+tabs.forEach(btn => {
+  btn.addEventListener('click', () => {
+    tabs.forEach(b => b.classList.remove('active'));
+    panes.forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.tab;
+    document.getElementById('tab-' + t).classList.add('active');
+    crumb.textContent = TAB_LABELS[t] || t;
+  });
+});
+
+// ────────────────────────────────────────────
+// 2) THEME PICKER — full-window re-skin
+// ────────────────────────────────────────────
+const THEMES = ['graphite','cockpit','paper','casebook','polaroid',
+                'live-pulse','history','console-log','compact'];
+
+function applyTheme(name) {
+  document.body.setAttribute('data-theme', name);
+  document.documentElement.setAttribute('data-theme', name);
+  localStorage.setItem('cortexagent.theme', name);
+  document.getElementById('theme-name').textContent = name;
+  document.getElementById('theme-status').textContent = name;
+  document.querySelectorAll('.theme-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.theme === name);
+  });
+  // also re-theme the xterm.js terminal
+  rethemeTerminal(name);
+}
+
+document.querySelectorAll('.theme-card').forEach(card => {
+  card.addEventListener('click', () => {
+    applyTheme(card.dataset.theme);
+  });
+});
+
+// settings modal open/close
+document.getElementById('open-settings').addEventListener('click', () => {
+  document.getElementById('settings-modal').classList.add('on');
+});
+document.getElementById('close-settings').addEventListener('click', () => {
+  document.getElementById('settings-modal').classList.remove('on');
+});
+document.getElementById('theme-pill').addEventListener('click', () => {
+  document.getElementById('settings-modal').classList.add('on');
+});
+
+// restore persisted theme
+const savedTheme = localStorage.getItem('cortexagent.theme');
+if (savedTheme && THEMES.includes(savedTheme)) applyTheme(savedTheme);
+
+// ────────────────────────────────────────────
+// 3) SECURITY — timeline selection + filter
+// ────────────────────────────────────────────
+const detailHTML = {
+  'evt-1': `
+    <div class="head">
+      <span class="lvl CRIT">CRIT</span>
+      <div class="rule">block-src</div>
+      <div class="when">2026-08-20 11:13:18 EDT · 0.8 s · 1 rule fired</div>
+    </div>
+    <h4>What happened</h4>
+    <div class="row"><span class="k">Source IP:</span>198.51.100.42</div>
+    <div class="row"><span class="k">Target:</span>sshd (workstation-07)</div>
+    <div class="row"><span class="k">Attempts:</span>147 in 60 s (brute-force pattern)</div>
+    <h4>Cross-linked CVE</h4>
+    <div class="cve-link">
+      <span class="id">CVE-2025-30872</span>
+      <span class="desc">OpenSSH 9.7 — auth bypass via crafted KEXINIT — CVSS 9.8 — KEV listed</span>
+    </div>
+    <div class="row"><span class="k">EPSS:</span>0.74 (top 1%)</div>
+    <div class="row"><span class="k">Vendor:</span>OpenBSD · patched in 9.8</div>
+    <h4>Related events · 4</h4>
+    <div class="row">11:09:14 · CRIT · same source IP · sshd</div>
+    <div class="row">11:09:08 · CRIT · same source IP · sshd</div>
+    <div class="row">11:08:53 · HIGH · nft · auto-block staged</div>
+    <div class="row">11:08:42 · HIGH · siem · alert raised</div>
+    <div class="actions">
+      <button class="primary">Create case from event</button>
+      <button>Open CVE in NVD</button>
+      <button>Pin to dashboard</button>
+    </div>`,
+  'evt-2': `
+    <div class="head">
+      <span class="lvl HIGH">HIGH</span>
+      <div class="rule">isolate-host</div>
+      <div class="when">2026-08-20 10:47:02 EDT · 5m 12s · auto-approved</div>
+    </div>
+    <h4>What happened</h4>
+    <div class="row"><span class="k">Host:</span>workstation-07</div>
+    <div class="row"><span class="k">Trigger:</span>outbound C2 — ja3 fingerprint matches APT-29</div>
+    <div class="actions"><button class="primary">Create case</button><button>Inspect host</button></div>`,
+  'evt-5': `
+    <div class="head">
+      <span class="lvl CRIT">CRIT</span>
+      <div class="rule">sshd-baseline</div>
+      <div class="when">2026-08-20 07:31:00 EDT · 0.2 s</div>
+    </div>
+    <h4>What happened</h4>
+    <div class="row"><span class="k">Check:</span>sshd baseline</div>
+    <div class="row"><span class="k">Deviations:</span>10 (PermitRootLogin yes, PasswordAuth yes, etc.)</div>
+    <div class="actions"><button class="primary">Open SOAR rule</button><button>View diff</button></div>`
+};
+document.querySelectorAll('#sec-timeline .event').forEach(ev => {
+  ev.addEventListener('click', () => {
+    document.querySelectorAll('#sec-timeline .event').forEach(e => e.classList.remove('selected'));
+    ev.classList.add('selected');
+    const html = detailHTML[ev.dataset.evt];
+    if (html) document.getElementById('sec-detail').innerHTML = html;
+  });
+});
+document.querySelectorAll('.sec-tab .filters .chip').forEach(c => {
+  c.addEventListener('click', () => {
+    document.querySelectorAll('.sec-tab .filters .chip').forEach(x => x.classList.remove('on'));
+    c.classList.add('on');
+    const f = c.dataset.filter;
+    document.querySelectorAll('#sec-timeline .event').forEach(ev => {
+      const show = f === 'all' || ev.classList.contains(f);
+      ev.style.display = show ? '' : 'none';
+    });
+  });
+});
+
+// ────────────────────────────────────────────
+// 4) AGENT — pipeline animation
+// ────────────────────────────────────────────
+const AGENT_DATA = {
+  1: ['"Rule"','"401"','"vs"','"402"','"admissibility"','"when"',
+      '"probative"','"value"','"substantially"','"outweighed"',
+      '"by"','"unfair"','"prejudice"','"Fed"','"R"','"Evid"','"."'],
+  2: [1432,18019,1428,18118,4017,1612,132,91,19,7331,1222,5819,18042,6028,188,116,13],
+  3: [1432,18019,1428,18118,91,19,7331,1222,5819],
+  4: ['memory#442','memory#118','rag:civil-procedure'],
+  5: []
+};
+const AGENT_REPLY =
+  'Rule 401 requires that probative value not be substantially outweighed by unfair prejudice. ' +
+  'Rule 402 applies the same test to evidence of subsequent remedial measures.';
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runAgent() {
+  const prompt = document.getElementById('agent-prompt').value || 'Hello';
+  // reset stages
+  document.querySelectorAll('#agent-stages .stage').forEach(s => {
+    s.classList.remove('active','done');
+    const lane = s.querySelector('.lane');
+    if (lane) lane.innerHTML = '';
+  });
+  document.getElementById('ag-body').innerHTML = '<span class="caret"></span>';
+  document.getElementById('ag-stat').textContent = '17 → 9 tokens · 3 mem hits · 1.85 s';
+  await sleep(120);
+
+  for (let s = 1; s <= 5; s++) {
+    const stage = document.querySelector(`#agent-stages .stage[data-stage="${s}"]`);
+    stage.classList.add('active');
+    const lane = document.getElementById(`ag-lane-${s}`);
+    lane.innerHTML = '';
+    for (let i = 0; i < AGENT_DATA[s].length; i++) {
+      const tok = document.createElement('span');
+      tok.className = 'tok' + (s === 4 ? ' hit' : s === 5 ? ' gen' : '');
+      tok.textContent = String(AGENT_DATA[s][i]);
+      lane.appendChild(tok);
+      await sleep(40);
+    }
+    stage.classList.remove('active');
+    stage.classList.add('done');
+    await sleep(140);
+  }
+  const body = document.getElementById('ag-body');
+  body.innerHTML = '';
+  for (let i = 0; i < AGENT_REPLY.length; i++) {
+    body.insertAdjacentText('beforeend', AGENT_REPLY[i]);
+    body.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
+    const cs = body.querySelectorAll('.caret');
+    if (cs.length > 1) cs[0].remove();
+    await sleep(12);
+  }
+  document.getElementById('ag-stat').textContent = '52 tokens · 1.85 s · ✓';
+}
+document.getElementById('agent-run').addEventListener('click', runAgent);
+document.getElementById('agent-reset').addEventListener('click', () => {
+  document.querySelectorAll('#agent-stages .stage').forEach(s => {
+    s.classList.remove('active','done');
+    const lane = s.querySelector('.lane');
+    if (lane) lane.innerHTML = '';
+  });
+  document.getElementById('ag-body').innerHTML = '<span class="caret"></span>';
+});
+
+// ────────────────────────────────────────────
+// 5) OSINT — save buttons, fact chips, drag-to-case
+// ────────────────────────────────────────────
+document.querySelectorAll('.osint-tab .result .actions button').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    if (btn.textContent.includes('Save')) {
+      btn.classList.toggle('saved');
+      btn.textContent = btn.classList.contains('saved') ? '✓ Saved' : 'Save';
+    }
+  });
+});
+document.querySelectorAll('.osint-tab .facts .chip').forEach(c => {
+  c.addEventListener('click', () => c.classList.toggle('added'));
+});
+
+// drag-to-case
+const drop = document.getElementById('osint-drop');
+document.querySelectorAll('.osint-tab .result[draggable="true"]').forEach(row => {
+  row.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', row.querySelector('.title').textContent.trim());
+    row.style.opacity = '0.5';
+  });
+  row.addEventListener('dragend', () => { row.style.opacity = '1'; });
+});
+['dragenter','dragover'].forEach(ev => {
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); });
+});
+['dragleave','drop'].forEach(ev => {
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); });
+});
+drop.addEventListener('drop', e => {
+  const txt = e.dataTransfer.getData('text/plain');
+  const ul = document.getElementById('osint-saved');
+  const li = document.createElement('li');
+  li.innerHTML = `<span class="badge">DROP</span><span>${txt}</span><span class="x">×</span>`;
+  ul.appendChild(li);
+});
+document.getElementById('osint-saved').addEventListener('click', e => {
+  if (e.target.classList.contains('x')) e.target.parentElement.remove();
+});
+
+// ────────────────────────────────────────────
+// 6) xterm.js terminal with theme-aware colors
+// ────────────────────────────────────────────
+const THEME_TERMS = {
+  'graphite':     { bg:'#0d1015', fg:'#e6e9f0', cursor:'#ffb000' },
+  'cockpit':      { bg:'#0a0c10', fg:'#e6e9f0', cursor:'#ffb000' },
+  'paper':        { bg:'#fbf6ec', fg:'#0a1929', cursor:'#b85a2c' },
+  'casebook':     { bg:'#f3ede1', fg:'#1a1a1a', cursor:'#a64b2a' },
+  'polaroid':     { bg:'#1f1a17', fg:'#f3e9d3', cursor:'#ff7c5a' },
+  'live-pulse':   { bg:'#0e1419', fg:'#e6e9f0', cursor:'#ffb000' },
+  'history':      { bg:'#f5efe3', fg:'#0a1929', cursor:'#b85a2c' },
+  'console-log':  { bg:'#0a0c10', fg:'#e6e9f0', cursor:'#ffb000' },
+  'compact':      { bg:'#0a0c10', fg:'#e6e9f0', cursor:'#ffb000' },
+};
+
+let term;
+function buildTerminal(t) {
+  if (term) { term.dispose(); }
+  term = new Terminal({
+    fontFamily: '"JetBrains Mono", "Plex Mono", monospace',
+    fontSize: 12, lineHeight: 1.2, cursorBlink: true,
+    theme: {
+      background: t.bg, foreground: t.fg, cursor: t.cursor,
+      cursorAccent: t.bg,
+      selectionBackground: t.cursor + '44',
+      black:'#1a1f2a', red:'#ff5a52', green:'#5fe09a',
+      yellow:'#ffd166', blue:'#7ab4d6', magenta:'#c8743b',
+      cyan:'#0e7c86', white:'#e6e9f0',
+      brightBlack:'#5a6478', brightRed:'#ff8a82', brightGreen:'#8af0bb',
+      brightYellow:'#ffe199', brightBlue:'#9bd0e6',
+      brightMagenta:'#e0956b', brightCyan:'#5fb4b9', brightWhite:'#ffffff',
+    }
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('xterm'));
+  fit.fit();
+  wireTerminal();
+  // banner + prompt
+  const banner = ['\x1b[1;33mCortexAgent Console\x1b[0m · embedded shell',
+                  'type \x1b[33mhelp\x1b[0m for commands, \x1b[33mCtrl-C\x1b[0m to interrupt'];
+  term.write(banner.join('\r\n') + '\r\n');
+  writePrompt();
+}
+function rethemeTerminal(name) {
+  const t = THEME_TERMS[name] || THEME_TERMS['graphite'];
+  if (term) {
+    term.options.theme.background = t.bg;
+    term.options.theme.foreground = t.fg;
+    term.options.theme.cursor = t.cursor;
+    const el = document.getElementById('xterm');
+    el.style.background = t.bg;
+  }
+}
+
+let line = '', cwd = '~/cortexagent';
+let history = ['bin/cortexagent doctor', 'cat /etc/hostname', 'ls -la'];
+let histIdx = history.length;
+const PROMPT = (cwd) => `\x1b[33m${cwd}\x1b[0m$ `;
+const FS = {
+  '~/cortexagent': ['bin/', 'lib/', 'config/', 'logs/', 'README.md'],
+  '~/cortexagent/bin': ['cortexagent', 'verify', 'doctor'],
+  '~/cortexagent/lib': ['tray.py', 'sec_tray.py', 'tray_dashboard.py'],
+  '~/cortexagent/config': ['cortexagent.json'],
+};
+function writePrompt() { term.write('\r\n' + PROMPT(cwd)); line = ''; }
+const COMMANDS = {
+  help() {
+    return ['\r\n', '  \x1b[33mAvailable\x1b[0m',
+            '  ls [path] · cd <path> · cat <file> · pwd',
+            '  status · history · clear',
+            ''].join('\r\n');
+  },
+  pwd() { return '\r\n' + cwd + '\r\n'; },
+  ls(a) {
+    const p = a[0] || cwd;
+    const files = FS[p];
+    if (!files) return `\r\n\x1b[31mls:\x1b[0m no such path: ${p}\r\n`;
+    return '\r\n' + files.map(f =>
+      f.endsWith('/') ? `\x1b[34m${f}\x1b[0m` :
+      f.endsWith('.py') ? `\x1b[33m${f}\x1b[0m` :
+      f.endsWith('.log') ? `\x1b[2;37m${f}\x1b[0m` : f
+    ).join('  ') + '\r\n';
+  },
+  cd(a) {
+    const t = a[0] || '~';
+    let target;
+    if (t === '~' || t === '') target = '~/cortexagent';
+    else if (t === '..') target = cwd.split('/').slice(0,-1).join('/') || '~';
+    else if (t.startsWith('/')) target = t;
+    else target = cwd + '/' + t;
+    if (FS[target]) cwd = target;
+    else return `\r\n\x1b[31mcd:\x1b[0m no such: ${t}\r\n`;
+    return '';
+  },
+  cat(a) {
+    const t = a[0];
+    if (!t) return '\r\n';
+    if (t === 'README.md') return '\r\n\x1b[2;37m# CortexAgent — local AI daemon + console\x1b[0m\r\n';
+    return `\r\n\x1b[31mcat:\x1b[0m ${t}: no such file\r\n`;
+  },
+  history() { return '\r\n' + history.map((h,i)=>`  ${String(i+1).padStart(3)}  ${h}`).join('\r\n') + '\r\n'; },
+  clear() { term.clear(); return ''; },
+  status() {
+    return ['\r\n', '  \x1b[33m● surface status\x1b[0m',
+            '  big-model  :8080  Qwen3.6 35B     \x1b[32mready\x1b[0m',
+            '  pipeline   :8090  /pipeline        \x1b[33mlive\x1b[0m',
+            '  security   local  9 checks         \x1b[31m3 fail\x1b[0m',
+            '  soar       local  12 runs          \x1b[32mok\x1b[0m',
+            '  osint      :9999  auth basic       \x1b[32mready\x1b[0m',
+            ''].join('\r\n');
+  },
+};
+function wireTerminal() {
+  term.onKey(({ key, domEvent }) => {
+    const ev = domEvent;
+    if (ev.key === 'Enter') {
+      const cmd = line.trim();
+      if (cmd) {
+        history.push(cmd); histIdx = history.length;
+        const [name, ...args] = cmd.split(/\s+/);
+        const fn = COMMANDS[name];
+        if (fn) term.write(fn(args));
+        else if (cmd === 'exit') term.write('\r\n\x1b[2;37m(mock terminal — exit does nothing)\x1b[0m');
+        else term.write(`\r\n\x1b[31m${name}:\x1b[0m command not found. type \x1b[33mhelp\x1b[0m\r\n`);
+      }
+      writePrompt();
+    } else if (ev.key === 'Backspace') {
+      if (line.length) { term.write('\b \b'); line = line.slice(0,-1); }
+    } else if (ev.key === 'ArrowUp' && histIdx > 0) {
+      histIdx--; term.write('\r' + PROMPT(cwd) + history[histIdx]); line = history[histIdx];
+    } else if (ev.key === 'ArrowDown' && histIdx < history.length - 1) {
+      histIdx++; term.write('\r' + PROMPT(cwd) + history[histIdx]); line = history[histIdx];
+    } else if (key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+      term.write(key); line += key;
+    }
+  });
+}
+buildTerminal(THEME_TERMS[savedTheme] || THEME_TERMS['graphite']);
+
+window.addEventListener('resize', () => { try { term && (new FitAddon.FitAddon()).fit(term); } catch(_){} });
+</script>
+
+</body>
+</html>

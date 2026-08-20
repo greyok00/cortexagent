@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CortexAgent · Surface UI variants</title>
+<style>
+  :root {
+    --bg: #0a0c10;
+    --panel: #131826;
+    --line: #2a3142;
+    --ink: #e6e9f0;
+    --mute: #94a3b8;
+    --accent: #38bdf8;
+    --osint: #c8743b;
+    --sec: #ffb000;
+    --agent: #0e7c86;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); margin: 0;
+               font: 14px/1.55 "Inter", system-ui, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 40px 28px 80px; }
+  header h1 { font: 700 22px/1.1 "Fraunces", Georgia, serif; margin: 0 0 6px; }
+  header .sub { color: var(--mute); font-size: 13px; margin-bottom: 32px; }
+
+  .surface {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 22px 26px 26px; margin-bottom: 28px; border-radius: 4px;
+  }
+  .surface .head {
+    display: flex; align-items: baseline; gap: 18px; margin-bottom: 6px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line);
+  }
+  .surface .head .pip {
+    font: 700 10px/1 "JetBrains Mono", monospace; letter-spacing: 0.18em;
+    text-transform: uppercase; padding: 4px 8px;
+  }
+  .surface[data-surface=osint] .pip { background: var(--osint); color: var(--bg); }
+  .surface[data-surface=sec]   .pip { background: var(--sec);   color: var(--bg); }
+  .surface[data-surface=agent] .pip { background: var(--agent); color: var(--paper); }
+  .surface .head h2 {
+    margin: 0; font: 600 18px/1 "Fraunces", serif; letter-spacing: -0.005em;
+  }
+  .surface .head .url {
+    font: 11px "JetBrains Mono", monospace; color: var(--mute);
+    letter-spacing: 0.04em; margin-left: auto;
+  }
+  .surface .job {
+    color: var(--mute); font-size: 13px; margin: 8px 0 18px;
+    max-width: 760px;
+  }
+  .surface .job b { color: var(--ink); font-weight: 600; }
+  .variants {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+  }
+  .v {
+    display: block; background: var(--bg); border: 1px solid var(--line);
+    padding: 14px; text-decoration: none; color: var(--ink);
+    transition: all 180ms; border-radius: 3px;
+  }
+  .v:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .v .avatar-wrap {
+    width: 100%; aspect-ratio: 1; overflow: hidden;
+    border: 1px solid var(--line); margin-bottom: 12px;
+    background: #f3ede1;
+  }
+  .v .avatar-wrap img {
+    width: 100%; height: 100%; display: block; object-fit: cover;
+  }
+  .v .n {
+    font: 700 11px/1 "JetBrains Mono", monospace; color: var(--accent);
+    letter-spacing: 0.18em; margin-bottom: 4px; text-transform: uppercase;
+  }
+  .v .name { font: 600 15px/1.2 "Fraunces", serif; margin-bottom: 6px; }
+  .v .desc { color: var(--mute); font-size: 12px; line-height: 1.5; }
+  .v .look {
+    margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line);
+    font: 10px/1.4 "JetBrains Mono", monospace; color: var(--mute);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .v .tags {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
+  }
+  .v .tags .tag {
+    padding: 2px 6px; font: 10px "JetBrains Mono", monospace;
+    background: var(--panel); border: 1px solid var(--line);
+    color: var(--mute); letter-spacing: 0.06em;
+  }
+
+  .tray {
+    margin-top: 32px; padding: 22px 26px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 4px;
+  }
+  .tray h2 {
+    margin: 0 0 6px; font: 600 18px/1 "Fraunces", serif;
+  }
+  .tray p { color: var(--mute); font-size: 13px; margin: 0 0 16px; }
+  .tray a.btn {
+    display: inline-block; padding: 8px 14px; background: var(--accent);
+    color: var(--bg); text-decoration: none; font: 700 11px/1
+    "JetBrains Mono", monospace; letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 720px) {
+    .variants { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>CortexAgent · Surface UI variants</h1>
+  <p class="sub">
+    9 variants · 3 surfaces · each variant uses different UI elements from the others.
+    Pick the ones that fit how you actually use the surface — the same data, totally different feel.
+  </p>
+</header>
+
+<section class="surface" data-surface="osint">
+  <div class="head">
+    <span class="pip">OSINT</span>
+    <h2>OSINT Portal — single-operator research desk</h2>
+    <span class="url">http://127.0.0.1:9999/osint/  ·  auth Basic</span>
+  </div>
+  <p class="job">
+    <b>Job:</b> go from a question to a saved, annotated subject.
+    <b>Aesthetic:</b> casebook — warm paper, ink, hand-ruled margins, three different layouts for the same data.
+  </p>
+  <div class="variants">
+    <a class="v" href="osint-polaroid.html">
+      <div class="avatar-wrap"><img src="themes/osint-polaroid/avatar.svg" alt="Polaroid Wall"></div>
+      <div class="n">★ primary · overview</div>
+      <div class="name">Polaroid Wall</div>
+      <div class="desc">Masonry of slightly-rotated index cards pinned to a dark wall with rust + teal pinheads. Decorative threads suggest connections between cards. For the main overview / case-file landing.</div>
+      <div class="look">▸ Charter + Courier · dark wall · warm paper cards</div>
+      <div class="tags">
+        <span class="tag">overview</span>
+        <span class="tag">case_files</span>
+        <span class="tag">PICK</span>
+      </div>
+    </a>
+    <a class="v" href="osint-casebook.html">
+      <div class="avatar-wrap"><img src="themes/osint-casebook/avatar.svg" alt="Casebook Notebook"></div>
+      <div class="n">★ primary · search results</div>
+      <div class="name">Casebook Notebook</div>
+      <div class="desc">Two-page notebook with red margin, ruled paper, italic Garamond. Used for search results with built-in LLM extract: summary, image gallery, fact chips, save checkbox + drag-to-case drop zone.</div>
+      <div class="look">▸ Garamond + EB Garamond · cream paper · ink dividers</div>
+      <div class="tags">
+        <span class="tag">search_results</span>
+        <span class="tag">LLM-extract</span>
+        <span class="tag">PICK</span>
+      </div>
+    </a>
+    <a class="v" href="osint-3.html">
+      <div class="avatar-wrap"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#0e1419;color:#94a3b8;font:11px 'JetBrains Mono',monospace;">Timeline Dossier</div></div>
+      <div class="n">V3 · timeline dossier</div>
+      <div class="name">Vertical chronological log</div>
+      <div class="desc">Every result placed on a year/month axis with a colored dot indicating kind (entity / legal / news / note). Best for building a case over time.</div>
+      <div class="look">▸ Inter + Plex Mono · dark · amber + teal + sage accents</div>
+      <div class="tags"><span class="tag">timeline</span></div>
+    </a>
+  </div>
+
+  <p style="margin:6px 0 28px;padding:10px 14px;border-left:3px solid var(--osint);background:rgba(200,116,59,0.08);color:var(--ink);font:12px/1.5 'Inter',sans-serif;">
+    <b>Surface rule:</b> OSINT uses casebook aesthetics only. Pick <b>Polaroid Wall</b> for
+    overviews, <b>Casebook Notebook</b> for search results &amp; case-file pages.
+    Do not mix with security or agent aesthetics here.
+  </p>
+</section>
+
+<section class="surface" data-surface="sec">
+  <div class="head">
+    <span class="pip">SEC</span>
+    <h2>Security Dashboard — live system posture</h2>
+    <span class="url">http://127.0.0.1:8093/hardening  ·  no auth (local-only)</span>
+  </div>
+  <p class="job">
+    <b>Job:</b> show what needs attention <i>right now</i>. Hide the rest.
+    <b>Aesthetic:</b> control-room / aviation HMI — single accent, monospace numerics, status-driven color.
+  </p>
+  <div class="variants">
+    <a class="v" href="sec-1.html">
+      <div class="avatar-wrap"><img src="themes/security-cockpit/avatar.svg" alt="Cockpit Panel"></div>
+      <div class="n">★ primary · security</div>
+      <div class="name">Cockpit Panel</div>
+      <div class="desc">9 vertical gauge instruments with status bars. A big "3/9" central readout calls out what needs attention. Bottom barograph shows event density over 24h.</div>
+      <div class="look">▸ Space Grotesk + Plex Mono · graphite · amber accent</div>
+      <div class="tags"><span class="tag">overview</span><span class="tag">PICK</span></div>
+    </a>
+    <a class="v" href="sec-2.html">
+      <div class="avatar-wrap"><img src="themes/security-console/avatar.svg" alt="Console Log + Tree"></div>
+      <div class="n">V2 · console log + tree</div>
+      <div class="name">Three-column with subsystem tree</div>
+      <div class="desc">Subsystem tree for drill-down on the left, center has live event log + check grid, right has KEV/CVE feed. Like a SOC operator's wall display.</div>
+      <div class="look">▸ Plex Mono throughout · black bg · amber + red + green</div>
+      <div class="tags"><span class="tag">drill_down</span></div>
+    </a>
+    <a class="v" href="sec-3.html">
+      <div class="avatar-wrap"><img src="themes/security-compact/avatar.svg" alt="Compact Stat Block"></div>
+      <div class="n">V3 · compact stat block</div>
+      <div class="name">One-screen glance — 12-column matrix</div>
+      <div class="desc">All 9 checks + CVE list + SOAR strip packed into one viewport. The "open failures" cell is oversized in red. No decoration.</div>
+      <div class="look">▸ Space Grotesk + Plex Mono · 1px grid lines · status-colored borders</div>
+      <div class="tags"><span class="tag">single_viewport</span></div>
+    </a>
+  </div>
+
+  <p style="margin:6px 0 28px;padding:10px 14px;border-left:3px solid var(--sec);background:rgba(255,176,0,0.08);color:var(--ink);font:12px/1.5 'Inter',sans-serif;">
+    <b>Surface rule:</b> Security uses aviation-HMI aesthetics only. Pick <b>Cockpit Panel</b>
+    for the primary hardening view, <b>Console Log + Tree</b> for operator drill-down, and
+    <b>Compact Stat Block</b> for the tray mini-console or screen-saver mode.
+  </p>
+</section>
+
+<section class="surface" data-surface="agent">
+  <div class="head">
+    <span class="pip">AGENT</span>
+    <h2>CortexAgent WebUI — the pipeline visualization</h2>
+    <span class="url">http://127.0.0.1:8090/pipeline  ·  no auth (local-only)</span>
+  </div>
+  <p class="job">
+    <b>Job:</b> make the agent's process legible and inspectable.
+    <b>Aesthetic:</b> textbook figure — white paper, teal ink, mathematical notation, three views of the same pipeline.
+  </p>
+  <div class="variants">
+    <a class="v" href="agent-paper-animated.html">
+      <div class="avatar-wrap"><img src="themes/agent-paper/avatar.svg" alt="Paper Schematic"></div>
+      <div class="n">★ primary · pipeline</div>
+      <div class="name">Paper Schematic (animated)</div>
+      <div class="desc">Annotated textbook figure on white paper. Five numbered stages with hand-drawn arrows, figure caption, latency-budget footnote. <b>Tokens actually flow through each stage</b>: Input → Tokenize → SlimToken → Retrieve → Generate.</div>
+      <div class="look">▸ Fraunces + Inter + Plex Mono · white paper · teal ink · warm accent</div>
+      <div class="tags"><span class="tag">live</span><span class="tag">animated</span><span class="tag">PICK</span></div>
+    </a>
+    <a class="v" href="agent-2.html">
+      <div class="avatar-wrap"><img src="themes/agent-live/avatar.svg" alt="Live Pulse"></div>
+      <div class="n">V2 · live pulse</div>
+      <div class="name">Dark canvas with breathing active stage</div>
+      <div class="desc">Stage track with an "active" pulse on the current stage. Live token strip at the bottom shows what the model is typing right now. Blinking caret in the reply area.</div>
+      <div class="look">▸ Fraunces + Space Grotesk · dark · breathing warm accent</div>
+      <div class="tags"><span class="tag">streaming</span></div>
+    </a>
+    <a class="v" href="agent-3.html">
+      <div class="avatar-wrap"><img src="themes/agent-history/avatar.svg" alt="History Diff"></div>
+      <div class="n">V3 · history diff</div>
+      <div class="name">Log of past runs, click to expand</div>
+      <div class="desc">Each past run shows as a row: hash, prompt, latency, status badge. Click expands to show stage breakdown and the actual reply. Best for after-the-fact review.</div>
+      <div class="look">▸ Fraunces + Plex Mono · warm white · teal commit-hash accents</div>
+      <div class="tags"><span class="tag">past_runs</span></div>
+    </a>
+  </div>
+
+  <p style="margin:6px 0 28px;padding:10px 14px;border-left:3px solid var(--agent);background:rgba(14,124,134,0.10);color:var(--ink);font:12px/1.5 'Inter',sans-serif;">
+    <b>Surface rule:</b> Agent uses textbook-figure aesthetics only. Pick <b>Paper Schematic</b>
+    for the live pipeline animation, <b>Live Pulse</b> when you want a darker streaming-only
+    view, and <b>History Diff</b> for after-the-fact run review.
+  </p>
+</section>
+
+<div class="tray">
+  <h2>System tray mini-console</h2>
+  <p>
+    You mentioned a system tray that opens a console for one of these surfaces.
+    Mockup below is a slim Tk popup (consistent with the existing <code>sec_tray.py</code> pattern) that
+    opens the Security Dashboard cockpit view in a 720×520 floating window — or any of the others.
+  </p>
+  <a class="btn" href="tray-console.html">view tray console mockup →</a>
+</div>
+
+<p style="margin-top:32px;">
+  <a class="btn" style="background:var(--bg);color:var(--accent);border:1px solid var(--line);padding:8px 14px;text-decoration:none;font:700 11px 'JetBrains Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;"
+     href="index.html">← back to v0.1 mockups (ui-1 through ui-8)</a>
+</p>
+
+</div>
+</body>
+</html>

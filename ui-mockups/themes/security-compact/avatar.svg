@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Compact Stat Block — Security dashboard theme">
+  <rect width="256" height="256" fill="#0a0c10"/>
+
+  <!-- 12-col matrix header -->
+  <g font-family="'JetBrains Mono', monospace" font-size="6" fill="#94a3b8" letter-spacing="0.1em">
+    <line x1="0" y1="14" x2="256" y2="14" stroke="#2a3142"/>
+    <line x1="0" y1="246" x2="256" y2="246" stroke="#2a3142"/>
+    <text x="6" y="10">SEC · 1-GLANCE</text>
+    <text x="250" y="10" text-anchor="end" fill="#5fe09a">●</text>
+  </g>
+
+  <!-- top row — 9 tiny check tiles -->
+  <g font-family="'JetBrains Mono', monospace" font-size="6">
+    <g transform="translate(8,22)">
+      <rect width="26" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="26" height="3" fill="#ffb000"/>
+      <text x="13" y="14" fill="#ffb000" text-anchor="middle" font-weight="700">!</text>
+    </g>
+    <g transform="translate(36,22)">
+      <rect width="26" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="26" height="3" fill="#5fe09a"/>
+      <text x="13" y="14" fill="#5fe09a" text-anchor="middle" font-weight="700">✓</text>
+    </g>
+    <g transform="translate(64,22)">
+      <rect width="26" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="26" height="3" fill="#5fe09a"/>
+      <text x="13" y="14" fill="#5fe09a" text-anchor="middle" font-weight="700">✓</text>
+    </g>
+    <g transform="translate(92,22)">
+      <rect width="26" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="26" height="3" fill="#5fe09a"/>
+      <text x="13" y="14" fill="#5fe09a" text-anchor="middle" font-weight="700">✓</text>
+    </g>
+    <g transform="translate(120,22)">
+      <rect width="26" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="26" height="3" fill="#5fe09a"/>
+      <text x="13" y="14" fill="#5fe09a" text-anchor="middle" font-weight="700">✓</text>
+    </g>
+    <g transform="translate(148,22)">
+      <rect width="26" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="26" height="3" fill="#ff5a52"/>
+      <text x="13" y="14" fill="#ff5a52" text-anchor="middle" font-weight="700">✗</text>
+    </g>
+    <g transform="translate(176,22)">
+      <rect width="26" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="26" height="3" fill="#ff5a52"/>
+      <text x="13" y="14" fill="#ff5a52" text-anchor="middle" font-weight="700">✗</text>
+    </g>
+    <g transform="translate(204,22)">
+      <rect width="26" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="26" height="3" fill="#ff5a52"/>
+      <text x="13" y="14" fill="#ff5a52" text-anchor="middle" font-weight="700">✗</text>
+    </g>
+    <g transform="translate(232,22)">
+      <rect width="20" height="20" fill="#11151b" stroke="#2a3142"/>
+      <rect x="0" y="0" width="20" height="3" fill="#94a3b8"/>
+      <text x="10" y="14" fill="#94a3b8" text-anchor="middle">—</text>
+    </g>
+  </g>
+
+  <!-- HUGE failure cell on left, occupies middle band -->
+  <g transform="translate(8,52)">
+    <rect width="120" height="120" fill="#ff5a52"/>
+    <text x="60" y="48" font-family="'Space Grotesk', sans-serif"
+          font-size="42" font-weight="700" fill="#0a0c10" text-anchor="middle">3</text>
+    <text x="60" y="72" font-family="'Space Grotesk', sans-serif"
+          font-size="14" font-weight="700" fill="#0a0c10" text-anchor="middle">/ 9</text>
+    <text x="60" y="92" font-family="'JetBrains Mono', monospace"
+          font-size="8" fill="#0a0c10" text-anchor="middle" letter-spacing="0.18em">FAILURES</text>
+    <text x="60" y="106" font-family="'JetBrains Mono', monospace"
+          font-size="7" fill="#0a0c10" text-anchor="middle" letter-spacing="0.14em">OPEN NOW</text>
+  </g>
+
+  <!-- right side — CVE list -->
+  <g transform="translate(132,52)" font-family="'JetBrains Mono', monospace" font-size="7">
+    <rect width="120" height="120" fill="#11151b" stroke="#2a3142"/>
+    <text x="6" y="10" fill="#ffb000" letter-spacing="0.14em" font-weight="700">CVE / KEV</text>
+    <line x1="6" y1="14" x2="114" y2="14" stroke="#2a3142"/>
+
+    <text x="6" y="26" fill="#ff5a52" font-weight="700">CVE-2025-30872</text>
+    <text x="114" y="26" fill="#e6e9f0" text-anchor="end">9.8</text>
+
+    <text x="6" y="40" fill="#ff5a52" font-weight="700">CVE-2025-30118</text>
+    <text x="114" y="40" fill="#e6e9f0" text-anchor="end">9.4</text>
+
+    <text x="6" y="54" fill="#ffd166" font-weight="700">CVE-2025-29407</text>
+    <text x="114" y="54" fill="#e6e9f0" text-anchor="end">8.1</text>
+
+    <text x="6" y="68" fill="#ffd166" font-weight="700">CVE-2025-28911</text>
+    <text x="114" y="68" fill="#e6e9f0" text-anchor="end">7.8</text>
+
+    <text x="6" y="82" fill="#94a3b8">CVE-2025-28410</text>
+    <text x="114" y="82" fill="#94a3b8" text-anchor="end">6.5</text>
+
+    <text x="6" y="96" fill="#94a3b8">CVE-2025-28003</text>
+    <text x="114" y="96" fill="#94a3b8" text-anchor="end">5.4</text>
+
+    <line x1="6" y1="104" x2="114" y2="104" stroke="#2a3142"/>
+    <text x="6" y="114" fill="#94a3b8">+ 14 more</text>
+  </g>
+
+  <!-- bottom SOAR strip -->
+  <g transform="translate(8,180)" font-family="'JetBrains Mono', monospace" font-size="7">
+    <rect width="244" height="58" fill="#11151b" stroke="#2a3142"/>
+    <text x="6" y="10" fill="#ffb000" letter-spacing="0.14em" font-weight="700">SOAR · 24H</text>
+
+    <line x1="6" y1="14" x2="238" y2="14" stroke="#2a3142"/>
+    <text x="6" y="26" fill="#94a3b8">11:13</text>
+    <text x="40" y="26" fill="#ffb000" font-weight="700">HIGH</text>
+    <text x="76" y="26" fill="#e6e9f0">block-src</text>
+    <text x="238" y="26" fill="#94a3b8" text-anchor="end">0.8s</text>
+
+    <text x="6" y="38" fill="#94a3b8">10:47</text>
+    <text x="40" y="38" fill="#5fe09a" font-weight="700">OK</text>
+    <text x="76" y="38" fill="#e6e9f0">isolate</text>
+    <text x="238" y="38" fill="#94a3b8" text-anchor="end">5m</text>
+
+    <text x="6" y="50" fill="#94a3b8">09:22</text>
+    <text x="40" y="50" fill="#ffb000" font-weight="700">HIGH</text>
+    <text x="76" y="50" fill="#e6e9f0">enrich-cve</text>
+    <text x="238" y="50" fill="#94a3b8" text-anchor="end">3.4s</text>
+  </g>
+</svg>

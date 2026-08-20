@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security · Cockpit Panel — variant 1</title>
+<style>
+  /* ============================================================
+     SECURITY DASHBOARD — COCKPIT PANEL
+     Subject: live system posture. Audience: operator, one screen.
+     Job: show what needs attention RIGHT NOW. Hide the rest.
+     Aesthetic: aviation control-room / industrial gauge HMIs.
+     Single accent (amber); one warning color (red); one ok color.
+     ============================================================ */
+  :root {
+    --bg:       #0a0c10;
+    --panel:    #11151b;
+    --panel-2:  #161b22;
+    --line:     #1f2630;
+    --ink:      #d6dde6;
+    --mute:     #6e7a8a;
+    --amber:    #ffb000;
+    --amber-d:  #b07700;
+    --red:      #ff3b30;
+    --green:    #00d97e;
+    --grid:     rgba(255,176,0,0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); margin: 0;
+               font: 13px/1.45 "Space Grotesk", "Inter", system-ui, sans-serif;
+               font-variant-numeric: tabular-nums; }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* top bar */
+  header {
+    position: relative; z-index: 2;
+    padding: 14px 24px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 24px;
+    background: linear-gradient(180deg, #0f1318, #0a0c10);
+  }
+  header .brand {
+    font: 700 13px/1 "Space Grotesk", sans-serif; letter-spacing: 0.18em;
+    color: var(--amber); text-transform: uppercase;
+  }
+  header .brand::before { content: "▣  "; color: var(--amber-d); }
+  header .panel-id {
+    font: 11px "JetBrains Mono", monospace; color: var(--mute);
+    letter-spacing: 0.1em; border: 1px solid var(--line); padding: 4px 10px;
+  }
+  header .right { margin-left: auto; display: flex; gap: 16px; align-items: center;
+                   font: 11px "JetBrains Mono", monospace; color: var(--mute); letter-spacing: 0.08em; }
+  header .right .ok { color: var(--green); }
+  header .right .fail { color: var(--red); }
+  header .right .dot { display: inline-block; width: 6px; height: 6px;
+                       border-radius: 50%; margin-right: 6px; vertical-align: middle;
+                       background: currentColor; box-shadow: 0 0 8px currentColor; }
+
+  /* main grid */
+  .grid { position: relative; z-index: 1;
+          padding: 20px 24px; display: grid;
+          grid-template-columns: repeat(9, 1fr); gap: 12px;
+          margin-bottom: 16px; }
+  .instrument {
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 14px 12px; min-height: 180px;
+    display: flex; flex-direction: column;
+    position: relative; overflow: hidden;
+  }
+  .instrument::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--amber-d);
+  }
+  .instrument.ok::before     { background: var(--green); }
+  .instrument.fail::before   { background: var(--red); }
+  .instrument.warn::before   { background: var(--amber); }
+  .instrument.unknown::before{ background: var(--mute); }
+
+  .instrument .name {
+    font: 600 10px/1 "Space Grotesk", sans-serif;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--mute); margin-bottom: 4px;
+  }
+  .instrument .label {
+    font: 700 12px/1.2 "Space Grotesk", sans-serif;
+    color: var(--ink); margin-bottom: auto;
+  }
+  .instrument .status {
+    font: 700 11px/1 "JetBrains Mono", monospace;
+    letter-spacing: 0.12em; margin-top: 12px;
+  }
+  .instrument.ok .status     { color: var(--green); }
+  .instrument.fail .status   { color: var(--red); }
+  .instrument.warn .status   { color: var(--amber); }
+  .instrument.unknown .status{ color: var(--mute); }
+  .instrument .stat {
+    margin-top: 8px; font: 11px "JetBrains Mono", monospace;
+    color: var(--mute); line-height: 1.5;
+  }
+  .instrument .stat b { color: var(--ink); font-weight: 600; }
+  .instrument .bar {
+    margin-top: 10px; height: 4px; background: var(--line); position: relative;
+  }
+  .instrument .bar > i {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: currentColor;
+  }
+
+  /* large central readout */
+  .central {
+    position: relative; z-index: 1;
+    margin: 0 24px 16px; padding: 28px 32px;
+    background: linear-gradient(180deg, #11151b, #0d1116);
+    border: 1px solid var(--line); display: grid;
+    grid-template-columns: 2fr 1fr 1fr; gap: 32px;
+  }
+  .central h2 {
+    font: 700 11px/1 "Space Grotesk", sans-serif; letter-spacing: 0.18em;
+    color: var(--mute); text-transform: uppercase; margin: 0 0 14px;
+  }
+  .central .big {
+    font: 300 88px/0.9 "Space Grotesk", sans-serif; color: var(--amber);
+    font-variant-numeric: tabular-nums; letter-spacing: -0.04em;
+  }
+  .central .big .unit { font-size: 22px; color: var(--amber-d); margin-left: 4px; }
+  .central .sub {
+    margin-top: 12px; color: var(--mute); font-size: 13px;
+  }
+  .central .stat-row { display: grid; grid-template-columns: 1fr 1fr;
+                       grid-template-rows: auto auto; gap: 8px 24px; align-self: end; }
+  .central .stat-row .k { color: var(--mute); font: 11px "JetBrains Mono", monospace;
+                          letter-spacing: 0.1em; text-transform: uppercase; }
+  .central .stat-row .v { color: var(--ink); font: 700 22px/1 "Space Grotesk", sans-serif; }
+  .central .stat-row .v.fail { color: var(--red); }
+  .central .stat-row .v.ok { color: var(--green); }
+
+  /* barograph strip */
+  .baro {
+    position: relative; z-index: 1;
+    margin: 0 24px 24px; padding: 18px 24px;
+    background: var(--panel); border: 1px solid var(--line);
+  }
+  .baro h3 {
+    font: 700 10px/1 "Space Grotesk", sans-serif; letter-spacing: 0.18em;
+    color: var(--mute); text-transform: uppercase; margin: 0 0 12px;
+  }
+  .baro canvas { width: 100%; height: 80px; display: block; }
+  .baro .legend {
+    display: flex; gap: 18px; margin-top: 8px;
+    font: 10px "JetBrains Mono", monospace; color: var(--mute);
+  }
+  .baro .legend span::before { content: ""; display: inline-block; width: 8px; height: 8px;
+                                margin-right: 6px; background: currentColor; vertical-align: middle; }
+  .baro .legend .crit { color: var(--red); }
+  .baro .legend .high { color: var(--amber); }
+  .baro .legend .info { color: var(--mute); }
+
+  @media (max-width: 1100px) {
+    .grid { grid-template-columns: repeat(3, 1fr); }
+    .central { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Hardening Posture · Live</div>
+  <div class="panel-id">PANEL · /hardening · 127.0.0.1:8093</div>
+  <div class="right">
+    <span><span class="dot ok"></span>SOURCE LIVE</span>
+    <span>refresh 60s</span>
+    <span>2026-08-20 11:13:42 -07:00</span>
+  </div>
+</header>
+
+<div class="grid">
+  <div class="instrument warn">
+    <div class="name">CH-01</div>
+    <div class="label">auditd</div>
+    <div class="status">WARN</div>
+    <div class="stat"><b>auditctl</b> not queryable (auditd not running?)</div>
+    <div class="bar"><i style="color:var(--amber); width:55%;"></i></div>
+  </div>
+  <div class="instrument ok">
+    <div class="name">CH-02</div>
+    <div class="label">capabilities</div>
+    <div class="status">OK</div>
+    <div class="stat">0 binaries with risky caps <b>(scanned /usr/*)</b></div>
+    <div class="bar"><i style="color:var(--green); width:100%;"></i></div>
+  </div>
+  <div class="instrument ok">
+    <div class="name">CH-03</div>
+    <div class="label">dns_blocklist</div>
+    <div class="status">OK</div>
+    <div class="stat"><b>98,062</b> block entries in /etc/hosts.adblock</div>
+    <div class="bar"><i style="color:var(--green); width:98%;"></i></div>
+  </div>
+  <div class="instrument ok">
+    <div class="name">CH-04</div>
+    <div class="label">dnsmasq</div>
+    <div class="status">OK</div>
+    <div class="stat">running · resolv.conf→127.0.0.1 <b>true</b></div>
+    <div class="bar"><i style="color:var(--green); width:100%;"></i></div>
+  </div>
+  <div class="instrument ok">
+    <div class="name">CH-05</div>
+    <div class="label">lsms</div>
+    <div class="status">OK</div>
+    <div class="stat">active: lockdown, capability, landlock, yama, apparmor, tomoyo, bpf, ipe, ima, evm</div>
+    <div class="bar"><i style="color:var(--green); width:100%;"></i></div>
+  </div>
+  <div class="instrument fail">
+    <div class="name">CH-06</div>
+    <div class="label">nftables</div>
+    <div class="status">FAIL</div>
+    <div class="stat"><b>nft list failed</b>: Operation not permitted (need root)</div>
+    <div class="bar"><i style="color:var(--red); width:8%;"></i></div>
+  </div>
+  <div class="instrument fail">
+    <div class="name">CH-07</div>
+    <div class="label">sshd</div>
+    <div class="status">FAIL</div>
+    <div class="stat"><b>10</b> baseline deviations</div>
+    <div class="bar"><i style="color:var(--red); width:22%;"></i></div>
+  </div>
+  <div class="instrument fail">
+    <div class="name">CH-08</div>
+    <div class="label">sysctl</div>
+    <div class="status">FAIL</div>
+    <div class="stat">11/17 match · <b>5 differ</b> · 1 missing</div>
+    <div class="bar"><i style="color:var(--red); width:18%;"></i></div>
+  </div>
+  <div class="instrument unknown">
+    <div class="name">CH-09</div>
+    <div class="label">unbound</div>
+    <div class="status">UNKNOWN</div>
+    <div class="stat">unbound <b>not installed</b></div>
+    <div class="bar"><i style="color:var(--mute); width:0%;"></i></div>
+  </div>
+</div>
+
+<div class="central">
+  <div>
+    <h2>Open Failures · attention required</h2>
+    <div class="big">3<span class="unit">/9</span></div>
+    <div class="sub">nftables · sshd · sysctl &nbsp;·&nbsp; 1 warning, 1 unknown</div>
+  </div>
+  <div class="stat-row">
+    <div class="k">CVEs 7d</div><div class="v ok">0</div>
+    <div class="k">SOAR runs 24h</div><div class="v">12</div>
+    <div class="k">SIEM events</div><div class="v">1,847</div>
+    <div class="k">Blocked hits</div><div class="v fail">9</div>
+  </div>
+  <div class="stat-row">
+    <div class="k">Last refresh</div><div class="v" style="font-size:14px;">42s ago</div>
+    <div class="k">Uptime</div><div class="v" style="font-size:14px;">19d 03h</div>
+    <div class="k">Posture score</div><div class="v fail">58%</div>
+    <div class="k">Score Δ 24h</div><div class="v" style="color:var(--red); font-size:14px;">−4</div>
+  </div>
+</div>
+
+<div class="baro">
+  <h3>Event barograph · last 24h</h3>
+  <svg viewBox="0 0 800 80" preserveAspectRatio="none">
+    <defs>
+      <pattern id="baro-grid" width="40" height="20" patternUnits="userSpaceOnUse">
+        <path d="M 40 0 L 0 0 0 20" fill="none" stroke="#1f2630" stroke-width="0.5"/>
+      </pattern>
+    </defs>
+    <rect width="800" height="80" fill="url(#baro-grid)"/>
+    <!-- baseline -->
+    <line x1="0" y1="64" x2="800" y2="64" stroke="#1f2630" stroke-width="0.5"/>
+    <!-- events as spikes -->
+    <g fill="#ff3b30">
+      <rect x="120" y="58" width="2" height="6"/>
+      <rect x="240" y="42" width="2" height="22"/>
+      <rect x="380" y="60" width="2" height="4"/>
+      <rect x="520" y="48" width="2" height="16"/>
+      <rect x="680" y="50" width="2" height="14"/>
+    </g>
+    <g fill="#ffb000">
+      <rect x="80"  y="62" width="2" height="2"/>
+      <rect x="180" y="60" width="2" height="4"/>
+      <rect x="300" y="58" width="2" height="6"/>
+      <rect x="430" y="60" width="2" height="4"/>
+      <rect x="600" y="58" width="2" height="6"/>
+      <rect x="750" y="62" width="2" height="2"/>
+    </g>
+  </svg>
+  <div class="legend">
+    <span class="crit">critical · 5</span>
+    <span class="high">high · 7</span>
+    <span class="info">info · 1,835</span>
+  </div>
+</div>
+
+</body>
+</html>

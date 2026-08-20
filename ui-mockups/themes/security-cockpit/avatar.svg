@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Cockpit Panel — Security dashboard theme">
+  <defs>
+    <linearGradient id="cockpit-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1d24"/>
+      <stop offset="1" stop-color="#0d1015"/>
+    </linearGradient>
+    <linearGradient id="bar-fill" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#0a1929"/>
+      <stop offset="1" stop-color="#ffb000"/>
+    </linearGradient>
+  </defs>
+
+  <!-- graphite panel background -->
+  <rect width="256" height="256" fill="url(#cockpit-bg)"/>
+
+  <!-- riveted edge strip -->
+  <g fill="#2a3142">
+    <rect x="0" y="0" width="256" height="6"/>
+    <rect x="0" y="250" width="256" height="6"/>
+  </g>
+  <g fill="#5fe09a" opacity="0.6">
+    <circle cx="14" cy="3" r="1"/><circle cx="62" cy="3" r="1"/><circle cx="110" cy="3" r="1"/>
+    <circle cx="158" cy="3" r="1"/><circle cx="206" cy="3" r="1"/>
+    <circle cx="14" cy="253" r="1"/><circle cx="62" cy="253" r="1"/><circle cx="110" cy="253" r="1"/>
+    <circle cx="158" cy="253" r="1"/><circle cx="206" cy="253" r="1"/>
+  </g>
+
+  <!-- header label -->
+  <text x="16" y="22" font-family="'JetBrains Mono', monospace"
+        font-size="9" fill="#ffb000" letter-spacing="0.18em" font-weight="700">SEC · COCKPIT</text>
+
+  <!-- 3 vertical instruments shown (rest of 9 hinted by ellipsis) -->
+  <g font-family="'JetBrains Mono', monospace">
+    <!-- inst 1 -->
+    <g transform="translate(28,40)">
+      <rect width="40" height="100" fill="#11151b" stroke="#2a3142" stroke-width="1"/>
+      <rect x="2" y="2" width="36" height="10" fill="#0d1015"/>
+      <text x="20" y="10" font-size="7" fill="#94a3b8" text-anchor="middle">auditd</text>
+      <rect x="6" y="70" width="28" height="22" fill="url(#bar-fill)" opacity="0.85"/>
+      <rect x="6" y="20" width="28" height="80" fill="none" stroke="#ffb000" stroke-width="0.6"/>
+      <text x="20" y="97" font-size="14" font-weight="700" fill="#ffb000" text-anchor="middle">!</text>
+    </g>
+    <!-- inst 2 -->
+    <g transform="translate(76,40)">
+      <rect width="40" height="100" fill="#11151b" stroke="#2a3142" stroke-width="1"/>
+      <rect x="2" y="2" width="36" height="10" fill="#0d1015"/>
+      <text x="20" y="10" font-size="7" fill="#94a3b8" text-anchor="middle">nft</text>
+      <rect x="6" y="40" width="28" height="60" fill="url(#bar-fill)" opacity="0.85"/>
+      <rect x="6" y="20" width="28" height="80" fill="none" stroke="#ffb000" stroke-width="0.6"/>
+      <text x="20" y="92" font-size="14" font-weight="700" fill="#ff5a52" text-anchor="middle">✗</text>
+    </g>
+    <!-- inst 3 -->
+    <g transform="translate(124,40)">
+      <rect width="40" height="100" fill="#11151b" stroke="#2a3142" stroke-width="1"/>
+      <rect x="2" y="2" width="36" height="10" fill="#0d1015"/>
+      <text x="20" y="10" font-size="7" fill="#94a3b8" text-anchor="middle">sshd</text>
+      <rect x="6" y="22" width="28" height="76" fill="url(#bar-fill)" opacity="0.85"/>
+      <rect x="6" y="20" width="28" height="80" fill="none" stroke="#ffb000" stroke-width="0.6"/>
+      <text x="20" y="92" font-size="14" font-weight="700" fill="#ff5a52" text-anchor="middle">✗</text>
+    </g>
+    <!-- inst 4 (smaller, partial) -->
+    <g transform="translate(172,40)">
+      <rect width="40" height="100" fill="#11151b" stroke="#2a3142" stroke-width="1"/>
+      <rect x="2" y="2" width="36" height="10" fill="#0d1015"/>
+      <text x="20" y="10" font-size="7" fill="#94a3b8" text-anchor="middle">caps</text>
+      <rect x="6" y="90" width="28" height="8" fill="url(#bar-fill)" opacity="0.85"/>
+      <rect x="6" y="20" width="28" height="80" fill="none" stroke="#ffb000" stroke-width="0.6"/>
+      <text x="20" y="85" font-size="14" font-weight="700" fill="#5fe09a" text-anchor="middle">✓</text>
+    </g>
+    <!-- rest hinted -->
+    <g transform="translate(220,40)">
+      <rect width="20" height="100" fill="#11151b" stroke="#2a3142" stroke-width="1"/>
+      <text x="10" y="56" font-size="20" fill="#94a3b8" text-anchor="middle">·</text>
+      <text x="10" y="74" font-size="20" fill="#94a3b8" text-anchor="middle">·</text>
+    </g>
+  </g>
+
+  <!-- central readout -->
+  <g transform="translate(76,158)">
+    <rect width="104" height="62" fill="#0d1015" stroke="#ffb000" stroke-width="1.4"/>
+    <text x="52" y="28" font-family="'Space Grotesk', sans-serif"
+          font-size="34" font-weight="700" fill="#ff5a52" text-anchor="middle">3/9</text>
+    <text x="52" y="46" font-family="'JetBrains Mono', monospace"
+          font-size="8" fill="#94a3b8" text-anchor="middle" letter-spacing="0.16em">FAIL</text>
+    <text x="52" y="56" font-family="'JetBrains Mono', monospace"
+          font-size="7" fill="#94a3b8" text-anchor="middle" letter-spacing="0.16em">2026-08-20</text>
+  </g>
+
+  <!-- barograph strip at the bottom -->
+  <g transform="translate(16,228)">
+    <rect width="224" height="14" fill="#11151b" stroke="#2a3142"/>
+    <polyline points="0,11 14,9 28,10 42,7 56,8 70,5 84,6 98,3 112,5 126,7 140,4 154,9 168,11 182,8 196,5 210,7 224,6"
+              fill="none" stroke="#ffb000" stroke-width="1"/>
+  </g>
+</svg>
