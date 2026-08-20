@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CortexAgent — UI 4: Card Stack Swipe</title>
+<style>
+  :root { --bg:#0a0e1a; --panel:#131826; --panel-2:#1a2032; --text:#e6e9f0;
+          --unknown:#94a3b8; --accent:#38bdf8; --accent-dim:#1f3a4d;
+          --ok:#4ade80; --warn:#fbbf24; --fail:#f87171; --border:#2a3142; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:linear-gradient(180deg,#0a0e1a 0%,#0d1325 100%);
+         color:var(--text);
+         font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+         font-size:14px; min-height:100vh; display:flex; flex-direction:column; }
+  .tabs { display:flex; gap:4px; padding:12px 20px;
+          border-bottom:1px solid var(--border); overflow-x:auto; }
+  .tabs a { color:var(--unknown); text-decoration:none; padding:6px 10px;
+            font-size:11px; border-radius:6px; border:1px solid transparent;
+            white-space:nowrap; }
+  .tabs a:hover { color:var(--text); border-color:var(--border); }
+  .tabs a.active { color:var(--accent); border-color:var(--accent-dim);
+                    background:rgba(56,189,248,0.06); }
+  .tabs a.home { color:var(--warn); }
+
+  main { flex:1; display:flex; align-items:center; justify-content:center;
+         padding:24px; position:relative; }
+
+  /* Deck of cards stacked */
+  .deck { position:relative; width:min(720px, 100%); height:520px; }
+  .card { position:absolute; inset:0; background:var(--panel);
+          border:1px solid var(--border); border-radius:18px;
+          padding:32px; overflow:hidden; transition:all 350ms cubic-bezier(.5,.0,.2,1);
+          transform-origin:center center; }
+  .card.prev { transform:translateX(-100%) scale(0.85); opacity:0; pointer-events:none; }
+  .card.next { transform:translateX(100%)  scale(0.85); opacity:0; pointer-events:none; }
+  .card.cur { transform:translateX(0) scale(1); opacity:1; z-index:2; }
+  .card.far-prev { transform:translateX(-160%) scale(0.7); opacity:0; }
+  .card.far-next { transform:translateX(160%)  scale(0.7); opacity:0; }
+
+  /* Card content */
+  .label { color:var(--accent); font-size:11px; letter-spacing:0.16em;
+           text-transform:uppercase; margin-bottom:6px; }
+  .ctitle { font-size:28px; color:var(--text); margin:0 0 18px 0;
+            font-weight:600; letter-spacing:0.02em; }
+  .csub { color:var(--unknown); margin-bottom:24px; font-size:13px; }
+
+  /* Hardening card grid */
+  .hgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .hrow { display:flex; justify-content:space-between; padding:10px 14px;
+          background:var(--panel-2); border-radius:8px; align-items:center;
+          border:1px solid var(--border); }
+  .hrow .nm { color:var(--text); font-size:13px; }
+  .hrow .note { color:var(--unknown); font-size:11px; }
+  .pill { padding:2px 8px; border-radius:12px; font-size:10px;
+          font-weight:600; color:#000; }
+  .pill.ok { background:var(--ok); } .pill.warn { background:var(--warn); }
+  .pill.fail { background:var(--fail); }
+
+  /* SIEM big-num card */
+  .bignum-wrap { display:flex; gap:32px; align-items:center;
+                 margin-bottom:24px; flex-wrap:wrap; }
+  .bignum { font-size:120px; line-height:1; color:var(--text); font-weight:700; }
+  .bignum-meta { color:var(--unknown); }
+  .ring-row { display:flex; gap:14px; flex-wrap:wrap; }
+  .ring-mini { width:120px; padding:10px 12px; background:var(--panel-2);
+               border-radius:8px; border:1px solid var(--border); }
+  .ring-mini .ttl { color:var(--accent); font-size:10px; letter-spacing:0.12em;
+                    text-transform:uppercase; margin-bottom:6px; }
+  .ring-mini .v { font-size:24px; font-weight:700; color:var(--text); }
+
+  /* CVE rows */
+  table.cve { width:100%; border-collapse:collapse; font-size:13px; }
+  table.cve td, table.cve th { padding:8px 4px;
+                                border-bottom:1px solid var(--border);
+                                text-align:left; }
+  .pill.critical { background:var(--fail); }
+  .pill.high { background:var(--warn); }
+  .pill.medium { background:#fb923c; color:#000; }
+  .pill.low { background:var(--ok); }
+
+  /* SOAR */
+  ul.soar { list-style:none; padding:0; margin:0; }
+  ul.soar li { padding:14px 18px; background:var(--panel-2);
+               border:1px solid var(--border); border-radius:8px;
+               margin-bottom:10px; }
+  ul.soar li .ts { color:var(--unknown); font-size:11px; }
+  ul.soar li .n { color:var(--accent); font-weight:600; font-size:13px; }
+  ul.soar li .r { color:var(--text); font-size:12px; }
+
+  /* Pipeline horizontal */
+  .pipe { display:flex; align-items:center; gap:6px; overflow-x:auto;
+          padding:10px 0; }
+  .pstep { padding:6px 12px; border:1px solid var(--border);
+           background:var(--panel-2); border-radius:14px;
+           font-size:11px; flex-shrink:0; }
+  .pstep .dot { display:inline-block; width:8px; height:8px;
+                border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .arrow2 { color:var(--unknown); }
+
+  /* Services list */
+  .svc-list .item { display:flex; justify-content:space-between;
+                    padding:10px 14px; background:var(--panel-2);
+                    border-radius:6px; margin-bottom:6px;
+                    border:1px solid var(--border); }
+  .alive-dot { display:inline-block; width:8px; height:8px;
+               background:var(--ok); border-radius:50%; margin-right:8px;
+               box-shadow:0 0 6px var(--ok); }
+
+  /* Controls */
+  .nav { display:flex; justify-content:space-between; padding:16px 20px;
+         border-top:1px solid var(--border); }
+  .nav button { background:var(--panel); color:var(--accent);
+                border:1px solid var(--border); border-radius:8px;
+                padding:8px 16px; cursor:pointer; font:inherit; font-size:12px; }
+  .nav button:hover { border-color:var(--accent); }
+  .nav .pos { color:var(--unknown); font-size:11px; align-self:center; }
+</style>
+</head>
+<body>
+
+<nav class="tabs">
+  <a href="../ui-mockup.html" class="home">v0.1 grid</a>
+  <a href="ui-1.html">1 · command</a>
+  <a href="ui-2.html">2 · orbit</a>
+  <a href="ui-3.html">3 · timeline</a>
+  <a href="ui-4.html" class="active">4 · cards</a>
+  <a href="ui-5.html">5 · sidebar</a>
+  <a href="ui-6.html">6 · bento</a>
+  <a href="ui-7.html">7 · tree</a>
+  <a href="ui-8.html">8 · hud</a>
+</nav>
+
+<main>
+  <div class="deck" id="deck"></div>
+</main>
+
+<nav class="nav">
+  <button onclick="go(-1)">← prev</button>
+  <span class="pos"><span id="pos">1</span> of <span id="tot">6</span></span>
+  <button onclick="go(1)">next →</button>
+</nav>
+
+<script>
+  const CARDS = [
+    {label:'hardening', title:'Posture',
+     sub:'7 subsystems live-probed at :8093/api/hardening/status',
+     body:`
+       <div class="hgrid">
+         <div class="hrow"><div><div class="nm">auditd</div><div class="note">2 rules failed to load</div></div><span class="pill warn">WARN</span></div>
+         <div class="hrow"><div><div class="nm">capabilities</div><div class="note">0 risky caps</div></div><span class="pill ok">OK</span></div>
+         <div class="hrow"><div><div class="nm">dns_blocklist</div><div class="note">98 062 entries</div></div><span class="pill ok">OK</span></div>
+         <div class="hrow"><div><div class="nm">dnsmasq</div><div class="note">resolv→127.0.0.1</div></div><span class="pill ok">OK</span></div>
+         <div class="hrow"><div><div class="nm">lsms</div><div class="note">7 active</div></div><span class="pill ok">OK</span></div>
+         <div class="hrow"><div><div class="nm">nftables</div><div class="note">needs root</div></div><span class="pill fail">FAIL</span></div>
+         <div class="hrow"><div><div class="nm">apparmor</div><div class="note">profiles loaded</div></div><span class="pill ok">OK</span></div>
+       </div>`},
+
+    {label:'siem', title:'12 findings',
+     sub:'post-cleanup · 10 scan / 2 firewall · 1 critical / 11 high',
+     body:`
+       <div class="bignum-wrap">
+         <div class="bignum">12</div>
+         <div class="bignum-meta">total · of which<br>1 critical · 11 high</div>
+       </div>
+       <div class="ring-row">
+         <div class="ring-mini"><div class="ttl">scan</div><div class="v">10</div></div>
+         <div class="ring-mini"><div class="ttl">firewall</div><div class="v">2</div></div>
+         <div class="ring-mini"><div class="ttl">critical</div><div class="v" style="color:var(--fail)">1</div></div>
+         <div class="ring-mini"><div class="ttl">high</div><div class="v" style="color:var(--warn)">11</div></div>
+       </div>`},
+
+    {label:'cve feed', title:'Recent CVEs',
+     sub:'last 7 days · no criticals · 1 medium / 2 low',
+     body:`
+       <table class="cve">
+         <thead><tr><th>id</th><th>sev</th><th>summary</th></tr></thead>
+         <tbody>
+           <tr><td><code>CVE-2026-1234</code></td><td><span class="pill medium">MED</span></td><td>doas — env leak</td></tr>
+           <tr><td><code>CVE-2026-1192</code></td><td><span class="pill low">LOW</span></td><td>curl — cookie path</td></tr>
+           <tr><td><code>CVE-2026-1144</code></td><td><span class="pill low">LOW</span></td><td>readline — brackpaste</td></tr>
+         </tbody>
+       </table>`},
+
+    {label:'soar', title:'Playbook Runs',
+     sub:'last 24h · 2 runs · both logged-only',
+     body:`
+       <ul class="soar">
+         <li><div class="ts">2026-08-19 02:11</div>
+             <div class="n">pb.fw.port-scan.isolate</div>
+             <div class="r">isolated host A · no auto-block</div></li>
+         <li><div class="ts">2026-08-19 01:47</div>
+             <div class="n">pb.cve.triage</div>
+             <div class="r">3 low CVEs triaged</div></li>
+       </ul>`},
+
+    {label:'pipeline', title:'Token Pipeline',
+     sub:'10 stages · COLLECT → DELIVER · flat summary (full 3D at :8090/pipeline)',
+     body:`
+       <div class="pipe">
+         <span class="pstep"><span class="dot" style="background:#7AA2F7"></span>COLLECT</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#9ECE6A"></span>COMPOSE</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#BB9AF3"></span>FRAME_OF_REF</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#E0AF68"></span>MEMORY_CHECK</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#C9A84C"></span>SLIMTOKEN</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#7FD4C9"></span>TOOL_ROUTING</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#9ECE6A"></span>FINALIZE</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#7AA2F7"></span>PREFILL</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#F7768E"></span>DECODE</span><span class="arrow2">→</span>
+         <span class="pstep"><span class="dot" style="background:#C9A84C"></span>DELIVER</span>
+       </div>`},
+
+    {label:'services', title:'Live Services',
+     sub:'systemd user units · all alive',
+     body:`
+       <div class="svc-list">
+         <div class="item"><span><span class="alive-dot"></span>cortexagent.service</span><span>alive · 12h 14m</span></div>
+         <div class="item"><span><span class="alive-dot"></span>cortexagent-overseer.service</span><span>alive · 12h 14m</span></div>
+         <div class="item"><span><span class="alive-dot"></span>siem-console.service</span><span>:9998</span></div>
+         <div class="item"><span><span class="alive-dot"></span>cortexagent-tray.service</span><span>alive</span></div>
+         <div class="item"><span><span class="alive-dot"></span>canary-server.service</span><span>:8092</span></div>
+       </div>`},
+  ];
+
+  const deck = document.getElementById('deck');
+  document.getElementById('tot').textContent = CARDS.length;
+  let cur = 0;
+
+  function render() {
+    deck.innerHTML = '';
+    CARDS.forEach((c, i) => {
+      const card = document.createElement('div');
+      let cls = '';
+      const rel = i - cur;
+      if (rel === 0) cls = 'cur';
+      else if (rel === -1) cls = 'prev';
+      else if (rel === 1) cls = 'next';
+      else if (rel < -1) cls = 'far-prev';
+      else cls = 'far-next';
+      card.className = 'card ' + cls;
+      card.innerHTML = `<div class="label">${c.label}</div>
+                        <h2 class="ctitle">${c.title}</h2>
+                        <div class="csub">${c.sub}</div>
+                        ${c.body}`;
+      card.addEventListener('click', () => {
+        if (rel === -1) go(-1);
+        else if (rel === 1) go(1);
+      });
+      deck.appendChild(card);
+    });
+    document.getElementById('pos').textContent = cur + 1;
+  }
+
+  function go(d) {
+    cur = Math.max(0, Math.min(CARDS.length - 1, cur + d));
+    render();
+  }
+
+  // swipe
+  let startX = 0;
+  deck.addEventListener('touchstart', e => startX = e.touches[0].clientX, {passive:true});
+  deck.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    if (Math.abs(dx) > 60) go(dx > 0 ? -1 : 1);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft')  go(-1);
+    if (e.key === 'ArrowRight') go(1);
+  });
+
+  render();
+</script>
+
+</body>
+</html>

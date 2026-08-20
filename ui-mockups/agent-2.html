@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CortexAgent · Live Pulse — variant 2</title>
+<style>
+  /* ============================================================
+     CORTEXAGENT — LIVE PULSE
+     Variant 2 of the pipeline page. Same data, different feel.
+     Aesthetic: dark, breathing, near-monochrome with one warm accent.
+     Built for live observation while a request is running.
+     ============================================================ */
+  :root {
+    --bg:       #0a0d12;
+    --panel:    #11161e;
+    --line:     #1d2530;
+    --ink:      #d6dde8;
+    --mute:     #6b7888;
+    --teal:     #4ec5b9;
+    --teal-d:   #2c6e6f;
+    --warm:     #d6a25a;
+    --red:      #e0524c;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); margin: 0;
+               font: 14px/1.5 "Inter", system-ui, sans-serif; }
+  body { background-image:
+    radial-gradient(ellipse at 20% 0%, rgba(78,197,185,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 100%, rgba(214,162,90,0.05) 0%, transparent 60%); }
+
+  header {
+    padding: 16px 28px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 20px;
+  }
+  header .brand {
+    font: 700 14px/1 "Space Grotesk", sans-serif; letter-spacing: 0.16em;
+    color: var(--teal); text-transform: uppercase;
+  }
+  header .crumb { color: var(--mute); font-size: 12px; }
+  header .right { margin-left: auto; display: flex; gap: 14px; align-items: center;
+                   font: 11px "JetBrains Mono", monospace; color: var(--mute); letter-spacing: 0.06em; }
+  header .live {
+    display: flex; gap: 6px; align-items: center; color: var(--teal);
+  }
+  header .live::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--teal);
+    box-shadow: 0 0 12px var(--teal); animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); }
+                     50%     { opacity: 0.4; transform: scale(0.7); } }
+
+  /* the prompt + composer at top */
+  .composer {
+    padding: 28px 32px 8px;
+  }
+  .composer .label {
+    font: 11px "JetBrains Mono", monospace; letter-spacing: 0.14em;
+    color: var(--mute); text-transform: uppercase; margin-bottom: 8px;
+  }
+  .composer .prompt {
+    font: 19px/1.55 "Fraunces", Georgia, serif; font-style: italic;
+    color: var(--ink); margin: 0 0 6px;
+  }
+  .composer .meta {
+    font: 11px "JetBrains Mono", monospace; color: var(--mute);
+    letter-spacing: 0.06em;
+  }
+
+  /* the live timeline — stages drawn as a horizontal track with pulses */
+  .stage-track {
+    margin: 24px 32px 12px; padding: 20px 24px;
+    background: var(--panel); border: 1px solid var(--line);
+    position: relative;
+  }
+  .stage-track::before {
+    content: ""; position: absolute; left: 24px; right: 24px;
+    top: 50%; height: 2px; background: var(--line);
+  }
+  .stages { display: grid; grid-template-columns: repeat(5, 1fr); position: relative; }
+  .stage {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    position: relative;
+  }
+  .stage .node {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--panel); border: 2px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    font: 700 14px "Fraunces", serif; color: var(--mute);
+    z-index: 1; transition: all 200ms;
+  }
+  .stage.done .node { background: var(--teal); border-color: var(--teal); color: var(--bg); }
+  .stage.active .node {
+    background: var(--warm); border-color: var(--warm); color: var(--bg);
+    box-shadow: 0 0 0 8px rgba(214,162,90,0.18);
+    animation: breathing 1.8s ease-in-out infinite;
+  }
+  @keyframes breathing { 0%,100% { box-shadow: 0 0 0 6px rgba(214,162,90,0.12); }
+                         50%     { box-shadow: 0 0 0 14px rgba(214,162,90,0.22); } }
+  .stage .name {
+    font: 600 11px/1 "Space Grotesk", sans-serif; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--mute);
+  }
+  .stage.done .name { color: var(--teal); }
+  .stage.active .name { color: var(--warm); }
+  .stage .timing {
+    font: 10px "JetBrains Mono", monospace; color: var(--mute);
+  }
+  .stage.done .timing { color: var(--ink); }
+
+  /* detail panels for each stage */
+  .details { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+             padding: 0 32px 32px; }
+  .detail {
+    background: var(--panel); border: 1px solid var(--line); padding: 14px 16px;
+    min-height: 180px;
+    display: flex; flex-direction: column;
+  }
+  .detail.active { border-color: var(--warm); }
+  .detail.done { border-color: var(--teal-d); }
+  .detail h4 {
+    margin: 0 0 8px; font: 600 11px/1 "Space Grotesk", sans-serif;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute);
+  }
+  .detail.active h4 { color: var(--warm); }
+  .detail.done h4 { color: var(--teal); }
+  .detail .big {
+    font: 700 28px/1 "Space Grotesk", sans-serif; font-variant-numeric: tabular-nums;
+    color: var(--ink); margin-bottom: 4px;
+  }
+  .detail.active .big { color: var(--warm); }
+  .detail.done .big { color: var(--teal); }
+  .detail .sub { font-size: 11px; color: var(--mute); margin-bottom: 12px; }
+  .detail .body {
+    margin-top: auto; padding: 10px 12px; background: var(--bg);
+    font: 11px/1.5 "JetBrains Mono", monospace; color: var(--mute);
+    border-left: 2px solid var(--line); white-space: pre-wrap;
+  }
+  .detail.active .body { border-color: var(--warm); color: var(--ink); }
+  .detail.done .body { border-color: var(--teal); color: var(--ink); }
+
+  /* the streamed reply at bottom */
+  .reply {
+    margin: 0 32px 32px; padding: 20px 24px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--warm);
+  }
+  .reply .label {
+    font: 10px/1 "JetBrains Mono", monospace; letter-spacing: 0.14em;
+    color: var(--warm); text-transform: uppercase; margin-bottom: 8px;
+  }
+  .reply .text {
+    font: 16px/1.6 "Fraunces", Georgia, serif; color: var(--ink);
+    min-height: 4.8em; font-style: italic;
+  }
+  .reply .text::after {
+    content: "▍"; color: var(--warm); animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* small live-tokens strip */
+  .tok-strip {
+    margin: 0 32px 28px; padding: 12px 16px; background: var(--bg-2);
+    border: 1px dashed var(--line); display: flex; gap: 8px; overflow-x: auto;
+    font: 11px "JetBrains Mono", monospace; color: var(--mute);
+  }
+  .tok-strip .t {
+    padding: 2px 6px; border: 1px solid var(--line); background: var(--panel);
+  }
+  .tok-strip .t.cur { color: var(--warm); border-color: var(--warm); }
+  .tok-strip .t.done { color: var(--ink); }
+
+  @media (max-width: 1100px) {
+    .stages, .details { grid-template-columns: 1fr; }
+    .stage-track::before { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">Pipeline · live</span>
+  <span class="crumb">/pipeline · 127.0.0.1:8090</span>
+  <div class="right">
+    <span class="live">processing</span>
+    <span>model · Qwen3.6-35B-A3B</span>
+    <span>tok/s 41.2</span>
+    <span>1.85s elapsed</span>
+  </div>
+</header>
+
+<div class="composer">
+  <div class="label">▸ prompt</div>
+  <p class="prompt">"explain the difference between Rule 401 and 402 in 3 sentences"</p>
+  <div class="meta">17 tokens · 2026-08-20 11:13:42 -07:00 · case evidence-rule-401</div>
+</div>
+
+<div class="stage-track">
+  <div class="stages">
+    <div class="stage done">
+      <div class="node">1</div>
+      <div class="name">Input</div>
+      <div class="timing">2ms</div>
+    </div>
+    <div class="stage done">
+      <div class="node">2</div>
+      <div class="name">Tokenize</div>
+      <div class="timing">4ms</div>
+    </div>
+    <div class="stage done">
+      <div class="node">3</div>
+      <div class="name">SlimToken</div>
+      <div class="timing">12ms</div>
+    </div>
+    <div class="stage done">
+      <div class="node">4</div>
+      <div class="name">Retrieve</div>
+      <div class="timing">28ms</div>
+    </div>
+    <div class="stage active">
+      <div class="node">5</div>
+      <div class="name">Generate</div>
+      <div class="timing">1,802ms</div>
+    </div>
+  </div>
+</div>
+
+<div class="details">
+
+  <div class="detail done">
+    <h4>① Input</h4>
+    <div class="big">17</div>
+    <div class="sub">tokens · raw</div>
+    <div class="body">"explain the difference between Rule 401 and 402 in 3 sentences"</div>
+  </div>
+
+  <div class="detail done">
+    <h4>② Tokenize</h4>
+    <div class="big">17</div>
+    <div class="sub">BPE · vocab 152k</div>
+    <div class="body">[22172, 416, 278, 11724, 411, 656, 386, 1343, 304, 220, 27, 798, 220, 16, 805, 298, 13]</div>
+  </div>
+
+  <div class="detail done">
+    <h4>③ SlimToken</h4>
+    <div class="big">9 <span style="color:var(--mute);font-size:14px;">/ 17</span></div>
+    <div class="sub">47% retained · 8 dropped</div>
+    <div class="body">→ "Rule-401 vs Rule-402 diff in 3-sentences"
+[long-tail merged; numerals + nouns preserved]</div>
+  </div>
+
+  <div class="detail done">
+    <h4>④ Retrieve</h4>
+    <div class="big">3 <span style="color:var(--mute);font-size:14px;">hits</span></div>
+    <div class="sub">vector + graph + BM25</div>
+    <div class="body">note · evidence-rule-401 (0.91)
+note · evidence-rule-402 (0.88)
+note · exam-2025-q3 (0.74)</div>
+  </div>
+
+  <div class="detail active">
+    <h4>⑤ Generate</h4>
+    <div class="big">41.2</div>
+    <div class="sub">tokens/sec · 3B/35B active</div>
+    <div class="body">streaming...
+temp 0.7 · top-p 0.9 · ctx 124
+→ 47 tokens so far</div>
+  </div>
+
+</div>
+
+<div class="reply">
+  <div class="label">▸ streaming reply</div>
+  <div class="text">Rule 401 defines the general admissibility test — relevant evidence is admissible unless specifically excluded. Rule 402 is the relevance baseline: "all relevant evidence is admissible; irrelevant evidence is not." Together they form</div>
+</div>
+
+<div class="tok-strip">
+  <span class="t done">Rule</span>
+  <span class="t done">401</span>
+  <span class="t done">defines</span>
+  <span class="t done">the</span>
+  <span class="t done">general</span>
+  <span class="t done">admissibility</span>
+  <span class="t done">test</span>
+  <span class="t done">—</span>
+  <span class="t done">relevant</span>
+  <span class="t done">evidence</span>
+  <span class="t done">is</span>
+  <span class="t done">admissible</span>
+  <span class="t done">unless</span>
+  <span class="t done">specifically</span>
+  <span class="t done">excluded</span>
+  <span class="t done">.</span>
+  <span class="t cur">Rule</span>
+</div>
+
+</body>
+</html>

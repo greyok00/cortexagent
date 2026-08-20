@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CortexAgent tray popup → console</title>
+<style>
+  :root {
+    --bg:      #0a0c10;
+    --panel:   #131826;
+    --line:    #2a3142;
+    --ink:     #e6e9f0;
+    --mute:    #94a3b8;
+    --accent:  #ffb000;       /* security-amber, matches sec-1 */
+    --ok:      #5fe09a;
+    --fail:    #ff5a52;
+    --warn:    #ffd166;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #1a1d24;
+               background-image:
+                 radial-gradient(circle at 30% 20%, rgba(255,176,0,0.04) 0%, transparent 60%),
+                 radial-gradient(circle at 80% 80%, rgba(78,197,185,0.03) 0%, transparent 60%);
+               font: 13px/1.4 "Inter", system-ui, sans-serif; color: var(--ink);
+               min-height: 100vh; padding: 40px; }
+
+  /* page wrapper explaining the mockup */
+  .page { max-width: 900px; margin: 0 auto; }
+  .page h1 { font: 700 20px/1.2 "Fraunces", Georgia, serif; margin: 0 0 6px; }
+  .page p  { color: var(--mute); margin: 0 0 28px; font-size: 13px; }
+  .page p b { color: var(--ink); }
+
+  /* the desktop scene — a tray icon, a menu open, then the popup */
+  .scene {
+    background: #14171e; border: 1px solid var(--line); border-radius: 6px;
+    padding: 24px; min-height: 600px; position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .scene .taskbar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 36px;
+    background: #0d1015; border-top: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  }
+  .scene .taskbar .ico {
+    width: 24px; height: 24px; background: #1a1d24; border: 1px solid var(--line);
+    border-radius: 4px; display: flex; align-items: center; justify-content: center;
+    color: var(--mute); font-size: 12px;
+  }
+  .scene .taskbar .ico.brain {
+    background: linear-gradient(135deg, #0e7c86, #0a1929);
+    color: #fff; border-color: transparent; font-weight: 700;
+  }
+  .scene .taskbar .clock {
+    margin-left: auto; font: 11px "JetBrains Mono", monospace; color: var(--mute);
+  }
+
+  /* tray menu — what appears on right-click */
+  .tray-menu {
+    position: absolute; bottom: 46px; right: 24px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+    padding: 4px; min-width: 220px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    font-size: 12px;
+  }
+  .tray-menu .item {
+    padding: 6px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;
+    border-radius: 3px;
+  }
+  .tray-menu .item:hover { background: rgba(255,176,0,0.12); color: var(--accent); }
+  .tray-menu .item .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--fail);
+    box-shadow: 0 0 6px var(--fail);
+  }
+  .tray-menu .item .dot.ok { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .tray-menu .sep { height: 1px; background: var(--line); margin: 4px 0; }
+  .tray-menu .item .kbd { margin-left: auto; color: var(--mute); font: 10px "JetBrains Mono", monospace; }
+
+  /* the floating popup — the "console" */
+  .popup {
+    position: absolute; top: 40px; right: 80px;
+    width: 720px; height: 480px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .popup .titlebar {
+    height: 32px; background: #11151b; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; padding: 0 12px; gap: 10px;
+  }
+  .popup .titlebar .grip {
+    width: 12px; height: 12px; background: linear-gradient(135deg, var(--accent), #b07700);
+    border-radius: 2px;
+  }
+  .popup .titlebar .label {
+    font: 700 11px/1 "JetBrains Mono", monospace; letter-spacing: 0.14em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .popup .titlebar .sub { color: var(--mute); font-size: 11px; }
+  .popup .titlebar .ctrls { margin-left: auto; display: flex; gap: 4px; }
+  .popup .titlebar .ctrls span {
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    color: var(--mute); font-size: 14px; cursor: pointer;
+  }
+  .popup .titlebar .ctrls span:hover { color: var(--ink); }
+  .popup .titlebar .ctrls span.x:hover { color: var(--fail); }
+
+  /* inside the popup — the security cockpit V1 in compact form */
+  .popup .body { padding: 16px 18px; overflow: auto; flex: 1; }
+
+  /* the tiny strip version of cockpit V1 — 9 checks in one row */
+  .strip {
+    display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px;
+    margin-bottom: 14px;
+  }
+  .strip .ch {
+    background: #11151b; border: 1px solid var(--line);
+    padding: 8px 6px; text-align: center; position: relative;
+    border-top: 2px solid var(--mute);
+  }
+  .strip .ch.ok   { border-top-color: var(--ok); }
+  .strip .ch.fail { border-top-color: var(--fail); }
+  .strip .ch.warn { border-top-color: var(--warn); }
+  .strip .ch .name {
+    font: 700 8px/1 "Space Grotesk", sans-serif; letter-spacing: 0.1em;
+    color: var(--mute); text-transform: uppercase; margin-bottom: 6px;
+  }
+  .strip .ch .st {
+    font: 700 14px/1 "Space Grotesk", sans-serif;
+  }
+  .strip .ch.ok   .st { color: var(--ok); }
+  .strip .ch.fail .st { color: var(--fail); }
+  .strip .ch.warn .st { color: var(--warn); }
+
+  /* attention call-out */
+  .attn {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 18px;
+    align-items: center; padding: 12px 16px;
+    background: rgba(255,90,82,0.08); border: 1px solid rgba(255,90,82,0.4);
+    border-left: 3px solid var(--fail); margin-bottom: 14px;
+  }
+  .attn .big {
+    font: 700 36px/1 "Space Grotesk", sans-serif; color: var(--fail);
+    font-variant-numeric: tabular-nums;
+  }
+  .attn .big .total { font-size: 14px; color: var(--mute); margin-left: 4px; }
+  .attn .list { color: var(--ink); font-size: 12px; line-height: 1.6; }
+  .attn .list b { color: var(--fail); }
+  .attn .btn {
+    padding: 8px 14px; background: var(--fail); color: var(--bg);
+    font: 700 10px "JetBrains Mono", monospace; letter-spacing: 0.14em;
+    text-transform: uppercase; border: 0; cursor: pointer;
+  }
+
+  /* SOAR strip */
+  .soar { background: #11151b; border: 1px solid var(--line); padding: 10px 14px; }
+  .soar .row {
+    display: grid; grid-template-columns: 64px 60px 100px 1fr 50px;
+    gap: 10px; font: 10px "JetBrains Mono", monospace; padding: 2px 0;
+  }
+  .soar .row .t { color: var(--mute); }
+  .soar .row .lvl { font-weight: 700; letter-spacing: 0.08em; }
+  .soar .row .lvl.CRIT { color: var(--fail); }
+  .soar .row .lvl.OK   { color: var(--ok); }
+  .soar .row .lvl.HIGH { color: var(--accent); }
+  .soar .row .pb { color: var(--accent); }
+  .soar .row .dur { color: var(--mute); text-align: right; }
+
+  /* notes / handoff section */
+  .notes { margin-top: 32px; padding: 16px; background: #11151b;
+            border: 1px solid var(--line); border-left: 3px solid var(--accent); }
+  .notes h3 {
+    margin: 0 0 8px; font: 700 10px/1 "Space Grotesk", sans-serif;
+    letter-spacing: 0.14em; color: var(--accent); text-transform: uppercase;
+  }
+  .notes ul { margin: 0; padding-left: 20px; color: var(--ink); font-size: 13px; }
+  .notes li { margin-bottom: 6px; color: var(--mute); }
+  .notes li b { color: var(--ink); }
+  .notes li code { background: rgba(255,255,255,0.04); padding: 1px 5px; border-radius: 2px;
+                    font: 11px "JetBrains Mono", monospace; color: var(--accent); }
+
+  @media (max-width: 900px) {
+    .popup { width: calc(100vw - 40px); right: 20px; }
+    .strip { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <h1>Tray console mockup</h1>
+  <p>
+    A slim Tk-style floating window — consistent with the existing
+    <code>sec_tray.py</code> pattern. Right-click the tray icon to get a menu;
+    clicking "Open console" (or pressing a global hotkey) opens this 720×480 popup pinned
+    to the lower-right corner. It shows the Security Cockpit V1 in compact form,
+    so a glance at the tray answers "do I need to do something?"
+  </p>
+
+  <div class="scene">
+
+    <!-- The popup -->
+    <div class="popup">
+      <div class="titlebar">
+        <span class="grip"></span>
+        <span class="label">▣ security · console</span>
+        <span class="sub">127.0.0.1:8093 · refresh 60s · 11:13:42</span>
+        <div class="ctrls"><span>_</span><span>□</span><span class="x">×</span></div>
+      </div>
+      <div class="body">
+
+        <div class="strip">
+          <div class="ch warn"><div class="name">auditd</div><div class="st">!</div></div>
+          <div class="ch ok"><div class="name">caps</div><div class="st">✓</div></div>
+          <div class="ch ok"><div class="name">dns</div><div class="st">✓</div></div>
+          <div class="ch ok"><div class="name">dnsmasq</div><div class="st">✓</div></div>
+          <div class="ch ok"><div class="name">lsms</div><div class="st">✓</div></div>
+          <div class="ch fail"><div class="name">nft</div><div class="st">✗</div></div>
+          <div class="ch fail"><div class="name">sshd</div><div class="st">✗</div></div>
+          <div class="ch fail"><div class="name">sysctl</div><div class="st">✗</div></div>
+          <div class="ch"><div class="name">unb</div><div class="st" style="color:var(--mute);">—</div></div>
+        </div>
+
+        <div class="attn">
+          <div class="big">3<span class="total">/9</span></div>
+          <div class="list">
+            <b>nftables</b> — operation not permitted<br>
+            <b>sshd</b> — 10 baseline deviations<br>
+            <b>sysctl</b> — 11/17 match · 5 differ
+          </div>
+          <button class="btn" onclick="window.open('cortexagent-console.html','CortexAgent','width=1320,height=820')">Open full console →</button>
+        </div>
+
+        <div class="soar">
+          <div class="row"><span class="t">11:13:18</span><span class="lvl HIGH">HIGH</span><span class="pb">block-source-ip</span><span>198.51.100.42 · KEV CVE-2025-30872</span><span class="dur">0.8s</span></div>
+          <div class="row"><span class="t">10:47:02</span><span class="lvl OK">OK</span><span class="pb">isolate-host</span><span>host quarantined</span><span class="dur">5m 12s</span></div>
+          <div class="row"><span class="t">09:22:54</span><span class="lvl HIGH">HIGH</span><span class="pb">enrich-cve</span><span>12 CVEs annotated</span><span class="dur">3.4s</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- The tray menu -->
+    <div class="tray-menu">
+      <div class="item" onclick="window.open('cortexagent-console.html','CortexAgent','width=1320,height=820')">
+        <span class="dot"></span>
+        <span>3 hardening failures · open console</span>
+        <span class="kbd">⌘⇧H</span>
+      </div>
+      <div class="item"><span class="dot ok"></span><span>SIEM · 1,847 events</span></div>
+      <div class="item"><span class="dot ok"></span><span>SOAR · 12 runs 24h</span></div>
+      <div class="sep"></div>
+      <div class="item" onclick="window.open('cortexagent-console.html','CortexAgent','width=1320,height=820')">
+        <span>◆ Open full CortexAgent console</span><span class="kbd">⌘⇧A</span>
+      </div>
+      <div class="item"><span>Open OSINT portal</span><span class="kbd">⌘⇧O</span></div>
+      <div class="item"><span>Open pipeline</span><span class="kbd">⌘⇧P</span></div>
+      <div class="sep"></div>
+      <div class="item"><span>Pause automation</span></div>
+      <div class="item"><span>Quit</span></div>
+    </div>
+
+    <!-- The taskbar at the bottom -->
+    <div class="taskbar">
+      <div class="ico">⌂</div>
+      <div class="ico">▤</div>
+      <div class="ico brain">C</div>
+      <div class="ico">⌥</div>
+      <div class="clock">11:13:42 -07:00</div>
+    </div>
+
+  </div>
+
+  <div class="notes">
+    <h3>Tray popup → full console flow</h3>
+    <ul>
+      <li><b>This popup is the collapsed tray window.</b> 720×480, lives next to the tray icon.
+          Shows the 9-check strip + an attention callout + 3 most-recent SOAR runs. That's the
+          entire "do I need to act?" question in one frame.</li>
+      <li><b>"Open full console →"</b> opens
+          <a href="cortexagent-console.html"><code>cortexagent-console.html</code></a>
+          (1320×820 Tauri-window mockup) — full console with sidebar nav across Security/Agent/OSINT/Cases,
+          live status bar across surfaces, embedded xterm.js terminal at the bottom.</li>
+      <li><b>From the tray menu</b> the item <b>"◆ Open full CortexAgent console"</b> (⌘⇧A)
+          does the same. The "3 hardening failures · open console" item (⌘⇧H) also opens
+          the console and lands on the Security tab.</li>
+      <li><b>In production this becomes:</b> tray icon → right-click menu (Tk popup like
+          <code>sec_tray.py</code>) → click opens the Tauri WebviewWindow at 1320×820 with the
+          same layout. The Tauri app keeps a tray icon for the always-visible collapsed state.</li>
+      <li><b>Pattern reuse:</b> the existing <code>sec_tray.py</code> 372-line Tk popup stays
+          as the tray collapsed view (with its severity-color padlock). The Tauri app is the
+          expanded view. Both share the same data sources (SIEM db, big-model status, etc.).</li>
+      <li><b>No auth in either view:</b> localhost-only; webui bound to <code>127.0.0.1</code>,
+          never <code>0.0.0.0</code> (per the localhost-only binding rule).</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CortexAgent · Annotated Schematic — variant 1</title>
+<style>
+  /* ============================================================
+     CORTEXAGENT — ANNOTATED SCHEMATIC
+     Subject: the pipeline visualization.
+     Job: make the agent's process legible and inspectable.
+     Aesthetic: textbook figure. White paper, deep-teal ink,
+     handwritten-style callouts, mathematical notation.
+     ============================================================ */
+  :root {
+    --paper:    #ffffff;
+    --ink:      #0a1929;
+    --ink-2:    #1f3045;
+    --teal:     #0e7c86;
+    --teal-d:   #085459;
+    --warm:     #b85a2c;
+    --soft:     #e8eef2;
+    --line:     #cdd8e0;
+    --rule:     #aab8c5;
+    --mute:     #5a6b7a;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--paper); color: var(--ink); margin: 0;
+               font: 15px/1.55 "Inter", system-ui, sans-serif; }
+  body { background-image:
+    linear-gradient(to right, transparent 0, transparent 49.7%, rgba(10,25,41,0.04) 50%, transparent 50.3%, transparent 100%);
+    background-size: 100% 32px; }
+
+  header {
+    padding: 28px 40px 16px; border-bottom: 1px solid var(--ink);
+    display: flex; align-items: baseline; gap: 24px;
+  }
+  header .fig-num {
+    font: 700 11px/1 "JetBrains Mono", monospace; letter-spacing: 0.18em;
+    color: var(--teal); text-transform: uppercase;
+  }
+  header h1 {
+    font: 400 32px/1.1 "Fraunces", "Cormorant Garamond", "Times New Roman", serif;
+    margin: 0; letter-spacing: -0.01em; color: var(--ink);
+  }
+  header h1 em { font-style: italic; color: var(--teal-d); }
+  header .right { margin-left: auto; font: 11px "JetBrains Mono", monospace;
+                  color: var(--mute); letter-spacing: 0.08em; text-align: right; }
+  header .right b { color: var(--ink); }
+
+  /* figure caption (academic style) */
+  figcaption {
+    padding: 0 40px 16px; font: 13px/1.55 "Fraunces", Georgia, serif;
+    font-style: italic; color: var(--ink-2); max-width: 760px;
+  }
+
+  /* the figure itself */
+  figure {
+    margin: 0; padding: 32px 40px 48px; position: relative;
+  }
+
+  .schematic {
+    border: 1px solid var(--ink); background: var(--paper);
+    padding: 36px 32px 32px; position: relative;
+    background-image:
+      linear-gradient(var(--soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--soft) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .schematic::before {
+    content: "fig. 1 — token pipeline";
+    position: absolute; top: -10px; left: 24px;
+    background: var(--paper); padding: 0 8px;
+    font: 700 10px/1 "JetBrains Mono", monospace; letter-spacing: 0.16em;
+    color: var(--teal); text-transform: uppercase;
+  }
+
+  .stage {
+    border: 1.5px solid var(--ink); background: var(--paper);
+    padding: 16px 18px; position: relative;
+  }
+  .stage .num {
+    position: absolute; top: -1px; left: -1px;
+    width: 30px; height: 30px; background: var(--ink); color: var(--paper);
+    font: 700 16px/30px "Fraunces", serif; text-align: center;
+    font-feature-settings: "lnum";
+  }
+  .stage h3 { margin: 0 0 6px; font: 600 16px/1.2 "Fraunces", serif; }
+  .stage h3 .math { font-style: italic; color: var(--teal-d); }
+  .stage .role { font: 11px "JetBrains Mono", monospace; color: var(--mute);
+                 letter-spacing: 0.06em; margin-bottom: 8px; }
+  .stage p { margin: 0; font-size: 13px; color: var(--ink-2); }
+  .stage .data {
+    margin-top: 10px; padding: 8px 10px; background: var(--soft);
+    font: 11px "JetBrains Mono", monospace; line-height: 1.5;
+    color: var(--ink-2); border-left: 2px solid var(--teal);
+  }
+  .stage .data b { color: var(--teal-d); }
+
+  .row { display: grid; gap: 12px; align-items: stretch; }
+  .row.r1 { grid-template-columns: 0.8fr 1.4fr 1fr 1.4fr 0.8fr; margin-bottom: 12px; }
+
+  /* the arrows between stages — handwritten SVG feel */
+  .arrow {
+    align-self: center; text-align: center;
+    font: 700 22px/1 "Fraunces", serif; color: var(--ink);
+    position: relative; padding: 0 4px;
+  }
+  .arrow svg { display: block; margin: 0 auto; }
+
+  /* the output panel */
+  .output {
+    margin-top: 28px; padding: 24px 28px;
+    background: linear-gradient(180deg, var(--soft), var(--paper));
+    border: 1.5px solid var(--ink); position: relative;
+  }
+  .output::before {
+    content: "▸ output"; position: absolute; top: -10px; left: 24px;
+    background: var(--paper); padding: 0 8px;
+    font: 700 10px/1 "JetBrains Mono", monospace; letter-spacing: 0.16em;
+    color: var(--warm); text-transform: uppercase;
+  }
+  .output .reply {
+    font: 17px/1.6 "Fraunces", Georgia, serif; color: var(--ink);
+    max-width: 720px;
+  }
+  .output .meta {
+    display: flex; gap: 24px; margin-top: 14px; padding-top: 12px;
+    border-top: 1px dashed var(--rule);
+    font: 11px "JetBrains Mono", monospace; color: var(--mute);
+  }
+  .output .meta b { color: var(--ink); }
+
+  /* footnote */
+  footer {
+    padding: 12px 40px 40px; max-width: 920px;
+    font: 12px/1.55 "Fraunces", Georgia, serif;
+    color: var(--mute); border-top: 1px solid var(--line);
+  }
+  footer ol { padding-left: 24px; margin: 0; }
+  footer li { margin-bottom: 4px; }
+
+  @media (max-width: 1100px) {
+    .row.r1 { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="fig-num">§ 4.2</span>
+  <h1>The agent's pipeline — <em>how a prompt becomes an answer</em></h1>
+  <div class="right">
+    cortexagent webui<br>
+    <b>127.0.0.1:8090/pipeline</b><br>
+    run · 2026-08-20 11:13:42
+  </div>
+</header>
+
+<figcaption>
+  <b>Figure 1.</b> Each request traverses five named stages: input → tokenize →
+  compress (SlimToken) → retrieve (memory) → generate. Numbers in <span style="color:var(--warm);">red</span>
+  indicate token counts; numbers in <span style="color:var(--teal);">teal</span> indicate
+  latency. The pipeline is lossless in shape (every input token has an output) but lossy in
+  weight (compression drops long-tail tokens below a relevance threshold).
+</figcaption>
+
+<figure>
+  <div class="schematic">
+    <div class="row r1">
+
+      <div class="stage">
+        <div class="num">1</div>
+        <h3>Input</h3>
+        <div class="role">USER → AGENT</div>
+        <p>Raw prompt + system context.</p>
+        <div class="data"><b>prompt:</b> "explain the difference between Rule 401 and 402 in 3 sentences"</div>
+      </div>
+
+      <div class="arrow">
+        <svg width="80" height="22" viewBox="0 0 80 22"><path d="M2 11 Q 20 4, 40 11 T 78 11" stroke="#0a1929" stroke-width="1.4" fill="none"/><polygon points="78,11 72,7 72,15" fill="#0a1929"/></svg>
+      </div>
+
+      <div class="stage">
+        <div class="num">2</div>
+        <h3>Tokenize</h3>
+        <div class="role">TEXT → IDS</div>
+        <p>Each token is assigned an integer id from the model's vocabulary.</p>
+        <div class="data"><b>tokens:</b> 17 → [22172, 416, 278, 11724, 411, 656, 386, 1343, 304, 220, 27, 798, 220, 16, 805, 298, 13]</div>
+      </div>
+
+      <div class="arrow">
+        <svg width="80" height="22" viewBox="0 0 80 22"><path d="M2 11 Q 20 4, 40 11 T 78 11" stroke="#0a1929" stroke-width="1.4" fill="none"/><polygon points="78,11 72,7 72,15" fill="#0a1929"/></svg>
+      </div>
+
+      <div class="stage">
+        <div class="num">3</div>
+        <h3>Compress · <span class="math">SlimToken</span></h3>
+        <div class="role">PRUNE LONG-TAIL</div>
+        <p>Tokens below a relevance threshold are merged into semantic summaries.</p>
+        <div class="data"><b>17 → 9</b> · 47% retained<br><b>summary:</b> "Rule-401 vs Rule-402 diff in 3-sentences"</div>
+      </div>
+
+    </div>
+
+    <div class="row r1">
+
+      <div class="stage">
+        <div class="num">4</div>
+        <h3>Retrieve</h3>
+        <div class="role">MEMORY → CONTEXT</h3>
+        <p>The compressed query is matched against the agent's vector + graph memory.</p>
+        <div class="data"><b>top-3 hits:</b><br>· note · evidence-rule-401 (0.91)<br>· note · evidence-rule-402 (0.88)<br>· note · exam-2025-q3 (0.74)</div>
+      </div>
+
+      <div class="arrow">
+        <svg width="80" height="22" viewBox="0 0 80 22"><path d="M2 11 Q 20 4, 40 11 T 78 11" stroke="#0a1929" stroke-width="1.4" fill="none"/><polygon points="78,11 72,7 72,15" fill="#0a1929"/></svg>
+      </div>
+
+      <div class="stage" style="background: linear-gradient(180deg, #fff, #f5f9fb); border-color: var(--teal);">
+        <div class="num" style="background: var(--teal);">5</div>
+        <h3>Generate</h3>
+        <div class="role">CONTEXT → TEXT</div>
+        <p>The local model (Qwen3.6 · 35B-A3B · MoE) produces the response token-by-token.</p>
+        <div class="data"><b>model:</b> big · Qwen3.6-35B-A3B<br><b>activation:</b> 3B / 35B params<br><b>tok/s:</b> 41.2</div>
+      </div>
+
+      <div class="arrow" style="color: var(--warm);">
+        <svg width="80" height="22" viewBox="0 0 80 22"><path d="M2 11 Q 20 18, 40 11 T 78 11" stroke="#b85a2c" stroke-width="1.4" fill="none" stroke-dasharray="3,3"/><polygon points="78,11 72,7 72,15" fill="#b85a2c"/></svg>
+      </div>
+
+      <div class="stage" style="border-color: var(--warm);">
+        <div class="num" style="background: var(--warm);">→</div>
+        <h3>Type</h3>
+        <div class="role">TEXT → WINDOW</div>
+        <p>Output is typed into the focused window via xdotool.</p>
+        <div class="data"><b>stream:</b> 312 ms first token<br><b>total:</b> 1,847 ms</div>
+      </div>
+
+    </div>
+
+    <div class="output">
+      <div class="reply">
+        Rule 401 defines the <em>general admissibility</em> test — relevant evidence is admissible unless excluded. Rule 402 is the <em>relevance baseline</em> — "all relevant evidence is admissible; irrelevant evidence is not." Together they form the gate; 402 is the rule, 401 is its application.
+      </div>
+      <div class="meta">
+        <span>model · <b>Qwen3.6-35B-A3B · Q4</b></span>
+        <span>tokens · <b>prompt 17 → ctx 124</b></span>
+        <span>compress · <b>47%</b></span>
+        <span>mem hits · <b>3 / 3</b></span>
+        <span>elapsed · <b>1.85s</b></span>
+        <span>cost · <b>$0.00</b></span>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<footer>
+  <ol>
+    <li><b>Why a 5-stage diagram.</b> The pipeline is fast (≈2s) and rarely the cause of a bad answer; the cause is usually a bad retrieval or a bad compression. Showing the stages lets an operator see which one failed.</li>
+    <li><b>Latency budget.</b> Tokenize ≈ 4 ms · SlimToken ≈ 12 ms · Retrieve ≈ 28 ms · Generate ≈ 1.8 s · Type ≈ 8 ms.</li>
+    <li><b>Why not a token-by-token animation.</b> That hides the structure; this version exposes it. Animation should be reserved for a future "live mode" tab.</li>
+  </ol>
+</footer>
+
+</body>
+</html>
