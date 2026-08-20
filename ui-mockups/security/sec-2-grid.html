@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Security · grid variant</title>
+<link rel="stylesheet" href="../_elements/elements.css">
+<style>
+  /* Console-Log — Plex Mono (bento grid) */
+  :root {
+    --el-bg: #0e1117;
+    --el-panel: #161b22;
+    --el-panel-2: #1c2128;
+    --el-line: #30363d;
+    --el-ink: #c9d1d9;
+    --el-ink-soft: #8b949e;
+    --el-accent: #58a6ff;
+    --el-ok: #3fb950;
+    --el-warn: #d29922;
+    --el-fail: #f85149;
+    --el-live: #58a6ff;
+    --el-font-body: 'JetBrains Mono', 'SF Mono', monospace;
+    --el-font-display: 'JetBrains Mono', 'SF Mono', monospace;
+    --el-font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  }
+  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 13px/1.4 var(--el-font-body); }
+  .layout { width: 1280px; max-width: 100%; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; border-bottom: 2px solid var(--el-line); margin-bottom: 14px; }
+  .head h1 { font: 700 20px/1 var(--el-font-display); margin: 0; }
+  .head h1 small { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
+  .palette { background: var(--el-panel); border: 1px solid var(--el-line); padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; gap: 12px; }
+  .palette .prompt { color: var(--el-accent); font: 13px var(--el-font-mono); }
+  .palette input { flex: 1; background: transparent; border: 0; color: var(--el-ink); font: 13px var(--el-font-mono); outline: none; padding: 8px 0; }
+  .palette .hint { color: var(--el-ink-soft); font: 10px var(--el-font-mono); }
+  .bento { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 160px; gap: 12px; }
+  .box { background: var(--el-panel); border: 1px solid var(--el-line); padding: 14px; overflow: hidden; cursor: pointer; transition: border-color 200ms; }
+  .box:hover { border-color: var(--el-accent); }
+  .box.span-2 { grid-column: span 2; }
+  .box.tall { grid-row: span 2; }
+  .box h3 { font: 700 10px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--el-line); }
+  .big { font: 700 32px var(--el-font-display); color: var(--el-ink); }
+  .big .sub { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 6px; }
+  .gauge-strip { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ev-mini { font: 11px var(--el-font-mono); padding: 4px 0; border-bottom: 1px dashed var(--el-line); display: grid; grid-template-columns: 60px 50px 1fr; gap: 8px; }
+  .ev-mini .lvl { font-weight: 700; padding: 1px 4px; text-align: center; font-size: 9px; }
+  .ev-mini.CRIT .lvl { color: var(--el-fail); border: 1px solid var(--el-fail); }
+  .ev-mini.HIGH .lvl { color: var(--el-warn); border: 1px solid var(--el-warn); }
+  .ev-mini.OK .lvl { color: var(--el-ok); border: 1px solid var(--el-ok); }
+  .ev-mini .rule { color: var(--el-accent); }
+  .ev-mini .t { color: var(--el-ink-soft); }
+  .rule-mini { font: 11px var(--el-font-mono); padding: 4px 0; display: flex; justify-content: space-between; border-bottom: 1px dashed var(--el-line); }
+  .rule-mini .name { color: var(--el-accent); font-weight: 700; }
+  .rule-mini .cnt { color: var(--el-ink-soft); }
+  .stage-mini { font: 11px var(--el-font-mono); padding: 6px 8px; background: var(--el-panel-2); border-left: 2px solid var(--el-warn); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .stage-mini .stage { color: var(--el-warn); }
+  .stage-mini .act button { background: transparent; border: 1px solid var(--el-line); color: var(--el-ink); padding: 2px 8px; cursor: pointer; font: 10px var(--el-font-mono); margin-left: 4px; }
+  .stage-mini .act button.ok { border-color: var(--el-ok); color: var(--el-ok); }
+  .stage-mini .act button.no { border-color: var(--el-fail); color: var(--el-fail); }
+  .hist-mini { font: 11px var(--el-font-mono); padding: 4px 0; display: grid; grid-template-columns: 60px 1fr 60px; gap: 6px; border-bottom: 1px dashed var(--el-line); }
+  .hist-mini .t { color: var(--el-ink-soft); }
+  .hist-mini .name { color: var(--el-accent); font-weight: 700; }
+  .hist-mini .stat { color: var(--el-ink-soft); text-align: right; }
+  .cve-box { display: flex; flex-direction: column; gap: 6px; font: 11px var(--el-font-mono); }
+  .cve-row { padding: 6px 8px; background: var(--el-panel-2); border-left: 2px solid var(--el-fail); }
+  .cve-row b { color: var(--el-fail); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <div class="head">
+    <h1>Security · SIEM + SOAR <small>127.0.0.1:8093 · bento grid (8 boxes)</small></h1>
+    <span style="font:11px var(--el-font-mono);color:var(--el-ink-soft);">click any box to expand · ⌘K to focus</span>
+  </div>
+
+  <div class="palette">
+    <span class="prompt">sec ▸</span>
+    <input value="show pending approvals, focus block-src">
+    <span class="hint">⌘↵ execute</span>
+  </div>
+
+  <div class="bento">
+
+    <div class="box span-2">
+      <h3>Timeline · 7 events · CRIT last 11:13:18</h3>
+      <div class="ev-mini CRIT"><span class="t">11:13:18</span><span class="lvl">CRIT</span><span><span class="rule">block-src</span> · 198.51.100.42 · KEV CVE-2025-30872</span></div>
+      <div class="ev-mini CRIT"><span class="t">11:02:54</span><span class="lvl">CRIT</span><span><span class="rule">nft-fail</span> · drop rule missing</span></div>
+      <div class="ev-mini CRIT"><span class="t">10:47:02</span><span class="lvl">CRIT</span><span><span class="rule">isolate-host</span> · workstation-07 quarantined</span></div>
+      <div class="ev-mini HIGH"><span class="t">10:18:33</span><span class="lvl">HIGH</span><span><span class="rule">auditd-overflow</span> · 22 events buffered</span></div>
+      <div class="ev-mini HIGH"><span class="t">09:55:11</span><span class="lvl">HIGH</span><span><span class="rule">enrich-cve</span> · CVE-2025-30901 added</span></div>
+      <div class="ev-mini HIGH"><span class="t">09:22:54</span><span class="lvl">HIGH</span><span><span class="rule">scan-path</span> · $PATH not set · retry ok</span></div>
+      <div class="ev-mini OK"><span class="t">08:14:11</span><span class="lvl">OK</span><span><span class="rule">agent-run</span> · Rule 401 vs 402</span></div>
+    </div>
+
+    <div class="box">
+      <h3>Hardening · 9-check</h3>
+      <div class="big" style="color:var(--el-fail);">3<span class="sub">of 9 fail</span></div>
+      <div style="font:11px var(--el-font-mono);color:var(--el-ink-soft);margin-top:6px;">4 fail · 1 warn · 4 ok</div>
+    </div>
+
+    <div class="box">
+      <h3>Events / 24h</h3>
+      <div class="big">7<span class="sub">3 CRIT</span></div>
+      <div style="font:11px var(--el-font-mono);color:var(--el-ink-soft);margin-top:6px;">peak 11:13 · 47 attempts</div>
+    </div>
+
+    <div class="box tall">
+      <h3>9-check status</h3>
+      <div class="gauge-strip">
+        <span class="el-gauge fail"><span class="name">AUDITD</span><span class="val">✗</span></span>
+        <span class="el-gauge fail"><span class="name">NFT</span><span class="val">✗</span></span>
+        <span class="el-gauge fail"><span class="name">APPARMOR</span><span class="val">✗</span></span>
+        <span class="el-gauge fail"><span class="name">INTEGRITY</span><span class="val">✗</span></span>
+        <span class="el-gauge warn"><span class="name">FIREWALL</span><span class="val">!</span></span>
+        <span class="el-gauge ok"><span class="name">DNS</span><span class="val">✓</span></span>
+        <span class="el-gauge ok"><span class="name">SSHD</span><span class="val">✓</span></span>
+        <span class="el-gauge ok"><span class="name">FAPOLICY</span><span class="val">✓</span></span>
+        <span class="el-gauge ok"><span class="name">LOCKDOWN</span><span class="val">✓</span></span>
+      </div>
+    </div>
+
+    <div class="box">
+      <h3>Approval · 2 staged</h3>
+      <div class="stage-mini">
+        <span>block-src · KEV</span>
+        <span class="act"><button class="ok">✓</button><button class="no">✗</button></span>
+      </div>
+      <div class="stage-mini">
+        <span>isolate-host · ws-07</span>
+        <span class="act"><button class="ok">✓</button><button class="no">✗</button></span>
+      </div>
+    </div>
+
+    <div class="box">
+      <h3>Rules · 6 active</h3>
+      <div class="rule-mini"><span class="name">block-src</span><span class="cnt">147</span></div>
+      <div class="rule-mini"><span class="name">isolate-host</span><span class="cnt">42</span></div>
+      <div class="rule-mini"><span class="name">enrich-cve</span><span class="cnt">38</span></div>
+      <div class="rule-mini"><span class="name">nft-fail</span><span class="cnt">12</span></div>
+      <div class="rule-mini"><span class="name">auditd-overflow</span><span class="cnt">9</span></div>
+      <div class="rule-mini"><span class="name">agent-run</span><span class="cnt">5</span></div>
+    </div>
+
+    <div class="box">
+      <h3>Run history · 5</h3>
+      <div class="hist-mini"><span class="t">11:13</span><span class="name">block-src</span><span class="stat">0.8 s</span></div>
+      <div class="hist-mini"><span class="t">10:47</span><span class="name">isolate-host</span><span class="stat">5m 12s</span></div>
+      <div class="hist-mini"><span class="t">09:55</span><span class="name">enrich-cve</span><span class="stat">3.4 s</span></div>
+      <div class="hist-mini"><span class="t">08:14</span><span class="name">agent-run</span><span class="stat">12.4 s</span></div>
+      <div class="hist-mini"><span class="t">07:51</span><span class="name">backup</span><span class="stat">3m 02s</span></div>
+    </div>
+
+    <div class="box">
+      <h3>KEV · known exploited</h3>
+      <div class="cve-box">
+        <div class="cve-row"><b>CVE-2025-30872</b><br>198.51.100.42 · 47 hits</div>
+        <div class="cve-row"><b>CVE-2025-30901</b><br>enrich-cve · 3 pkgs</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</body>
+</html>

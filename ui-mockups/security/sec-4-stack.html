@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Security · stack variant</title>
+<link rel="stylesheet" href="../_elements/elements.css">
+<style>
+  /* Cockpit Panel — paper variant */
+  :root {
+    --el-bg: #1a1814;
+    --el-panel: #252118;
+    --el-panel-2: #2e2a1f;
+    --el-line: #3d3628;
+    --el-ink: #f0e8d8;
+    --el-ink-soft: #a39479;
+    --el-accent: #d4a85a;
+    --el-ok: #8aa66b;
+    --el-warn: #e6c060;
+    --el-fail: #e06c5a;
+    --el-live: #d4a85a;
+  }
+  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 13px/1.5 var(--el-font-body); }
+  .layout { width: 1280px; max-width: 100%; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; border-bottom: 2px solid var(--el-line); margin-bottom: 14px; }
+  .head h1 { font: 700 20px/1 var(--el-font-display); margin: 0; }
+  .head h1 small { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
+  .head .gauge-strip { display: flex; gap: 8px; }
+  .stat-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin-bottom: 14px; border: 1px solid var(--el-line); }
+  .stat-strip .cell { padding: 12px 16px; border-right: 1px solid var(--el-line); }
+  .stat-strip .cell:last-child { border-right: 0; }
+  .stat-strip .cell .lbl { font: 10px var(--el-font-mono); color: var(--el-ink-soft); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+  .stat-strip .cell .val { font: 700 24px var(--el-font-display); }
+  .stat-strip .cell .val .sub { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 4px; }
+  .timeline { background: var(--el-panel); border: 1px solid var(--el-line); border-left: 3px solid var(--el-accent); padding: 14px 18px; margin-bottom: 10px; }
+  .timeline .ev { display: grid; grid-template-columns: 90px 80px 140px 1fr 80px; gap: 14px; padding: 10px 0; border-bottom: 1px dashed var(--el-line); font: 12px var(--el-font-mono); cursor: pointer; }
+  .timeline .ev:last-child { border-bottom: 0; }
+  .timeline .ev:hover { background: var(--el-panel-2); }
+  .timeline .ev .t { color: var(--el-ink-soft); }
+  .timeline .ev .lvl { font-weight: 700; padding: 2px 6px; text-align: center; }
+  .timeline .ev.CRIT .lvl { color: var(--el-fail); border: 1px solid var(--el-fail); }
+  .timeline .ev.HIGH .lvl { color: var(--el-warn); border: 1px solid var(--el-warn); }
+  .timeline .ev.OK .lvl { color: var(--el-ok); border: 1px solid var(--el-ok); }
+  .timeline .ev .rule { color: var(--el-accent); font-weight: 700; }
+  .timeline .ev .dur { color: var(--el-ink-soft); text-align: right; }
+  .fold { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .fold .panel { background: var(--el-panel); border: 1px solid var(--el-line); padding: 12px; }
+  .fold .panel h3 { font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--el-line); }
+  .fold .panel .row { font: 11px var(--el-font-mono); padding: 5px 0; border-bottom: 1px dashed var(--el-line); display: flex; justify-content: space-between; gap: 8px; }
+  .fold .panel .row .name { color: var(--el-accent); font-weight: 700; }
+  .fold .panel .row .act { display: flex; gap: 4px; }
+  .fold .panel .row .act button { font-size: 10px; padding: 2px 6px; background: transparent; border: 1px solid var(--el-line); color: var(--el-ink); cursor: pointer; }
+  .fold .panel .row .act button:hover { border-color: var(--el-accent); color: var(--el-accent); }
+  .fold .panel .row .stage { color: var(--el-warn); font-size: 10px; padding: 2px 6px; border: 1px solid var(--el-warn); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <div class="head">
+    <h1>Security · SIEM + SOAR <small>127.0.0.1:8093 · stacked timeline-first</small></h1>
+    <div class="gauge-strip">
+      <span class="el-gauge fail"><span class="name">auditd</span><span class="val">✗</span></span>
+      <span class="el-gauge fail"><span class="name">nft</span><span class="val">✗</span></span>
+      <span class="el-gauge warn"><span class="name">firewall</span><span class="val">!</span></span>
+      <span class="el-gauge ok"><span class="name">dns</span><span class="val">✓</span></span>
+    </div>
+  </div>
+
+  <div class="stat-strip">
+    <div class="cell"><div class="lbl">Events / 24h</div><div class="val">7 <span class="sub">3 CRIT · 4 HIGH</span></div></div>
+    <div class="cell"><div class="lbl">Rules active</div><div class="val">6 <span class="sub">2 staged</span></div></div>
+    <div class="cell"><div class="lbl">Hardening</div><div class="val" style="color:var(--el-fail);">3 <span class="sub">of 9 fail</span></div></div>
+    <div class="cell"><div class="lbl">Runs / 24h</div><div class="val">5</div></div>
+    <div class="cell"><div class="lbl">Avg run time</div><div class="val">1.2 <span class="sub">min</span></div></div>
+  </div>
+
+  <div class="section-label" style="font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.12em; text-transform: uppercase; margin: 8px 0 6px;">Timeline · newest-first · scroll for more</div>
+
+  <div class="timeline">
+    <div class="ev CRIT">
+      <span class="t">11:13:18</span>
+      <span class="lvl">CRIT</span>
+      <span class="rule">block-src</span>
+      <span>198.51.100.42 — KEV CVE-2025-30872 — 47 attempts / 60s</span>
+      <span class="dur">0.8 s</span>
+    </div>
+    <div class="ev CRIT">
+      <span class="t">11:02:54</span>
+      <span class="lvl">CRIT</span>
+      <span class="rule">nft-fail</span>
+      <span>drop rule missing — chain input · expected `REJECT`</span>
+      <span class="dur">—</span>
+    </div>
+    <div class="ev CRIT">
+      <span class="t">10:47:02</span>
+      <span class="lvl">CRIT</span>
+      <span class="rule">isolate-host</span>
+      <span>workstation-07 quarantined · auto-action</span>
+      <span class="dur">5m 12s</span>
+    </div>
+    <div class="ev HIGH">
+      <span class="t">10:18:33</span>
+      <span class="lvl">HIGH</span>
+      <span class="rule">auditd-overflow</span>
+      <span>rate limit hit — 22 events buffered · backpressure</span>
+      <span class="dur">2.1 s</span>
+    </div>
+    <div class="ev HIGH">
+      <span class="t">09:55:11</span>
+      <span class="lvl">HIGH</span>
+      <span class="rule">enrich-cve</span>
+      <span>CVE-2025-30901 added to feed · 3 affected packages</span>
+      <span class="dur">3.4 s</span>
+    </div>
+    <div class="ev HIGH">
+      <span class="t">09:22:54</span>
+      <span class="lvl">HIGH</span>
+      <span class="rule">scan-path</span>
+      <span>$PATH not set · fix attempted · ok on retry</span>
+      <span class="dur">1.7 s</span>
+    </div>
+    <div class="ev HIGH">
+      <span class="t">08:47:01</span>
+      <span class="lvl">HIGH</span>
+      <span class="rule">apparmor-profile</span>
+      <span>profile `usr.bin.firefox` not loaded · expected</span>
+      <span class="dur">—</span>
+    </div>
+    <div class="ev OK">
+      <span class="t">08:14:11</span>
+      <span class="lvl">OK</span>
+      <span class="rule">agent-run</span>
+      <span>Rule 401 vs 402 — admissibility · diff appended</span>
+      <span class="dur">12.4 s</span>
+    </div>
+    <div class="ev OK">
+      <span class="t">07:51:00</span>
+      <span class="lvl">OK</span>
+      <span class="rule">backup</span>
+      <span>nightly snapshot · 47 GB → /backup/2025-08-20</span>
+      <span class="dur">3m 02s</span>
+    </div>
+  </div>
+
+  <div class="fold">
+
+    <div class="panel">
+      <h3>Rules · 6 active</h3>
+      <div class="row"><span class="name">block-src</span><span>147 runs</span><span class="act"><button>run</button><button>edit</button></span></div>
+      <div class="row"><span class="name">isolate-host</span><span>42 runs</span><span class="act"><button>run</button><button>edit</button></span></div>
+      <div class="row"><span class="name">enrich-cve</span><span>38 runs</span><span class="act"><button>run</button><button>edit</button></span></div>
+      <div class="row"><span class="name">nft-fail</span><span>12 runs</span><span class="act"><button>run</button><button>edit</button></span></div>
+      <div class="row"><span class="name">auditd-overflow</span><span>9 runs</span><span class="act"><button>run</button><button>edit</button></span></div>
+      <div class="row"><span class="name">agent-run</span><span>5 runs</span><span class="act"><button>run</button><button>edit</button></span></div>
+    </div>
+
+    <div class="panel">
+      <h3>Approval · 2 staged</h3>
+      <div class="row"><span class="name">block-src</span><span class="stage">STAGED</span><span class="act"><button>✓</button><button>✗</button></span></div>
+      <div class="row"><span class="name">isolate-host</span><span class="stage">STAGED</span><span class="act"><button>✓</button><button>✗</button></span></div>
+      <h3 style="margin-top:14px;">Approval queue · 0</h3>
+      <div class="row" style="color:var(--el-ink-soft);"><span>empty</span><span></span><span></span></div>
+    </div>
+
+    <div class="panel">
+      <h3>Run history · 5 runs</h3>
+      <div class="row"><span class="name">11:13 · block-src</span><span>0.8 s · 47 hits</span><span class="act"><button>diff</button></span></div>
+      <div class="row"><span class="name">10:47 · isolate-host</span><span>5m 12s · 1 host</span><span class="act"><button>diff</button></span></div>
+      <div class="row"><span class="name">09:55 · enrich-cve</span><span>3.4 s · +1 CVE</span><span class="act"><button>diff</button></span></div>
+      <div class="row"><span class="name">08:14 · agent-run</span><span>12.4 s · 2 facts</span><span class="act"><button>diff</button></span></div>
+      <div class="row"><span class="name">07:51 · backup</span><span>3m 02s · 47 GB</span><span class="act"><button>diff</button></span></div>
+    </div>
+
+  </div>
+
+</div>
+</body>
+</html>
