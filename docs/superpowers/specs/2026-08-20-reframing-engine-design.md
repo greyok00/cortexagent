@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-20
 **Status:** ✅ APPROVED (user sign-off) · ⏳ NOT YET BUILT
-**Canonical anchor:** `cortexagent/lib/reframing_engine.py` (canonical engine) + `~/reframing-engine/` (standalone)
+**Canonical anchor:** `~/reframing-engine/` (canonical, self-contained engine) — cortexagent imports it, never the reverse
 **Scope:** Two SEPARATE processes. **Process B** (reframing engine) is the build. **Process A** (STT fix) is a separate workstream — **DO NOT MERGE THEM.**
 
 ---
@@ -14,7 +14,7 @@
 | **Purpose** | Frame ANY prompt input so the LLM understands it as ongoing work, not a one-shot | Fix garbled STT output + hallucinations |
 | **Input** | Any prompt (typed / pasted / STT output / anything) | Raw audio clips |
 | **Output** | Framed prompt + system prompt + domain + context | Clean transcript |
-| **Location** | `cortexagent/lib/reframing_engine.py` + `~/reframing-engine/` | STT pipeline (`lib/stt.py`, `lib/stt_daemon.py`) |
+| **Location** | `~/reframing-engine/` (canonical, self-contained) — cortexagent imports it | STT pipeline (`lib/stt.py`, `lib/stt_daemon.py`) |
 | **Relationship** | Independent. STT output may *feed into* it, but the engine is not part of the STT pipeline | Independent. Fixes the STT pipeline itself |
 
 **The user's directive (verbatim):** "THIS DOMAIN REFRAMING HAS NOTHING TO DO WITH STT. DO NOT MERGE THEM. IT IS A SEPARATE PROCESS FOR ALL PROMPT INPUTS TO FRAME IT FOR LLM MODELS TO UNDERSTAND INSTEAD OF THEM THINKING ITS A ONE SHOT."
@@ -72,36 +72,46 @@ framed prompt + system prompt + domain + {sources used}
 
 ### 2.1 Key properties
 
+- **Self-contained (HARD)** — the engine works by itself. No hard imports of
+  cortexagent, cortexllm, or any agent runtime. It runs standalone with
+  stdlib + slimtoken only.
 - **Composable** — each context source is optional. Works with zero sources
   (domain framing only) up to all three.
+- **Pluggable context** — context sources are adapter interfaces, not hard
+  dependencies. The engine defines the interface; callers supply adapters
+  (cortexagent, cortexllm, etc.). With no adapters supplied, the engine still
+  works — it just frames with domain only.
 - **Deterministic base** — slimtoken does cleaning/classifying; the engine
   adds context. No LLM call in the base path.
 - **Diagnostic output** — returns which sources were attached, so the framing
   is inspectable.
 - **Source-agnostic** — takes any prompt input, not tied to STT.
 
-## 3. Context sources
+## 3. Context sources (pluggable adapters)
 
-| Source | What it provides | How it's read |
-|--------|-------------------|---------------|
-| **Session state** | Recent turns, active task, current project | CortexAgent session state (SessionBridge shared-file backbone) |
-| **cortexllm memory** | Hot + cold relevant items | cortexllm memory read (hot NDJSON + cold curated facts) |
-| **Project context** | CLAUDE.md/README, active branch | Project directory scan |
+The engine defines a small **adapter interface** per source. Callers supply
+concrete adapters; the engine never imports them directly.
 
-Each source is optional and independently disableable. If a source is
-unavailable (no session, no memory server, no project), the engine degrades
-gracefully to the remaining sources.
+| Source | Adapter interface | What it provides | Example adapter |
+|--------|-------------------|-------------------|-----------------|
+| **Session state** | `SessionAdapter` | Recent turns, active task, current project | CortexAgent SessionBridge |
+| **cortexllm memory** | `MemoryAdapter` | Hot + cold relevant items | cortexllm memory read |
+| **Project context** | `ProjectAdapter` | CLAUDE.md/README, active branch | Project directory scan |
+
+Each adapter is optional and independently disableable. With no adapters
+supplied, the engine still works — it frames with domain only. Adapters are
+passed in by the caller; the engine holds no reference to any runtime.
 
 ## 4. Public surface
 
 ```python
-# cortexagent/lib/reframing_engine.py
+# ~/reframing-engine/reframing_engine.py  (canonical, self-contained)
 def reframe(
     prompt: str,
     *,
-    session: Optional[SessionState] = None,
-    memory: Optional[MemoryReader] = None,
-    project: Optional[ProjectContext] = None,
+    session: Optional[SessionAdapter] = None,
+    memory: Optional[MemoryAdapter] = None,
+    project: Optional[ProjectAdapter] = None,
     role: str = "generalist",
     style: str = "terse",
 ) -> ReframeResult:
@@ -115,19 +125,21 @@ class ReframeResult:
     cleaned: str         # the cleaned prompt (pre-framing)
 ```
 
-## 5. Standalone `~/reframing-engine/`
+## 5. Standalone `~/reframing-engine/` (canonical home)
 
 | Component | What |
 |-----------|------|
+| `reframing_engine.py` | The canonical engine — self-contained, stdlib + slimtoken only |
 | `reframe` CLI | `echo "prompt" \| reframe` → framed output; `--no-context` for domain-only |
 | MCP server | Exposes `reframe`, `classify`, `frame` tools (mirrors slimtoken's `prompt_reframe_server`) |
 | `demo.py` | Runs a real prompt through, shows before/after framing |
 | `research/` | STT fix research + reframing design notes |
 | `tests/` | Unit tests for the engine |
 
-The standalone imports the canonical engine from cortexagent (with a
-slimtoken fallback, mirroring how `lib/prompt_framing.py` resolves its
-engine). No logic duplication.
+**cortexagent integration is one-way:** cortexagent imports the engine from
+`~/reframing-engine/` (with a slimtoken fallback, mirroring how
+`lib/prompt_framing.py` resolves its engine). The engine never imports
+cortexagent. No logic duplication.
 
 ## 6. Process A — STT fix (separate workstream)
 
@@ -155,6 +167,9 @@ pipeline; the STT fix does not touch the reframing engine.
 
 ## 7. Constraints (both processes)
 
+- **Self-contained (HARD).** The reframing engine works by itself — no hard
+  imports of cortexagent, cortexllm, or any agent runtime. stdlib + slimtoken
+  only. Context sources are caller-supplied adapters.
 - **No new models.** LLM reconstruction (if any) reuses the resident big
   model or overseer — zero new VRAM.
 - **Reuse slimtoken** as the deterministic base — no duplicated reframing
@@ -164,9 +179,12 @@ pipeline; the STT fix does not touch the reframing engine.
 
 ## 8. Definition of done
 
-- [ ] `cortexagent/lib/reframing_engine.py` implements the 4-stage pipeline
-- [ ] All three context sources work and are independently disableable
+- [ ] `~/reframing-engine/reframing_engine.py` implements the 4-stage pipeline
+- [ ] Engine runs standalone (stdlib + slimtoken only) — verified with no
+      cortexagent/cortexllm imports
+- [ ] All three context adapters work and are independently disableable
 - [ ] `~/reframing-engine/` has CLI + MCP server + demo + research notes + tests
+- [ ] cortexagent imports the engine one-way (engine never imports cortexagent)
 - [ ] STT research notes written (fix current setup, VRAM-constrained)
 - [ ] "Thank you for watching" hallucination fixed in the STT pipeline
 - [ ] Tests pass; engine works standalone and via cortexagent
