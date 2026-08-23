@@ -170,6 +170,14 @@ def _get_ws(target_id: str) -> Any:
         _ensure_stealth(target_id)
     except Exception:
         pass
+    # CDP connection security (§4): auto-start the guard on first connect so every
+    # browser_control consumer (daemon, scripts, MCP) is covered by default,
+    # not just the MCP initialize path. Opt out with STEALTH_CDP_GUARD=0.
+    if os.environ.get("STEALTH_CDP_GUARD", "1") not in ("0", "false", "False"):
+        try:
+            start_guard()
+        except Exception:
+            pass
     _invalidate_tabs_cache()  # a fresh connect implies the cache may be stale
     with _metrics_lock:
         _metrics["reconnects"] += 1
@@ -549,6 +557,30 @@ def new_tab(url: str = "") -> str:
         info = json.load(r)
     _invalidate_tabs_cache()  # new tab must be visible to the next resolve_tab
     return info.get("id")
+
+
+def close_tab(target_id: str) -> bool:
+    """Close a single tab by target id via the HTTP /json/close endpoint.
+
+    Uses the HTTP endpoint (not Target.closeTarget over a page socket) because
+    closing through a target's own websocket wedges on a double-close; the HTTP
+    route returns 200 "Target is closing" and is safe to call on a tab we may
+    or may not still hold a socket for. Idempotent.
+    """
+    ws = _ws_cache.pop(target_id, None)
+    if ws is not None:
+        try:
+            ws.close()
+        except Exception:
+            pass
+    _invalidate_tabs_cache()
+    try:
+        with urllib.request.urlopen(
+            CDP_HTTP + "/json/close/" + urllib.parse.quote(target_id), timeout=5
+        ) as r:
+            return r.status == 200
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
