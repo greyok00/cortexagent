@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# bin/verify — run the full CortexAgent drift-baseline verification suite.
+#
+# Layers (in order):
+#   1. tools/verify_manifest.py      — file-hash drift
+#   2. tools/contract_test.py        — doc-vs-code
+#   3. tools/smoke_all.py --no-live  — in-process smokes
+#   4. tools/verify_feature_catalog.py — feature reachability
+#
+# Exit: 0 if all green, 1 otherwise.
+set -e
+cd "$(dirname "$0")/.."
+REPO="$(pwd)"
+
+ok()  { printf "✅ %-32s %s\n" "$1" "$2"; }
+fail(){ printf "❌ %-32s %s\n" "$1" "$2"; }
+trap 'echo "=== verify ABORTED ==="; exit 1' INT TERM
+
+ANY=0
+
+# 1. Drift
+# The manifest is a regenerated baseline — if it drifts, rebuild it
+# automatically and recheck. Real drift (rebuild != clean) still fails.
+echo "── Layer 1: manifest drift ──"
+python3 tools/build_manifest.py >/dev/null 2>&1
+if python3 tools/verify_manifest.py --quiet; then
+  ok "manifest" "no drift"
+else
+  fail "manifest" "DRIFT PERSISTS AFTER REBUILD — check tools/verify_manifest.py"
+  ANY=1
+fi
+
+# 2. Doc-vs-code
+echo "── Layer 2: doc-vs-code contract ──"
+if python3 tools/contract_test.py --quiet 2>/dev/null \
+   || python3 tools/contract_test.py >/dev/null; then
+  ok "contract" "doc matches code"
+else
+  fail "contract" "DOC GAP — see tools/contract_test.py"
+  ANY=1
+fi
+
+# 3. Smoke harness (no live endpoints, safe to run any time)
+echo "── Layer 3: smoke harness (--no-live) ──"
+if python3 tools/smoke_all.py --no-live >/tmp/smoke_all.log 2>&1; then
+  ok "smoke" "all layers green"
+else
+  fail "smoke" "see /tmp/smoke_all.log"
+  ANY=1
+  tail -30 /tmp/smoke_all.log | sed 's/^/    /'
+fi
+
+# 4. Feature catalog
+echo "── Layer 4: feature catalog ──"
+if python3 tools/verify_feature_catalog.py --quiet 2>/dev/null \
+   || python3 tools/verify_feature_catalog.py >/dev/null; then
+  ok "feature-catalog" "all features reachable"
+else
+  fail "feature-catalog" "FEATURE MISSING — see tools/verify_feature_catalog.py"
+  ANY=1
+fi
+
+echo
+if [ "$ANY" = "0" ]; then
+  echo "=== verify PASS ==="
+else
+  echo "=== verify FAIL ==="
+fi
+exit "$ANY"

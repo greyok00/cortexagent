@@ -1,0 +1,13 @@
+CRITICAL_FILES=(
+    "bin/cortexagent"
+    "cortex/packages/tui/src/keys.ts"
+    "cortex/packages/tui/dist/keys.js"
+    "cortex/packages/coding-agent/dist/cli.js"
+    "cortex/packages/coding-agent/dist/main.js"
+    "lib/overseer.py"
+    "lib/daemon.py"
+    "lib/observability.py"
+    "config/settings.json"
+    "~/.cortex/agent/keybindings.json"
+    "~/.cortex/agent/extensions/modes.ts"
+)

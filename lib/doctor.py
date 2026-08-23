@@ -126,7 +126,7 @@ def _render_mcp(memory_cmd: str, fire_enabled: str, brave_enabled: str) -> tuple
     lazy = os.path.expanduser("~/.cortexagent/config/lazy_mcp_servers.json")
     if os.path.exists(lazy):
         try:
-            for entry in json.load(open(lazy)):
+            for entry in json.load(open(lazy, encoding="utf-8")):
                 name = entry.get("name")
                 cmd = entry.get("command", [])
                 if isinstance(cmd, list):

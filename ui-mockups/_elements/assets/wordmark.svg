@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" role="img" aria-label="greyok-ui-framework wordmark">
+  <defs>
+    <linearGradient id="gw-wg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffb000"/>
+      <stop offset="1" stop-color="#ff7a1a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- icon mark -->
+  <g transform="translate(0,0)">
+    <rect x="2" y="2" width="60" height="60" rx="14" ry="14" fill="#0d1015"/>
+    <rect x="2" y="2" width="60" height="60" rx="14" ry="14" fill="none" stroke="#ffb000" stroke-opacity="0.5" stroke-width="1"/>
+    <rect x="10" y="14" width="22" height="8" rx="4" ry="4" fill="url(#gw-wg)"/>
+    <circle cx="44" cy="18" r="4" fill="#5fe09a"/>
+    <rect x="10" y="28" width="44" height="3" rx="1.5" ry="1.5" fill="#1a1f2a"/>
+    <rect x="10" y="28" width="28" height="3" rx="1.5" ry="1.5" fill="url(#gw-wg)"/>
+    <rect x="10" y="38" width="12" height="14" rx="2" ry="2" fill="#1a1f2a"/>
+    <rect x="26" y="38" width="12" height="14" rx="2" ry="2" fill="url(#gw-wg)"/>
+    <rect x="42" y="38" width="12" height="14" rx="2" ry="2" fill="#1a1f2a" stroke="#ffb000" stroke-opacity="0.5" stroke-width="0.5"/>
+  </g>
+
+  <!-- wordmark -->
+  <g font-family="'Inter', 'Helvetica Neue', sans-serif">
+    <text x="80" y="38" font-size="28" font-weight="700" fill="#f3f5f8" letter-spacing="-0.8">greyok</text>
+    <text x="80" y="56" font-size="14" font-weight="500" fill="url(#gw-wg)" letter-spacing="1">UI FRAMEWORK</text>
+  </g>
+</svg>

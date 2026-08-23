@@ -80,6 +80,28 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
         return (False, f"Failed to start firecrawl-mcp: {e}")
 
     import select as _select
+    import threading
+
+    def _read_stderr_bounded(stream, max_bytes: int = 400, timeout: float = 0.5) -> str:
+        """Read up to max_bytes from stderr without blocking past `timeout`."""
+        if stream is None:
+            return ""
+        chunks: list[str] = []
+        deadline = threading.Event()
+
+        def _drain() -> None:
+            try:
+                chunks.append(stream.read(max_bytes))
+            except Exception:
+                pass
+            finally:
+                deadline.set()
+
+        t = threading.Thread(target=_drain, daemon=True)
+        t.start()
+        deadline.wait(timeout=timeout)
+        out = "".join(c for c in chunks if c)
+        return out
 
     def read_line(timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         try:
@@ -101,8 +123,9 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
         proc.stdin.flush()  # type: ignore
 
     try:
-        # 1. handshake from child (server might send initialize first)
-        hello = read_line(timeout=3.0)
+        # 1. handshake from child (server might send initialize first).
+        # Cold-start npx can take well over 3s; allow 15s.
+        hello = read_line(timeout=15.0)
         if hello and hello.get("method") == "initialize":
             _send_id = hello.get("id")
             proc.stdin.write(json.dumps({  # type: ignore
@@ -119,13 +142,13 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
         rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "cortexagent-firecrawl-proxy", "version": "1.0"}}, 1)
         resp = read_line(timeout=10.0)
         if not resp or "result" not in resp:
-            err = proc.stderr.read(400) if proc.stderr else ""  # type: ignore
+            err = _read_stderr_bounded(proc.stderr)
             return (False, f"firecrawl-mcp initialize failed: {resp or err}")
 
         rpc("tools/list", {}, 2)
         resp = read_line(timeout=10.0)
         if not resp or "result" not in resp:
-            err = proc.stderr.read(400) if proc.stderr else ""  # type: ignore
+            err = _read_stderr_bounded(proc.stderr)
             return (False, f"firecrawl-mcp tools/list failed: {resp or err}")
 
         # 3. call the requested native tool
@@ -133,7 +156,7 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
         rpc("tools/call", {"name": native_tool, "arguments": args or {}}, 3)
         resp = read_line(timeout=60.0)
         if not resp:
-            err = proc.stderr.read(400) if proc.stderr else ""  # type: ignore
+            err = _read_stderr_bounded(proc.stderr)
             return (False, f"firecrawl-mcp no response for {native_tool}: {err}")
 
         if "error" in resp:

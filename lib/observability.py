@@ -67,6 +67,29 @@ SAFETY_KEYWORDS = [
 ]
 
 
+# ── In-Memory Trace Registry ────────────────────────────────────────────────
+# Spans attach themselves to a live Trace in memory. Without this registry the
+# `span()` factory / `Span(...)` returned objects that never belonged to a
+# Trace, so consumers calling save_trace(trace) wrote `spans: []` and
+# evaluate_trace() evaluated empty output. Bounded to the most recent N traces.
+_TRACES: Dict[str, "Trace"] = {}
+_TRACES_MAX = 200
+
+
+def _get_trace(trace_id: str, session_id: str = None) -> "Trace":
+    """Return the live in-memory Trace for trace_id, creating + registering a
+    fresh one if absent. The Trace class is defined below; this is only called
+    at runtime, after the module is fully loaded."""
+    trace = _TRACES.get(trace_id)
+    if trace is None:
+        trace = Trace(trace_id=trace_id, session_id=session_id or str(trace_id))
+        _TRACES[trace_id] = trace
+        if len(_TRACES) > _TRACES_MAX:
+            oldest = next(iter(_TRACES))
+            _TRACES.pop(oldest, None)
+    return trace
+
+
 # ── Trace/Span Data Structures ──────────────────────────────────────────────
 class Span:
     """A single span in a trace."""
@@ -90,6 +113,9 @@ class Span:
         self.error = ""
         self.payload = {}
         self.children = []
+        # Attach this span to the live in-memory trace so it is actually part
+        # of a Trace (was previously orphaned → save_trace wrote spans: []).
+        _get_trace(trace_id).add_span(self)
 
     def __enter__(self):
         return self
@@ -97,6 +123,8 @@ class Span:
     def __exit__(self, *args):
         self.end_time = time.time()
         self.duration_ms = round((self.end_time - self.start_time) * 1000, 2)
+        # Record metrics at completion (duration is now known), not at creation.
+        metrics.record_span(self)
         if self.parent_id:
             parent = _get_span(self.trace_id, self.parent_id)
             if parent:
@@ -169,12 +197,34 @@ def _append_ndjson(path: Path, data: Dict) -> None:
 
 
 def save_trace(trace: Trace) -> None:
-    """Save a trace to disk."""
-    _append_ndjson(_TRACES_FILE, trace.to_dict())
+    """Save a trace to disk.
+
+    Persists the registry copy (which owns the spans attached via the span
+    factory / Span.__init__), carrying over caller-supplied metadata — the
+    caller's Trace object may only be a header, with the spans living on the
+    registry trace. A passed-in trace that isn't registered is saved directly.
+    """
+    reg = _TRACES.get(trace.trace_id)
+    if reg is None:
+        _append_ndjson(_TRACES_FILE, trace.to_dict())
+        return
+    if not reg.user_input and trace.user_input:
+        reg.user_input = trace.user_input
+    if trace.workflow and trace.workflow != "default":
+        reg.workflow = trace.workflow
+    if trace.session_id and trace.session_id != reg.session_id:
+        reg.session_id = trace.session_id
+    _append_ndjson(_TRACES_FILE, reg.to_dict())
 
 
 def _get_span(trace_id: str, span_id: str) -> Optional[Span]:
-    """Retrieve a span from the most recent trace."""
+    """Retrieve a span, preferring the live in-memory registry before falling
+    back to the most recent trace on disk."""
+    trace = _TRACES.get(trace_id)
+    if trace:
+        for s in trace.spans:
+            if s.span_id == span_id:
+                return s
     try:
         if _TRACES_FILE.exists():
             with open(_TRACES_FILE, "r") as f:
@@ -377,10 +427,9 @@ metrics = MetricsCollector()
 # ── Context Manager for Spans ───────────────────────────────────────────────
 def span(trace_id: str, span_type: str, name: str, parent_id: str = None,
          tags: Dict = None) -> Span:
-    """Create a span and add it to the trace."""
-    span_obj = Span(trace_id, span_type, name, parent_id, tags)
-    metrics.record_span(span_obj)
-    return span_obj
+    """Create a span and attach it to the trace. Metrics are recorded at
+    span exit (__exit__) so duration_ms is known, not at creation."""
+    return Span(trace_id, span_type, name, parent_id, tags)
 
 
 # ── CLI Interface ───────────────────────────────────────────────────────────

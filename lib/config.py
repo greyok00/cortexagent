@@ -387,9 +387,18 @@ class Config:
         self.stt_speak_to_capture = _env_bool(
             "CORTEXAGENT_STT_SPEAK", "stt", "speak_to_capture", True)
         self.stt_vad_threshold = _env_float(
-            "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.03)
+            "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.05)
+        # Silence flush window: how long trailing silence is required to
+        # commit a clip. 0.8s is snappy but produces very short fragments
+        # when the user is thinking. 1.2s gives the speaker time to pause
+        # between sentences. 1.5s is the noisy-room setting: background
+        # noise fuzzes the speech boundaries, so a short window splits one
+        # sentence into fragments (the "misses text" complaint); a longer
+        # window keeps the utterance open across noise-fuzzed pauses. Cost:
+        # ~+0.3s commit lag after you stop talking, and continuous speech
+        # rides closer to stt_vad_max_utterance_sec (the 10s hard flush).
         self.stt_vad_silence_sec = _env_float(
-            "CORTEXAGENT_STT_VAD_SILENCE", "stt", "vad_silence_sec", 0.8)
+            "CORTEXAGENT_STT_VAD_SILENCE", "stt", "vad_silence_sec", 1.5)
         # Hard flush: VAD commits a clip after this many seconds of
         # accumulated speech even if the user hasn't paused. Prevents
         # unbounded clip growth when someone talks continuously for >10s.
@@ -397,12 +406,24 @@ class Config:
         self.stt_vad_max_utterance_sec = _env_float(
             "CORTEXAGENT_STT_VAD_MAX_UTTERANCE", "stt", "vad_max_utterance_sec", 10.0)
         # Cleanup (grammar-fix via the tiny LLM) adds ~10s per clip — off by
-        # default so dictation types fast; set CORTEXAGENT_STT_CLEANUP=true
-        # to re-enable polished text.
+        # Cleanup = tiny-model pass that fixes punctuation, capitalization,
+        # and sentence structure. OFF by default — user feedback 2026-08-19:
+        # the tiny model hallucinates and ADDS text the user never said,
+        # which is worse than raw whisper output. The current better path is
+        # to tune whisper's initial_prompt directly so it produces
+        # properly-punctuated, compressed output without a second pass.
+        # Set CORTEXAGENT_STT_CLEANUP=true to re-enable (and consider using
+        # the big model via CORTEXAGENT_STT_CLEANUP_TARGET=big).
         self.stt_cleanup = _env_bool(
             "CORTEXAGENT_STT_CLEANUP", "stt", "cleanup", False)
         self.stt_cleanup_target = _env(
             "CORTEXAGENT_STT_CLEANUP_TARGET", "stt", "cleanup_target", "tiny")
+        # Max sentences to keep per cleanup pass. Caps long-winded dictation
+        # bursts so a single utterance doesn't dump a paragraph into the
+        # focused prompt.
+        self.stt_cleanup_max_sentences = _env_int(
+            "CORTEXAGENT_STT_CLEANUP_MAX_SENTENCES", "stt",
+            "cleanup_max_sentences", 4)
 
         # ── VRAM budget ─────────────────────────────────────────────────────
         # The GPU is shared: big model + overseer + faster-whisper are required

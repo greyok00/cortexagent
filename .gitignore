@@ -49,3 +49,9 @@ __pycache__/
 *.pre-wolf-*
 .backups/
 .snapshots/
+/.cortex/agent/AGENTS.md
+# ── Session / superpowers metadata — never commit ─────────────
+.SAFETY_QUICK_REF
+.SNAPSHOT_STATUS
+.release-notes.md
+.superpowers/manifest/

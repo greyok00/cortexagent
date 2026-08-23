@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Controls · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-controls.css">
+  <link rel="stylesheet" href="../elements-display.css">
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Controls</strong>
+    <select id="theme-picker" data-theme-picker>
+      <option>neutral</option><option>polaroid</option><option>cockpit</option>
+      <option>cockpit-paper</option><option>console</option><option>compact</option>
+      <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+      <option>agent-history</option><option>terminal</option><option>swiss</option>
+    </select>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>Control primitives</h1>
+
+    <h2>Dropdown (native)</h2>
+    <select class="el-dropdown"><option>Option 1</option><option>Option 2</option><option>Option 3</option></select>
+
+    <h2>Checkbox · Toggle · Switch</h2>
+    <div class="el-cluster">
+      <span class="el-check on"></span>
+      <span class="el-check"></span>
+      <span class="el-toggle on"></span>
+      <span class="el-toggle"></span>
+      <span class="el-switch on"></span>
+      <span class="el-switch"></span>
+    </div>
+
+    <h2>Slider · Range</h2>
+    <div class="el-stack" style="width:280px">
+      <input type="range" class="el-slider" min="0" max="100" value="42">
+      <div class="el-range">
+        <input type="range" class="el-slider" min="0" max="100" value="66">
+        <span class="val">66</span>
+      </div>
+    </div>
+
+    <h2>Segmented</h2>
+    <div class="el-segmented">
+      <button class="on">Live</button>
+      <button>1h</button>
+      <button>24h</button>
+      <button>7d</button>
+    </div>
+
+    <h2>Search · Palette · Combobox</h2>
+    <div class="el-stack" style="max-width:320px">
+      <input class="el-search" placeholder="Search findings…">
+      <div class="el-palette">
+        <input class="input" placeholder="Type a command…">
+        <div class="results">
+          <div class="row"><span class="key">/find</span><span>Open findings</span><span>⌘F</span></div>
+          <div class="row sel"><span class="key">/theme</span><span>Switch theme</span><span>⌘T</span></div>
+          <div class="row"><span class="key">/help</span><span>Show help</span><span>⌘?</span></div>
+        </div>
+      </div>
+      <div class="el-combobox">
+        <input placeholder="Pick a source…">
+        <div class="menu">
+          <div class="opt sel">SearXNG</div>
+          <div class="opt">Cortex</div>
+          <div class="opt">Honeypot</div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Multi-select pills</h2>
+    <div class="el-multi-select" style="width:320px">
+      <span class="pill">siem <span class="x">×</span></span>
+      <span class="pill">honeypot <span class="x">×</span></span>
+      <input placeholder="add source…">
+    </div>
+
+    <h2>Dropdown menu</h2>
+    <div class="el-dropdown-menu open">
+      <span class="trigger">Actions ▾</span>
+      <div class="menu">
+        <div class="item">Run playbook</div>
+        <div class="item">Acknowledge</div>
+        <div class="sep"></div>
+        <div class="item">Suppress</div>
+        <div class="item">Delete</div>
+      </div>
+    </div>
+
+    <h2>Context menu (right-click target)</h2>
+    <div data-context-target="#ctxmenu-1" style="padding:24px;border:1px dashed var(--el-line-strong);border-radius:var(--el-r-md);text-align:center;color:var(--el-ink-soft)">
+      Right-click me
+    </div>
+    <div id="ctxmenu-1" class="el-context-menu">
+      <div class="item">Inspect</div>
+      <div class="item">Copy ID</div>
+      <div class="sep"></div>
+      <div class="item">Mute</div>
+    </div>
+
+    <h2>Radio</h2>
+    <label class="el-radio"><input type="radio" name="r1" checked><span class="dot"></span>Live</label>
+    <label class="el-radio"><input type="radio" name="r1"><span class="dot"></span>Paused</label>
+    <label class="el-radio"><input type="radio" name="r1"><span class="dot"></span>Stopped</label>
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

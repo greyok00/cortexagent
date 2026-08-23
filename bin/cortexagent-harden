@@ -1,0 +1,102 @@
+#!/bin/bash
+# cortexagent-harden — wrapper for the hardening status pipeline.
+#
+# Read-only snapshot of nftables/sshd/sysctl/auditd/lsms/dns subsystems.
+# Schedules: install daily audit drift check via overseer scheduler.
+#
+# Usage:
+#   cortexagent-harden                       # full snapshot (human summary)
+#   cortexagent-harden --json                # machine-readable JSON
+#   cortexagent-harden --subsystem nftables  # single subsystem
+#   cortexagent-harden --install-schedule    # register daily 07:23 hardening audit
+#   cortexagent-harden --uninstall-schedule
+
+set -euo pipefail
+
+# ── Locate self (symlink-safe) ─────────────────────────────────────────────
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
+
+PY="${PYTHON:-python3}"
+
+_install_schedule() {
+  echo "🗓  Registering daily hardening audit in overseer scheduler (07:23)..."
+  "$PY" -c "
+import sys; sys.path.insert(0, '$REPO_ROOT')
+from lib.overseer import schedule_add
+schedule_add(
+    name='hardening_audit_daily',
+    task_type='command',
+    schedule_type='cron',
+    schedule_value='23 7 * * *',
+    prompt='',
+    command='hardening_audit',
+    output='',
+    system='',
+)
+print('  ✓ registered: hardening_audit_daily (cron 23 7 * * *)')
+"
+  echo "🗓  Registering nftables reload consistency check (Sunday 06:33)..."
+  "$PY" -c "
+import sys; sys.path.insert(0, '$REPO_ROOT')
+from lib.overseer import schedule_add
+schedule_add(
+    name='nft_reload_check_weekly',
+    task_type='command',
+    schedule_type='cron',
+    schedule_value='33 6 * * 0',
+    prompt='',
+    command='nft_reload_check',
+    output='',
+    system='',
+)
+print('  ✓ registered: nft_reload_check_weekly (cron 33 6 * * 0)')
+"
+}
+
+_uninstall_schedule() {
+  echo "🗑  Removing hardening schedules from overseer..."
+  "$PY" -c "
+import sys; sys.path.insert(0, '$REPO_ROOT')
+from lib.overseer import schedule_remove
+for name in ('hardening_audit_daily', 'nft_reload_check_weekly'):
+    schedule_remove(name)
+    print(f'  ✓ removed: {name}')
+"
+}
+
+# ── Arg dispatch ───────────────────────────────────────────────────────────
+case "${1:-}" in
+  --json)
+    shift
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.hardening_status --json "$@"
+    ;;
+  --subsystem)
+    shift
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.hardening_status --subsystem "$1" --json
+    ;;
+  --install-schedule)
+    _install_schedule
+    ;;
+  --uninstall-schedule)
+    _uninstall_schedule
+    ;;
+  --help|-h|help)
+    cat <<EOF
+cortexagent-harden — hardening status wrapper
+
+  cortexagent-harden                       # human summary of all subsystems
+  cortexagent-harden --json                # full JSON snapshot
+  cortexagent-harden --subsystem nftables  # one subsystem JSON
+  cortexagent-harden --install-schedule    # register 07:23 daily + Sun 06:33 nft check
+  cortexagent-harden --uninstall-schedule
+EOF
+    ;;
+  *)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.hardening_status --summary
+    ;;
+esac

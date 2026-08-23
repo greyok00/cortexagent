@@ -88,7 +88,10 @@ def send_request(cmd: str, timeout: float = DEFAULT_TIMEOUT, **params) -> Dict:
         s.close()
     if not buf:
         raise RuntimeError("empty response from daemon")
-    return json.loads(buf.decode().strip().splitlines()[0])
+    try:
+        return json.loads(buf.decode().strip().splitlines()[0])
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise RuntimeError(f"control: malformed JSON from daemon: {e}") from e
 
 
 def serve(handler: Callable[[Dict], Dict],

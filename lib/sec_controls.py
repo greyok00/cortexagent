@@ -53,15 +53,15 @@ from pathlib import Path
 import tkinter as tk
 
 # ── Alert sources ────────────────────────────────────────────────────────────
-HONEYPOT_LOG = Path.home() / "honeypot" / "alerts.log"
+HONEYPOT_LOG = Path.home() / "security-console" / "honeypot" / "alerts.log"
 RECORDRELIEF_FEED = (
     Path.home() / "Documents" / "RecordRelief" / "webapp" / "data" / "alerts.json"
 )
 FIREWALL_COMMANDS = (
-    Path.home() / "security-reports" / "overseer" / "firewall_commands.jsonl"
+    Path.home() / "security-console" / "overseer" / "firewall_commands.jsonl"
 )
 FIREWALL_STATE = (
-    Path.home() / "security-reports" / "overseer" / ".portscan_state.json"
+    Path.home() / "security-console" / "overseer" / ".portscan_state.json"
 )
 
 # Severity → display color.
@@ -86,7 +86,8 @@ BG_DEEP   = "#0f0f1f"
 BG_PANEL  = "#1a1a2e"
 BG_BAR    = "#3a3a5e"
 BG_ROW    = "#20203a"
-FG_DIM    = "#808090"
+# FG_DIM bumped from #808090 (≈4.0:1) to #a8aabe (≈7.2:1) for WCAG 2.2 §1.4.3.
+FG_DIM    = "#a8aabe"
 FG_MUTED  = "#a0a0c0"
 FG_BRIGHT = "#e0e0e0"
 
@@ -154,6 +155,36 @@ REFRAMINGS: dict[str, dict] = {
                    "Investigate the source.",
         "actions": [("block", "Block source IP"), ("audit", "Open audit log")],
     },
+    "cve.critical": {
+        "title": "Critical CVE published",
+        "summary": "A new CVE with CVSS ≥ 9.0 was published. "
+                   "Confirm whether any local system matches the CPE list, "
+                   "and apply the vendor patch immediately.",
+        "actions": [
+            ("audit", "Open NVD record"),
+            ("investigate", "Check local exposure"),
+        ],
+    },
+    "cve.kev": {
+        "title": "CISA KEV — actively exploited",
+        "summary": "This CVE is in CISA's Known Exploited Vulnerabilities "
+                   "catalog. Active exploitation has been observed — patch "
+                   "per the BOD 22-01 due date if you host the affected "
+                   "software.",
+        "actions": [
+            ("audit", "Open NVD record"),
+            ("investigate", "Check local exposure"),
+        ],
+    },
+    "cve.high_epss": {
+        "title": "High EPSS — likely exploited soon",
+        "summary": "EPSS score is high — exploit probability in the top 10%. "
+                   "Pre-emptively patch if we run the affected component.",
+        "actions": [
+            ("audit", "Open NVD record"),
+            ("investigate", "Check local exposure"),
+        ],
+    },
 }
 
 
@@ -164,7 +195,7 @@ def _read_honeypot_log(limit: int = 200) -> list[dict]:
         return []
     out: list[dict] = []
     try:
-        with HONEYPOT_LOG.open() as f:
+        with HONEYPOT_LOG.open(encoding="utf-8") as f:
             lines = f.readlines()[-limit:]
         for ln in lines:
             ln = ln.strip()
@@ -191,8 +222,65 @@ def _read_recordrelief_feed(limit: int = 200) -> list[dict]:
         return []
 
 
+CVE_INTEL_FILE = Path.home() / "security-console" / "cve" / "intel.jsonl"
+
+
+def _read_cve_feed(limit: int = 50) -> list[dict]:
+    """Read CVE intel NDJSON and project it into the popout's alert shape.
+
+    Each CVE entry becomes a card with severity derived from:
+    - KEV → critical, kind="cve.kev"
+    - cvss_v3 >= 9.0 → critical, kind="cve.critical"
+    - epss_score >= 0.5 → high, kind="cve.high_epss"
+    Otherwise the entry is suppressed (noise filter).
+    """
+    if not CVE_INTEL_FILE.exists():
+        return []
+    out: list[dict] = []
+    try:
+        with CVE_INTEL_FILE.open(encoding="utf-8") as f:
+            lines = f.readlines()[-limit * 2:]  # overscan then filter
+        for ln in lines:
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                entry = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            cid = entry.get("cve_id") or "CVE-?"
+            cvss = float(entry.get("cvss_v3") or 0.0)
+            epss = float(entry.get("epss_score") or 0.0)
+            kev = bool(entry.get("kev"))
+            if kev:
+                kind, severity = "cve.kev", "critical"
+            elif cvss >= 9.0 or entry.get("severity") == "critical":
+                kind, severity = "cve.critical", "critical"
+            elif epss >= 0.5:
+                kind, severity = "cve.high_epss", "high"
+            else:
+                continue  # suppress low-signal entries
+            summary = entry.get("summary") or "(no summary)"
+            techniques = entry.get("mitre_techniques") or []
+            tech_str = f"  TIDs: {', '.join(techniques)}" if techniques else ""
+            out.append({
+                "ts": entry.get("published") or entry.get("last_modified") or "",
+                "source": "cve_intel",
+                "kind": kind,
+                "severity": severity,
+                "title": f"{cid} (CVSS {cvss:.1f}{', KEV' if kev else ''}{', EPSS '+f'{epss:.2f}' if epss else ''})",
+                "detail": f"{summary[:240]}{tech_str}",
+                "cve_id": cid,
+                "refs": entry.get("refs") or [],
+                "mitre_techniques": techniques,
+            })
+    except OSError:
+        return []
+    return out[-limit:]
+
+
 def _merge_and_sort(limit: int = 200) -> list[dict]:
-    combined = _read_honeypot_log() + _read_recordrelief_feed()
+    combined = _read_honeypot_log() + _read_recordrelief_feed() + _read_cve_feed()
     combined.sort(key=lambda e: e.get("ts", ""))
     return combined[-limit:]
 
@@ -231,11 +319,11 @@ def _queue_block(ip: str, reason: str) -> bool:
         return False
     try:
         FIREWALL_COMMANDS.parent.mkdir(parents=True, exist_ok=True)
-        with open(FIREWALL_COMMANDS, "a") as f:
+        with open(FIREWALL_COMMANDS, "a", encoding="utf-8") as f:
             f.write(json.dumps({
                 "action": "block", "ip": ip, "reason": reason,
                 "ts": datetime.now().astimezone().isoformat(timespec="seconds"),
-            }) + "\n")
+            }, ensure_ascii=False) + "\n")
     except OSError:
         return False
     # Update the local state so the popout's footer shows the new count.
@@ -330,7 +418,7 @@ def _block_feedback(ip: str, reason: str) -> str:
     try:
         result_path = FIREWALL_COMMANDS.parent / "firewall_commands_result.jsonl"
         if result_path.exists():
-            with result_path.open() as f:
+            with result_path.open(encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -714,7 +802,7 @@ def _make_window() -> None:
     def _open_log(_e=None):
         log_candidates = [
             Path.home() / ".cortexagent" / "logs" / "overseer.log",   # live overseer log
-            Path.home() / "security-reports" / "overseer" / "overseer.log",  # fallback artifact
+            Path.home() / "security-console" / "overseer" / "overseer.log",  # fallback artifact
             HONEYPOT_LOG,
             RECORDRELIEF_FEED,
         ]

@@ -131,11 +131,15 @@ def _execute_with_timeout(name: str, args: Dict[str, Any],
     ex = ThreadPoolExecutor(max_workers=1)
     try:
         future = ex.submit(execute_tool, name, args)
-        return future.result(timeout=timeout)
-    except TimeoutError:
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError:
+            return {"ok": False, "output": "",
+                    "error": f"tool {name} timed out after {timeout}s"}
+    finally:
+        # Shut the executor down on EVERY exit path (success or timeout) so a
+        # hung tool can't leak its worker thread per call.
         ex.shutdown(wait=False)
-        return {"ok": False, "output": "",
-                "error": f"tool {name} timed out after {timeout}s"}
 
 
 def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
@@ -333,12 +337,3 @@ def _beautify_response(text: str) -> str:
         return text
     except Exception:
         return text  # fallback: return original if beautify fails
-
-
-def _beautify_status(text: str) -> str:
-    """Apply beautify pass to overseer status output."""
-    from lib.beautify import beautify
-    try:
-        return beautify(text)
-    except Exception:
-        return text

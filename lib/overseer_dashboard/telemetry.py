@@ -42,7 +42,7 @@ def _read_json(path: Path, default: Any = None) -> Any:
     if default is None:
         default = {}
     try:
-        with path.open() as f:
+        with path.open(encoding="utf-8") as f:
             d = json.load(f)
         return d if d else default
     except Exception:

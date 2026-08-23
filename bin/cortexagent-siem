@@ -1,0 +1,139 @@
+#!/bin/bash
+# cortexagent-siem — wrapper for the CortexAgent → SIEM/SOAR bridge.
+#
+# Pushes CVE intel + hardening snapshots into ~/security-console/siem/siem.db
+# and runs SOAR playbooks on findings (critical/KEV → notify/block-IOC).
+#
+# Usage:
+#   cortexagent-siem --test                 # round-trip one fake finding
+#   cortexagent-siem --push-recent          # push recent CVEs to SIEM
+#   cortexagent-siem --push-hardening       # push hardening snapshot
+#   cortexagent-siem --soar-recent          # run SOAR on recent CVEs (dry-run default)
+#   cortexagent-siem --soar-recent --live   # actually run (writes firewall_commands.jsonl)
+#   cortexagent-siem --soar-posture         # run SOAR for hardening posture fails
+#   cortexagent-siem --stats                # show SIEM finding counts
+#   cortexagent-siem --history 10           # show last N SOAR playbook runs
+#   cortexagent-siem --install-schedule     # register daily 06:47 SIEM ingest + SOAR daily 06:53
+
+set -euo pipefail
+
+# ── Locate self (symlink-safe) ─────────────────────────────────────────────
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
+
+PY="${PYTHON:-python3}"
+export PYTHONPATH="${PYTHONPATH:-}:/home/grey/security-console:${REPO_ROOT}"
+
+_install_schedule() {
+  echo "🗓  Registering daily SIEM ingest (06:47)..."
+  TMP_SCRIPT="$(mktemp --suffix=.py)"
+  trap 'rm -f "$TMP_SCRIPT"' RETURN
+  cat > "$TMP_SCRIPT" <<PYEOF
+import sys
+sys.path.insert(0, ${REPO_ROOT@Q})
+from lib.overseer import schedule_add
+schedule_add(
+    name='siem_ingest_daily',
+    task_type='command',
+    schedule_type='cron',
+    schedule_value='47 6 * * *',
+    prompt='',
+    command='siem_ingest',
+    output='',
+    system='',
+)
+print('  ✓ registered: siem_ingest_daily (cron 47 6 * * *)')
+PYEOF
+  "$PY" "$TMP_SCRIPT"
+  rm -f "$TMP_SCRIPT"
+
+  echo "🗓  Registering daily SOAR playbook run (06:53)..."
+  TMP_SCRIPT="$(mktemp --suffix=.py)"
+  trap 'rm -f "$TMP_SCRIPT"' RETURN
+  cat > "$TMP_SCRIPT" <<PYEOF
+import sys
+sys.path.insert(0, ${REPO_ROOT@Q})
+from lib.overseer import schedule_add
+schedule_add(
+    name='soar_playbooks_daily',
+    task_type='command',
+    schedule_type='cron',
+    schedule_value='53 6 * * *',
+    prompt='',
+    command='soar_playbooks',
+    output='',
+    system='',
+)
+print('  ✓ registered: soar_playbooks_daily (cron 53 6 * * *)')
+PYEOF
+  "$PY" "$TMP_SCRIPT"
+  rm -f "$TMP_SCRIPT"
+  trap - RETURN
+}
+
+# ── Arg dispatch ───────────────────────────────────────────────────────────
+case "${1:-}" in
+  --test)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.siem_bridge --test
+    ;;
+  --push-recent)
+    shift
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.siem_bridge --push-recent "$@"
+    ;;
+  --push-hardening)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.siem_bridge --push-hardening
+    ;;
+  --soar-recent)
+    shift
+    cd "$REPO_ROOT"
+    if [ "${1:-}" = "--live" ]; then
+      exec "$PY" -m lib.soar_playbooks --run-on-recent
+    fi
+    exec "$PY" -m lib.soar_playbooks --run-on-recent --dry-run
+    ;;
+  --soar-posture)
+    shift
+    cd "$REPO_ROOT"
+    if [ "${1:-}" = "--live" ]; then
+      exec "$PY" -m lib.soar_playbooks --run-posture
+    fi
+    exec "$PY" -m lib.soar_playbooks --run-posture --dry-run
+    ;;
+  --stats)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.siem_bridge --stats
+    ;;
+  --history)
+    shift
+    N="${1:-10}"
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.soar_playbooks --history "$N"
+    ;;
+  --install-schedule)
+    _install_schedule
+    ;;
+  --help|-h|help)
+    cat <<EOF
+cortexagent-siem — SIEM/SOAR bridge wrapper
+
+  cortexagent-siem --test                 # round-trip fake CVE
+  cortexagent-siem --push-recent          # push recent CVEs to SIEM
+  cortexagent-siem --push-hardening       # push hardening snapshot
+  cortexagent-siem --soar-recent          # dry-run SOAR on recent CVEs
+  cortexagent-siem --soar-recent --live   # live: writes firewall_commands.jsonl
+  cortexagent-siem --soar-posture         # dry-run SOAR for hardening fails
+  cortexagent-siem --stats                # SIEM finding counts
+  cortexagent-siem --history 10           # last 10 SOAR playbook runs
+  cortexagent-siem --install-schedule     # register 06:47 SIEM + 06:53 SOAR daily
+EOF
+    ;;
+  *)
+    echo "Unknown arg: ${1:-}" >&2
+    "$0" --help >&2
+    exit 1
+    ;;
+esac

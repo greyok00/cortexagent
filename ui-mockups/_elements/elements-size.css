@@ -1,0 +1,94 @@
+/* ──────────────────────────────────────────────────────────
+   SIZE — 6 size buckets (xs / sm / md / lg / full / tray)
+   Apply via parent container class or directly on element.
+
+     .el-xs-frame  — 48×48 icon-level affordance
+     .el-sm-frame  — 50×200 vertical tray
+     .el-md-frame  — default
+     .el-lg-frame  — 1200×400 wide-short
+     .el-full      — 1200×800 desktop
+     .el-tray      — popup-shaped wrapper
+
+   Or apply directly: .el-pill.el--xs, .el-gauge.el--lg
+   ──────────────────────────────────────────────────────────
+*/
+
+/* ── container frames ── */
+
+.el-xs-frame {
+  width: 48px; height: 48px;
+  padding: var(--el-space-1);
+  display: flex; align-items: center; justify-content: center;
+}
+.el-sm-frame {
+  width: 200px; min-height: 200px;
+  padding: var(--el-space-2);
+}
+.el-md-frame {
+  width: 100%; min-height: 200px;
+  padding: var(--el-space-3);
+}
+.el-lg-frame {
+  width: 100%; height: 400px;
+  padding: var(--el-space-3);
+}
+.el-full {
+  width: 100%; min-height: 800px;
+  padding: var(--el-space-4);
+}
+.el-tray {
+  width: 720px; height: 420px;
+  padding: var(--el-space-4);
+}
+
+/* ── per-element size variants ── */
+
+/* pill */
+.el-pill.el--xs { padding: 1px 4px; font-size: 8px; }
+.el-pill.el--sm { padding: 2px 6px; font-size: 9px; }
+.el-pill.el--lg { padding: 5px 12px; font-size: var(--el-fs-md); }
+
+/* dot */
+.el-dot.el--xs { width: 4px; height: 4px; }
+.el-dot.el--lg { width: 10px; height: 10px; }
+
+/* btn */
+.el-btn.el--xs { padding: 2px 6px; font-size: var(--el-fs-xs); }
+.el-btn.el--sm { padding: 4px 8px; font-size: var(--el-fs-sm); }
+.el-btn.el--lg { padding: 8px 16px; font-size: var(--el-fs-md); }
+.el-btn.el--icon { padding: var(--el-space-2); min-width: var(--el-size-md); min-height: var(--el-size-md); }
+
+/* big-num */
+.el-big-num.el--xs { font-size: 18px; }
+.el-big-num.el--sm { font-size: 24px; }
+.el-big-num.el--lg { font-size: 56px; }
+
+/* gauge */
+.el-gauge.el--xs { width: 20px; min-height: 32px; }
+.el-gauge.el--sm { width: 32px; min-height: 56px; }
+.el-gauge.el--lg { width: 80px; min-height: 120px; }
+
+/* input + textarea */
+.el-input.el--sm, .el-textarea.el--sm { padding: 4px 8px; font-size: var(--el-fs-sm); }
+.el-input.el--lg, .el-textarea.el--lg { padding: 10px 14px; font-size: var(--el-fs-md); }
+
+/* card */
+.el-card.el--sm { padding: var(--el-space-2); }
+.el-card.el--lg { padding: var(--el-space-5); }
+
+/* avatar */
+.el-avatar.el--xs { width: 16px; height: 16px; font-size: 8px; }
+.el-avatar.el--sm { width: 24px; height: 24px; font-size: 10px; }
+.el-avatar.el--lg { width: 48px; height: 48px; font-size: var(--el-fs-md); }
+
+/* kbd */
+.el-kbd.el--xs { padding: 1px 4px; font-size: 8px; }
+.el-kbd.el--lg { padding: 4px 10px; font-size: var(--el-fs-md); }
+
+/* container queries where useful */
+@container el-frame (max-width: 240px) {
+  .el-frame-collapse-row { flex-direction: column; }
+}
+@container el-frame (max-width: 80px) {
+  .el-frame-collapse-grid { grid-template-columns: 1fr; }
+}

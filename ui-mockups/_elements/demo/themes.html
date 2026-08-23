@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Themes · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-display.css">
+  <link rel="stylesheet" href="../elements-lists.css">
+  <style>
+    .themes-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:var(--el-space-3); }
+    .theme-card { padding:var(--el-space-3); border:1px solid var(--el-line); border-radius:var(--el-r-md); }
+    .theme-card[data-slug] .lbl { font-family:var(--el-font-mono); font-size:var(--el-fs-xs); color:var(--el-accent); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:var(--el-space-2); font-weight:700; }
+    .theme-card [data-set-theme] { font-family:var(--el-font-mono); font-size:var(--el-fs-xs); cursor:pointer; }
+  </style>
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Themes</strong>
+    <span class="el-hint">click a card to apply that theme globally</span>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>12 themes</h1>
+    <p>Each card shows the same 8 elements rendered in that theme. Click a card to apply it as the active theme.</p>
+
+    <div class="themes-grid">
+      <!-- neutral -->
+      <div class="theme-card" data-slug="neutral" data-theme="neutral">
+        <div class="lbl">neutral</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="neutral" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- polaroid -->
+      <div class="theme-card" data-slug="polaroid" data-theme="polaroid">
+        <div class="lbl">polaroid</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="polaroid" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- cockpit -->
+      <div class="theme-card" data-slug="cockpit" data-theme="cockpit">
+        <div class="lbl">cockpit</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="cockpit" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- cockpit-paper -->
+      <div class="theme-card" data-slug="cockpit-paper" data-theme="cockpit-paper">
+        <div class="lbl">cockpit-paper</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="cockpit-paper" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- console -->
+      <div class="theme-card" data-slug="console" data-theme="console">
+        <div class="lbl">console</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="console" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- compact -->
+      <div class="theme-card" data-slug="compact" data-theme="compact">
+        <div class="lbl">compact</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="compact" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- casebook -->
+      <div class="theme-card" data-slug="casebook" data-theme="casebook">
+        <div class="lbl">casebook</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="casebook" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- agent-paper -->
+      <div class="theme-card" data-slug="agent-paper" data-theme="agent-paper">
+        <div class="lbl">agent-paper</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="agent-paper" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- agent-pulse -->
+      <div class="theme-card" data-slug="agent-pulse" data-theme="agent-pulse">
+        <div class="lbl">agent-pulse</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="agent-pulse" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- agent-history -->
+      <div class="theme-card" data-slug="agent-history" data-theme="agent-history">
+        <div class="lbl">agent-history</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="agent-history" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- terminal -->
+      <div class="theme-card" data-slug="terminal" data-theme="terminal">
+        <div class="lbl">terminal</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="terminal" class="el-btn el--xs">apply</button>
+      </div>
+
+      <!-- swiss -->
+      <div class="theme-card" data-slug="swiss" data-theme="swiss">
+        <div class="lbl">swiss</div>
+        <span class="el-pill ok">OK</span> <span class="el-pill fail">FAIL</span>
+        <div class="el-big-num">42<span class="lbl">/100</span></div>
+        <div class="el-barograph" style="height:32px"><span class="bar" style="height:30%"></span><span class="bar" style="height:60%"></span><span class="bar warn" style="height:80%"></span></div>
+        <span class="el-dot live"></span> live
+        <button data-set-theme="swiss" class="el-btn el--xs">apply</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+</body>
+</html>

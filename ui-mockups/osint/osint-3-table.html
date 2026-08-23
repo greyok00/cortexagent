@@ -1,185 +1,65 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="compact">
 <head>
-<meta charset="utf-8">
-<title>OSINT · table variant</title>
-<link rel="stylesheet" href="../_elements/elements.css">
-<style>
-  /* Compact Stat Block */
-  :root {
-    --el-bg: #1a1a1a;
-    --el-panel: #252525;
-    --el-panel-2: #2e2e2e;
-    --el-line: #3a3a3a;
-    --el-ink: #e8e8e8;
-    --el-ink-soft: #999;
-    --el-accent: #ff8c42;
-    --el-ok: #7fbf7f;
-    --el-warn: #e6c060;
-    --el-fail: #e06c5a;
-    --el-live: #ff8c42;
-  }
-  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 13px/1.5 var(--el-font-body); }
-  .layout { width: 1280px; max-width: 100%; }
-  .head { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; border-bottom: 2px solid var(--el-line); margin-bottom: 14px; }
-  .head h1 { font: 700 18px/1 var(--el-font-display); margin: 0; }
-  .head h1 small { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
-  .controls { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 14px; }
-  .controls .el-search { padding: 8px 12px; background: var(--el-panel); border: 1px solid var(--el-line); color: var(--el-ink); font: 12px var(--el-font-mono); width: 100%; }
-  .controls .el-dropdown { padding: 8px; background: var(--el-panel); border: 1px solid var(--el-line); color: var(--el-ink); font: 12px var(--el-font-mono); }
-  .stat-bar { display: flex; gap: 18px; padding: 10px 0; margin-bottom: 10px; border-bottom: 1px dashed var(--el-line); }
-  .stat-bar .stat { font: 11px var(--el-font-mono); color: var(--el-ink-soft); }
-  .stat-bar .stat b { color: var(--el-accent); font-size: 16px; margin-right: 4px; }
-  .table-wrap { background: var(--el-panel); border: 1px solid var(--el-line); }
-  table { width: 100%; border-collapse: collapse; font: 12px var(--el-font-mono); }
-  thead th { background: var(--el-panel-2); color: var(--el-accent); padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--el-line); font-weight: 700; cursor: pointer; user-select: none; letter-spacing: 0.06em; text-transform: uppercase; font-size: 10px; }
-  thead th:hover { background: var(--el-line); }
-  thead th[data-sort-dir] { color: var(--el-ok); }
-  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--el-line); color: var(--el-ink); }
-  tbody tr:hover { background: var(--el-panel-2); }
-  tbody tr.CASE-01 { border-left: 3px solid var(--el-accent); }
-  .check { display: inline-block; width: 14px; height: 14px; border: 1px solid var(--el-line); vertical-align: middle; cursor: pointer; }
-  .check.on { background: var(--el-accent); border-color: var(--el-accent); }
-  .badge { display: inline-block; padding: 2px 6px; font: 10px var(--el-font-mono); border: 1px solid var(--el-line); }
-  .badge.trust { border-color: var(--el-accent); color: var(--el-accent); }
-  .badge.person { border-color: var(--el-warn); color: var(--el-warn); }
-  .badge.property { border-color: var(--el-ok); color: var(--el-ok); }
-  .badge.filing { border-color: var(--el-ink-soft); color: var(--el-ink-soft); }
-  .actions { display: flex; gap: 6px; }
-  .pager { display: flex; gap: 8px; padding: 12px 0; justify-content: space-between; font: 11px var(--el-font-mono); color: var(--el-ink-soft); }
-  .pager .pages { display: flex; gap: 4px; }
-  .pager .pages span { padding: 4px 8px; cursor: pointer; border: 1px solid var(--el-line); }
-  .pager .pages span.on { background: var(--el-accent); color: var(--el-bg); border-color: var(--el-accent); }
-</style>
+  <meta charset="utf-8">
+  <title>OSINT · table variant</title>
+  <link rel="stylesheet" href="../_elements/tokens.css">
+  <link rel="stylesheet" href="../_elements/themes.css">
+  <link rel="stylesheet" href="../_elements/base.css">
+  <link rel="stylesheet" href="../_elements/elements-display.css">
+  <link rel="stylesheet" href="../_elements/elements-lists.css">
+  <link rel="stylesheet" href="../_elements/elements-containers.css">
+  <link rel="stylesheet" href="../_elements/elements-controls.css">
+  <link rel="stylesheet" href="../_elements/elements-size.css">
 </head>
-<body>
-<div class="layout">
+<body class="el-reset">
+<div class="el-lg-frame" style="padding:var(--el-space-4)">
 
-  <div class="head">
-    <h1>OSINT · comparison table <small>127.0.0.1:9999 · sortable · multi-select</small></h1>
-    <div style="display:flex;gap:8px;">
-      <button class="el-btn">+ new case</button>
-      <button class="el-btn ghost">export CSV</button>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:var(--el-space-3)">
+    <h1 style="font:700 var(--el-fs-xl)/1 var(--el-font-display);margin:0;color:var(--el-ink)">Findings table <small style="font:var(--el-fs-sm) var(--el-font-body);color:var(--el-accent);margin-left:var(--el-space-2)">compact · dark grey · orange</small></h1>
+    <div class="el-cluster">
+      <input class="el-search" placeholder="filter…" style="width:200px">
+      <div class="el-segmented">
+        <button class="on">All</button>
+        <button>CRIT</button>
+        <button>HIGH</button>
+      </div>
     </div>
   </div>
 
-  <div class="controls">
-    <input class="el-search" value='"reinhart" AND "larkspur" 2024..2026'>
-    <select class="el-dropdown"><option>type: all</option><option>type: person</option><option>type: trust</option><option>type: property</option><option>type: filing</option></select>
-    <select class="el-dropdown"><option>source: searxng</option><option>source: google cse</option></select>
-    <select class="el-dropdown"><option>date: 2024..2026</option><option>last 30d</option><option>last 90d</option><option>2024</option><option>2025</option></select>
-    <button class="el-btn">Search ▸</button>
-  </div>
+  <table class="el-table">
+    <thead>
+      <tr>
+        <th>Time</th><th>Severity</th><th>Rule</th><th>Source</th><th>Target</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="CRIT"><td>11:13:02</td><td>CRIT</td><td>block-src</td><td>Kev-feed</td><td>CVE-2026-042</td><td>Open</td></tr>
+      <tr class="CRIT"><td>11:02:48</td><td>CRIT</td><td>nft-fail</td><td>overseer</td><td>192.0.2.41</td><td>Isolated</td></tr>
+      <tr class="HIGH"><td>10:47:11</td><td>HIGH</td><td>isolate</td><td>overseer</td><td>host-07</td><td>Staged</td></tr>
+      <tr class="HIGH"><td>10:18:33</td><td>HIGH</td><td>auditd</td><td>auditd</td><td>overflow</td><td>Ack</td></tr>
+      <tr class="HIGH"><td>09:55:21</td><td>HIGH</td><td>enrich</td><td>cve-intel</td><td>CVE-2026-038</td><td>Open</td></tr>
+      <tr class="OK"><td>09:22:04</td><td>OK</td><td>scan</td><td>overseer</td><td>path err</td><td>Resolved</td></tr>
+      <tr class="OK"><td>08:14:55</td><td>OK</td><td>agent</td><td>cortex</td><td>401 vs 402</td><td>Resolved</td></tr>
+      <tr class="OK"><td>07:51:30</td><td>OK</td><td>backup</td><td>backup</td><td>nightly</td><td>Resolved</td></tr>
+    </tbody>
+  </table>
 
-  <div class="stat-bar">
-    <div class="stat"><b>23</b>results</div>
-    <div class="stat"><b style="color:var(--el-warn);">3</b>selected</div>
-    <div class="stat"><b style="color:var(--el-accent);">12</b>facts in CASE-01</div>
-    <div class="stat" style="margin-left:auto;color:var(--el-ink-soft);">sortable · click any header · checkboxes for batch save</div>
-  </div>
-
-  <div class="table-wrap">
-    <table class="el-table" data-sortable>
-      <thead>
-        <tr>
-          <th style="width:30px;"><span class="check on"></span></th>
-          <th data-sort-key="date">Date</th>
-          <th data-sort-key="type">Type</th>
-          <th data-sort-key="title">Title</th>
-          <th data-sort-key="source">Source</th>
-          <th data-sort-key="case">Case</th>
-          <th data-sort-key="facts">Facts</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr class="CASE-01">
-          <td><span class="check on"></span></td>
-          <td>2025-04-02</td>
-          <td><span class="badge filing">filing</span></td>
-          <td>Public notice · 120 Ward St trust transfer</td>
-          <td>larkspur.gov</td>
-          <td>CASE-01</td>
-          <td>3</td>
-          <td><div class="actions"><button class="el-btn ghost">save</button><button class="el-btn ghost">re-extract</button></div></td>
-        </tr>
-        <tr class="CASE-01">
-          <td><span class="check on"></span></td>
-          <td>2025-03-14</td>
-          <td><span class="badge property">property</span></td>
-          <td>Quitclaim #M-2025-018442 · 120 Ward St</td>
-          <td>marin recorder</td>
-          <td>CASE-01</td>
-          <td>7</td>
-          <td><div class="actions"><button class="el-btn ghost">save</button><button class="el-btn ghost">re-extract</button></div></td>
-        </tr>
-        <tr class="CASE-01">
-          <td><span class="check on"></span></td>
-          <td>2024-09-22</td>
-          <td><span class="badge trust">trust</span></td>
-          <td>Reinhart Family Trust — initial filing</td>
-          <td>ca sec.state</td>
-          <td>CASE-01</td>
-          <td>12</td>
-          <td><div class="actions"><button class="el-btn ghost">save</button><button class="el-btn ghost">re-extract</button></div></td>
-        </tr>
-        <tr>
-          <td><span class="check"></span></td>
-          <td>2024-08-15</td>
-          <td><span class="badge person">person</span></td>
-          <td>Margaret Reinhart — Coldwell Banker Marin</td>
-          <td>coldwellbanker.com</td>
-          <td>—</td>
-          <td>2</td>
-          <td><div class="actions"><button class="el-btn ghost">save</button><button class="el-btn ghost">re-extract</button></div></td>
-        </tr>
-        <tr>
-          <td><span class="check"></span></td>
-          <td>2025-01-09</td>
-          <td><span class="badge filing">filing</span></td>
-          <td>Assessor parcel lookup · 120 Ward St</td>
-          <td>marin assessor</td>
-          <td>CASE-02</td>
-          <td>5</td>
-          <td><div class="actions"><button class="el-btn ghost">save</button><button class="el-btn ghost">re-extract</button></div></td>
-        </tr>
-        <tr>
-          <td><span class="check"></span></td>
-          <td>2025-02-22</td>
-          <td><span class="badge person">person</span></td>
-          <td>R. Larkspur · Marin bar association roster</td>
-          <td>marinbar.org</td>
-          <td>CASE-01</td>
-          <td>1</td>
-          <td><div class="actions"><button class="el-btn ghost">save</button><button class="el-btn ghost">re-extract</button></div></td>
-        </tr>
-        <tr>
-          <td><span class="check"></span></td>
-          <td>2025-03-03</td>
-          <td><span class="badge filing">filing</span></td>
-          <td>Q4 cohort — Larkspur transfer pattern study</td>
-          <td>larkspur.gov</td>
-          <td>CASE-04</td>
-          <td>3</td>
-          <td><div class="actions"><button class="el-btn ghost">save</button><button class="el-btn ghost">re-extract</button></div></td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="pager">
-    <span>showing 1–7 of 23 · 3 selected</span>
-    <div class="pages">
-      <span>‹</span>
-      <span class="on">1</span>
-      <span>2</span>
-      <span>3</span>
-      <span>4</span>
-      <span>›</span>
+  <div class="el-cluster" style="margin-top:var(--el-space-3);justify-content:space-between">
+    <div class="el-pagination">
+      <span class="page disabled">‹</span>
+      <span class="page on">1</span>
+      <span class="page">2</span>
+      <span class="page">3</span>
+      <span class="page">›</span>
+      <span class="info">1 / 3</span>
     </div>
+    <span class="el-pill ghost">8 rows · 3 CRIT · 3 HIGH · 2 OK</span>
   </div>
 
+  <div style="font:var(--el-fs-xs) var(--el-font-mono);color:var(--el-ink-soft);margin-top:var(--el-space-3);text-align:center;letter-spacing:0.08em">compact · data-theme="compact"</div>
 </div>
+
 <script src="../_elements/elements.js"></script>
 </body>
 </html>

@@ -1,0 +1,279 @@
+/* ──────────────────────────────────────────────────────────
+   LISTS — 15 primitives
+   ──────────────────────────────────────────────────────────
+*/
+
+/* ── timeline (horizontal) ── */
+.el-timeline-h {
+  display: flex;
+  gap: var(--el-space-2);
+  overflow-x: auto;
+  padding: var(--el-space-3);
+  background: color-mix(in oklab, var(--el-panel) 80%, transparent);
+  border: var(--el-bw) solid color-mix(in oklab, var(--el-line) 70%, transparent);
+  border-radius: var(--el-r-md);
+}
+.el-timeline-h .ev {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--el-space-3);
+  min-width: 180px;
+  border-left: 3px solid var(--el-line);
+  background: var(--el-panel);
+  border-radius: 0 var(--el-r-sm) var(--el-r-sm) 0;
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  flex-shrink: 0;
+  box-shadow: var(--el-shadow-1);
+}
+.el-timeline-h .ev .t    { color: var(--el-ink-soft); font-size: var(--el-fs-xs); }
+.el-timeline-h .ev .rule { color: var(--el-accent); font-weight: 700; }
+.el-timeline-h .ev .txt  { color: var(--el-ink); }
+.el-timeline-h .ev.CRIT  { border-left-color: var(--el-fail); }
+.el-timeline-h .ev.HIGH  { border-left-color: var(--el-warn); }
+.el-timeline-h .ev.OK    { border-left-color: var(--el-ok); }
+
+/* ── timeline (vertical) ── */
+.el-timeline-v {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-line);
+}
+.el-timeline-v .ev {
+  display: grid;
+  grid-template-columns: 86px 60px 110px 1fr;
+  gap: var(--el-space-2);
+  padding: var(--el-space-2) var(--el-space-3);
+  border-bottom: 1px dashed var(--el-line);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  cursor: pointer;
+}
+.el-timeline-v .ev:last-child { border-bottom: 0; }
+.el-timeline-v .ev:hover { background: var(--el-panel-2); }
+.el-timeline-v .ev .t    { color: var(--el-ink-soft); }
+.el-timeline-v .ev .lvl  { font-weight: 700; padding: 1px 6px; text-align: center; font-size: var(--el-fs-xs); border: 1px solid currentColor; border-radius: var(--el-r-sm); }
+.el-timeline-v .ev .rule { color: var(--el-accent); font-weight: 700; }
+.el-timeline-v .ev .txt  { color: var(--el-ink); }
+.el-timeline-v .ev.CRIT  .lvl { color: var(--el-fail); }
+.el-timeline-v .ev.HIGH  .lvl { color: var(--el-warn); }
+.el-timeline-v .ev.OK    .lvl { color: var(--el-ok); }
+.el-timeline-v .ev.sel   { background: var(--el-accent-soft); border-left: 3px solid var(--el-accent); padding-left: calc(var(--el-space-3) - 3px); }
+
+/* ── accordion ── */
+.el-accordion { display: flex; flex-direction: column; gap: var(--el-space-1); }
+.el-accordion details {
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-line);
+  border-left: 3px solid var(--el-line);
+}
+.el-accordion details[open] { border-left-color: var(--el-accent); }
+.el-accordion summary {
+  padding: var(--el-space-3) var(--el-space-4);
+  cursor: pointer;
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  font-weight: 700;
+  color: var(--el-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: flex; justify-content: space-between; align-items: center;
+  list-style: none;
+}
+.el-accordion summary::-webkit-details-marker { display: none; }
+.el-accordion summary::before { content: "▸"; margin-right: var(--el-space-2); color: var(--el-accent); font-size: 10px; }
+.el-accordion details[open] > summary::before { content: "▾"; }
+.el-accordion .body { padding: var(--el-space-3) var(--el-space-4); border-top: 1px dashed var(--el-line); }
+
+/* ── kanban ── */
+.el-kanban { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--el-space-3); }
+.el-kanban .col {
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-line);
+  padding: var(--el-space-3);
+  display: flex; flex-direction: column; gap: var(--el-space-2);
+}
+.el-kanban .col > h4 {
+  margin: 0 0 var(--el-space-2);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-xs);
+  color: var(--el-accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.el-kanban .card {
+  background: var(--el-panel-2);
+  border-left: 3px solid var(--el-line);
+  padding: var(--el-space-2);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+}
+
+/* ── table ── */
+.el-table { width: 100%; border-collapse: collapse; font-family: var(--el-font-mono); font-size: var(--el-fs-sm); background: color-mix(in oklab, var(--el-panel) 95%, transparent); border-radius: var(--el-r-md); overflow: hidden; }
+.el-table thead th {
+  padding: var(--el-space-3) var(--el-space-4);
+  background: color-mix(in oklab, var(--el-panel-2) 90%, transparent);
+  color: var(--el-accent);
+  text-align: left;
+  border-bottom: var(--el-bw) solid var(--el-line);
+  font-size: var(--el-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+}
+.el-table thead th:hover { background: var(--el-line); }
+.el-table tbody td { padding: var(--el-space-3) var(--el-space-4); border-bottom: var(--el-bw) solid color-mix(in oklab, var(--el-line) 50%, transparent); color: var(--el-ink); }
+.el-table tbody tr:last-child td { border-bottom: 0; }
+.el-table tbody tr:hover { background: color-mix(in oklab, var(--el-panel-2) 50%, transparent); }
+.el-table tbody tr.CRIT { border-left: 3px solid var(--el-fail); }
+.el-table tbody tr.HIGH { border-left: 3px solid var(--el-warn); }
+.el-table tbody tr.OK   { border-left: 3px solid var(--el-ok); }
+
+/* ── card ── */
+.el-card {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--el-panel) 95%, var(--el-bg)) 0%, var(--el-panel) 100%);
+  border: var(--el-bw) solid color-mix(in oklab, var(--el-line) 70%, transparent);
+  padding: var(--el-space-5);
+  border-radius: var(--el-r-lg);
+  box-shadow: var(--el-shadow-1);
+  transition: transform var(--el-dur-fast) var(--el-ease), box-shadow var(--el-dur-fast) var(--el-ease);
+}
+.el-card:hover { transform: translateY(-2px); box-shadow: var(--el-shadow-2); }
+.el-card h3 { margin: 0 0 var(--el-space-2); font-family: var(--el-font-display); font-weight: 500; letter-spacing: -0.01em; font-size: var(--el-fs-lg); }
+.el-card .sub { font-size: var(--el-fs-sm); color: var(--el-ink-soft); margin-bottom: var(--el-space-3); }
+
+/* ── hover-card ── */
+.el-hover-card {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--el-panel) 95%, var(--el-bg)) 0%, var(--el-panel) 100%);
+  border: var(--el-bw) solid color-mix(in oklab, var(--el-line) 70%, transparent);
+  border-radius: var(--el-r-md);
+  padding: var(--el-space-4);
+  cursor: pointer;
+  transition: max-height var(--el-dur-base) var(--el-ease), border-color var(--el-dur-fast) var(--el-ease), box-shadow var(--el-dur-fast) var(--el-ease), transform var(--el-dur-fast) var(--el-ease);
+  max-height: 70px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: var(--el-shadow-1);
+}
+.el-hover-card:hover { transform: translateY(-1px); }
+.el-hover-card:hover, .el-hover-card.locked { max-height: 280px; border-color: var(--el-accent); box-shadow: var(--el-shadow-2); z-index: 5; }
+.el-hover-card .head  { font-family: var(--el-font-mono); font-size: var(--el-fs-xs); color: var(--el-accent); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; margin-bottom: var(--el-space-1); }
+.el-hover-card .detail { padding-top: var(--el-space-2); border-top: 1px dashed var(--el-line); margin-top: var(--el-space-2); }
+
+/* ── chip ── */
+.el-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--el-space-1);
+  padding: 4px 10px;
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  font-weight: 500;
+  background: color-mix(in oklab, var(--el-panel-2) 80%, transparent);
+  border: var(--el-bw) solid color-mix(in oklab, var(--el-line) 70%, transparent);
+  border-radius: var(--el-r-pill);
+  color: var(--el-ink-soft);
+  cursor: pointer;
+  transition: background var(--el-dur-fast) var(--el-ease), color var(--el-dur-fast) var(--el-ease), border-color var(--el-dur-fast) var(--el-ease);
+}
+.el-chip:hover { background: var(--el-panel-3); color: var(--el-ink); }
+.el-chip.added { background: color-mix(in oklab, var(--el-accent) 14%, var(--el-panel)); color: var(--el-accent); border-color: color-mix(in oklab, var(--el-accent) 40%, transparent); }
+.el-chip.ok    { color: var(--el-ok);   border-color: color-mix(in oklab, var(--el-ok)   40%, transparent); background: color-mix(in oklab, var(--el-ok)   10%, var(--el-panel)); }
+.el-chip.warn  { color: var(--el-warn); border-color: color-mix(in oklab, var(--el-warn) 40%, transparent); background: color-mix(in oklab, var(--el-warn) 10%, var(--el-panel)); }
+.el-chip.fail  { color: var(--el-fail); border-color: color-mix(in oklab, var(--el-fail) 40%, transparent); background: color-mix(in oklab, var(--el-fail) 10%, var(--el-panel)); }
+
+/* ── tree-list ── */
+.el-tree-list, .el-tree-list ul {
+  list-style: none;
+  padding: 0; margin: 0;
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+}
+.el-tree-list li { padding: 2px 0; }
+.el-tree-list .node {
+  display: flex; align-items: center; gap: var(--el-space-1);
+  padding: 2px var(--el-space-2);
+  cursor: pointer;
+  border-radius: var(--el-r-sm);
+}
+.el-tree-list .node:hover { background: var(--el-panel-2); }
+.el-tree-list .node .toggle { width: 12px; color: var(--el-mute); font-family: var(--el-font-mono); }
+.el-tree-list .node .label { color: var(--el-ink); flex: 1; }
+.el-tree-list .node .count { color: var(--el-ink-soft); font-size: var(--el-fs-xs); }
+.el-tree-list ul { margin-left: var(--el-space-4); border-left: 1px dashed var(--el-line); padding-left: var(--el-space-2); }
+.el-tree-list li.collapsed > ul { display: none; }
+
+/* ── breadcrumb ── */
+.el-breadcrumb {
+  display: flex; flex-wrap: wrap;
+  align-items: center;
+  gap: var(--el-space-1);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  color: var(--el-ink-soft);
+}
+.el-breadcrumb a { color: var(--el-ink-soft); }
+.el-breadcrumb a:hover { color: var(--el-accent); }
+.el-breadcrumb .sep { color: var(--el-mute); }
+.el-breadcrumb .current { color: var(--el-ink); font-weight: 700; }
+
+/* ── pagination ── */
+.el-pagination {
+  display: flex; align-items: center; gap: var(--el-space-1);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  color: var(--el-ink-soft);
+}
+.el-pagination .page {
+  padding: var(--el-space-1) var(--el-space-2);
+  border: var(--el-bw) solid var(--el-line);
+  cursor: pointer;
+  min-width: 28px;
+  text-align: center;
+  background: var(--el-panel);
+  border-radius: var(--el-r-sm);
+}
+.el-pagination .page:hover { border-color: var(--el-accent); color: var(--el-accent); }
+.el-pagination .page.on { background: var(--el-accent); color: var(--el-on-accent); border-color: var(--el-accent); }
+.el-pagination .page.disabled { color: var(--el-mute); cursor: not-allowed; }
+.el-pagination .info { margin: 0 var(--el-space-2); }
+
+/* ── definition list ── */
+.el-def-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--el-space-2) var(--el-space-4);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+}
+.el-def-list dt { color: var(--el-ink-soft); font-weight: 700; }
+.el-def-list dd { margin: 0; color: var(--el-ink); }
+
+/* ── task list ── */
+.el-task-list { list-style: none; padding: 0; margin: 0; font-family: var(--el-font-body); font-size: var(--el-fs-sm); }
+.el-task-list li {
+  display: flex; align-items: center; gap: var(--el-space-2);
+  padding: var(--el-space-2) 0;
+  border-bottom: 1px dashed var(--el-line);
+}
+.el-task-list li.done { color: var(--el-mute); text-decoration: line-through; }
+.el-task-list li input[type="checkbox"] { accent-color: var(--el-accent); }
+
+/* ── stepper ── */
+.el-stepper { list-style: none; padding: 0; margin: 0; display: flex; gap: var(--el-space-2); font-family: var(--el-font-mono); font-size: var(--el-fs-sm); }
+.el-stepper li {
+  flex: 1;
+  padding: var(--el-space-2);
+  border: var(--el-bw) solid var(--el-line);
+  background: var(--el-panel);
+  position: relative;
+}
+.el-stepper li.done  { border-color: var(--el-ok);   color: var(--el-ok); }
+.el-stepper li.active { border-color: var(--el-accent); color: var(--el-accent); font-weight: 700; }
+.el-stepper li .num { font-size: var(--el-fs-xs); margin-right: var(--el-space-2); }

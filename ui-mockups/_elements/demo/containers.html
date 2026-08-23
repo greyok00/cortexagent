@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Containers · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-containers.css">
+  <link rel="stylesheet" href="../elements-display.css">
+  <link rel="stylesheet" href="../elements-lists.css">
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Containers</strong>
+    <select id="theme-picker" data-theme-picker>
+      <option>neutral</option><option>polaroid</option><option>cockpit</option>
+      <option>cockpit-paper</option><option>console</option><option>compact</option>
+      <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+      <option>agent-history</option><option>terminal</option><option>swiss</option>
+    </select>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>Container primitives</h1>
+
+    <h2>Panel</h2>
+    <div class="el-panel" style="max-width:420px">
+      <div class="el-panel-head">Threat score <span class="el-pill fail">CRIT</span></div>
+      <div class="el-big-num fail">87 <span class="lbl">/100</span></div>
+      <p style="color:var(--el-ink-soft)">Aggregated from 14 sources in the last hour.</p>
+    </div>
+
+    <h2>Tabs (horizontal)</h2>
+    <div class="el-tabs-h">
+      <button class="tab on" data-target="#tab1">Live <span class="el-badge live">3</span></button>
+      <button class="tab" data-target="#tab2">History</button>
+      <button class="tab" data-target="#tab3">Suppressed</button>
+    </div>
+    <div id="tab1" data-tabpanel data-group class="el-panel" style="margin-top:var(--el-space-3)">Live content</div>
+
+    <h2>Tabs (vertical)</h2>
+    <div class="el-tabs-v" id="tv" style="min-height:200px">
+      <div class="rail">
+        <div class="tab on">Findings</div>
+        <div class="tab">Sources</div>
+        <div class="tab">Playbooks</div>
+      </div>
+      <div class="panel">First tab content</div>
+    </div>
+
+    <h2>Tabs (pill)</h2>
+    <div class="el-tabs-pill">
+      <button class="tab on">Day</button>
+      <button class="tab">Week</button>
+      <button class="tab">Month</button>
+    </div>
+
+    <h2>Modal trigger</h2>
+    <button class="el-btn" data-modal-open="#m1">Open modal</button>
+    <div id="m1" class="el-modal-backdrop">
+      <div class="el-modal" style="position:relative">
+        <span class="close" data-modal-close>×</span>
+        <h3>Confirm action</h3>
+        <p style="color:var(--el-ink-soft)">This will run playbook <strong>isolate-host</strong> against 192.0.2.41.</p>
+        <div class="el-cluster" style="margin-top:var(--el-space-3);justify-content:flex-end">
+          <button class="el-btn" data-modal-close>Cancel</button>
+          <button class="el-btn el-btn-primary" data-modal-close>Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <h2>Drawer trigger</h2>
+    <button class="el-btn" data-drawer-open="#d1">Open right drawer</button>
+    <div id="d1" class="el-drawer right">
+      <div class="el-drawer-head">Detail <span data-drawer-close style="cursor:pointer">×</span></div>
+      <div class="el-drawer-body">
+        <p>Finding #042</p>
+        <p style="color:var(--el-ink-soft)">auth.login failed 4× from 192.0.2.41</p>
+      </div>
+    </div>
+
+    <h2>Bento grid</h2>
+    <div class="el-bento" style="max-width:640px">
+      <div class="tile span-6 tall"><div class="lbl">Live</div><div class="el-big-num fail">87<span class="lbl">/100</span></div></div>
+      <div class="tile span-3"><div class="lbl">CPU</div><div class="el-gauge warn" style="align-self:flex-start"><div class="name">CPU</div><div class="val">88%</div></div></div>
+      <div class="tile span-3"><div class="lbl">MEM</div><div class="el-gauge ok" style="align-self:flex-start"><div class="name">MEM</div><div class="val">42%</div></div></div>
+      <div class="tile span-4"><div class="lbl">Findings</div><div class="el-big-num warn">14<span class="lbl">open</span></div></div>
+      <div class="tile span-4"><div class="lbl">Sources</div><div class="el-big-num">8<span class="lbl">/14</span></div></div>
+      <div class="tile span-4"><div class="lbl">Playbooks</div><div class="el-big-num ok">9<span class="lbl">ready</span></div></div>
+    </div>
+
+    <h2>Split pane</h2>
+    <div class="el-split" style="height:200px;border:1px solid var(--el-line);border-radius:var(--el-r-md)">
+      <div class="left">Sidebar — list of findings</div>
+      <div class="gutter"></div>
+      <div class="right">Detail pane — content here</div>
+    </div>
+
+    <h2>Masonry</h2>
+    <div class="el-masonry" style="max-width:640px">
+      <div class="item">First short card.</div>
+      <div class="item">Second card with more text. It should be taller than the first.</div>
+      <div class="item">A third item. The masonry will rearrange these into columns.</div>
+      <div class="item">A fourth short card to demonstrate the layout flow.</div>
+      <div class="item">Fifth card. Lorem ipsum dolor sit amet, consectetur adipiscing elit.</div>
+    </div>
+
+    <h2>Scroll-shadow</h2>
+    <div class="el-scroll-shadow" style="max-width:280px;border:1px solid var(--el-line);border-radius:var(--el-r-md);padding:var(--el-space-2);background:var(--el-panel);position:relative">
+      <p>Item 1 — long content…</p>
+      <p>Item 2 — long content…</p>
+      <p>Item 3 — long content…</p>
+      <p>Item 4 — long content…</p>
+      <p>Item 5 — long content…</p>
+      <p>Item 6 — long content…</p>
+      <p>Item 7 — long content…</p>
+      <p>Item 8 — long content…</p>
+    </div>
+
+    <h2>Toast trigger</h2>
+    <button class="el-btn" onclick="elToast.push('Saved', 'ok')">Toast OK</button>
+    <button class="el-btn" onclick="elToast.push('Warn', 'warn')">Toast warn</button>
+    <button class="el-btn" onclick="elToast.push('Failed', 'fail')">Toast fail</button>
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

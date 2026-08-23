@@ -1,0 +1,202 @@
+/* ──────────────────────────────────────────────────────────
+   THEMES — 12 swappable themes via [data-theme="<slug>"]
+   Each block declares the full token set for that theme.
+   Switch via theme-switcher.js (localStorage + URL hash).
+   ──────────────────────────────────────────────────────────
+*/
+
+/* 1 ── NEUTRAL (default — see tokens.css) ── */
+
+/* 2 ── POLAROID WALL (warm paper, rust accent) ── */
+[data-theme="polaroid"] {
+  --el-bg: #faf3e3; --el-panel: #f1e8d0; --el-panel-2: #e8dec2; --el-panel-3: #ddd0a8;
+  --el-line: #d4c69b; --el-line-2: #c4b88a; --el-line-strong: #a89868;
+  --el-ink: #3a2e22; --el-ink-soft: #7a6952; --el-mute: #a89878;
+  --el-on-accent: #faf3e3;
+  --el-accent: #b8693c; --el-accent-hover: #c97a4a; --el-accent-soft: rgba(184,105,60,0.15);
+  --el-ok: #5a7a4a; --el-warn: #c18a2c; --el-fail: #a83232;
+  --el-info: #4a7a8a; --el-live: #2d8a8e; --el-teal: #2d8a8e;
+  --el-shadow-1: 0 1px 2px rgba(60,40,20,.18);
+  --el-shadow-2: 0 4px 12px rgba(60,40,20,.25);
+  --el-shadow-3: 0 8px 32px rgba(60,40,20,.32);
+  --el-overlay: rgba(60,40,20,.45);
+  --el-focus-ring: rgba(184,105,60,.55);
+  --el-font-body: 'Inter', system-ui, sans-serif;
+  --el-font-display: 'Space Grotesk', sans-serif;
+}
+
+/* 3 ── COCKPIT PANEL (aviation HMI dark, amber accent) ── */
+[data-theme="cockpit"] {
+  --el-bg: #0a1218; --el-panel: #0f1a22; --el-panel-2: #14242e; --el-panel-3: #1a2e3a;
+  --el-line: #1c2a36; --el-line-2: #142028; --el-line-strong: #2c3e4e;
+  --el-ink: #dde6f0; --el-ink-soft: #6b8497; --el-mute: #4a5e72;
+  --el-on-accent: #0a1218;
+  --el-accent: #ffb000; --el-accent-hover: #ffc940; --el-accent-soft: rgba(255,176,0,0.12);
+  --el-ok: #5fe09a; --el-warn: #ffd166; --el-fail: #ff5a52;
+  --el-info: #58a6ff; --el-live: #00e0d4; --el-teal: #4ec5b9;
+  --el-shadow-1: inset 0 0 4px rgba(0,0,0,.4);
+  --el-shadow-2: inset 0 0 12px rgba(0,0,0,.5);
+  --el-shadow-3: 0 4px 16px rgba(0,0,0,.6);
+  --el-overlay: rgba(0,0,0,.65);
+  --el-focus-ring: rgba(255,176,0,.55);
+  --el-font-body: 'JetBrains Mono', 'Courier New', monospace;
+  --el-font-display: 'JetBrains Mono', 'Courier New', monospace;
+  --el-font-mono: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+/* 4 ── COCKPIT PAPER (warm paper cockpit) ── */
+[data-theme="cockpit-paper"] {
+  --el-bg: #1a1814; --el-panel: #252118; --el-panel-2: #2e2a1f; --el-panel-3: #38331f;
+  --el-line: #3d3628; --el-line-2: #2d2718; --el-line-strong: #5a4f38;
+  --el-ink: #f0e8d8; --el-ink-soft: #a39479; --el-mute: #6e6248;
+  --el-on-accent: #1a1814;
+  --el-accent: #d4a85a; --el-accent-hover: #e0b86c; --el-accent-soft: rgba(212,168,90,0.15);
+  --el-ok: #8aa66b; --el-warn: #e6c060; --el-fail: #e06c5a;
+  --el-info: #6a9ab5; --el-live: #1a8a8e; --el-teal: #6a9ab5;
+  --el-shadow-1: inset 0 0 4px rgba(0,0,0,.4);
+  --el-shadow-2: 0 4px 12px rgba(0,0,0,.4);
+  --el-overlay: rgba(0,0,0,.6);
+  --el-focus-ring: rgba(212,168,90,.55);
+  --el-font-body: 'JetBrains Mono', 'Courier New', monospace;
+  --el-font-display: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+/* 5 ── CONSOLE LOG (GitHub Dark, blue accent) ── */
+[data-theme="console"] {
+  --el-bg: #0e1117; --el-panel: #161b22; --el-panel-2: #1c2128; --el-panel-3: #252c36;
+  --el-line: #30363d; --el-line-2: #21262d; --el-line-strong: #444c56;
+  --el-ink: #c9d1d9; --el-ink-soft: #8b949e; --el-mute: #5a6675;
+  --el-on-accent: #0e1117;
+  --el-accent: #58a6ff; --el-accent-hover: #79b8ff; --el-accent-soft: rgba(88,166,255,0.12);
+  --el-ok: #3fb950; --el-warn: #d29922; --el-fail: #f85149;
+  --el-info: #58a6ff; --el-live: #00d4aa; --el-teal: #39c5cf;
+  --el-shadow-1: 0 1px 2px rgba(0,0,0,.35);
+  --el-shadow-2: 0 4px 12px rgba(0,0,0,.45);
+  --el-shadow-3: 0 8px 32px rgba(0,0,0,.55);
+  --el-overlay: rgba(0,0,0,.65);
+  --el-focus-ring: rgba(88,166,255,.55);
+  --el-font-body: 'JetBrains Mono', 'SF Mono', monospace;
+  --el-font-display: 'JetBrains Mono', 'SF Mono', monospace;
+  --el-font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+/* 6 ── COMPACT STAT BLOCK (neutral dark grey, orange accent) ── */
+[data-theme="compact"] {
+  --el-bg: #1a1a1a; --el-panel: #252525; --el-panel-2: #2e2e2e; --el-panel-3: #383838;
+  --el-line: #3a3a3a; --el-line-2: #2a2a2a; --el-line-strong: #4a4a4a;
+  --el-ink: #e8e8e8; --el-ink-soft: #999; --el-mute: #5a5a5a;
+  --el-on-accent: #1a1a1a;
+  --el-accent: #ff8c42; --el-accent-hover: #ffa562; --el-accent-soft: rgba(255,140,66,0.15);
+  --el-ok: #7fbf7f; --el-warn: #e6c060; --el-fail: #e06c5a;
+  --el-info: #5fa8d3; --el-live: #00d4aa; --el-teal: #5fa8d3;
+  --el-shadow-1: 0 1px 2px rgba(0,0,0,.3);
+  --el-shadow-2: 0 4px 12px rgba(0,0,0,.45);
+  --el-overlay: rgba(0,0,0,.6);
+  --el-focus-ring: rgba(255,140,66,.55);
+}
+
+/* 7 ── CASEBOOK NOTEBOOK (cream paper, warm brown accent) ── */
+[data-theme="casebook"] {
+  --el-bg: #f5efe0; --el-panel: #ebe2c8; --el-panel-2: #e0d5b0; --el-panel-3: #d4c89a;
+  --el-line: #c9b985; --el-line-2: #b9a975; --el-line-strong: #998855;
+  --el-ink: #3a3424; --el-ink-soft: #6e6248; --el-mute: #9a8e70;
+  --el-on-accent: #f5efe0;
+  --el-accent: #8b5e34; --el-accent-hover: #a07040; --el-accent-soft: rgba(139,94,52,0.15);
+  --el-ok: #5a7a4a; --el-warn: #b88a2c; --el-fail: #a64b2a;
+  --el-info: #5a7a8a; --el-live: #2a7a8e; --el-teal: #5a7a8a;
+  --el-shadow-1: 0 1px 2px rgba(60,40,20,.2);
+  --el-shadow-2: 0 4px 12px rgba(60,40,20,.28);
+  --el-overlay: rgba(60,40,20,.45);
+  --el-focus-ring: rgba(139,94,52,.55);
+  --el-font-body: 'EB Garamond', 'Cormorant Garamond', 'Times New Roman', serif;
+  --el-font-display: 'EB Garamond', serif;
+}
+
+/* 8 ── AGENT PAPER (textbook figure, white paper, teal) ── */
+[data-theme="agent-paper"] {
+  --el-bg: #ffffff; --el-panel: #f8fafc; --el-panel-2: #e8eef2; --el-panel-3: #cdd8e0;
+  --el-line: #cdd8e0; --el-line-2: #aab8c5; --el-line-strong: #5a6b7a;
+  --el-ink: #0a1929; --el-ink-soft: #1f3045; --el-mute: #5a6b7a;
+  --el-on-accent: #ffffff;
+  --el-accent: #0e7c86; --el-accent-hover: #0a6973; --el-accent-soft: rgba(14,124,134,0.12);
+  --el-ok: #5b8a51; --el-warn: #b88a2c; --el-fail: #b85a2c;
+  --el-info: #0e7c86; --el-live: #d68a3c; --el-teal: #085459;
+  --el-shadow-1: 0 1px 2px rgba(10,25,41,.1);
+  --el-shadow-2: 0 4px 12px rgba(10,25,41,.15);
+  --el-overlay: rgba(10,25,41,.4);
+  --el-focus-ring: rgba(14,124,134,.55);
+  --el-font-body: 'Inter', system-ui, sans-serif;
+  --el-font-display: 'Fraunces', 'Cormorant Garamond', 'Times New Roman', serif;
+}
+
+/* 9 ── AGENT PULSE (dark canvas, breathing pulse, amber) ── */
+[data-theme="agent-pulse"] {
+  --el-bg: #0a0d12; --el-panel: #11161e; --el-panel-2: #1d2530; --el-panel-3: #2a3340;
+  --el-line: #1d2530; --el-line-2: #11161e; --el-line-strong: #3a4452;
+  --el-ink: #d6dde8; --el-ink-soft: #6b7888; --el-mute: #4a5462;
+  --el-on-accent: #0a0d12;
+  --el-accent: #ffb000; --el-accent-hover: #ffc940; --el-accent-soft: rgba(255,176,0,0.15);
+  --el-ok: #4ec5b9; --el-warn: #ffd166; --el-fail: #ff5a52;
+  --el-info: #58a6ff; --el-live: #00e0d4; --el-teal: #4ec5b9;
+  --el-shadow-1: 0 0 8px rgba(255,176,0,0.08);
+  --el-shadow-2: 0 0 24px rgba(255,176,0,0.15);
+  --el-shadow-3: 0 0 48px rgba(255,176,0,0.25);
+  --el-overlay: rgba(0,0,0,.65);
+  --el-focus-ring: rgba(255,176,0,.55);
+  --el-font-body: 'Space Grotesk', 'Inter', sans-serif;
+  --el-font-display: 'Space Grotesk', sans-serif;
+}
+
+/* 10 ── AGENT HISTORY (git-log on warm paper) ── */
+[data-theme="agent-history"] {
+  --el-bg: #fafaf7; --el-panel: #f5efe3; --el-panel-2: #ebe3d1; --el-panel-3: #ddd0a8;
+  --el-line: #ddd0a8; --el-line-2: #c4b88a; --el-line-strong: #998855;
+  --el-ink: #0a1929; --el-ink-soft: #1f3045; --el-mute: #5a6b7a;
+  --el-on-accent: #fafaf7;
+  --el-accent: #0e7c86; --el-accent-hover: #0a6973; --el-accent-soft: rgba(14,124,134,0.12);
+  --el-ok: #5b8a51; --el-warn: #b88a2c; --el-fail: #b85a2c;
+  --el-info: #0e7c86; --el-live: #b85a2c; --el-teal: #085459;
+  --el-shadow-1: 0 1px 2px rgba(10,25,41,.1);
+  --el-shadow-2: 0 2px 6px rgba(10,25,41,.12);
+  --el-overlay: rgba(10,25,41,.4);
+  --el-focus-ring: rgba(14,124,134,.55);
+  --el-font-body: 'JetBrains Mono', 'SF Mono', monospace;
+  --el-font-display: 'Fraunces', serif;
+  --el-font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+/* 11 ── TERMINAL (CRT, pure green-on-black) ── */
+[data-theme="terminal"] {
+  --el-bg: #000000; --el-panel: #0a0a0a; --el-panel-2: #141414; --el-panel-3: #1e1e1e;
+  --el-line: #1e3a1e; --el-line-2: #142814; --el-line-strong: #2c5a2c;
+  --el-ink: #00ff66; --el-ink-soft: #00cc52; --el-mute: #006633;
+  --el-on-accent: #000000;
+  --el-accent: #00ff66; --el-accent-hover: #66ff99; --el-accent-soft: rgba(0,255,102,0.12);
+  --el-ok: #00ff66; --el-warn: #ffcc00; --el-fail: #ff3300;
+  --el-info: #00ccff; --el-live: #00ffaa; --el-teal: #00ffcc;
+  --el-shadow-1: 0 0 4px rgba(0,255,102,.25);
+  --el-shadow-2: 0 0 12px rgba(0,255,102,.35);
+  --el-shadow-3: 0 0 32px rgba(0,255,102,.5);
+  --el-overlay: rgba(0,0,0,.85);
+  --el-focus-ring: rgba(0,255,102,.7);
+  --el-font-body: 'JetBrains Mono', 'Courier New', monospace;
+  --el-font-display: 'JetBrains Mono', 'Courier New', monospace;
+  --el-font-mono: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+/* 12 ── SWISS (editorial high-contrast B/W + 1 accent) ── */
+[data-theme="swiss"] {
+  --el-bg: #fafafa; --el-panel: #ffffff; --el-panel-2: #f0f0f0; --el-panel-3: #e5e5e5;
+  --el-line: #d4d4d4; --el-line-2: #b0b0b0; --el-line-strong: #202020;
+  --el-ink: #0a0a0a; --el-ink-soft: #404040; --el-mute: #888888;
+  --el-on-accent: #fafafa;
+  --el-accent: #d62828; --el-accent-hover: #e64545; --el-accent-soft: rgba(214,40,40,0.12);
+  --el-ok: #2a7a2a; --el-warn: #c47a00; --el-fail: #d62828;
+  --el-info: #1f5fa8; --el-live: #00b8a9; --el-teal: #1f5fa8;
+  --el-shadow-1: 0 1px 0 rgba(0,0,0,.08);
+  --el-shadow-2: 0 2px 0 rgba(0,0,0,.12);
+  --el-overlay: rgba(0,0,0,.5);
+  --el-focus-ring: rgba(214,40,40,.55);
+  --el-font-body: 'Inter', 'Helvetica Neue', sans-serif;
+  --el-font-display: 'Helvetica Neue', 'Inter', sans-serif;
+}

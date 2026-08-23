@@ -405,14 +405,21 @@ def _run_gui(quit_event: threading.Event) -> None:
         except Exception:
             pass
 
-    def on_open_webui(icon, item):
-        """Tray click → token visualization webui at :8090 (pipeline-viz)."""
-        import webbrowser
-        webbrowser.open("http://127.0.0.1:8090/pipeline-viz.html")
-        _log("opened token visualization: http://127.0.0.1:8090/pipeline-viz.html", "🌐", CYAN)
+    def _big_label_text(_item) -> str:
+        """Dynamic label callback for the toggle button.
+        pystray's update_menu() only re-renders items whose text/checked/
+        enabled are callables — so this re-reads daemon state on every refresh
+        and the label flips between 'Start' / 'Stop' as expected."""
+        return _LABEL_STOP if _is_big_running() else _LABEL_START
+
+    def _big_action_wrapper(icon, item) -> None:
+        """Wraps on_toggle_big and refreshes the menu after the click so the
+        new label is visible immediately. Pystray's ancestor menu is `item`
+        but we don't need it here — the wrapper is bound at construction time."""
+        on_toggle_big(icon, item)
 
     def on_dashboard(icon, item):
-        """Tray click → popout overseer dashboard (NOT the :8090 webui).
+        """Tray click → popout overseer dashboard (NOT any webui).
         Opens a small Tk window with overseer state + big-model steps +
         rotating idle tip. See lib/tray_dashboard.py.
 
@@ -445,6 +452,14 @@ def _run_gui(quit_event: threading.Event) -> None:
         except Exception:
             pass
         _overseer_stop()
+        # 2026-08-22 user feedback: "it never closes the big model, even
+        # when you fully exit the program." Unload the big model on quit
+        # so the 13.7 GB VRAM footprint is freed.
+        try:
+            if _is_big_running():
+                _log(_stop_big(), "🛑", YELLOW)
+        except Exception as e:
+            _log(f"big model unload on quit failed: {e}", "⚠️", YELLOW)
 
     # ── Open STT controls window ──────────────────────────────────────────
     def on_stt_controls(icon, item):
@@ -470,16 +485,16 @@ def _run_gui(quit_event: threading.Event) -> None:
         except Exception as e:
             _toast(icon, f"Failed to open browser console: {e}", "info")
 
-    big_label = _LABEL_STOP if _is_big_running() else _LABEL_START
-
     menu = Menu(
         MI("CortexAgent", None, enabled=False),
         Menu.SEPARATOR,
         MI("Open Browser Automation", on_browser_console),
         Menu.SEPARATOR,
-        MI(big_label, on_toggle_big),
+        MI("Open STT Controls", on_stt_controls),
         Menu.SEPARATOR,
-        MI("Token Visualization", on_open_webui),
+        # Dynamic label: text is a callable so update_menu() re-reads daemon
+        # state on every refresh and the label flips 'Start' ↔ 'Stop'.
+        MI(_big_label_text, _big_action_wrapper),
         Menu.SEPARATOR,
         MI("Quit", on_quit),
     )
@@ -495,6 +510,25 @@ def _run_gui(quit_event: threading.Event) -> None:
          "🟢", GREEN)
     global _ICON
     _ICON = icon
+
+    # Periodic refresh — call icon.update_menu() every 3s so the Start/Stop
+    # label stays in sync with the daemon's real `big.running` state.
+    # Without this, the label only refreshes after a click and gets stale
+    # when something else (bin/cortexagent, the CLI, the daemon itself)
+    # changes the model state under the tray's feet.
+    # 2026-08-22 user feedback: "it never changes to say stop so make it
+    # say start/stop. It should detect llama-server running." This timer
+    # closes that gap.
+    def _refresh_tick():
+        try:
+            icon.update_menu()
+        except Exception:
+            pass
+        t = threading.Timer(3.0, _refresh_tick)
+        t.daemon = True
+        t.start()
+    _refresh_tick()
+
     icon.run()
 
 
@@ -534,6 +568,14 @@ def _signal_shutdown(quit_event: threading.Event) -> None:
             except Exception:
                 pass
         _overseer_stop()
+        # 2026-08-22 user feedback: "it never closes the big model, even
+        # when you fully exit the program." Unload big model on signal too
+        # so SIGTERM/SIGINT from systemd still frees VRAM.
+        try:
+            if _is_big_running():
+                _log(_stop_big(), "🛑", YELLOW)
+        except Exception as e:
+            _log(f"big model unload on signal failed: {e}", "⚠️", YELLOW)
     return handler
 
 
@@ -563,6 +605,15 @@ def run(force_headless: bool = False) -> int:
     # Final cleanup if not already done (e.g. GUI quit path already stopped it).
     if _overseer_pid():
         _overseer_stop()
+    # 2026-08-22 user feedback: "it never closes the big model, even when
+    # you fully exit the program." Final safety net — unload big model
+    # on tray exit regardless of which path got us here (GUI quit, signal,
+    # forced kill, headless fallback).
+    try:
+        if _is_big_running():
+            _log(_stop_big(), "🛑", YELLOW)
+    except Exception as e:
+        _log(f"big model unload on exit failed: {e}", "⚠️", YELLOW)
     _log("tray exited", "✅", GREEN)
     return 0
 

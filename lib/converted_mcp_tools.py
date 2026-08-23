@@ -6,15 +6,19 @@ This minimizes token usage by presenting the model with a stubbed tool
 surface (name + description only) while the actual work happens via
 direct Python calls — no subprocess, no stdio, no JSON-RPC overhead.
 
-Enabled MCP servers (from .claude/settings.local.json):
-  - cortexllm: memory_read, memory_write, memory_search, memory_clear,
-               memory_search_semantic, memory_graph_query, memory_ontology
-  - firecrawl: web scraping/search
-  - magicui: UI generation
-  - ibkr: Interactive Brokers trading
-  - quant-trader: quantitative trading
-  - alpaca: Alpaca API trading
-  - slimtoken: token management
+Every tool is a direct Python call wired to a real backend:
+  - memory_* (read/write/search/clear/semantic/graph/ontology): CortexLLM
+    (cortexllm_db + cortexllm_vector/graph/ontology singletons)
+  - firecrawl_search/scrape: Firecrawl REST client
+  - slimtoken_minify/maxify: real slimtoken pipeline (dedup+distill) /
+    token-aware marker expansion (slimtoken has no inverse minify)
+  - magicui_generate: config-gated (CORTEXAGENT_MAGICUI_BACKEND=llm|template);
+    unconfigured → actionable error, never canned markup
+  - alpaca_get_account / quant_trader_strategy: real Alpaca REST (needs
+    CORTEXAGENT_ALPACA_API_KEY/_SECRET_KEY); unconfigured → actionable error
+  - ibkr_get_positions: real IBKR Web API gateway (needs
+    CORTEXAGENT_IBKR_GATEWAY_URL); unconfigured → actionable error
+  - session_*: session coordinator (shared-file backbone)
 
 Each tool is a plain Python function (or class with persistent state if
 it holds connections/sessions across calls).
@@ -40,8 +44,13 @@ from typing import Any, Dict, List, Optional
 _CWD = Path(__file__).resolve().parent.parent
 if str(_CWD) not in sys.path:
     sys.path.insert(0, str(_CWD))
-if str(_CWD / "cortexllm") not in sys.path:
-    sys.path.insert(0, str(_CWD / "cortexllm"))
+# cortexllm legacy modules (vector/graph/ontology/db) live in the installed
+# repo's legacy/ dir (~/cortexllm/repo/legacy) — NOT a vendored copy in this
+# repo. Repointed 2026-08-20 so the maintained copy is used; the old vendored
+# ~/cortexagent/cortexllm/ was stale (pre-FIFO-cap-removal) and is being deleted.
+_CLX_LEGACY = Path.home() / "cortexllm" / "repo" / "legacy"
+if _CLX_LEGACY.is_dir() and str(_CLX_LEGACY) not in sys.path:
+    sys.path.insert(0, str(_CLX_LEGACY))
 if str(_CWD / "lib") not in sys.path:
     sys.path.insert(0, str(_CWD / "lib"))
 
@@ -212,7 +221,6 @@ def memory_clear(tier: str, platform: str = None) -> dict:
             w.execute("DELETE FROM Memory_Warm")
         w.commit()
         return {"status": "cleared", "tier": tier}
-        return {"status": "cleared", "tier": tier}
     except Exception as e:
         return {"error": str(e)}
 
@@ -280,6 +288,70 @@ def memory_ontology(action: str, text: str = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# API Adapter Tools (self-registering proxy layer)
+# ---------------------------------------------------------------------------
+# Backends live in lib/adapters/*.py and self-register on import. New
+# adapter = drop a file in that directory + add an import line in
+# lib/adapters/__init__.py. Zero edits to core agent logic needed.
+
+def adapter_list() -> dict:
+    """List every registered API adapter and its live health status.
+
+    Backends without required credentials report enabled=False / status=disabled
+    so the model can pick a working backend without guessing.
+    """
+    try:
+        from lib.adapters import all_adapters_dict
+        items = all_adapters_dict(only_enabled=False)
+        return {"status": "ok", "adapters": items, "count": len(items)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def adapter_search(query: str, limit: int = 5,
+                    adapter_name: Optional[str] = None) -> dict:
+    """Search/lookup via the API adapter layer.
+
+    adapter_name=None → fan out across every enabled adapter (safe; one
+    failing backend never blocks the rest).
+    adapter_name="google_cse" → target one backend only. Unknown name
+    returns {"error": "unknown adapter: ..."}.
+    """
+    try:
+        from lib.adapters import (
+            get as _get,
+            list_adapters,
+            search_all as _search_all,
+        )
+        if adapter_name:
+            adapter = _get(adapter_name)
+            if adapter is None:
+                names = [a.name for a in list_adapters()]
+                return {"error": f"unknown adapter: {adapter_name!r}",
+                        "available": names}
+            if not adapter.enabled:
+                return {"error": f"adapter {adapter_name} is disabled",
+                        "health": adapter.health_check()}
+            try:
+                results = adapter.search(query, limit=limit)
+                return {"status": "ok", "results": {adapter_name: results}}
+            except Exception as e:
+                return {"error": str(e), "source": adapter_name}
+        # fan-out
+        enabled = list_adapters(only_enabled=True)
+        if not enabled:
+            return {"status": "noop",
+                    "reason": "no enabled adapters — set adapter env vars "
+                              "(GOOGLE_API_KEY+GOOGLE_CSE_ID, etc.) or run "
+                              "adapter_list() to see what is available"}
+        results = _search_all(query, limit=limit, only_enabled=True)
+        return {"status": "ok", "results": results,
+                "backends": [a.name for a in enabled]}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # Firecrawl Tools (web scraping/search)
 # ---------------------------------------------------------------------------
 
@@ -310,14 +382,40 @@ def firecrawl_scrape(url: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def magicui_generate(description: str, format: str = "html") -> dict:
-    """Generate UI from description using MagicUI."""
+    """Generate UI from a description, config-gated (never a hardcoded stub).
+
+    Backend selected by CORTEXAGENT_MAGICUI_BACKEND:
+      - "llm": render via the local model (tiny_llm.query)
+      - "template": render a minimal responsive HTML shell from the description
+      - unset: actionable "not configured" — no canned markup.
+    """
+    backend = os.environ.get("CORTEXAGENT_MAGICUI_BACKEND", "").strip().lower()
+    if not backend:
+        return {"error": (
+            "magicui_generate is not configured. Set CORTEXAGENT_MAGICUI_BACKEND=llm "
+            "to render via the local model, or =template for a static template shell.")}
     try:
-        # MagicUI would use a local generation backend
-        return {
-            "status": "ok",
-            "html": f"<div><!-- Generated UI for: {description} --></div>",
-            "format": format
-        }
+        if backend == "llm":
+            from lib import tiny_llm
+            prompt = (
+                f"Generate clean, self-contained {format} UI for the following "
+                f"description. Output only the {format} code, no markdown fences.\n\n"
+                f"Description: {description}")
+            html = tiny_llm.query(prompt, max_tokens=1024, temperature=0.2, timeout=90)
+            if not html:
+                return {"error": "LLM returned empty UI"}
+            return {"status": "ok", "html": html, "format": format, "backend": "llm"}
+        if backend == "template":
+            import html as _h
+            title = _h.escape(description[:60])
+            body = _h.escape(description)
+            html = (
+                f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+                f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                f"<title>{title}</title></head><body><h1>{title}</h1>"
+                f"<p>{body}</p></body></html>")
+            return {"status": "ok", "html": html, "format": format, "backend": "template"}
+        return {"error": f"Unknown magicui backend: {backend}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -345,49 +443,118 @@ class TradingSession:
 
 
 def alpaca_get_account() -> dict:
-    """Get Alpaca account info."""
+    """Get Alpaca account info via the Alpaca REST API.
+
+    Requires CORTEXAGENT_ALPACA_API_KEY + CORTEXAGENT_ALPACA_SECRET_KEY (or the
+    ALPACA_* equivalents); set CORTEXAGENT_ALPACA_PAPER=1 to hit the paper
+    endpoint. Returns an actionable error when credentials are missing — never
+    canned account data.
+    """
+    import json as _json
+    import urllib.request
+    api_key = (os.environ.get("CORTEXAGENT_ALPACA_API_KEY")
+               or os.environ.get("ALPACA_API_KEY") or "")
+    secret = (os.environ.get("CORTEXAGENT_ALPACA_SECRET_KEY")
+              or os.environ.get("ALPACA_SECRET_KEY") or "")
+    if not api_key or not secret:
+        return {"error": (
+            "Alpaca not configured. Set CORTEXAGENT_ALPACA_API_KEY and "
+            "CORTEXAGENT_ALPACA_SECRET_KEY (paper: also CORTEXAGENT_ALPACA_PAPER=1).")}
     try:
-        from lib.config import CFG
-        # Check if Alpaca keys are configured
-        api_key = os.environ.get("ALPACA_API_KEY", CFG.alpaca_api_key if hasattr(CFG, 'alpaca_api_key') else "")
-        if not api_key:
-            return {"error": "Alpaca API key not configured"}
-        session = TradingSession.get("alpaca")
-        # In production, this would call Alpaca API
-        return {
-            "status": "ok",
-            "account": {"id": "demo_account", "cash": 100000.0, "portfolio_value": 100000.0}
-        }
+        paper = os.environ.get("CORTEXAGENT_ALPACA_PAPER", "1") in ("1", "true", "yes")
+        base = "https://paper-api.alpaca.markets" if paper else "https://api.alpaca.markets"
+        req = urllib.request.Request(f"{base}/v2/account")
+        req.add_header("APCA-API-KEY-ID", api_key)
+        req.add_header("APCA-API-SECRET-KEY", secret)
+        req.add_header("Accept", "application/json")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            account = _json.loads(r.read().decode())
+        return {"status": "ok", "account": account, "paper": paper}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Alpaca request failed: {e}"}
 
 
 def ibkr_get_positions() -> dict:
-    """Get Interactive Brokers positions."""
+    """Get Interactive Brokers positions via the IBKR Web API gateway.
+
+    Requires CORTEXAGENT_IBKR_GATEWAY_URL (default http://127.0.0.1:5000/v1/api)
+    with a live gateway session. Returns an actionable error when the gateway
+    is unreachable — never an empty canned result.
+    """
+    import json as _json
+    import urllib.request
     try:
-        session = TradingSession.get("ibkr")
-        # In production, this would call IBKR API
-        return {
-            "status": "ok",
-            "positions": []
-        }
+        base = os.environ.get(
+            "CORTEXAGENT_IBKR_GATEWAY_URL", "http://127.0.0.1:5000/v1/api").rstrip("/")
+        req = urllib.request.Request(f"{base}/portfolio/accounts")
+        req.add_header("Accept", "application/json")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            accounts = _json.loads(r.read().decode())
+        positions = []
+        for acct in accounts:
+            aid = str(acct.get("id", "")).strip()
+            if not aid:
+                continue
+            preq = urllib.request.Request(f"{base}/portfolio/{aid}/positions/0")
+            preq.add_header("Accept", "application/json")
+            with urllib.request.urlopen(preq, timeout=15) as pr:
+                positions += _json.loads(pr.read().decode())
+        return {"status": "ok", "positions": positions}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": (
+            f"IBKR gateway not reachable/configured: {e}. Set "
+            "CORTEXAGENT_IBKR_GATEWAY_URL to the IBKR Web API gateway "
+            "(default http://127.0.0.1:5000/v1/api).")}
 
 
 def quant_trader_strategy(symbol: str, timeframe: str = "1d") -> dict:
-    """Run quant strategy on symbol."""
+    """Run a real 20/50 SMA-crossover strategy on bars from the configured broker.
+
+    Fetches Alpaca bars for the symbol and emits a buy/sell/hold signal. Returns
+    an actionable error when no broker is configured or bars are insufficient —
+    never a canned 'hold' signal.
+    """
+    import json as _json
+    import urllib.request
+    api_key = (os.environ.get("CORTEXAGENT_ALPACA_API_KEY")
+               or os.environ.get("ALPACA_API_KEY") or "")
+    secret = (os.environ.get("CORTEXAGENT_ALPACA_SECRET_KEY")
+              or os.environ.get("ALPACA_SECRET_KEY") or "")
+    if not api_key or not secret:
+        return {"error": (
+            "quant_trader_strategy needs a broker to source bars. Configure Alpaca "
+            "(CORTEXAGENT_ALPACA_API_KEY / CORTEXAGENT_ALPACA_SECRET_KEY).")}
     try:
-        # In production, this would run actual quant strategies
-        return {
-            "status": "ok",
-            "strategy": symbol,
-            "timeframe": timeframe,
-            "signal": "hold",
-            "confidence": 0.75
-        }
+        limit = 120  # enough bars for a 20/50 SMA cross
+        url = (f"https://data.alpaca.markets/v2/stocks/{symbol}/bars"
+               f"?timeframe={timeframe}&limit={limit}")
+        req = urllib.request.Request(url)
+        req.add_header("APCA-API-KEY-ID", api_key)
+        req.add_header("APCA-API-SECRET-KEY", secret)
+        req.add_header("Accept", "application/json")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = _json.loads(r.read().decode())
+        closes = [float(b["c"]) for b in data.get("bars", [])]
+        if len(closes) < 51:
+            return {"error": f"Not enough bars for {symbol} ({len(closes)} < 51)"}
+
+        def sma(n):
+            return sum(closes[-n:]) / n
+
+        fast, slow = sma(20), sma(50)
+        prev_fast = sum(closes[-21:-1]) / 20
+        prev_slow = sum(closes[-51:-1]) / 50
+        if fast > slow and prev_fast <= prev_slow:
+            signal = "buy"
+        elif fast < slow and prev_fast >= prev_slow:
+            signal = "sell"
+        else:
+            signal = "hold"
+        return {"status": "ok", "symbol": symbol, "timeframe": timeframe,
+                "signal": signal, "sma_fast": round(fast, 4),
+                "sma_slow": round(slow, 4), "bars": len(closes)}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Quant strategy failed: {e}"}
 
 
 # ---------------------------------------------------------------------------
@@ -395,26 +562,55 @@ def quant_trader_strategy(symbol: str, timeframe: str = "1d") -> dict:
 # ---------------------------------------------------------------------------
 
 def slimtoken_minify(messages: list) -> dict:
-    """Minify messages for slim token usage."""
+    """Minify messages using the real slimtoken pipeline (dedup + distill)."""
     try:
-        # Use existing slimtoken logic
-        from lib import slimtoken
-        if hasattr(slimtoken, 'minify'):
-            result = slimtoken.minify(messages)
-        else:
-            # Fallback: basic minification
-            result = [{"role": m.get("role"), "content": m.get("content", "")[:100]} for m in messages[:20]]
-        return {"status": "ok", "minified": result}
+        from slimtoken.pipeline import minify_request, MinifyConfig
+        out, stats = minify_request({"messages": messages}, MinifyConfig())
+        msgs = out.get("messages", messages) if isinstance(out, dict) else messages
+        return {"status": "ok", "minified": msgs, "stats": stats}
     except Exception as e:
         return {"error": str(e)}
 
 
 def slimtoken_maxify(messages: list) -> dict:
-    """Expand minified messages back."""
-    try:
-        return {"status": "ok", "expanded": messages}
-    except Exception as e:
-        return {"error": str(e)}
+    """Token-aware expansion of slimtoken's minified markers.
+
+    slimtoken's minify is one-way (dedup/distill drop content), so the removed
+    bytes cannot be reconstructed verbatim. This expansion locates every slimtoken
+    marker and expands it with its omitted-char count so the caller knows what was
+    compressed and how to restore it — it never fabricates the missing content.
+    """
+    import re
+    DEDUP_RE = re.compile(
+        r"\[slimtoken: identical to a later tool_result; omitted (\d+) chars\]")
+    DISTILL_RE = re.compile(r"\[slimtoken: distilled from (\d+) chars\]")
+    dedup = distill = 0
+    expanded = []
+    for m in messages:
+        if not isinstance(m, dict):
+            expanded.append(m)
+            continue
+        content = m.get("content", "")
+        if isinstance(content, str):
+            def repl_dd(mm):
+                nonlocal dedup
+                dedup += 1
+                return (f"[slimtoken: this tool_result was byte-identical to a LATER "
+                        f"result and deduplicated (~{mm.group(1)} chars removed). "
+                        f"Re-fetch from source to restore the full content.]")
+            def repl_di(mm):
+                nonlocal distill
+                distill += 1
+                return (f"[slimtoken: this turn was distilled from {mm.group(1)} chars. "
+                        f"The original prose is gone; regenerate or re-source to restore it.]")
+            content = DEDUP_RE.sub(repl_dd, content)
+            content = DISTILL_RE.sub(repl_di, content)
+        expanded.append({**m, "content": content})
+    return {
+        "status": "ok",
+        "expanded": expanded,
+        "expanded_markers": {"dedup": dedup, "distill": distill},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +652,305 @@ def session_log(message: str, level: str = "info") -> dict:
         return coord.log_awareness(message, level)
     except Exception as e:
         return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# CVE / MITRE ATT&CK threat-intel tools (stdlib-only; lib.cve_intel)
+# ---------------------------------------------------------------------------
+
+def cve_recent(since: str = "7d", min_cvss: float = 0.0,
+               kev_only: bool = False, limit: int = 50) -> dict:
+    """Return recent CVEs from local intel cache (NVD + KEV + EPSS + GHSA + OSV).
+
+    Args:
+        since: window like "7d", "24h", "30m" (parsed by cve_intel._parse_window).
+        min_cvss: floor on CVSS v3 score (0.0 = no floor).
+        kev_only: if True, only return entries in CISA KEV.
+        limit: max entries returned.
+    """
+    try:
+        from lib import cve_intel
+        entries = cve_intel.recent(since=since, min_cvss=min_cvss,
+                                   kev_only=kev_only, limit=limit)
+        return {"status": "ok", "count": len(entries), "cves": entries}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def cve_lookup(cve_id: str) -> dict:
+    """Look up a single CVE by ID (e.g. CVE-2024-3094).
+
+    Returns the full entry plus mapped MITRE ATT&CK techniques.
+    """
+    try:
+        from lib import cve_intel
+        entry = cve_intel.lookup(cve_id)
+        if not entry:
+            return {"status": "not_found", "cve_id": cve_id}
+        return {
+            "status": "ok",
+            "cve": entry,
+            "mitre_techniques": entry.get("mitre_techniques", []),
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def mitre_techniques_for_cve(cve_id: str) -> dict:
+    """Return ATT&CK Enterprise technique IDs mapped to the given CVE.
+
+    Mapping path: CWE→technique lookup with summary keyword fallback.
+    """
+    try:
+        from lib import cve_intel
+        techniques = cve_intel.mitre_for_cve(cve_id)
+        return {"status": "ok", "cve_id": cve_id, "techniques": techniques}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def mitre_mitigations_coverage() -> dict:
+    """Return MITRE mitigation (M-code) coverage of our local hardening.
+
+    Static mapping in cve_intel._LOCAL_MITIGATIONS. Reports percent covered
+    against MITRE ATT&CK Enterprise v15 (≈42 mitigations).
+    """
+    try:
+        from lib import cve_intel
+        return {"status": "ok", **cve_intel.mitre_coverage()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def cve_poll_now(since: str = "7d", include_osv: bool = False) -> dict:
+    """Trigger a fresh CVE feed poll (NVD+KEV+EPSS+GHSA by default; OSV optional).
+
+    Network-intensive — use sparingly. Writes new entries to
+    ~/security-console/cve/intel.jsonl and (for critical/KEV) to cold memory.
+    """
+    try:
+        from lib import cve_intel
+        new_entries = cve_intel.poll_cve_feeds(since=since, skip_osv=not include_osv)
+        critical = sum(1 for e in new_entries
+                       if (e.get("cvss_v3") or 0) >= 9.0 or e.get("severity") == "critical")
+        kev = sum(1 for e in new_entries if e.get("kev"))
+        summary = {"new_count": len(new_entries), "critical": critical, "kev": kev}
+        # Cold-memory write per standing rule (append-only for daily intel)
+        try:
+            from lib.memory_thin import write_cold
+            from datetime import datetime
+            cat = f"cve_{datetime.now().strftime('%Y-%m-%d')}"
+            top = [{"id": e["cve_id"],
+                    "cvss": e.get("cvss_v3"),
+                    "kev": e["kev"],
+                    "techniques": e.get("mitre_techniques", [])}
+                   for e in new_entries[:50]]
+            write_cold(category=cat,
+                       content=f"{summary}",
+                       replace=False)
+        except Exception as mem_err:
+            summary["cold_write_error"] = str(mem_err)
+        return {"status": "ok", **summary, "new": new_entries[:10]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Hardening status tools (lib.hardening_status — read-only snapshot)
+# ---------------------------------------------------------------------------
+
+def hardening_status(subsystem: str = "all") -> dict:
+    """Read-only snapshot of hardening subsystems (nftables/sshd/sysctl/auditd/etc.).
+
+    Args:
+        subsystem: "all" (default) returns every checker; or one of
+            nftables, sshd, sysctl, auditd, capabilities, unbound, dnsmasq,
+            lsms, dns_blocklist.
+    """
+    try:
+        from lib import hardening_status as hs
+        if subsystem == "all" or not subsystem:
+            snap = hs.hardening_snapshot()
+        else:
+            snap = hs.hardening_snapshot(subsystems=[subsystem])
+        return {"status": "ok", **snap}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def nftables_list() -> dict:
+    """Snapshot the live nftables ruleset (tables/chains/rules)."""
+    try:
+        from lib import hardening_status as hs
+        snap = hs.hardening_snapshot(subsystems=["nftables"])
+        return {"status": "ok", **snap["subsystems"].get("nftables", {})}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def auditd_query() -> dict:
+    """Return active auditd rules count + staged rule files."""
+    try:
+        from lib import hardening_status as hs
+        snap = hs.hardening_snapshot(subsystems=["auditd"])
+        return {"status": "ok", **snap["subsystems"].get("auditd", {})}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def sshd_config_dump() -> dict:
+    """Return parsed sshd_config vs hardening baseline deviations."""
+    try:
+        from lib import hardening_status as hs
+        snap = hs.hardening_snapshot(subsystems=["sshd"])
+        return {"status": "ok", **snap["subsystems"].get("sshd", {})}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def sysctl_current(keys: list[str] | None = None) -> dict:
+    """Read live sysctl values; if keys is None, return baseline comparison."""
+    try:
+        from lib import hardening_status as hs
+        snap = hs.hardening_snapshot(subsystems=["sysctl"])
+        if not keys:
+            return {"status": "ok", **snap["subsystems"].get("sysctl", {})}
+        # Ad-hoc reads for arbitrary keys
+        out = {k: hs._read_proc_sys(k) for k in keys}
+        return {"status": "ok", "values": out}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def unbound_status() -> dict:
+    """Return unbound presence + harden-* directives + running state."""
+    try:
+        from lib import hardening_status as hs
+        snap = hs.hardening_snapshot(subsystems=["unbound"])
+        return {"status": "ok", **snap["subsystems"].get("unbound", {})}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def capabilities_list(paths: list[str] | None = None) -> dict:
+    """Enumerate file capabilities; flag binaries holding risky caps.
+
+    Default scan paths: /usr/bin /usr/sbin /usr/local/bin.
+    """
+    try:
+        from lib import hardening_status as hs
+        if paths:
+            import shutil as _sh, subprocess as _sp
+            out_lines: list[str] = []
+            for p in paths:
+                if not _sh.which("getcap"):
+                    break
+                rc, txt, _ = hs._safe_run(["getcap", "-r", p], timeout=30.0)
+                if rc == 0:
+                    out_lines.extend(txt.splitlines())
+            risky = []
+            for line in out_lines:
+                if "=" not in line:
+                    continue
+                pp, cp = line.split("=", 1)
+                cap_set = {c.strip().lower() for c in cp.strip().split(",")}
+                hit = cap_set & {c.lower() for c in hs.RISKY_CAPS}
+                if hit:
+                    risky.append({"path": pp.strip(), "risky_caps": sorted(hit),
+                                  "all_caps": cp.strip()})
+            return {"status": "ok", "risky_count": len(risky), "risky": risky[:50]}
+        snap = hs.hardening_snapshot(subsystems=["capabilities"])
+        return {"status": "ok", **snap["subsystems"].get("capabilities", {})}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def lsm_stack() -> dict:
+    """Return the active LSM stack (landlock/lockdown/yama/etc.)."""
+    try:
+        from lib import hardening_status as hs
+        snap = hs.hardening_snapshot(subsystems=["lsms"])
+        return {"status": "ok", **snap["subsystems"].get("lsms", {})}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# SIEM / SOAR bridge tools (lib.siem_bridge + lib.soar_playbooks)
+# ---------------------------------------------------------------------------
+
+def siem_recent(source: str | None = None, limit: int = 50) -> dict:
+    """Recent SIEM findings (optionally filtered by source: cve_intel, hardening_status, etc.)."""
+    try:
+        import siem.db as siem_db  # type: ignore
+        rows = siem_db.list_findings(limit=limit, source=source)
+        return {"status": "ok", "count": len(rows), "findings": rows,
+                "counts": siem_db.finding_counts()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def siem_posture() -> dict:
+    """Latest posture_event per hardening subsystem (newest by id)."""
+    try:
+        import siem.db as siem_db  # type: ignore
+        rows = siem_db.list_findings(limit=500, source="hardening_status")
+        latest: dict[str, dict] = {}
+        for r in rows:
+            tok = r.get("token") or ""
+            if tok not in latest or r.get("id", 0) > latest[tok].get("id", 0):
+                latest[tok] = r
+        subsystems = [{
+            "subsystem": tok.split(":", 1)[1] if ":" in tok else tok,
+            "severity": r.get("severity"),
+            "detail": r.get("detail"),
+            "ts": r.get("ts"),
+            "id": r.get("id"),
+        } for tok, r in sorted(latest.items())]
+        return {"status": "ok", "count": len(subsystems), "subsystems": subsystems}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def siem_push_recent(since: str = "7d") -> dict:
+    """Pull recent CVEs from local cache into the SIEM."""
+    try:
+        from lib import siem_bridge
+        n = siem_bridge.push_recent_cves(since=since)
+        return {"status": "ok", "pushed": n, "since": since}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def soar_run_on_recent(since: str = "7d", dry_run: bool = False) -> dict:
+    """Run SOAR playbooks against recent CVE findings (critical/KEV → block/notify)."""
+    try:
+        from lib import soar_playbooks
+        r = soar_playbooks.run_on_recent(since=since, dry_run=dry_run)
+        return {"status": "ok", **r}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def soar_run_posture(dry_run: bool = False) -> dict:
+    """Run SOAR playbooks for hardening posture fails (enqueues audit reviews)."""
+    try:
+        from lib import soar_playbooks
+        r = soar_playbooks.run_on_posture(dry_run=dry_run)
+        return {"status": "ok", **r}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def soar_history(limit: int = 20) -> dict:
+    """Last N SOAR playbook runs (newest first)."""
+    try:
+        from lib import soar_playbooks
+        return {"status": "ok", "count": min(limit, len(soar_playbooks.load_history(limit))),
+                "runs": soar_playbooks.load_history(limit)}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
 
 # Unified Tool Registry for converted MCP tools
 # ---------------------------------------------------------------------------
@@ -674,6 +1169,45 @@ CONVERTED_TOOLS = [
 {
                 "type": "function",
                 "function": {
+                        "name": "adapter_list",
+                        "description": "List every registered API adapter and its live health status (Google CSE, SearXNG, etc.)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                },
+                                "required": [
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "adapter_search",
+                        "description": "Search/lookup via the API adapter layer. adapter_name omitted → fan-out across every enabled backend. One failing adapter never blocks the rest.",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "query": {
+                                                "type": "string"
+                                        },
+                                        "limit": {
+                                                "type": "integer"
+                                        },
+                                        "adapter_name": {
+                                                "type": "string",
+                                                "description": "Target one adapter by name (e.g. 'google_cse'). Omit to fan-out."
+                                        }
+                                },
+                                "required": [
+                                        "query"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
                         "name": "firecrawl_search",
                         "description": "Search the web using Firecrawl",
                         "parameters": {
@@ -797,6 +1331,24 @@ CONVERTED_TOOLS = [
 {
                 "type": "function",
                 "function": {
+                        "name": "slimtoken_maxify",
+                        "description": "Expand slimtoken minified markers back into self-describing placeholders",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "messages": {
+                                                "type": "array"
+                                        }
+                                },
+                                "required": [
+                                        "messages"
+                                ]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
                         "name": "session_broadcast",
                         "description": "Broadcast session status to other sessions",
                         "parameters": {
@@ -858,6 +1410,246 @@ CONVERTED_TOOLS = [
                         }
                 }
         },
+{
+                "type": "function",
+                "function": {
+                        "name": "cve_recent",
+                        "description": "Return recent CVEs from local intel cache (NVD+KEV+EPSS+GHSA+OSV)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "since": {"type": "string", "description": "window like 7d/24h"},
+                                        "min_cvss": {"type": "number", "description": "CVSS floor"},
+                                        "kev_only": {"type": "boolean"},
+                                        "limit": {"type": "integer"}
+                                },
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "cve_lookup",
+                        "description": "Look up a single CVE by ID (e.g. CVE-2024-3094) plus MITRE technique mapping",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "cve_id": {"type": "string"}
+                                },
+                                "required": ["cve_id"]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "mitre_techniques_for_cve",
+                        "description": "Return ATT&CK Enterprise technique IDs mapped to the given CVE",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "cve_id": {"type": "string"}
+                                },
+                                "required": ["cve_id"]
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "mitre_mitigations_coverage",
+                        "description": "Return MITRE M-code coverage of local hardening (nftables/systemd/seccomp/etc.)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {},
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "cve_poll_now",
+                        "description": "Trigger a fresh CVE feed poll (network). Writes new entries to intel.jsonl + cold memory",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "since": {"type": "string"},
+                                        "include_osv": {"type": "boolean"}
+                                },
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "hardening_status",
+                        "description": "Read-only snapshot of hardening subsystems (nftables/sshd/sysctl/auditd/lsms/etc.)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "subsystem": {"type": "string", "description": "'all' or subsystem name"}
+                                },
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "nftables_list",
+                        "description": "Live nftables ruleset snapshot: tables, chains, rule count",
+                        "parameters": {
+                                "type": "object", "properties": {}, "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "auditd_query",
+                        "description": "Active auditd rule count + staged rules.d files",
+                        "parameters": {
+                                "type": "object", "properties": {}, "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "sshd_config_dump",
+                        "description": "Parse sshd_config + sshd_config.d; grade vs hardening baseline",
+                        "parameters": {
+                                "type": "object", "properties": {}, "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "sysctl_current",
+                        "description": "Read live sysctl values; if keys omitted, return baseline comparison",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "keys": {"type": "array", "items": {"type": "string"}}
+                                },
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "unbound_status",
+                        "description": "unbound presence + harden-* directives + service state",
+                        "parameters": {
+                                "type": "object", "properties": {}, "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "capabilities_list",
+                        "description": "Enumerate file capabilities; flag binaries holding risky caps (CAP_SYS_ADMIN etc.)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "paths": {"type": "array", "items": {"type": "string"}}
+                                },
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "lsm_stack",
+                        "description": "Active LSM stack (landlock/lockdown/yama/apparmor/tomoyo/bpf/ipe/ima)",
+                        "parameters": {
+                                "type": "object", "properties": {}, "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "siem_recent",
+                        "description": "Recent SIEM findings (optionally filtered by source: cve_intel, hardening_status, etc.)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "source": {"type": "string"},
+                                        "limit": {"type": "integer"}
+                                },
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "siem_posture",
+                        "description": "Latest posture_event per hardening subsystem (newest by id)",
+                        "parameters": {
+                                "type": "object", "properties": {}, "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "siem_push_recent",
+                        "description": "Pull recent CVEs from local cache into SIEM (writes to ~/security-console/siem/siem.db)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {"since": {"type": "string"}},
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "soar_run_on_recent",
+                        "description": "Run SOAR playbooks against recent CVEs (critical/KEV → notify/block-IOC)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {
+                                        "since": {"type": "string"},
+                                        "dry_run": {"type": "boolean"}
+                                },
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "soar_run_posture",
+                        "description": "Run SOAR playbooks for hardening posture fails (enqueues audit reviews)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {"dry_run": {"type": "boolean"}},
+                                "required": []
+                        }
+                }
+        },
+{
+                "type": "function",
+                "function": {
+                        "name": "soar_history",
+                        "description": "Last N SOAR playbook runs (newest first)",
+                        "parameters": {
+                                "type": "object",
+                                "properties": {"limit": {"type": "integer"}},
+                                "required": []
+                        }
+                }
+        },
 ]
 
 
@@ -867,11 +1659,45 @@ TOOL_MAP = {
     "memory_write": memory_write,
     "memory_search": memory_search,
     "memory_clear": memory_clear,
+    "memory_search_semantic": memory_search_semantic,
+    "memory_graph_query": memory_graph_query,
+    "memory_ontology": memory_ontology,
     "session_broadcast": session_broadcast,
     "session_check": session_check,
     "session_log": session_log,
+    # API adapter layer (self-registering proxy — see lib/adapters/)
+    "adapter_list": adapter_list,
+    "adapter_search": adapter_search,
     "firecrawl_search": firecrawl_search,
     "firecrawl_scrape": firecrawl_scrape,
+    "magicui_generate": magicui_generate,
+    "alpaca_get_account": alpaca_get_account,
+    "ibkr_get_positions": ibkr_get_positions,
+    "quant_trader_strategy": quant_trader_strategy,
+    "slimtoken_minify": slimtoken_minify,
+    "slimtoken_maxify": slimtoken_maxify,
+    # CVE / MITRE threat-intel (Phase 2)
+    "cve_recent": cve_recent,
+    "cve_lookup": cve_lookup,
+    "mitre_techniques_for_cve": mitre_techniques_for_cve,
+    "mitre_mitigations_coverage": mitre_mitigations_coverage,
+    "cve_poll_now": cve_poll_now,
+    # Hardening status (Wave 3)
+    "hardening_status": hardening_status,
+    "nftables_list": nftables_list,
+    "auditd_query": auditd_query,
+    "sshd_config_dump": sshd_config_dump,
+    "sysctl_current": sysctl_current,
+    "unbound_status": unbound_status,
+    "capabilities_list": capabilities_list,
+    "lsm_stack": lsm_stack,
+    # SIEM / SOAR bridge (SIEM Waves 1-3)
+    "siem_recent": siem_recent,
+    "siem_posture": siem_posture,
+    "siem_push_recent": siem_push_recent,
+    "soar_run_on_recent": soar_run_on_recent,
+    "soar_run_posture": soar_run_posture,
+    "soar_history": soar_history,
 }
 
 

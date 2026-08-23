@@ -44,7 +44,7 @@ if not CLAUDE_BIN:
                 if not path.is_absolute():
                     path = path.parent / path
             CLAUDE_BIN = path
-    except:
+    except Exception:
         pass
 
 if not CLAUDE_BIN:

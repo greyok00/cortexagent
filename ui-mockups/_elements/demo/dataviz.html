@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Data viz · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-dataviz.css">
+  <link rel="stylesheet" href="../elements-display.css">
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Data viz</strong>
+    <select id="theme-picker" data-theme-picker>
+      <option>neutral</option><option>polaroid</option><option>cockpit</option>
+      <option>cockpit-paper</option><option>console</option><option>compact</option>
+      <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+      <option>agent-history</option><option>terminal</option><option>swiss</option>
+    </select>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>Data-viz primitives</h1>
+
+    <h2>Mini bars</h2>
+    <div class="el-mini-bars" style="width:320px">
+      <span class="bar" style="height:30%"></span><span class="bar" style="height:50%"></span>
+      <span class="bar warn" style="height:80%"></span><span class="bar" style="height:60%"></span>
+      <span class="bar ok" style="height:90%"></span><span class="bar" style="height:30%"></span>
+      <span class="bar warn" style="height:70%"></span><span class="bar" style="height:45%"></span>
+      <span class="bar fail" style="height:90%"></span><span class="bar" style="height:55%"></span>
+    </div>
+
+    <h2>Mini line</h2>
+    <svg class="el-mini-line" style="width:320px" viewBox="0 0 320 56">
+      <polyline points="0,40 30,30 60,38 90,20 120,28 150,12 180,18 210,8 240,16 270,4 300,10 320,8"
+        stroke="var(--el-accent)" fill="none" stroke-width="1.5"/>
+    </svg>
+
+    <h2>Entity graph</h2>
+    <div class="el-entity-graph" style="width:480px">
+      <div class="edge" style="left:50%;top:50%;width:80px;transform:rotate(20deg)"></div>
+      <div class="edge" style="left:50%;top:50%;width:80px;transform:rotate(-40deg)"></div>
+      <div class="edge" style="left:50%;top:50%;width:80px;transform:rotate(160deg)"></div>
+      <div class="node center" style="left:50%;top:50%"></div>
+      <div class="node lvl-1" style="left:75%;top:30%"></div>
+      <div class="node lvl-1" style="left:25%;top:70%"></div>
+      <div class="node lvl-2" style="left:30%;top:25%"></div>
+      <div class="node lvl-2" style="left:80%;top:70%"></div>
+      <div class="node lvl-2" style="left:20%;top:35%"></div>
+    </div>
+
+    <h2>Treemap</h2>
+    <div class="el-treemap" style="width:480px">
+      <div class="cell" style="grid-column:span 2;grid-row:span 2">siem</div>
+      <div class="cell ok" style="grid-column:span 1;grid-row:span 1">fw</div>
+      <div class="cell warn" style="grid-column:span 1;grid-row:span 1">ids</div>
+      <div class="cell" style="grid-column:span 2;grid-row:span 1">osint</div>
+      <div class="cell fail" style="grid-column:span 1;grid-row:span 1">cve</div>
+      <div class="cell" style="grid-column:span 1;grid-row:span 1">honeypot</div>
+      <div class="cell warn" style="grid-column:span 2;grid-row:span 1">playbooks</div>
+    </div>
+
+    <h2>Heatmap</h2>
+    <div class="el-heatmap" style="grid-template-columns:repeat(26,12px);width:auto">
+      <span class="cell"></span><span class="cell lvl-1"></span><span class="cell lvl-2"></span>
+      <span class="cell lvl-3"></span><span class="cell lvl-1"></span><span class="cell"></span>
+      <span class="cell lvl-4"></span><span class="cell lvl-2"></span><span class="cell lvl-1"></span>
+      <span class="cell"></span><span class="cell lvl-3"></span><span class="cell lvl-4"></span>
+      <span class="cell lvl-2"></span><span class="cell lvl-1"></span><span class="cell"></span>
+      <span class="cell lvl-2"></span><span class="cell lvl-3"></span><span class="cell lvl-4"></span>
+      <span class="cell lvl-1"></span><span class="cell"></span><span class="cell lvl-1"></span>
+      <span class="cell lvl-2"></span><span class="cell lvl-3"></span><span class="cell lvl-4"></span>
+      <span class="cell lvl-2"></span><span class="cell lvl-1"></span><span class="cell"></span>
+    </div>
+
+    <h2>Scatter</h2>
+    <div class="el-scatter" style="width:480px;height:200px">
+      <span class="pt" style="left:20%;top:30%"></span>
+      <span class="pt" style="left:35%;top:55%"></span>
+      <span class="pt" style="left:48%;top:42%"></span>
+      <span class="pt warn" style="left:62%;top:65%"></span>
+      <span class="pt" style="left:75%;top:30%"></span>
+      <span class="pt live" style="left:88%;top:50%"></span>
+      <span class="pt" style="left:30%;top:75%"></span>
+      <span class="pt fail" style="left:55%;top:80%"></span>
+    </div>
+
+    <h2>Sankey-stub</h2>
+    <div class="el-sankey" style="width:480px">
+      <div class="col">
+        <div class="node">SIEM</div>
+        <div class="node">Honeypot</div>
+        <div class="node">CVE</div>
+      </div>
+      <div class="flows">
+        <div class="flow"></div><div class="flow"></div><div class="flow"></div>
+      </div>
+      <div class="col">
+        <div class="node">SOAR</div>
+        <div class="node">Reports</div>
+        <div class="node">Playbooks</div>
+      </div>
+    </div>
+
+    <h2>Diff view</h2>
+    <div class="el-diff" style="width:480px">
+      <div class="row ctx"><span class="mark"> </span><span class="text">theme: polaroid</span></div>
+      <div class="row del"><span class="mark">-</span><span class="text">accent: #b8693c</span></div>
+      <div class="row add"><span class="mark">+</span><span class="text">accent: #d62828</span></div>
+      <div class="row ctx"><span class="mark"> </span><span class="text">font: serif</span></div>
+      <div class="row add"><span class="mark">+</span><span class="text">font: sans</span></div>
+    </div>
+
+    <h2>Markdown rendered</h2>
+    <article class="el-md" style="max-width:480px">
+      <h2>Threat report</h2>
+      <p>Aggregated <strong>87 / 100</strong> from <em>14 sources</em>. See <a href="#">full analysis</a>.</p>
+      <ul>
+        <li>auth.login failed 4×</li>
+        <li>sudo escalation denied</li>
+      </ul>
+      <blockquote>Containment applied via fw.rule.</blockquote>
+      <p>Code: <code>elToast.push('done', 'ok')</code></p>
+    </article>
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

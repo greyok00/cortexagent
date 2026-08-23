@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lists · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-lists.css">
+  <link rel="stylesheet" href="../elements-display.css">
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Lists</strong>
+    <select id="theme-picker" data-theme-picker>
+      <option>neutral</option><option>polaroid</option><option>cockpit</option>
+      <option>cockpit-paper</option><option>console</option><option>compact</option>
+      <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+      <option>agent-history</option><option>terminal</option><option>swiss</option>
+    </select>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>List primitives</h1>
+
+    <h2>Timeline (horizontal)</h2>
+    <div class="el-timeline-h">
+      <div class="ev CRIT"><span class="t">14:02</span><span class="rule">auth.login</span><span class="txt">admin failed</span></div>
+      <div class="ev HIGH"><span class="t">14:03</span><span class="rule">auth.sudo</span><span class="txt">root escalation</span></div>
+      <div class="ev OK"><span class="t">14:04</span><span class="rule">net.close</span><span class="txt">port 22 closed</span></div>
+      <div class="ev OK"><span class="t">14:05</span><span class="rule">fw.rule</span><span class="txt">block applied</span></div>
+    </div>
+
+    <h2>Timeline (vertical)</h2>
+    <div class="el-timeline-v">
+      <div class="ev CRIT sel"><span class="t">14:02:13</span><span class="lvl">CRIT</span><span class="rule">auth.login</span><span class="txt">Failed admin login from 192.0.2.41</span></div>
+      <div class="ev HIGH"><span class="t">14:02:48</span><span class="lvl">HIGH</span><span class="rule">auth.sudo</span><span class="txt">Sudo escalation denied</span></div>
+      <div class="ev OK"><span class="t">14:03:11</span><span class="lvl">OK</span><span class="rule">fw.rule</span><span class="txt">Outbound blocked</span></div>
+      <div class="ev OK"><span class="t">14:04:02</span><span class="lvl">OK</span><span class="rule">net.close</span><span class="txt">SSH port closed</span></div>
+    </div>
+
+    <h2>Accordion</h2>
+    <div class="el-accordion" data-exclusive>
+      <details open><summary>Open findings</summary><div class="body">4 critical · 7 high · 22 medium</div></details>
+      <details><summary>Suppressed</summary><div class="body">11 noise rules · 3 acknowledged</div></details>
+      <details><summary>History</summary><div class="body">Last 7 days of alerts</div></details>
+    </div>
+
+    <h2>Kanban</h2>
+    <div class="el-kanban">
+      <div class="col"><h4>Backlog</h4><div class="card">Refactor theme switcher</div><div class="card">Add size tokens</div></div>
+      <div class="col"><h4>In progress</h4><div class="card">Regenerate 12 mockups</div></div>
+      <div class="col"><h4>Done</h4><div class="card">Tokens + themes</div><div class="card">Distribution scaffolding</div></div>
+    </div>
+
+    <h2>Table (sortable)</h2>
+    <table class="el-table">
+      <thead><tr><th>Time</th><th>Rule</th><th>Severity</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr class="CRIT"><td>14:02</td><td>auth.login</td><td>CRIT</td><td>192.0.2.41</td></tr>
+        <tr class="HIGH"><td>14:03</td><td>auth.sudo</td><td>HIGH</td><td>192.0.2.41</td></tr>
+        <tr class="OK"><td>14:04</td><td>fw.rule</td><td>OK</td><td>10.0.0.1</td></tr>
+        <tr><td>14:05</td><td>net.close</td><td>OK</td><td>10.0.0.2</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Card</h2>
+    <div class="el-card" style="max-width:320px">
+      <h3>Threat score</h3>
+      <div class="sub">Aggregated from 14 sources</div>
+      <div class="el-big-num fail">87 <span class="lbl">/100</span></div>
+    </div>
+
+    <h2>Hover-card</h2>
+    <div class="el-cluster">
+      <div class="el-hover-card" style="width:240px">
+        <div class="head">finding #042</div>
+        <div>Hover to expand detail…</div>
+        <div class="detail">auth.login · 192.0.2.41 · failed 4× · last at 14:02:13</div>
+      </div>
+    </div>
+
+    <h2>Chip</h2>
+    <div class="el-cluster">
+      <span class="el-chip">threat</span>
+      <span class="el-chip added">active</span>
+      <span class="el-chip ok">resolved</span>
+      <span class="el-chip warn">pending</span>
+      <span class="el-chip fail">critical</span>
+    </div>
+
+    <h2>Tree-list</h2>
+    <ul class="el-tree-list">
+      <li><div class="node"><span class="toggle">▾</span><span class="label">Findings</span><span class="count">12</span></div>
+        <ul>
+          <li><div class="node"><span class="toggle">·</span><span class="label">CRIT</span><span class="count">4</span></div></li>
+          <li><div class="node"><span class="toggle">·</span><span class="label">HIGH</span><span class="count">7</span></div></li>
+          <li class="collapsed"><div class="node"><span class="toggle">▸</span><span class="label">MED</span><span class="count">22</span></div></li>
+        </ul>
+      </li>
+      <li><div class="node"><span class="toggle">·</span><span class="label">Sources</span><span class="count">14</span></div></li>
+    </ul>
+
+    <h2>Breadcrumb</h2>
+    <nav class="el-breadcrumb"><a href="#">home</a><span class="sep">/</span><a href="#">security</a><span class="sep">/</span><a href="#">siem</a><span class="sep">/</span><span class="current">findings</span></nav>
+
+    <h2>Pagination</h2>
+    <div class="el-pagination">
+      <span class="page disabled" data-action="first">«</span>
+      <span class="page disabled" data-action="prev">‹</span>
+      <span class="page on">1</span>
+      <span class="page">2</span>
+      <span class="page">3</span>
+      <span class="page" data-action="next">›</span>
+      <span class="page" data-action="last">»</span>
+      <span class="info">1 / 3</span>
+    </div>
+
+    <h2>Definition list</h2>
+    <dl class="el-def-list">
+      <dt>Engine</dt><dd>Big 13.7GB Qwen3.6-35B-UD on :8080</dd>
+      <dt>OVerseer</dt><dd>~1.6GB on :8082</dd>
+      <dt>Theme</dt><dd>data-theme=neutral default</dd>
+    </dl>
+
+    <h2>Task list</h2>
+    <ul class="el-task-list">
+      <li class="done"><input type="checkbox" checked> Tokens + base + size</li>
+      <li class="done"><input type="checkbox" checked> 12 themes</li>
+      <li><input type="checkbox"> Regenerate mockups</li>
+      <li><input type="checkbox"> Publish on GitHub</li>
+    </ul>
+
+    <h2>Stepper</h2>
+    <ol class="el-stepper">
+      <li class="done"><span class="num">1</span>Plan</li>
+      <li class="done"><span class="num">2</span>Tokens</li>
+      <li class="active"><span class="num">3</span>Themes</li>
+      <li><span class="num">4</span>Demo</li>
+    </ol>
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

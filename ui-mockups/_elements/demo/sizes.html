@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sizes · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-size.css">
+  <link rel="stylesheet" href="../elements-display.css">
+  <link rel="stylesheet" href="../elements-lists.css">
+  <link rel="stylesheet" href="../elements-controls.css">
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Sizes</strong>
+    <select id="theme-picker" data-theme-picker>
+      <option>neutral</option><option>polaroid</option><option>cockpit</option>
+      <option>cockpit-paper</option><option>console</option><option>compact</option>
+      <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+      <option>agent-history</option><option>terminal</option><option>swiss</option>
+    </select>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>6 size buckets</h1>
+    <p>The same primitive rendered in xs / sm / md / lg / full / tray containers.</p>
+
+    <h2>xs — 48×48 affordance</h2>
+    <div class="el-cluster">
+      <span class="el-pill el--xs">42</span>
+      <span class="el-dot el--xs"></span>
+      <span class="el-gauge el--xs"><div class="name">CPU</div><div class="val">42</div></span>
+      <button class="el-btn el--xs">OK</button>
+      <span class="el-avatar el--xs">JL</span>
+      <kbd class="el-kbd el--xs">⌘</kbd>
+    </div>
+
+    <h2>sm — 50×200 narrow vertical</h2>
+    <div class="el-sm-frame">
+      <div class="el-pill el--sm">42</div>
+      <div class="el-timeline-v el--sm">
+        <div class="ev CRIT"><span class="t">14:02</span><span class="lvl">CRIT</span><span class="rule">auth.login</span></div>
+        <div class="ev OK"><span class="t">14:03</span><span class="lvl">OK</span><span class="rule">fw.rule</span></div>
+        <div class="ev OK"><span class="t">14:04</span><span class="lvl">OK</span><span class="rule">net.close</span></div>
+      </div>
+    </div>
+
+    <h2>md — default</h2>
+    <div class="el-cluster">
+      <span class="el-pill">42 / 100</span>
+      <span class="el-dot live"></span>
+      <span class="el-big-num">42<span class="lbl">total</span></span>
+    </div>
+
+    <h2>lg — 1200×400 wide-short</h2>
+    <div class="el-lg-frame">
+      <div class="el-bento">
+        <div class="tile span-4"><div class="lbl">Threat</div><div class="el-big-num el--lg fail">87<span class="lbl">/100</span></div></div>
+        <div class="tile span-4"><div class="lbl">Findings</div><div class="el-big-num el--lg warn">14<span class="lbl">open</span></div></div>
+        <div class="tile span-4"><div class="lbl">Playbooks</div><div class="el-big-num el--lg ok">9<span class="lbl">ready</span></div></div>
+      </div>
+    </div>
+
+    <h2>full — 1200×800 desktop</h2>
+    <div class="el-full-frame">
+      <div class="el-panel">
+        <div class="el-panel-head">Full surface</div>
+        <div class="el-cluster">
+          <span class="el-pill ok">OK</span>
+          <span class="el-pill warn">WARN</span>
+          <span class="el-pill fail">FAIL</span>
+        </div>
+      </div>
+    </div>
+
+    <h2>tray — popup 720×420</h2>
+    <div class="el-tray-frame">
+      <div class="el-panel" style="height:100%">
+        <div class="el-panel-head">Tray popup <span class="el-dot live"></span></div>
+        <div class="el-big-num">87<span class="lbl">/100</span></div>
+        <p style="color:var(--el-ink-soft)">All controls fit within a 720×420 tray.</p>
+      </div>
+    </div>
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

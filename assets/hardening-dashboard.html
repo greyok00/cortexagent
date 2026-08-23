@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CortexAgent — Security Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0e1a; --panel: #131826; --text: #e6e9f0;
+    --ok: #4ade80; --warn: #fbbf24; --fail: #f87171; --unknown: #94a3b8;
+    --accent: #38bdf8; --border: #2a3142;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    background: var(--bg); color: var(--text); margin: 0; padding: 24px;
+    font-size: 14px; line-height: 1.5;
+  }
+  h1 { color: var(--accent); margin: 0 0 24px 0; font-size: 22px; }
+  h2 { color: var(--accent); margin: 24px 0 12px 0; font-size: 16px;
+       border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; min-height: 80px;
+  }
+  .panel .head { display: flex; justify-content: space-between; align-items: center;
+                 margin-bottom: 8px; }
+  .panel .head strong { color: var(--accent); font-size: 13px; }
+  .pill { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .pill.ok { background: var(--ok); color: #000; }
+  .pill.warn { background: var(--warn); color: #000; }
+  .pill.fail { background: var(--fail); color: #000; }
+  .pill.unknown { background: var(--unknown); color: #000; }
+  .pill.critical { background: var(--fail); color: #000; }
+  .pill.high { background: var(--warn); color: #000; }
+  .pill.medium { background: #fb923c; color: #000; }
+  .pill.low { background: var(--ok); color: #000; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  li:last-child { border-bottom: none; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  /* Visible focus indicator — WCAG 2.2 §2.4.7 + §2.4.13 (≥3:1 contrast). */
+  a:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  /* Skip-to-content link — appears on first Tab press. */
+  .skip-link {
+    position: absolute;
+    top: -100px;
+    left: 8px;
+    padding: 8px 12px;
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+    border-radius: 4px;
+    text-decoration: none;
+    z-index: 1000;
+  }
+  .skip-link:focus { top: 8px; }
+  /* Min target size — WCAG 2.5.8 + Material 3 (48×48 dp). */
+  a, button { min-height: 32px; padding: 4px 6px; display: inline-block; }
+  .empty { color: var(--unknown); font-style: italic; }
+  .footer { margin-top: 32px; color: var(--unknown); font-size: 11px;
+            text-align: right; }
+  code { background: var(--bg); padding: 2px 4px; border-radius: 3px;
+         color: var(--warn); font-size: 11px; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+<h1>🛡️ CortexAgent — Security Dashboard</h1>
+<main id="main">
+
+<h2>Hardening Posture (live)</h2>
+<div id="hardening-grid" class="grid">
+  <div class="panel"><div class="empty">loading…</div></div>
+</div>
+
+<h2>Recent Critical / High CVEs (last 7d)</h2>
+<div id="cve-panel" class="panel">
+  <div class="empty">loading…</div>
+</div>
+
+<h2>SOAR — Last 5 Playbook Runs</h2>
+<div id="soar-panel" class="panel">
+  <div class="empty">loading…</div>
+</div>
+
+<h2>SIEM Counts (live)</h2>
+<div id="siem-panel" class="panel">
+  <div class="empty">loading…</div>
+</div>
+
+<div class="footer">
+  CortexAgent security pipeline · NVD + KEV + EPSS + GHSA + OSV → SIEM → SOAR ·
+  data refreshes every 60s ·
+  endpoints: <code>/api/siem/dashboard</code>, <code>/api/hardening/status</code>
+</div>
+
+<script>
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+const headers = TOKEN ? { "Authorization": "Bearer " + TOKEN } : {};
+
+async function fetchJSON(path) {
+  const r = await fetch(path, { headers });
+  if (!r.ok) throw new Error(path + " " + r.status);
+  return r.json();
+}
+
+function pill(status) {
+  const cls = ["ok","warn","fail","unknown","critical","high","medium","low"].includes(status) ? status : "unknown";
+  return `<span class="pill ${cls}">${status.toUpperCase()}</span>`;
+}
+
+async function renderHardening() {
+  try {
+    const d = await fetchJSON("/api/hardening/status");
+    const grid = document.getElementById("hardening-grid");
+    grid.innerHTML = "";
+    const subs = d.subsystems || {};
+    for (const [name, v] of Object.entries(subs)) {
+      const panel = document.createElement("div");
+      panel.className = "panel";
+      panel.innerHTML = `
+        <div class="head"><strong>${name}</strong>${pill(v.status)}</div>
+        <div style="font-size:12px">${v.summary}</div>
+      `;
+      grid.appendChild(panel);
+    }
+  } catch (e) {
+    document.getElementById("hardening-grid").innerHTML = `<div class="empty">error: ${e.message}</div>`;
+  }
+}
+
+async function renderCve() {
+  try {
+    const d = await fetchJSON("/api/siem/dashboard");
+    const panel = document.getElementById("cve-panel");
+    const items = d.top_critical || [];
+    if (items.length === 0) {
+      panel.innerHTML = `<div class="empty">no critical CVEs in local cache</div>`;
+      return;
+    }
+    panel.innerHTML = "<ul>" + items.map(c => {
+      const detail = (c.detail || "").slice(0, 200);
+      const link = c.nvd_url ? `<a href="${c.nvd_url}" target="_blank" rel="noopener">NVD ↗</a>` : "";
+      return `<li>${pill(c.severity)} ${detail} ${link}</li>`;
+    }).join("") + "</ul>";
+  } catch (e) {
+    document.getElementById("cve-panel").innerHTML = `<div class="empty">error: ${e.message}</div>`;
+  }
+}
+
+async function renderSoar() {
+  try {
+    const d = await fetchJSON("/api/siem/dashboard");
+    const panel = document.getElementById("soar-panel");
+    const items = d.soar_recent || [];
+    if (items.length === 0) {
+      panel.innerHTML = `<div class="empty">no SOAR runs yet</div>`;
+      return;
+    }
+    panel.innerHTML = "<ul>" + items.map(r => {
+      const ts = r.ts || "";
+      const id = r.playbook_id || "?";
+      const result = (r.result || "").slice(0, 100);
+      return `<li><code>${ts}</code> ${id} → ${result}</li>`;
+    }).join("") + "</ul>";
+  } catch (e) {
+    document.getElementById("soar-panel").innerHTML = `<div class="empty">error: ${e.message}</div>`;
+  }
+}
+
+async function renderSiem() {
+  try {
+    const d = await fetchJSON("/api/siem/stats");
+    const panel = document.getElementById("siem-panel");
+    if (!d.ok) { panel.innerHTML = `<div class="empty">${d.reason}</div>`; return; }
+    const sev = d.by_severity || {};
+    const src = d.by_source || {};
+    panel.innerHTML = `
+      <div style="font-size:14px;margin-bottom:8px">Total: <strong>${d.total}</strong> findings</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><strong>By severity</strong><ul>
+          ${Object.entries(sev).map(([k,v]) => `<li>${k}: ${v}</li>`).join("")}
+        </ul></div>
+        <div><strong>By source</strong><ul>
+          ${Object.entries(src).map(([k,v]) => `<li>${k}: ${v}</li>`).join("")}
+        </ul></div>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById("siem-panel").innerHTML = `<div class="empty">error: ${e.message}</div>`;
+  }
+}
+
+async function tick() {
+  await Promise.all([renderHardening(), renderCve(), renderSoar(), renderSiem()]);
+}
+tick();
+setInterval(tick, 60_000);
+</script>
+</main>
+</body>
+</html>

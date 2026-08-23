@@ -118,8 +118,8 @@ def run_test(name: str, func, count: int = 10, parallel: int = 5) -> Dict:
     
     # Save results
     test_file = TEST_RESULTS_DIR / f"{name}_{int(time.time())}.json"
-    with open(test_file, "w") as f:
-        json.dump(results, f, indent=2, default=str)
+    with open(test_file, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False, default=str)
     
     # Print summary
     log(f"Test '{name}' complete:", GREEN)
@@ -268,7 +268,7 @@ def test_disk_io(i: int) -> Dict:
         tmp.replace(test_file)
         
         # Read it back
-        with open(test_file, "r") as f:
+        with open(test_file, "r", encoding="utf-8") as f:
             read_data = json.loads(f.read())
         
         # Clean up
