@@ -35,6 +35,7 @@ class BrowserPool:
         self._idle: List[str] = []          # idle target ids
         self._busy: set = set()
         self._all: List[str] = []           # every tab we manage
+        self._opened: set = set()           # tabs the pool itself created (must close)
         self._init = False
 
     def _init_pool(self) -> None:
@@ -45,11 +46,13 @@ class BrowserPool:
         for t in tabs[: self.max_workers]:
             self._all.append(t["id"])
             self._idle.append(t["id"])
-        # Open extra tabs if we need more workers than tabs exist.
+        # Open extra tabs if we need more workers than tabs exist. These are
+        # tracked in _opened so close() reaps them — adopted tabs are left alone.
         while len(self._all) < self.max_workers:
             tid = self.bc.new_tab("about:blank")
             self._all.append(tid)
             self._idle.append(tid)
+            self._opened.add(tid)
         # Ensure stealth is applied to each (browser_control._ensure_stealth).
         for tid in self._all:
             try:
@@ -81,10 +84,27 @@ class BrowserPool:
         self._init_pool()
         return self
 
-    def __exit__(self, *exc) -> None:
-        # Leave tabs open for reuse; just clear busy state.
+    def close(self) -> None:
+        """Close only the tabs the pool opened (not adopted ones). Idempotent.
+
+        This is the teardown that was missing: without it, every run_parallel()
+        call that needs more workers than existing tabs leaves about:blank tabs
+        behind in the browser tab strip. Adopted tabs are the operator's, so we
+        never touch them.
+        """
+        for tid in list(self._opened):
+            try:
+                self.bc.close_tab(tid)
+            except Exception:
+                pass
+        self._opened.clear()
+        self._all = [t for t in self._all if t not in self._opened]
+        self._idle = [t for t in self._idle if t not in self._opened]
         self._busy.clear()
-        self._idle = list(self._all)
+
+    def __exit__(self, *exc) -> None:
+        # Close the tabs we created; leave adopted tabs for the operator.
+        self.close()
 
 
 def run_parallel(bc: Any, tasks: List[Dict[str, Any]],
@@ -109,7 +129,7 @@ def run_parallel(bc: Any, tasks: List[Dict[str, Any]],
             pool.release(tid)
 
     results: List[Any] = [None] * len(tasks)
-    with ThreadPoolExecutor(max_workers=pool.max_workers) as ex:
+    with pool, ThreadPoolExecutor(max_workers=pool.max_workers) as ex:
         future_to_idx = {ex.submit(_runner, t): i for i, t in enumerate(tasks)}
         for fut in as_completed(future_to_idx):
             idx = future_to_idx[fut]
