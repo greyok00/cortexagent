@@ -45,7 +45,7 @@ class TestHarness:
 
     def run_dry(self, prompt: str, preset: str = "simple",
                 settings_used: str = "active", slimtoken_on: bool = True,
-                context_window: int = 156000, max_output_tokens: int = 3431,
+                context_window: int = 131072, max_output_tokens: int = 3431,
                 model: str = "unknown", route: str = "cortex-big",
                 backend: str = "unknown",
                 ) -> M.TestRun:

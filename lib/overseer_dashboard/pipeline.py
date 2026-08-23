@@ -239,7 +239,7 @@ class DryRunResult:
         self.elapsed_ms = elapsed_ms
 
 
-def dry_run(prompt: str, context_window: int = 156000,
+def dry_run(prompt: str, context_window: int = 131072,
             max_output_tokens: int = 3431, policy: str = "balanced",
             preset: str = "simple", dedup: bool = True,
             history_compact_threshold: int = 500,

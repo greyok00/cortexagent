@@ -316,8 +316,8 @@ def _load_session_model() -> tuple:
     correct size — without this, the cortex CLI gets stuck talking to a 32k
     server while the daemon thinks everything is fine.
     NOTE: llama.cpp rounds n_ctx UP to a multiple of 32, so the reported
-    n_ctx is normally a little LARGER than CFG.big_ctx (e.g. 98336 vs the
-    requested 98304). An exact-match check would therefore reload on every
+    n_ctx is normally a little LARGER than CFG.big_ctx (e.g. 131104 vs the
+    requested 131072). An exact-match check would therefore reload on every
     session start, keeping :8080 down and spamming "Connection refused".
     Only reload when the actual ctx is genuinely SMALLER than wanted.
     Otherwise probe free VRAM (glitch-rejecting: max of 3 reads) and log
