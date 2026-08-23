@@ -1,0 +1,95 @@
+/* ──────────────────────────────────────────────────────────
+   TOKENS — ~55 CSS custom properties
+   Defaults (graphite + amber). Themes in themes.css override
+   these via [data-theme="..."] selectors.
+   ──────────────────────────────────────────────────────────
+*/
+
+:root,
+[data-theme="neutral"] {
+  /* color · surface */
+  --el-bg:           #0d1015;
+  --el-panel:        #161a21;
+  --el-panel-2:      #1c2128;
+  --el-panel-3:      #252b35;
+
+  /* color · line */
+  --el-line:         #2a323d;
+  --el-line-2:       #1f2630;
+  --el-line-strong:  #3a4452;
+
+  /* color · ink */
+  --el-ink:          #dde6f0;
+  --el-ink-soft:     #8b9aaa;
+  --el-mute:         #5a6675;
+  --el-on-accent:    #0d1015;
+
+  /* color · accent */
+  --el-accent:        #ffb000;
+  --el-accent-hover:  #ffc940;
+  --el-accent-soft:   rgba(255, 176, 0, 0.12);
+
+  /* color · status */
+  --el-ok:    #5fe09a;
+  --el-warn:  #ffd166;
+  --el-fail:  #ff5a52;
+  --el-info:  #58a6ff;
+  --el-live:  #00e0d4;
+  --el-teal:  #4ec5b9;
+
+  /* color · shadow + focus */
+  --el-shadow-1: 0 1px 2px rgba(0,0,0,.25);
+  --el-shadow-2: 0 4px 12px rgba(0,0,0,.35);
+  --el-shadow-3: 0 8px 32px rgba(0,0,0,.45);
+  --el-overlay:  rgba(0,0,0,.55);
+  --el-focus-ring: rgba(255, 176, 0, .55);
+
+  /* typography · family */
+  --el-font-body:    'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --el-font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --el-font-mono:    'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* typography · feature */
+  --el-font-feat: "tnum" 1, "ss01" 1;
+
+  /* typography · size */
+  --el-fs-xs:  10px;
+  --el-fs-sm:  11px;
+  --el-fs-md:  13px;
+  --el-fs-lg:  16px;
+  --el-fs-xl:  24px;
+  --el-fs-2xl: 36px;
+
+  /* space */
+  --el-space-1: 4px;
+  --el-space-2: 8px;
+  --el-space-3: 12px;
+  --el-space-4: 16px;
+  --el-space-5: 24px;
+  --el-space-6: 32px;
+
+  /* radius */
+  --el-r-none: 0;
+  --el-r-sm:   6px;
+  --el-r-md:   10px;
+  --el-r-lg:   14px;
+  --el-r-xl:   20px;
+  --el-r-pill: 999px;
+
+  /* border */
+  --el-bw:   1px;
+  --el-bw-2: 2px;
+
+  /* motion */
+  --el-dur-fast: 120ms;
+  --el-dur-base: 200ms;
+  --el-dur-slow: 400ms;
+  --el-ease:     cubic-bezier(.4, 0, .2, 1);
+
+  /* size · affordance */
+  --el-size-xs: 24px;
+  --el-size-sm: 32px;
+  --el-size-md: 40px;
+  --el-size-lg: 48px;
+  --el-size-xl: 56px;
+}

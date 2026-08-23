@@ -1,0 +1,164 @@
+/* ──────────────────────────────────────────────────────────
+   INPUTS — 10 primitives
+   ──────────────────────────────────────────────────────────
+*/
+
+/* ── text input ── */
+.el-input {
+  padding: 9px 14px;
+  background: var(--el-panel);
+  border: var(--el-bw) solid color-mix(in oklab, var(--el-line) 70%, transparent);
+  color: var(--el-ink);
+  font-family: var(--el-font-body);
+  font-size: var(--el-fs-md);
+  font-weight: 400;
+  border-radius: var(--el-r-md);
+  outline: none;
+  width: 100%;
+  transition: border-color var(--el-dur-fast) var(--el-ease), box-shadow var(--el-dur-fast) var(--el-ease);
+}
+.el-input:focus { border-color: var(--el-accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--el-accent) 18%, transparent); }
+.el-input::placeholder { color: var(--el-mute); font-weight: 400; }
+.el-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── textarea ── */
+.el-textarea {
+  padding: var(--el-space-3) var(--el-space-4);
+  background: var(--el-panel);
+  border: var(--el-bw) solid color-mix(in oklab, var(--el-line) 70%, transparent);
+  color: var(--el-ink);
+  font-family: var(--el-font-body);
+  font-size: var(--el-fs-md);
+  border-radius: var(--el-r-md);
+  outline: none;
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  line-height: 1.6;
+  transition: border-color var(--el-dur-fast) var(--el-ease), box-shadow var(--el-dur-fast) var(--el-ease);
+}
+.el-textarea:focus { border-color: var(--el-accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--el-accent) 18%, transparent); }
+
+/* ── search-bar (input + dropdown + button combo) ── */
+.el-search-bar {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--el-space-2);
+  padding: var(--el-space-2);
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-line);
+  border-radius: var(--el-r-md);
+  align-items: center;
+}
+
+/* ── prompt (multi-line, with prefix) ── */
+.el-prompt {
+  display: block;
+  width: 100%;
+  padding: var(--el-space-3);
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-line);
+  color: var(--el-ink);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  border-radius: var(--el-r-sm);
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+}
+.el-prompt::before { content: "› "; color: var(--el-accent); }
+
+/* ── file upload ── */
+.el-file-upload {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center;
+  gap: var(--el-space-2);
+  padding: var(--el-space-5);
+  border: 2px dashed color-mix(in oklab, var(--el-line-strong) 70%, transparent);
+  background: color-mix(in oklab, var(--el-panel) 70%, transparent);
+  border-radius: var(--el-r-lg);
+  color: var(--el-ink-soft);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--el-dur-fast) var(--el-ease), background var(--el-dur-fast) var(--el-ease);
+}
+.el-file-upload:hover, .el-file-upload.over { border-color: var(--el-accent); background: color-mix(in oklab, var(--el-accent) 10%, var(--el-panel)); }
+.el-file-upload .icon { font-size: var(--el-fs-xl); color: var(--el-mute); }
+.el-file-upload .hint { font-size: var(--el-fs-sm); }
+
+/* ── color swatch input (color picker) ── */
+input.el-swatch-input {
+  width: 40px; height: 28px;
+  padding: 0;
+  border: var(--el-bw) solid var(--el-line);
+  background: var(--el-panel);
+  border-radius: var(--el-r-sm);
+  cursor: pointer;
+}
+input.el-swatch-input::-webkit-color-swatch-wrapper { padding: 0; }
+input.el-swatch-input::-webkit-color-swatch { border: none; border-radius: 2px; }
+
+/* ── signature pad ── */
+.el-signature-pad {
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-line);
+  border-radius: var(--el-r-sm);
+  cursor: crosshair;
+  display: block;
+}
+
+/* ── audio waveform ── */
+.el-audio-waveform {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 48px;
+  padding: var(--el-space-2);
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-line);
+  border-radius: var(--el-r-sm);
+}
+.el-audio-waveform .bar {
+  flex: 1;
+  background: var(--el-accent);
+  border-radius: 1px;
+  min-height: 2px;
+  opacity: 0.75;
+}
+.el-audio-waveform .bar.played { background: var(--el-live); opacity: 1; }
+
+/* ── code block ── */
+.el-code-block {
+  display: block;
+  padding: var(--el-space-4);
+  background: var(--el-panel-2);
+  border: var(--el-bw) solid var(--el-line);
+  border-radius: var(--el-r-md);
+  color: var(--el-ink);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  overflow-x: auto;
+  line-height: 1.5;
+}
+.el-code-block .el-keyword { color: var(--el-accent); font-weight: 700; }
+.el-code-block .el-string  { color: var(--el-ok); }
+.el-code-block .el-comment { color: var(--el-mute); font-style: italic; }
+.el-code-block .el-number  { color: var(--el-warn); }
+.el-code-block .el-fn      { color: var(--el-info); }
+
+/* ── kbd input (text input showing keyboard shortcut) ── */
+input.el-kbd-input {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--el-panel-2);
+  border: var(--el-bw) solid var(--el-line-strong);
+  border-bottom-width: 2px;
+  color: var(--el-ink);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-sm);
+  border-radius: var(--el-r-sm);
+  outline: none;
+  min-width: 100px;
+  text-align: center;
+}
+input.el-kbd-input:focus { border-color: var(--el-accent); }

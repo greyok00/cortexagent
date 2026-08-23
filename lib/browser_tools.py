@@ -37,8 +37,14 @@ def _schema(description: str, properties: Dict[str, Any],
         "type": "object", "properties": properties, "required": required}}
 
 
-_TAB = {"type": ["integer", "string", "null"],
-        "description": "Target tab: index, URL prefix, or omit for the first tab."}
+# 2026-08-21 user feedback: "the model keeps passing tab=16 and other
+# ints — they're inventions. Make it string-only." Accepting integer
+# made the model think index-style addressing was OK; resolve_tab()
+# will fall back to tabs[0] on miss which is silently wrong. The
+# correct way to address a tab is by URL prefix or CDP target id —
+# both strings.
+_TAB = {"type": ["string", "null"],
+        "description": "Target tab: URL prefix, CDP target id, or omit for the first tab."}
 
 # Same schemas as playwright_brave_mcp.py TOOLS (kept in sync).
 _TOOL_DEFS = [
@@ -208,7 +214,17 @@ def register_browser_tools() -> int:
     for name, desc, props, required in _TOOL_DEFS:
         if name in TOOLS:
             continue
-        register_tool(name, _schema(desc, props, required), _HANDLERS[name],
+        # Wrap the handler so the registry's `handler(**args)` call resolves
+        # to a single `args` positional — our handlers expect `args: dict`,
+        # not `**kwargs`. Without this wrap, a tool call like
+        # brave_snapshot(tab=16) blows up with
+        # `_handle_snapshot() got an unexpected keyword argument 'tab'`.
+        def _make_wrapped(name=name):
+            def _wrapped(**kwargs):
+                return _HANDLERS[name](kwargs)
+            _wrapped.__name__ = f"_wrapped_{name}"
+            return _wrapped
+        register_tool(name, _schema(desc, props, required), _make_wrapped(),
                       priority=1)
         count += 1
     return count

@@ -5,7 +5,6 @@ Three UI surfaces all read the same backing data (overseer state, daemon
 status, big-model steps, minify stats, queue, schedule, plan, workflow):
 
   - lib/tray_dashboard.py — Tkinter tray popout (1Hz polling, compact view)
-  - lib/webui.py          — :8090 webui dashboard (5s polling, full schema)
   - lib/statusline.py     — CLI bottom bar (per-call, minify-only slice)
 
 Each previously wrote its own _read_json + key names, which meant adding a
@@ -41,7 +40,7 @@ def _read_json(path: Path, default: Any = None) -> Any:
     if default is None:
         default = {}
     try:
-        with path.open() as f:
+        with path.open(encoding="utf-8") as f:
             d = json.load(f)
         return d if d else default
     except Exception:

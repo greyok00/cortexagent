@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Display · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-display.css">
+  <link rel="stylesheet" href="../elements-size.css">
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Display</strong>
+    <select id="theme-picker" data-theme-picker>
+      <option>neutral</option><option>polaroid</option><option>cockpit</option>
+      <option>cockpit-paper</option><option>console</option><option>compact</option>
+      <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+      <option>agent-history</option><option>terminal</option><option>swiss</option>
+    </select>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>Display primitives</h1>
+
+    <h2>Pill (status chip)</h2>
+    <div class="el-cluster">
+      <span class="el-pill">neutral</span>
+      <span class="el-pill ok">OK</span>
+      <span class="el-pill warn">WARN</span>
+      <span class="el-pill fail">FAIL</span>
+      <span class="el-pill live">LIVE</span>
+      <span class="el-pill info">INFO</span>
+      <span class="el-pill ghost">ghost</span>
+    </div>
+
+    <h2>Dot</h2>
+    <div class="el-cluster">
+      <span class="el-dot"></span>
+      <span class="el-dot ok"></span>
+      <span class="el-dot warn"></span>
+      <span class="el-dot fail"></span>
+      <span class="el-dot live"></span>
+      <span class="el-dot info"></span>
+    </div>
+
+    <h2>Big number</h2>
+    <div class="el-cluster">
+      <div class="el-big-num">42 <span class="total">/100</span><span class="lbl">total</span></div>
+      <div class="el-big-num ok">99.9<span class="lbl">%</span></div>
+      <div class="el-big-num warn">3 <span class="lbl">warnings</span></div>
+      <div class="el-big-num fail">12 <span class="lbl">errors</span></div>
+    </div>
+
+    <h2>Gauge</h2>
+    <div class="el-cluster">
+      <div class="el-gauge"><div class="name">CPU</div><div class="val">42%</div></div>
+      <div class="el-gauge ok"><div class="name">MEM</div><div class="val">99%</div></div>
+      <div class="el-gauge warn"><div class="name">DSK</div><div class="val">88%</div></div>
+      <div class="el-gauge fail"><div class="name">NET</div><div class="val">12%</div></div>
+    </div>
+
+    <h2>Sparkline</h2>
+    <div class="el-cluster">
+      <span class="el-sparkline">
+        <svg width="120" height="32" viewBox="0 0 120 32">
+          <polyline points="0,24 12,18 24,22 36,12 48,16 60,8 72,14 84,6 96,10 108,4 120,8"
+            stroke="currentColor" fill="none" stroke-width="1.5" style="color:var(--el-accent)"/>
+        </svg>
+      </span>
+    </div>
+
+    <h2>Barograph</h2>
+    <div class="el-barograph" style="width:280px">
+      <span class="bar" style="height:30%"></span><span class="bar" style="height:50%"></span>
+      <span class="bar" style="height:40%"></span><span class="bar warn" style="height:80%"></span>
+      <span class="bar" style="height:60%"></span><span class="bar" style="height:30%"></span>
+      <span class="bar warn" style="height:70%"></span><span class="bar" style="height:45%"></span>
+      <span class="bar fail" style="height:90%"></span><span class="bar" style="height:55%"></span>
+    </div>
+
+    <h2>Kbd</h2>
+    <div class="el-cluster">
+      <kbd class="el-kbd">⌘</kbd> + <kbd class="el-kbd">K</kbd>
+      <kbd class="el-kbd">Ctrl</kbd> + <kbd class="el-kbd">Shift</kbd> + <kbd class="el-kbd">P</kbd>
+    </div>
+
+    <h2>Badge</h2>
+    <div class="el-cluster">
+      <span class="el-badge">42</span>
+      <span class="el-badge ok">OK</span>
+      <span class="el-badge warn">3</span>
+      <span class="el-badge fail">!</span>
+      <span class="el-badge live">LIVE</span>
+    </div>
+
+    <h2>Avatar</h2>
+    <div class="el-cluster">
+      <span class="el-avatar">JL</span>
+      <span class="el-avatar" style="background:var(--el-warn)">MK</span>
+      <span class="el-avatar" style="background:var(--el-fail)">RS</span>
+      <span class="el-avatar">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E" alt="">
+        <span class="el-dot live"></span>
+      </span>
+    </div>
+
+    <h2>Progress (linear)</h2>
+    <div class="el-stack" style="width:280px">
+      <div class="el-progress"><span class="fill" style="width:42%"></span></div>
+      <div class="el-progress warn"><span class="fill" style="width:75%"></span></div>
+      <div class="el-progress fail"><span class="fill" style="width:90%"></span></div>
+      <div class="el-progress ok"><span class="fill" style="width:99%"></span></div>
+    </div>
+
+    <h2>Progress (circular SVG)</h2>
+    <div class="el-cluster">
+      <div class="el-progress circular">
+        <svg width="48" height="48">
+          <circle cx="24" cy="24" r="20" fill="none" stroke="var(--el-line)" stroke-width="4"/>
+          <circle cx="24" cy="24" r="20" fill="none" stroke="var(--el-accent)" stroke-width="4"
+            stroke-dasharray="125.6" stroke-dashoffset="60" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <h2>Skeleton</h2>
+    <div class="el-stack" style="width:280px">
+      <span class="el-skeleton"></span>
+      <span class="el-skeleton lg"></span>
+      <span class="el-skeleton circle" style="width:40px;height:40px"></span>
+    </div>
+
+    <h2>Spinner</h2>
+    <div class="el-cluster"><span class="el-spinner"></span></div>
+
+    <h2>Empty state</h2>
+    <div class="el-empty" style="border:1px dashed var(--el-line);border-radius:var(--el-r-md)">
+      <span class="el-icon">○</span>
+      <span class="el-msg">No findings</span>
+      <span class="el-hint">Connect a source to populate</span>
+    </div>
+
+    <h2>Rating</h2>
+    <div class="el-cluster">
+      <span class="el-rating"><span class="star on">★</span><span class="star on">★</span><span class="star on">★</span><span class="star on">★</span><span class="star">★</span></span>
+    </div>
+
+    <h2>Swatch</h2>
+    <div class="el-cluster">
+      <span class="el-swatch" style="color:#b8693c"></span>
+      <span class="el-swatch rounded" style="color:#0e7c86"></span>
+      <span class="el-swatch lg" style="color:#d4a85a"></span>
+      <span class="el-swatch xs" style="color:#ffb000"></span>
+    </div>
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

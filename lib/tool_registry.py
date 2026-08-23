@@ -439,6 +439,46 @@ def _ingest_domain(domain: str, source: str, text: str) -> Dict[str, Any]:
     return {"ok": False, "output": "", "error": r.get("error", "ingest failed")}
 
 
+def _coding_practices(query: str, category: str = "", limit: int = 10) -> Dict[str, Any]:
+    """Search the existing Coding_Practices knowledge base (practices extracted
+    from the security books). Uses the DB that already exists — no re-ingest."""
+    if not query or not query.strip():
+        return {"ok": True, "output": "(no results)", "error": ""}
+    try:
+        import sqlite3
+        from pathlib import Path
+        db = Path.home() / ".config/cortexllm" / "cortexllm.db"
+        if not db.exists():
+            return {"ok": False, "output": "", "error":
+                    "coding_practices failed: DB not found"}
+        conn = sqlite3.connect(str(db))
+        try:
+            sql = ("SELECT practice, category, description, source, priority "
+                   "FROM Coding_Practices "
+                   "WHERE (practice LIKE ? OR description LIKE ?)")
+            params: List[Any] = [f"%{query}%", f"%{query}%"]
+            if category:
+                sql += " AND category = ?"
+                params.append(category)
+            sql += (" ORDER BY CASE priority WHEN 'critical' THEN 0 "
+                    "WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END "
+                    "LIMIT ?")
+            params.append(int(limit))
+            rows = conn.execute(sql, params).fetchall()
+        finally:
+            conn.close()
+        if not rows:
+            return {"ok": True, "output": "(no results)", "error": ""}
+        lines = []
+        for practice, cat, desc, source, priority in rows:
+            lines.append(f"[{priority}] [{cat}] {practice} — {desc} "
+                         f"(source: {source})")
+        return {"ok": True, "output": "\n".join(lines), "error": ""}
+    except Exception as e:
+        return {"ok": False, "output": "", "error":
+                f"coding_practices failed: {e}"}
+
+
 def _describe_image(image: str, prompt: str = "Describe this image in detail.") -> Dict[str, Any]:
     """Describe an image or answer a VQA question about it (Moondream, GPU-when-budget-allows)."""
     try:
@@ -474,12 +514,6 @@ def _parse_document(file: str) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": f"parse_document failed: {r.get('error', 'parse failed')}"}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"parse_document failed: {e}"}
-
-
-def _not_implemented(name: str) -> Callable:
-    def _stub(**kwargs: Any) -> Dict[str, Any]:
-        return {"ok": False, "output": "", "error": f"{name}: not implemented yet"}
-    return _stub
 
 
 # ── Tool schemas ────────────────────────────────────────────────────────────
@@ -520,7 +554,8 @@ def _register_all() -> None:
         {"prompt": {"type": "string", "description": "media prompt"}},
         ["prompt"]), _generate_media, trust="medium")
     register_tool("web_search", _schema(
-        "Search the web (firecrawl if configured, else DuckDuckGo)",
+        "Search the web: tries local SearXNG (:9999 then :8888) first, "
+        "then Firecrawl (if FIRECRAWL_API_KEY is set), then DuckDuckGo HTML fallback",
         {"query": {"type": "string", "description": "search query"},
          "limit": {"type": "integer", "description": "max results (default 5)"}},
         ["query"]), _web_search, trust="high")
@@ -530,6 +565,12 @@ def _register_all() -> None:
          "query": {"type": "string", "description": "search query"},
          "limit": {"type": "integer", "description": "max results (default 10)"}},
         ["domain", "query"]), _rag_query, trust="high")
+    register_tool("coding_practices", _schema(
+        "Search the Coding Practices knowledge base (practices extracted from the security books)",
+        {"query": {"type": "string", "description": "search term"},
+         "category": {"type": "string", "description": "optional category filter (e.g. Network Security, Forensics)"},
+         "limit": {"type": "integer", "description": "max results (default 10)"}},
+        ["query"]), _coding_practices, trust="high")
     register_tool("describe_image", _schema(
         "Describe an image or answer a question about it (returns text)",
         {"image": {"type": "string", "description": "path to the image file"},
@@ -613,7 +654,7 @@ for tdef in _MCP_TOOL_DEFS:
     }
     register_tool(tdef["name"], schema, _conv_tool(tdef["name"]), priority=5)
 
-print(f"Registered {len(_MCP_TOOL_DEFS)} converted MCP tools")
+
 def _smoke() -> int:
     """Self-test: schema shape, run_command, query_llm, stubs."""
     fails = 0
@@ -774,54 +815,6 @@ def main() -> int:
     print("Usage: python3 lib/tool_registry.py --smoke")
     return 0
 
-
-
-# Register session coordinator tools (inter-session awareness)
-from lib.session_coordinator import (
-    get_coordinator as _get_coord,
-    SessionCoordinator as _SessionCoord,
-)
-
-def _session_handler(action, message=None, level="info"):
-    """Handle session coordination actions."""
-    try:
-        coord = _get_coord("cortexagent")
-        if action == "broadcast":
-            result = coord.broadcast(status=message or "working", task=message or "working")
-        elif action == "poll":
-            result = {"sessions": coord.poll(), "summary": coord.summarize_activity()}
-        elif action == "log":
-            result = coord.log_awareness(message or "", level)
-        else:
-            result = {"error": f"Unknown action: {action}"}
-        return result
-    except Exception as e:
-        return {"error": str(e)}
-
-_SESSION_TOOL_DEFS = [
-    {"name": "session_broadcast", "desc": "Broadcast session status to other sessions",
-     "params": {"type": "object", "properties": {
-         "status": {"type": "string", "enum": ["idle", "working", "thinking", "blocked"]},
-         "task": {"type": "string"}
-     }, "required": ["status"]}},
-    {"name": "session_check", "desc": "Check what other sessions are doing",
-     "params": {"type": "object", "properties": {}}},
-    {"name": "session_log", "desc": "Log inter-session awareness message",
-     "params": {"type": "object", "properties": {
-         "message": {"type": "string"},
-         "level": {"type": "string", "enum": ["info", "warn", "critical"], "default": "info"}
-     }, "required": ["message"]}},
-]
-
-def _session_tool_handler(name, **kwargs):
-    """Handle session coordination tool calls."""
-    if name == "session_broadcast":
-        return _session_handler("broadcast", message=kwargs.get("status"), level="info")
-    elif name == "session_check":
-        return _session_handler("poll")
-    elif name == "session_log":
-        return _session_handler("log", message=kwargs.get("message"), level=kwargs.get("level", "info"))
-    return {"error": f"Unknown session tool: {name}"}
 
 if __name__ == "__main__":
     sys.exit(main())

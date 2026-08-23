@@ -1,188 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="cockpit">
 <head>
-<meta charset="utf-8">
-<title>Security · split variant</title>
-<link rel="stylesheet" href="../_elements/elements.css">
-<style>
-  /* Cockpit Panel — aviation HMI */
-  :root {
-    --el-bg: #0a1218;
-    --el-panel: #0f1a22;
-    --el-panel-2: #14242e;
-    --el-line: #1c2a36;
-    --el-ink: #dde6f0;
-    --el-ink-soft: #6b8497;
-    --el-accent: #ffb000;
-    --el-ok: #5fe09a;
-    --el-warn: #ffd166;
-    --el-fail: #ff5a52;
-    --el-live: #ffb000;
-    --el-font-body: 'JetBrains Mono', 'Courier New', monospace;
-    --el-font-display: 'JetBrains Mono', 'Courier New', monospace;
-    --el-font-mono: 'JetBrains Mono', 'Courier New', monospace;
-  }
-  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 13px/1.4 var(--el-font-body); }
-  .layout { width: 1280px; max-width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; border-bottom: 2px solid var(--el-line); margin-bottom: 8px; }
-  .head h1 { font: 700 20px/1 var(--el-font-display); margin: 0; letter-spacing: 0.04em; }
-  .head h1 small { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
-  .head .gauge-strip { display: flex; gap: 8px; }
-  .left, .right { background: var(--el-panel); border: 1px solid var(--el-line); padding: 14px; min-height: 760px; }
-  .left h2, .right h2 { font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--el-line); }
-  .timeline { display: flex; flex-direction: column; }
-  .ev { display: grid; grid-template-columns: 86px 60px 110px 1fr; gap: 10px; padding: 8px 6px; border-bottom: 1px dashed var(--el-line); cursor: pointer; font: 11px var(--el-font-mono); }
-  .ev:hover { background: var(--el-panel-2); }
-  .ev.sel { background: var(--el-panel-2); border-left: 3px solid var(--el-accent); padding-left: 10px; }
-  .ev .t { color: var(--el-ink-soft); }
-  .ev .lvl { font-weight: 700; padding: 2px 4px; text-align: center; font-size: 10px; }
-  .ev.CRIT .lvl { color: var(--el-fail); border: 1px solid var(--el-fail); }
-  .ev.HIGH .lvl { color: var(--el-warn); border: 1px solid var(--el-warn); }
-  .ev.OK .lvl { color: var(--el-ok); border: 1px solid var(--el-ok); }
-  .ev .rule { color: var(--el-accent); font-weight: 700; }
-  .right .tabs { display: flex; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid var(--el-line); }
-  .right .tabs button { background: transparent; border: 1px solid var(--el-line); border-bottom: 0; color: var(--el-ink-soft); padding: 8px 16px; font: 11px var(--el-font-mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
-  .right .tabs button.on { background: var(--el-panel-2); color: var(--el-accent); border-color: var(--el-accent); }
-  .right .tab-body { padding: 10px 0; }
-  .rule-row { display: grid; grid-template-columns: 1fr 70px 100px; gap: 10px; padding: 8px 6px; border-bottom: 1px dashed var(--el-line); font: 11px var(--el-font-mono); align-items: center; }
-  .rule-row .name { color: var(--el-accent); font-weight: 700; }
-  .rule-row .cnt { color: var(--el-ink-soft); text-align: right; }
-  .rule-row .act { display: flex; gap: 4px; }
-  .rule-row .act button { background: transparent; border: 1px solid var(--el-line); color: var(--el-ink); padding: 3px 8px; cursor: pointer; font: 10px var(--el-font-mono); }
-  .rule-row .act button:hover { border-color: var(--el-accent); color: var(--el-accent); }
-  .stage-row { display: grid; grid-template-columns: 1fr 80px 80px; gap: 10px; padding: 10px 6px; border-bottom: 1px dashed var(--el-line); font: 11px var(--el-font-mono); align-items: center; }
-  .stage-row .name { color: var(--el-accent); font-weight: 700; }
-  .stage-row .stage { color: var(--el-warn); font-size: 10px; padding: 3px 8px; border: 1px solid var(--el-warn); text-align: center; }
-  .stage-row .act { display: flex; gap: 4px; }
-  .stage-row .act button { background: transparent; padding: 3px 10px; cursor: pointer; font: 11px var(--el-font-mono); }
-  .stage-row .act .ok { border: 1px solid var(--el-ok); color: var(--el-ok); }
-  .stage-row .act .no { border: 1px solid var(--el-fail); color: var(--el-fail); }
-  .hist-row { display: grid; grid-template-columns: 90px 1fr 70px 70px; gap: 8px; padding: 6px; border-bottom: 1px dashed var(--el-line); font: 11px var(--el-font-mono); align-items: center; }
-  .hist-row .t { color: var(--el-ink-soft); }
-  .hist-row .name { color: var(--el-accent); font-weight: 700; }
-  .hist-row .stat { color: var(--el-ink-soft); text-align: right; }
-</style>
+  <meta charset="utf-8">
+  <title>Security · split variant</title>
+  <link rel="stylesheet" href="../_elements/tokens.css">
+  <link rel="stylesheet" href="../_elements/themes.css">
+  <link rel="stylesheet" href="../_elements/base.css">
+  <link rel="stylesheet" href="../_elements/elements-display.css">
+  <link rel="stylesheet" href="../_elements/elements-lists.css">
+  <link rel="stylesheet" href="../_elements/elements-containers.css">
+  <link rel="stylesheet" href="../_elements/elements-size.css">
 </head>
-<body>
-<div class="layout">
+<body class="el-reset">
+<div class="el-full-frame" style="padding:var(--el-space-4)">
 
-  <div class="head">
-    <h1>Security · SIEM + SOAR <small>127.0.0.1:8093 · split-pane timeline + tabs</small></h1>
-    <div class="gauge-strip">
-      <span class="el-gauge fail"><span class="name">auditd</span><span class="val">✗</span></span>
-      <span class="el-gauge fail"><span class="name">nft</span><span class="val">✗</span></span>
-      <span class="el-gauge warn"><span class="name">firewall</span><span class="val">!</span></span>
-      <span class="el-gauge ok"><span class="name">dns</span><span class="val">✓</span></span>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:var(--el-space-3);border-bottom:2px solid var(--el-line);margin-bottom:var(--el-space-3)">
+    <h1 style="font:700 var(--el-fs-xl)/1 var(--el-font-display);margin:0;color:var(--el-accent);letter-spacing:0.04em">Security · SIEM + SOAR <small style="font:var(--el-fs-sm) var(--el-font-mono);color:var(--el-ink-soft);margin-left:var(--el-space-2)">127.0.0.1:8093 · cockpit HMI</small></h1>
+    <div class="el-cluster">
+      <div class="el-gauge fail"><div class="name">auditd</div><div class="val">✗</div></div>
+      <div class="el-gauge fail"><div class="name">nft</div><div class="val">✗</div></div>
+      <div class="el-gauge warn"><div class="name">firewall</div><div class="val">!</div></div>
+      <div class="el-gauge ok"><div class="name">dns</div><div class="val">✓</div></div>
     </div>
   </div>
 
-  <div class="left">
-    <h2>Timeline · 7 events · newest-first</h2>
-    <div class="timeline">
-      <div class="ev CRIT sel">
-        <span class="t">11:13:18</span><span class="lvl">CRIT</span><span class="rule">block-src</span>
-        <span>198.51.100.42 — KEV CVE-2025-30872 — 47 attempts / 60s</span>
-      </div>
-      <div class="ev CRIT">
-        <span class="t">11:02:54</span><span class="lvl">CRIT</span><span class="rule">nft-fail</span>
-        <span>drop rule missing — chain input · expected REJECT</span>
-      </div>
-      <div class="ev CRIT">
-        <span class="t">10:47:02</span><span class="lvl">CRIT</span><span class="rule">isolate-host</span>
-        <span>workstation-07 quarantined · auto-action</span>
-      </div>
-      <div class="ev HIGH">
-        <span class="t">10:18:33</span><span class="lvl">HIGH</span><span class="rule">auditd-overflow</span>
-        <span>rate limit hit — 22 events buffered · backpressure</span>
-      </div>
-      <div class="ev HIGH">
-        <span class="t">09:55:11</span><span class="lvl">HIGH</span><span class="rule">enrich-cve</span>
-        <span>CVE-2025-30901 added to feed · 3 affected packages</span>
-      </div>
-      <div class="ev HIGH">
-        <span class="t">09:22:54</span><span class="lvl">HIGH</span><span class="rule">scan-path</span>
-        <span>$PATH not set · fix attempted · ok on retry</span>
-      </div>
-      <div class="ev OK">
-        <span class="t">08:14:11</span><span class="lvl">OK</span><span class="rule">agent-run</span>
-        <span>Rule 401 vs 402 — admissibility · diff appended</span>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--el-space-3)">
+
+    <div class="el-panel">
+      <div class="el-panel-head">Timeline · 7 events · newest-first</div>
+      <div class="el-timeline-v">
+        <div class="ev CRIT sel"><span class="t">11:13:02</span><span class="lvl">CRIT</span><span class="rule">block-src</span><span class="txt">CVE-2026-042 KEV</span></div>
+        <div class="ev CRIT"><span class="t">11:02:48</span><span class="lvl">CRIT</span><span class="rule">nft-fail</span><span class="txt">drop rule applied</span></div>
+        <div class="ev HIGH"><span class="t">10:47:11</span><span class="lvl">HIGH</span><span class="rule">isolate</span><span class="txt">host-07 isolated</span></div>
+        <div class="ev HIGH"><span class="t">10:18:33</span><span class="lvl">HIGH</span><span class="rule">auditd</span><span class="txt">buffer overflow</span></div>
+        <div class="ev HIGH"><span class="t">09:55:21</span><span class="lvl">HIGH</span><span class="rule">enrich</span><span class="txt">CVE cross-linked</span></div>
+        <div class="ev OK"><span class="t">09:22:04</span><span class="lvl">OK</span><span class="rule">scan</span><span class="txt">path err resolved</span></div>
+        <div class="ev OK"><span class="t">08:14:55</span><span class="lvl">OK</span><span class="rule">agent</span><span class="txt">401 vs 402</span></div>
       </div>
     </div>
 
-    <div style="margin-top:14px;padding:10px;background:var(--el-panel-2);border:1px solid var(--el-line);font:11px var(--el-font-mono);">
-      <b style="color:var(--el-accent);">SELECTED:</b> block-src · 11:13:18 · 47 attempts/60s from 198.51.100.42
-      <br><span style="color:var(--el-ink-soft);">↪ KEV CVE-2025-30872 · auto-block suggested · staged for approval</span>
+    <div class="el-panel">
+      <div class="el-panel-head">Rules</div>
+      <div class="el-tabs-h">
+        <button class="tab on">Active <span class="el-badge live">14</span></button>
+        <button class="tab">Staged <span class="el-badge warn">2</span></button>
+        <button class="tab">History</button>
+      </div>
+      <div class="el-stack" style="margin-top:var(--el-space-3)">
+        <div class="el-cluster" style="justify-content:space-between;padding:var(--el-space-2);border:1px dashed var(--el-line);background:var(--el-panel-2)">
+          <strong style="font:var(--el-font-mono)">nftables.block-src</strong>
+          <span class="el-pill live">live</span>
+        </div>
+        <div class="el-cluster" style="justify-content:space-between;padding:var(--el-space-2);border:1px dashed var(--el-line);background:var(--el-panel-2)">
+          <strong style="font:var(--el-font-mono)">auditd.overflow</strong>
+          <span class="el-pill warn">staged</span>
+        </div>
+        <div class="el-cluster" style="justify-content:space-between;padding:var(--el-space-2);border:1px dashed var(--el-line);background:var(--el-panel-2)">
+          <strong style="font:var(--el-font-mono)">soar.isolate</strong>
+          <span class="el-pill ok">ready</span>
+        </div>
+      </div>
     </div>
+
   </div>
 
-  <div class="right">
-    <h2>SOAR pane · tabs</h2>
-    <div class="tabs">
-      <button class="on">Rules · 6</button>
-      <button>Approval · 2</button>
-      <button>History · 5</button>
-    </div>
-    <div class="tab-body">
-      <div class="rule-row">
-        <span class="name">block-src</span><span class="cnt">147 runs</span>
-        <span class="act"><button>run</button><button>edit</button></span>
-      </div>
-      <div class="rule-row">
-        <span class="name">isolate-host</span><span class="cnt">42 runs</span>
-        <span class="act"><button>run</button><button>edit</button></span>
-      </div>
-      <div class="rule-row">
-        <span class="name">enrich-cve</span><span class="cnt">38 runs</span>
-        <span class="act"><button>run</button><button>edit</button></span>
-      </div>
-      <div class="rule-row">
-        <span class="name">nft-fail</span><span class="cnt">12 runs</span>
-        <span class="act"><button>run</button><button>edit</button></span>
-      </div>
-      <div class="rule-row">
-        <span class="name">auditd-overflow</span><span class="cnt">9 runs</span>
-        <span class="act"><button>run</button><button>edit</button></span>
-      </div>
-      <div class="rule-row">
-        <span class="name">agent-run</span><span class="cnt">5 runs</span>
-        <span class="act"><button>run</button><button>edit</button></span>
-      </div>
-    </div>
-
-    <div style="margin-top:20px;padding-top:14px;border-top:1px dashed var(--el-line);">
-      <h2 style="font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 10px;">Approval queue · 2 staged</h2>
-      <div class="stage-row">
-        <span class="name">block-src — KEV CVE-2025-30872</span>
-        <span class="stage">STAGED</span>
-        <span class="act"><button class="ok">✓ approve</button><button class="no">✗ reject</button></span>
-      </div>
-      <div class="stage-row">
-        <span class="name">isolate-host — workstation-07</span>
-        <span class="stage">STAGED</span>
-        <span class="act"><button class="ok">✓ approve</button><button class="no">✗ reject</button></span>
-      </div>
-    </div>
-
-    <div style="margin-top:20px;padding-top:14px;border-top:1px dashed var(--el-line);">
-      <h2 style="font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 10px;">Run history · 5</h2>
-      <div class="hist-row">
-        <span class="t">11:13</span><span class="name">block-src</span><span class="stat">0.8 s</span><span class="stat">+47 hits</span>
-      </div>
-      <div class="hist-row">
-        <span class="t">10:47</span><span class="name">isolate-host</span><span class="stat">5m 12s</span><span class="stat">+1 host</span>
-      </div>
-      <div class="hist-row">
-        <span class="t">09:55</span><span class="name">enrich-cve</span><span class="stat">3.4 s</span><span class="stat">+1 CVE</span>
-      </div>
-      <div class="hist-row">
-        <span class="t">08:14</span><span class="name">agent-run</span><span class="stat">12.4 s</span><span class="stat">+2 facts</span>
-      </div>
-      <div class="hist-row">
-        <span class="t">07:51</span><span class="name">backup</span><span class="stat">3m 02s</span><span class="stat">47 GB</span>
-      </div>
-    </div>
-  </div>
-
+  <div style="font:var(--el-fs-xs) var(--el-font-mono);color:var(--el-ink-soft);margin-top:var(--el-space-3);text-align:center;letter-spacing:0.08em">cockpit · aviation HMI · data-theme="cockpit"</div>
 </div>
 </body>
 </html>

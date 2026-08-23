@@ -1,153 +1,59 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="console">
 <head>
-<meta charset="utf-8">
-<title>OSINT · command variant</title>
-<link rel="stylesheet" href="../_elements/elements.css">
-<style>
-  /* Console-Log — Plex Mono */
-  :root {
-    --el-bg: #0e1117;
-    --el-panel: #161b22;
-    --el-panel-2: #1c2128;
-    --el-line: #30363d;
-    --el-ink: #c9d1d9;
-    --el-ink-soft: #8b949e;
-    --el-accent: #58a6ff;
-    --el-ok: #3fb950;
-    --el-warn: #d29922;
-    --el-fail: #f85149;
-    --el-live: #58a6ff;
-    --el-font-body: 'JetBrains Mono', 'SF Mono', monospace;
-    --el-font-display: 'JetBrains Mono', 'SF Mono', monospace;
-    --el-font-mono: 'JetBrains Mono', 'SF Mono', monospace;
-  }
-  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 13px/1.5 var(--el-font-body); }
-  .layout { width: 1100px; max-width: 100%; }
-  .head { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; border-bottom: 2px solid var(--el-line); margin-bottom: 14px; }
-  .head h1 { font: 700 18px/1 var(--el-font-display); margin: 0; }
-  .head h1 small { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
-  .cmd-bar { display: flex; align-items: center; background: var(--el-panel); border: 1px solid var(--el-line); padding: 0 16px; margin-bottom: 12px; }
-  .cmd-bar .prompt { color: var(--el-accent); font: 14px var(--el-font-mono); margin-right: 12px; }
-  .cmd-bar input { flex: 1; background: transparent; border: 0; color: var(--el-ink); font: 14px var(--el-font-mono); padding: 14px 0; outline: none; }
-  .cmd-bar .hint { color: var(--el-ink-soft); font: 11px var(--el-font-mono); }
-  .stream { display: flex; flex-direction: column; gap: 8px; }
-  .stream .ev { background: var(--el-panel); border: 1px solid var(--el-line); border-left: 3px solid var(--el-accent); padding: 10px 14px; }
-  .stream .ev .meta { display: flex; gap: 12px; font: 10px var(--el-font-mono); color: var(--el-ink-soft); margin-bottom: 4px; }
-  .stream .ev .meta .src { color: var(--el-accent); }
-  .stream .ev .meta .type { color: var(--el-warn); }
-  .stream .ev .title { font: 700 13px var(--el-font-display); color: var(--el-ink); margin-bottom: 4px; }
-  .stream .ev .summary { font: 12px var(--el-font-body); color: var(--el-ink); margin-bottom: 6px; }
-  .stream .ev .facts { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
-  .stream .ev .facts .fact { padding: 2px 6px; background: var(--el-panel-2); border: 1px solid var(--el-line); font: 10px var(--el-font-mono); color: var(--el-ink); }
-  .stream .ev .actions { display: flex; gap: 6px; padding-top: 6px; border-top: 1px dashed var(--el-line); font: 10px var(--el-font-mono); }
-  .stream .ev .actions .case { color: var(--el-accent); }
-  .stream .extract-banner { background: rgba(88,166,255,0.08); border-left: 3px solid var(--el-accent); padding: 10px 14px; margin-bottom: 6px; font: 11px var(--el-font-mono); }
-  .stream .extract-banner b { color: var(--el-accent); }
-  .sidebar { display: grid; grid-template-columns: 1fr 280px; gap: 14px; }
-  .stats { display: flex; gap: 18px; padding: 10px 0; margin-top: 14px; border-top: 1px dashed var(--el-line); }
-  .stats .stat { font: 11px var(--el-font-mono); color: var(--el-ink-soft); }
-  .stats .stat b { color: var(--el-accent); font-size: 16px; margin-right: 4px; }
-  .case-list { background: var(--el-panel); border: 1px solid var(--el-line); padding: 14px; height: fit-content; }
-  .case-list h3 { font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--el-line); }
-  .case-list .case { padding: 6px 8px; border-left: 2px solid var(--el-line); margin-bottom: 4px; cursor: pointer; font: 12px var(--el-font-mono); }
-  .case-list .case.active { border-left-color: var(--el-accent); background: var(--el-panel-2); }
-  .case-list .case .count { float: right; color: var(--el-ink-soft); }
-</style>
+  <meta charset="utf-8">
+  <title>OSINT · command variant</title>
+  <link rel="stylesheet" href="../_elements/tokens.css">
+  <link rel="stylesheet" href="../_elements/themes.css">
+  <link rel="stylesheet" href="../_elements/base.css">
+  <link rel="stylesheet" href="../_elements/elements-display.css">
+  <link rel="stylesheet" href="../_elements/elements-lists.css">
+  <link rel="stylesheet" href="../_elements/elements-containers.css">
+  <link rel="stylesheet" href="../_elements/elements-size.css">
 </head>
-<body>
-<div class="layout">
+<body class="el-reset">
+<div class="el-lg-frame" style="padding:var(--el-space-4)">
 
-  <div class="head">
-    <h1>OSINT · ⌘K command <small>127.0.0.1:9999 · live search · inline extract</small></h1>
-    <span style="font:11px var(--el-font-mono);color:var(--el-ink-soft);">type → search → extract → save</span>
+  <h1 style="font:700 var(--el-fs-xl)/1 var(--el-font-display);margin:0;color:var(--el-ink)">Command surface <small style="font:var(--el-fs-sm) var(--el-font-mono);color:var(--el-accent);margin-left:var(--el-space-2)">GitHub-dark · blue accent</small></h1>
+
+  <div class="el-tabs-h" id="t4">
+    <button class="tab on" data-target="#cmd-list">Commands <span class="el-badge live">12</span></button>
+    <button class="tab" data-target="#cmd-runs">Runs <span class="el-badge">47</span></button>
+    <button class="tab" data-target="#cmd-history">History</button>
   </div>
 
-  <div class="cmd-bar">
-    <span class="prompt">osint ▸</span>
-    <input value='search "reinhart" AND "larkspur" 2024..2026 | extract facts | save to CASE-01'>
-    <span class="hint">⌘↵ execute</span>
-  </div>
+  <div class="el-stack" id="cmd-list" data-tabpanel data-group style="margin-top:var(--el-space-3)">
 
-  <div class="extract-banner">
-    <b>EXTRACT</b> · query parsed · 23 raw hits · 7 deduplicated · 22 facts ready · streaming results…
-  </div>
-
-  <div class="sidebar">
-    <div class="stream">
-
-      <div class="ev">
-        <div class="meta"><span class="src">ca sec.state</span><span class="type">trust</span><span>2024-09-22</span><span>rank #1</span><span>CASE-01</span></div>
-        <div class="title">Reinhart Family Trust — initial filing</div>
-        <div class="summary">CA Secretary of State filing 2024-09-22 establishes the Reinhart Family Trust with R. Larkspur as sole trustee; trust corpus includes 120 Ward St Larkspur.</div>
-        <div class="facts">
-          <span class="fact">trust: Reinhart Family Trust</span>
-          <span class="fact">trustee: R. Larkspur</span>
-          <span class="fact">established: 2024-09-22</span>
-          <span class="fact">corpus: 120 Ward St</span>
-          <span class="fact">+ 8 more</span>
-        </div>
-        <div class="actions">
-          <span class="case">→ CASE-01 saved</span>
-          <span style="color:var(--el-ink-soft);">12 facts · 0.8 s</span>
-        </div>
-      </div>
-
-      <div class="ev">
-        <div class="meta"><span class="src">marin recorder</span><span class="type">property</span><span>2025-03-14</span><span>rank #2</span><span>CASE-01</span></div>
-        <div class="title">Quitclaim #M-2025-018442 — 120 Ward St</div>
-        <div class="summary">Quitclaim deed recorded Marin County Recorder 2025-03-14 transferring 120 Ward St Larkspur CA 94939 into the Reinhart Family Trust. Prior grantor: Margaret Reinhart.</div>
-        <div class="facts">
-          <span class="fact">deed: quitclaim</span>
-          <span class="fact">doc: #M-2025-018442</span>
-          <span class="fact">grantor: M. Reinhart</span>
-          <span class="fact">property: 120 Ward St</span>
-          <span class="fact">+ 3 more</span>
-        </div>
-        <div class="actions">
-          <span class="case">→ CASE-01 saved</span>
-          <span style="color:var(--el-ink-soft);">7 facts · 1.2 s</span>
-        </div>
-      </div>
-
-      <div class="ev">
-        <div class="meta"><span class="src">larkspur.gov</span><span class="type">filing</span><span>2025-04-02</span><span>rank #3</span><span>CASE-01</span></div>
-        <div class="title">Public notice · 120 Ward St trust transfer</div>
-        <div class="summary">City of Larkspur public notice 2025-04-02 announcing trust transfer; 30-day objection window. No objections filed.</div>
-        <div class="facts">
-          <span class="fact">notice: public</span>
-          <span class="fact">window: 30d</span>
-          <span class="fact">objections: none</span>
-        </div>
-        <div class="actions">
-          <span class="case">→ CASE-01 saved</span>
-          <span style="color:var(--el-ink-soft);">3 facts · 0.5 s</span>
-        </div>
-      </div>
-
-      <div class="extract-banner" style="background:transparent;border-left-color:var(--el-ok);">
-        <b style="color:var(--el-ok);">DONE</b> · 3 of 7 results streamed · 22 facts total · 3 cases updated · 1.2s elapsed · CASE-01 +18 facts
-      </div>
-
+    <div class="el-panel">
+      <div class="el-panel-head">Available commands</div>
+      <table class="el-table">
+        <thead><tr><th>Cmd</th><th>Status</th><th>Last run</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td><strong>enrich cve</strong></td><td><span class="el-pill ok">ready</span></td><td>11:13</td><td>cve-intel</td></tr>
+          <tr><td><strong>scan ports</strong></td><td><span class="el-pill warn">staged</span></td><td>10:47</td><td>overseer</td></tr>
+          <tr><td><strong>isolate host</strong></td><td><span class="el-pill ok">ready</span></td><td>10:18</td><td>soar</td></tr>
+          <tr><td><strong>backup run</strong></td><td><span class="el-pill ok">ready</span></td><td>07:51</td><td>backup</td></tr>
+          <tr><td><strong>heartbeat</strong></td><td><span class="el-pill live">live</span></td><td>just now</td><td>core</td></tr>
+        </tbody>
+      </table>
     </div>
 
-    <aside class="case-list">
-      <h3>Cases · 4 open</h3>
-      <div class="case active"><span>CASE-01 · Reinhart trust</span><span class="count">30</span></div>
-      <div class="case"><span>CASE-02 · assessor refresh</span><span class="count">5</span></div>
-      <div class="case"><span>CASE-03 · Larkspur 2024</span><span class="count">8</span></div>
-      <div class="case"><span>CASE-04 · Q4 cohort</span><span class="count">3</span></div>
-    </aside>
+    <div class="el-panel">
+      <div class="el-panel-head">Run log</div>
+      <div class="el-timeline-v">
+        <div class="ev OK"><span class="t">11:13:02</span><span class="lvl">OK</span><span class="rule">enrich cve</span><span class="txt">CVE-2026-042 → 8 facts added</span></div>
+        <div class="ev CRIT sel"><span class="t">11:02:48</span><span class="lvl">CRIT</span><span class="rule">scan ports</span><span class="txt">port 22 exposed · host-07</span></div>
+        <div class="ev OK"><span class="t">10:47:11</span><span class="lvl">OK</span><span class="rule">isolate host</span><span class="txt">host-07 → fw-deny</span></div>
+        <div class="ev OK"><span class="t">10:18:33</span><span class="lvl">OK</span><span class="rule">backup run</span><span class="txt">nightly → 4.2GB</span></div>
+      </div>
+    </div>
+
   </div>
 
-  <div class="stats">
-    <div class="stat"><b>23</b>raw hits</div>
-    <div class="stat"><b style="color:var(--el-ok);">7</b>deduplicated</div>
-    <div class="stat"><b style="color:var(--el-accent);">22</b>facts extracted</div>
-    <div class="stat"><b style="color:var(--el-warn);">1.2s</b>elapsed</div>
-    <div class="stat" style="margin-left:auto;color:var(--el-ink-soft);">all results streamed inline · click any fact chip to expand</div>
-  </div>
-
+  <div style="font:var(--el-fs-xs) var(--el-font-mono);color:var(--el-ink-soft);margin-top:var(--el-space-3);text-align:center;letter-spacing:0.08em">console · data-theme="console"</div>
 </div>
+
+<script src="../_elements/theme-switcher.js"></script>
+<script src="../_elements/elements.js"></script>
 </body>
 </html>

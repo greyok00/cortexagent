@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interactions · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-interactions.css">
+  <link rel="stylesheet" href="../elements-display.css">
+  <link rel="stylesheet" href="../elements-lists.css">
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Interactions</strong>
+    <select id="theme-picker" data-theme-picker>
+      <option>neutral</option><option>polaroid</option><option>cockpit</option>
+      <option>cockpit-paper</option><option>console</option><option>compact</option>
+      <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+      <option>agent-history</option><option>terminal</option><option>swiss</option>
+    </select>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>Interaction primitives</h1>
+
+    <h2>Drag &amp; drop</h2>
+    <div class="el-stack" style="max-width:420px">
+      <div data-target-list style="border:1px dashed var(--el-line);border-radius:var(--el-r-md);padding:var(--el-space-3);min-height:80px;background:var(--el-panel-2)">
+        <div data-draggable data-drag-label="A" class="el-pill" style="margin-right:var(--el-space-1)">A</div>
+        <div data-draggable data-drag-label="B" class="el-pill" style="margin-right:var(--el-space-1)">B</div>
+        <div data-draggable data-drag-label="C" class="el-pill">C</div>
+      </div>
+      <div class="el-drop-zone">Drop here</div>
+    </div>
+
+    <h2>Hover-detail</h2>
+    <p><span data-hover-detail="Full rule path: auth.login.failed.admin — observed 4× between 14:02 and 14:05 UTC">Hover me</span></p>
+
+    <h2>Tooltip</h2>
+    <span class="el-tooltip" data-tip="Last seen 4 minutes ago"><button class="el-btn">Hover for tooltip</button></span>
+
+    <h2>Popover</h2>
+    <div class="el-popover">
+      <button class="el-btn">Click for popover</button>
+      <div class="el-pop">
+        <h4>Finding detail</h4>
+        <p>auth.login failed 4× from 192.0.2.41 in the last hour. Severity: HIGH.</p>
+      </div>
+    </div>
+
+    <h2>Toast (already wired)</h2>
+    <button class="el-btn" onclick="elToast.push('Drag saved', 'ok')">Fire toast</button>
+
+    <h2>Skeleton shimmer</h2>
+    <div class="el-stack" style="max-width:280px">
+      <span class="el-shimmer-block"></span>
+      <span class="el-shimmer-block" style="width:80%"></span>
+      <span class="el-shimmer-block" style="width:60%"></span>
+    </div>
+
+    <h2>Infinite-scroll trigger</h2>
+    <div style="max-width:480px;border:1px solid var(--el-line);border-radius:var(--el-r-md);padding:var(--el-space-2);background:var(--el-panel);max-height:160px;overflow-y:auto">
+      <p>Item 1</p><p>Item 2</p><p>Item 3</p><p>Item 4</p>
+      <div class="el-infinite-trigger">— loading more —</div>
+    </div>
+
+    <h2>Anchor-nav</h2>
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:var(--el-space-3);max-width:640px">
+      <nav class="el-anchor-nav">
+        <a href="#a1" class="active">Section A</a>
+        <a href="#a2">Section B</a>
+        <a href="#a3">Section C</a>
+      </nav>
+      <div>
+        <h3 id="a1">Section A</h3><p>Scroll past this to see the nav highlight move.</p>
+        <h3 id="a2">Section B</h3><p style="padding-top:200px">B content.</p>
+        <h3 id="a3">Section C</h3><p style="padding-top:200px">C content.</p>
+      </div>
+    </div>
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

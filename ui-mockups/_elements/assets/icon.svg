@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="greyok-ui-framework icon">
+  <defs>
+    <linearGradient id="gw-ig" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb000"/>
+      <stop offset="1" stop-color="#ff7a1a"/>
+    </linearGradient>
+    <linearGradient id="gw-if" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f2530"/>
+      <stop offset="1" stop-color="#0d1015"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded frame -->
+  <rect x="4" y="4" width="56" height="56" rx="14" ry="14" fill="url(#gw-if)"/>
+  <rect x="4" y="4" width="56" height="56" rx="14" ry="14" fill="none" stroke="url(#gw-ig)" stroke-width="1.5"/>
+
+  <!-- bento tiles -->
+  <rect x="12" y="14" width="22" height="7" rx="3.5" ry="3.5" fill="url(#gw-ig)"/>
+  <circle cx="42" cy="17.5" r="3.5" fill="#5fe09a">
+    <animate attributeName="opacity" values="1;0.3;1" dur="1.6s" repeatCount="indefinite"/>
+  </circle>
+  <rect x="12" y="26" width="40" height="3" rx="1.5" ry="1.5" fill="#1a1f2a"/>
+  <rect x="12" y="26" width="26" height="3" rx="1.5" ry="1.5" fill="url(#gw-ig)"/>
+
+  <rect x="12" y="34" width="10" height="14" rx="2" ry="2" fill="#1a1f2a"/>
+  <text x="17" y="44.5" font-family="ui-monospace, monospace" font-size="9" font-weight="700" fill="#ffb000">G</text>
+
+  <rect x="26" y="34" width="10" height="14" rx="2" ry="2" fill="url(#gw-ig)"/>
+  <text x="31" y="44.5" font-family="ui-monospace, monospace" font-size="9" font-weight="700" fill="#0d1015">W</text>
+
+  <rect x="40" y="34" width="12" height="14" rx="2" ry="2" fill="#1a1f2a" stroke="#ffb000" stroke-opacity="0.5" stroke-width="0.7"/>
+</svg>

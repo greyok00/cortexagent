@@ -69,6 +69,76 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from lib import control  # reload-aware: trigger big-model reload via the daemon
 
+# ── Routing state (consumed by the event feed / cortex-hud) ──────────────────
+# The big-model route is selected at CLI launch via env vars (bin/cortexagent),
+# but we surface it here so the routing subsystem is real and queryable: every
+# forwarded request records the active route + model to routing_state.json and
+# emits a routing event to the SessionBridge. The full CortexRouter.status()
+# (with live health) is available for the event feed to poll.
+_ROUTING_STATE = Path.home() / ".cortexagent" / "routing_state.json"
+_ROUTER = None  # lazy CortexRouter instance
+_last_routing_key = None  # change-detection: only emit when the route actually changes
+
+
+def _get_router():
+    """Lazily build the shared CortexRouter (import kept local for boot safety)."""
+    global _ROUTER
+    if _ROUTER is None:
+        try:
+            from lib.cortex_routing import CortexRouter
+            _ROUTER = CortexRouter()
+        except Exception as e:
+            print(f"[proxy] router unavailable: {e}", file=sys.stderr)
+            _ROUTER = False
+    return _ROUTER or None
+
+
+def _emit_routing() -> None:
+    """Record the active route + emit a routing event. Best-effort.
+
+    Change-detected: only writes routing_state.json and emits a bridge event
+    when the route/model/mode actually changes, so the event feed isn't flooded
+    with an identical routing event on every request.
+    """
+    global _last_routing_key
+    router = _get_router()
+    if router is None:
+        return
+    try:
+        state = {
+            "route": "big",
+            "model": router.model,
+            "base_url": router.base_url,
+            "router_mode": router.router_mode,
+            "toolproxy_available": router._toolproxy_available,
+            "updated_at": time.time(),
+        }
+        key = (state["route"], state["model"], state["router_mode"])
+        if key == _last_routing_key:
+            return  # unchanged — nothing to record or emit
+        _last_routing_key = key
+        _ROUTING_STATE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _ROUTING_STATE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state))
+        tmp.replace(_ROUTING_STATE)
+        # Emit a routing event to the SessionBridge (captured by the event feed).
+        try:
+            from lib.session_bridge import SessionBridge
+            SessionBridge().write("proxy", {
+                "id": f"rte-{int(time.time()*1000)}",
+                "type": "routing",
+                "username": "Router",
+                "content": f"route={state['route']} model={state['model']} mode={state['router_mode']}",
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "route": state["route"],
+                "model": state["model"],
+                "router_mode": state["router_mode"],
+            })
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[proxy] routing emit failed: {e}", file=sys.stderr)
+
 # ── Minification pipeline (opt-out via CORTEXAGENT_MINIFY=off) ────────────────
 # On by default. Prefers the user's slimtoken engine (real compression:
 # dedup of repeated tool output + distill of old turns + budget backstop),
@@ -181,6 +251,73 @@ def _cap_tool_results(parsed, max_chars: int):
                             blk["text"] = t[:budget] + _trunc_marker(len(t) - budget)
                             budget = 0
     return parsed
+
+# ── Prompt reframing (canonical slim engine) ────────────────────────────────
+# On by default. Reframes the LAST user message (the live prompt) BEFORE the
+# token-level minify, so every prompt flowing through the proxy is tightened
+# by the same canonical engine react_loop uses. Purely additive — any failure
+# skips reframing and forwards the request untouched. Tool results / system
+# messages are never touched (only role=="user" string content).
+#   CORTEXAGENT_REFRAISE=1   on (default)     0 off
+#   CORTEXAGENT_REFRAISE_SYSTEM=1  append the framed system prompt too (off)
+_REFRAISE = _bool_env("CORTEXAGENT_REFRAISE", True)
+_REFRAISE_SYSTEM = _bool_env("CORTEXAGENT_REFRAISE_SYSTEM", False)
+
+
+def _frame_fn():
+    """Import the canonical frame_prompt shim (lib or top-level)."""
+    try:
+        from lib import prompt_framing
+        return prompt_framing.frame_prompt
+    except ImportError:
+        import prompt_framing
+        return prompt_framing.frame_prompt
+
+
+def _append_system(msgs: list, add_sys: str) -> None:
+    """Append the framed system prompt to an existing system message, or
+    prepend a new one if the request has none."""
+    for m in msgs:
+        if isinstance(m, dict) and m.get("role") == "system":
+            cur = m.get("content")
+            m["content"] = (cur + "\n\n" + add_sys) if isinstance(cur, str) \
+                else add_sys
+            return
+    msgs.insert(0, {"role": "system", "content": add_sys})
+
+
+def _reframe_user_prompt(parsed: dict) -> tuple[dict, int]:
+    """Reframe the last user message in-place via the canonical slim engine.
+    Returns (parsed, saved_chars); saved_chars is 0 if nothing applied."""
+    if not _REFRAISE:
+        return parsed, 0
+    msgs = parsed.get("messages")
+    if not isinstance(msgs, list) or not msgs:
+        return parsed, 0
+    for i in range(len(msgs) - 1, -1, -1):
+        m = msgs[i]
+        if not isinstance(m, dict):
+            continue
+        if m.get("role") != "user" or not isinstance(m.get("content"), str):
+            continue
+        content = m["content"].strip()
+        if not content:
+            continue
+        try:
+            reframed, framed_sys, _dom = _frame_fn()(content)
+        except Exception as e:
+            print(f"[proxy] reframe skipped: {e}", file=sys.stderr)
+            return parsed, 0
+        if not reframed or reframed == content:
+            return parsed, 0
+        msgs[i] = {**m, "content": reframed}
+        if _REFRAISE_SYSTEM and framed_sys:
+            _append_system(msgs, framed_sys)
+        saved = len(content) - len(reframed)
+        print(f"[proxy] reframed user prompt {len(content)}→{len(reframed)} chars "
+              f"(-{saved})", file=sys.stderr)
+        return parsed, saved
+    return parsed, 0
 
 # ── Output-side minify (R4) ──────────────────────────────────────────────────
 # Slimtoken has no response minify, so we run a thin local helper. Strips
@@ -377,19 +514,47 @@ _MINIFY_STATS_FILE = Path.home() / ".cortexagent" / "minify_stats.json"
 _MINIFY_HIST_CAP = 60       # ~60s at 1 sample per successful minify run
 
 
-def _record_minify(mstats) -> None:
-    """Update cumulative counters from a MinifyStats instance and persist."""
+def _load_minify_stats() -> None:
+    """Load persisted minify stats at startup so restarts don't reset counters.
+
+    Without this, every proxy restart wipes the cumulative runs/tokens/ratio
+    back to 0 and rebuilds them from scratch — losing the lifetime history the
+    event feed and dashboard report.
+    """
+    global _minify_stats
+    try:
+        with _MINIFY_STATS_FILE.open(encoding="utf-8") as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            with _minify_lock:
+                for k in _minify_stats:
+                    if k in d:
+                        _minify_stats[k] = d[k]
+    except Exception:
+        pass  # no persisted stats yet — start fresh
+
+
+def _record_minify(mstats, reframe_saved_chars: int = 0) -> None:
+    """Update cumulative counters from a MinifyStats instance and persist.
+
+    reframe_saved_chars: chars the user-prompt reframe step removed BEFORE
+    minify_request ran. minify_request's tokens_in is post-reframe, so we add
+    the reframe savings back (est. ~4 chars/token) to reflect the real
+    compression in the cumulative ratio.
+    """
     try:
         tin = int(getattr(mstats, "tokens_in", 0) or 0)
         tout = int(getattr(mstats, "tokens_out", 0) or 0)
-        if tin <= 0:
+        reframe_tok = max(int(reframe_saved_chars) // 4, 0)
+        orig_in = tin + reframe_tok
+        if orig_in <= 0:
             return
-        saved = max(tin - tout, 0)
-        saved_pct = round(saved / tin * 100, 1) if tin else 0.0
+        saved = max(orig_in - tout, 0)
+        saved_pct = round(saved / orig_in * 100, 1) if orig_in else 0.0
         now = time.time()
         with _minify_lock:
             _minify_stats["runs"] += 1
-            _minify_stats["tokens_in"] += tin
+            _minify_stats["tokens_in"] += orig_in
             _minify_stats["tokens_out"] += tout
             _minify_stats["tokens_saved"] += saved
             if _minify_stats["tokens_in"] > 0:
@@ -421,7 +586,7 @@ def _record_minify(mstats) -> None:
 def _get_minify_snapshot() -> Dict[str, Any]:
     """Read the persisted minify snapshot. Returns live dict (caller may copy)."""
     try:
-        with _MINIFY_STATS_FILE.open() as f:
+        with _MINIFY_STATS_FILE.open(encoding="utf-8") as f:
             d = json.load(f)
         if isinstance(d, dict):
             return d
@@ -586,6 +751,31 @@ class ProxyHandler:
         print("[proxy] target still down after reload — returning 503", file=sys.stderr)
         return False
 
+    def _connect_with_reload(self, timeout: float = 90):
+        """Connect to the target, reloading the big model on a refused connect.
+
+        Handles the race where the target goes down between ``_ensure_target``'s
+        health check and the actual connect (e.g. the daemon unloads big on a
+        session-end that lands in that window). Returns a connected socket, or
+        None if the target can't be reached after a reload attempt.
+        """
+        for attempt in (1, 2):
+            dst = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            dst.settimeout(timeout)
+            try:
+                dst.connect(self.target)
+                return dst
+            except Exception as e:
+                dst.close()
+                if attempt == 1:
+                    print(f"[proxy] connect error: {e} — reloading target...", file=sys.stderr)
+                    if not self._ensure_target():
+                        return None
+                else:
+                    print(f"[proxy] connect error after reload: {e}", file=sys.stderr)
+                    return None
+        return None
+
     def _respond_502(self):
         body = b'{"error":"bad gateway - backend connection failed"}'
         resp = ("HTTP/1.1 502 Bad Gateway\r\n"
@@ -612,6 +802,8 @@ class ProxyHandler:
             if not head_bytes:
                 return
             self._forward(head_bytes, body)
+            # Record the active route + emit a routing event (best-effort).
+            _emit_routing()
         except Exception as e:
             print(f"[proxy] handle error: {e}", file=sys.stderr)
         finally:
@@ -735,10 +927,11 @@ class ProxyHandler:
                     if "grammar" in parsed:
                         del parsed["grammar"]
                     parsed = _cap_tool_results(parsed, _TOOL_RESULT_MAX)
+                    parsed, reframe_saved = _reframe_user_prompt(parsed)
                     if _MINIFY_CFG is not None:
                         parsed, mstats = minify_request(parsed, _MINIFY_CFG)
                         print(f"[proxy] minify: {mstats.summary()}", file=sys.stderr)
-                        _record_minify(mstats)
+                        _record_minify(mstats, reframe_saved)
                 body = json.dumps(parsed).encode()
             except Exception as e:
                 parse_err = str(e)
@@ -892,16 +1085,17 @@ class ProxyHandler:
     def _forward_raw(self, head_bytes, body):
         """Forward headers + body and stream any further client bytes, then pipe response."""
         data = head_bytes + b"\r\n\r\n" + body
-        dst = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # Upstream (llama-server) read timeout: 90s. Big-context responses
         # at 128k can take longer than 30s to stream; 90s is the longest
         # tolerable latency before the client should retry.
-        dst.settimeout(90)
+        dst = self._connect_with_reload(timeout=90)
+        if dst is None:
+            self._respond_502()
+            return
         try:
-            dst.connect(self.target)
             dst.sendall(data)
         except Exception as e:
-            print(f"[proxy] connect error: {e}", file=sys.stderr)
+            print(f"[proxy] send error: {e}", file=sys.stderr)
             dst.close()
             self._respond_502()
             return
@@ -948,14 +1142,15 @@ class ProxyHandler:
         this is the drain-only path — the heavy lifting already happened
         upstream.
         """
-        dst = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        dst.settimeout(5)
+        dst = self._connect_with_reload(timeout=5)
         _t0 = time.time()
+        if dst is None:
+            self._respond_502()
+            return
         try:
-            dst.connect(self.target)
             dst.sendall(data)
         except Exception as e:
-            print(f"[proxy] connect error: {e}", file=sys.stderr)
+            print(f"[proxy] send error: {e}", file=sys.stderr)
             dst.close()
             self._respond_502()
             return
@@ -1105,6 +1300,7 @@ class ProxyHandler:
 
 
 def main():
+    _load_minify_stats()  # continue from persisted stats, don't reset on restart
     port = int(os.environ.get("CORTEXAGENT_PROXY_PORT", sys.argv[1] if len(sys.argv) > 1 else "8081"))
     target_url = os.environ.get("CORTEXAGENT_PROXY_TARGET", sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:8080")
     host = target_url.split("://")[-1].split(":")[0]

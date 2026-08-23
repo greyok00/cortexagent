@@ -1,0 +1,115 @@
+#!/bin/bash
+# cortexagent-cve — wrapper for the CVE / MITRE threat-intel pipeline.
+#
+# Thin stdlib-only poller that writes new CVEs to ~/security-console/cve/intel.jsonl
+# and tags each entry with MITRE ATT&CK techniques. Designed to run daily via
+# the overseer scheduler (or `cortexagent-cve --install-schedule` to register).
+#
+# All operations are local-only — outbound HTTPS to NVD/KEV/EPSS/GHSA/OSV.dev.
+# No new network services are bound.
+#
+# Usage:
+#   cortexagent-cve                  # default: poll last 7 days (NVD+KEV+EPSS+GHSA)
+#   cortexagent-cve --since=24h      # poll last 24h
+#   cortexagent-cve --include-osv    # also query OSV.dev for our pinned deps
+#   cortexagent-cve --lookup CVE-2024-3094
+#   cortexagent-cve --mitre T1190
+#   cortexagent-cve --coverage
+#   cortexagent-cve --smoke         # offline self-test
+#   cortexagent-cve --install-schedule   # register daily cron in overseer scheduler
+#   cortexagent-cve --uninstall-schedule
+
+set -euo pipefail
+
+# ── Locate self (symlink-safe) ─────────────────────────────────────────────
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
+
+PY="${PYTHON:-python3}"
+
+_install_schedule() {
+  echo "🗓  Registering daily CVE poll in overseer scheduler (07:17)..."
+  "$PY" -c "
+import sys; sys.path.insert(0, '$REPO_ROOT')
+from lib.overseer import schedule_add
+schedule_add(
+    name='cve_poll_daily',
+    task_type='command',
+    schedule_type='cron',
+    schedule_value='17 7 * * *',
+    prompt='',
+    command='cve_poll',
+    output='',
+    system='',
+)
+print('  ✓ registered: cve_poll_daily (cron 17 7 * * *)')
+"
+}
+
+_uninstall_schedule() {
+  echo "🗑  Removing daily CVE poll from overseer scheduler..."
+  "$PY" -c "
+import sys; sys.path.insert(0, '$REPO_ROOT')
+from lib.overseer import schedule_remove
+schedule_remove('cve_poll_daily')
+print('  ✓ removed: cve_poll_daily')
+"
+}
+
+# ── Arg dispatch ───────────────────────────────────────────────────────────
+case "${1:-}" in
+  --smoke|smoke)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.cve_intel --smoke
+    ;;
+  --lookup|lookup)
+    shift
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.cve_intel lookup "$@"
+    ;;
+  --mitre|mitre)
+    shift
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.cve_intel mitre "$@"
+    ;;
+  --coverage|coverage)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.cve_intel coverage
+    ;;
+  --install-schedule)
+    _install_schedule
+    ;;
+  --uninstall-schedule)
+    _uninstall_schedule
+    ;;
+  --since=*)
+    SINCE="${1#--since=}"
+    shift || true
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.cve_intel poll --since "$SINCE" "$@"
+    ;;
+  --include-osv)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.cve_intel poll --include-osv
+    ;;
+  ""|--help|-h|help)
+    cat <<EOF
+cortexagent-cve — CVE / MITRE threat-intel wrapper
+
+  cortexagent-cve                      # poll last 7d (NVD+KEV+EPSS+GHSA)
+  cortexagent-cve --since=24h          # custom window
+  cortexagent-cve --include-osv        # also query OSV.dev for our pinned deps
+  cortexagent-cve --lookup CVE-2024-3094
+  cortexagent-cve --mitre T1190        # reverse: CVEs mapped to technique
+  cortexagent-cve --coverage           # MITRE M-code coverage
+  cortexagent-cve --smoke              # offline self-test
+  cortexagent-cve --install-schedule   # register daily cron in overseer
+  cortexagent-cve --uninstall-schedule
+EOF
+    ;;
+  *)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.cve_intel poll "$@"
+    ;;
+esac

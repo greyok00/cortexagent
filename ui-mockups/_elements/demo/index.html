@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>greyok-ui-framework · demo</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-display.css">
+  <link rel="stylesheet" href="../elements-lists.css">
+  <link rel="stylesheet" href="../elements-controls.css">
+  <link rel="stylesheet" href="../elements-inputs.css">
+  <link rel="stylesheet" href="../elements-containers.css">
+  <link rel="stylesheet" href="../elements-dataviz.css">
+  <link rel="stylesheet" href="../elements-interactions.css">
+  <link rel="stylesheet" href="../elements-size.css">
+</head>
+<body class="el-reset">
+
+  <!-- ─── Top bar ─── -->
+  <header class="el-demo-bar">
+    <h1>greyok-ui-framework <small>v0.1.0</small></h1>
+    <div class="el-cluster">
+      <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">theme</span>
+      <select id="theme-picker" data-theme-picker>
+        <option>neutral</option><option>polaroid</option><option>cockpit</option>
+        <option>cockpit-paper</option><option>console</option><option>compact</option>
+        <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+        <option>agent-history</option><option>terminal</option><option>swiss</option>
+      </select>
+      <span class="el-dot live" title="framework live"></span>
+    </div>
+  </header>
+
+  <main class="el-page">
+
+    <!-- ─── Hero ─── -->
+    <section style="display:flex;flex-direction:column;align-items:center;gap:var(--el-space-4);padding:var(--el-space-7) var(--el-space-4) var(--el-space-5);text-align:center">
+      <img src="../assets/wordmark.svg" alt="greyok-ui-framework" style="max-width:360px;height:auto">
+      <p style="max-width:560px;color:var(--el-ink-soft);font-size:var(--el-fs-md);margin:0;line-height:1.5">A drop-in CSS + JS framework with ~100 UI primitives, 12 swappable themes, and 6 size buckets. Works in HTML, TypeScript, and Python/Tkinter — no build step.</p>
+      <div style="display:flex;gap:var(--el-space-2);justify-content:center;flex-wrap:wrap">
+        <span class="el-pill ok">100 elements</span>
+        <span class="el-pill accent">12 themes</span>
+        <span class="el-pill">6 sizes</span>
+        <span class="el-pill info">TS + Python bindings</span>
+      </div>
+      <div style="display:flex;gap:var(--el-space-2);justify-content:center;margin-top:var(--el-space-3);flex-wrap:wrap">
+        <a href="display.html" class="el-card" style="padding:10px 18px;display:inline-flex;gap:8px;align-items:center;text-decoration:none;color:var(--el-accent);font-weight:600">Browse demo →</a>
+        <a href="https://github.com/greyok00/greyok-ui-framework" class="el-card" style="padding:10px 18px;display:inline-flex;gap:8px;align-items:center;text-decoration:none;color:var(--el-ink);border-color:var(--el-line)">GitHub</a>
+      </div>
+    </section>
+
+    <!-- ─── Categories ─── -->
+    <section style="margin-top:var(--el-space-6)">
+      <h2 style="font-family:var(--el-font-display);font-weight:600;font-size:var(--el-fs-xl);letter-spacing:-0.01em;margin:0 0 var(--el-space-2);color:var(--el-ink)">Categories <small style="font-family:var(--el-font-mono);font-size:var(--el-fs-xs);color:var(--el-ink-soft);letter-spacing:0.08em;text-transform:uppercase;margin-left:var(--el-space-2);font-weight:500">7 · 87 primitives</small></h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--el-space-3);margin:var(--el-space-5) 0">
+
+        <a class="el-card" href="display.html" style="text-decoration:none;color:inherit">
+          <div class="el-cluster" style="justify-content:space-between">
+            <span class="el-pill ok">15</span>
+            <span style="font-size:24px">✦</span>
+          </div>
+          <h3>Display</h3>
+          <div class="sub">pills, dots, gauges, badges, progress, sparklines</div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);min-height:28px;flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-pill fail">FAIL</span>
+            <span class="el-pill warn">WARN</span>
+            <span class="el-dot live" style="width:8px;height:8px"></span>
+          </div>
+        </a>
+
+        <a class="el-card" href="lists.html" style="text-decoration:none;color:inherit">
+          <div class="el-cluster" style="justify-content:space-between">
+            <span class="el-pill ok">15</span>
+            <span style="font-size:24px">≡</span>
+          </div>
+          <h3>Lists</h3>
+          <div class="sub">timelines, tables, kanban, cards, trees, breadcrumbs</div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);min-height:28px;flex-wrap:wrap">
+            <span class="el-chip">chips</span>
+            <span class="el-chip added">selected</span>
+            <span class="el-chip ok">passed</span>
+          </div>
+        </a>
+
+        <a class="el-card" href="controls.html" style="text-decoration:none;color:inherit">
+          <div class="el-cluster" style="justify-content:space-between">
+            <span class="el-pill ok">15</span>
+            <span style="font-size:24px">⚙</span>
+          </div>
+          <h3>Controls</h3>
+          <div class="sub">dropdowns, toggles, sliders, palettes, comboboxes</div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);min-height:28px;flex-wrap:wrap">
+            <span class="el-toggle on">on</span>
+            <span class="el-switch on">switch</span>
+            <span class="el-check">✓</span>
+          </div>
+        </a>
+
+        <a class="el-card" href="inputs.html" style="text-decoration:none;color:inherit">
+          <div class="el-cluster" style="justify-content:space-between">
+            <span class="el-pill ok">10</span>
+            <span style="font-size:24px">⎘</span>
+          </div>
+          <h3>Inputs</h3>
+          <div class="sub">text, search, prompt, file-upload, signature-pad</div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);min-height:28px;flex-wrap:wrap">
+            <input class="el-input" type="text" placeholder="type…" style="width:140px">
+          </div>
+        </a>
+
+        <a class="el-card" href="dataviz.html" style="text-decoration:none;color:inherit">
+          <div class="el-cluster" style="justify-content:space-between">
+            <span class="el-pill ok">10</span>
+            <span style="font-size:24px">📊</span>
+          </div>
+          <h3>Data viz</h3>
+          <div class="sub">mini-bars, heatmaps, graphs, diff-view, markdown</div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);min-height:28px;flex-wrap:wrap">
+            <div class="mini-bar" style="--h:60%"></div>
+            <div class="mini-bar" style="--h:80%"></div>
+            <div class="mini-bar" style="--h:40%"></div>
+            <div class="mini-bar" style="--h:90%"></div>
+          </div>
+        </a>
+
+        <a class="el-card" href="containers.html" style="text-decoration:none;color:inherit">
+          <div class="el-cluster" style="justify-content:space-between">
+            <span class="el-pill ok">12</span>
+            <span style="font-size:24px">▤</span>
+          </div>
+          <h3>Containers</h3>
+          <div class="sub">panels, tabs, modals, drawers, bento grids</div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);min-height:28px;flex-wrap:wrap">
+            <div class="el-tabs-h" style="font-size:10px">
+              <span class="tab on">A</span>
+              <span class="tab">B</span>
+              <span class="tab">C</span>
+            </div>
+          </div>
+        </a>
+
+        <a class="el-card" href="interactions.html" style="text-decoration:none;color:inherit">
+          <div class="el-cluster" style="justify-content:space-between">
+            <span class="el-pill ok">10</span>
+            <span style="font-size:24px">↔</span>
+          </div>
+          <h3>Interactions</h3>
+          <div class="sub">drag, tooltip, popover, toast, context-menu</div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);min-height:28px;flex-wrap:wrap">
+            <span class="el-tooltip" data-tip="tooltipped">hover me</span>
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- ─── Install tabs ─── -->
+    <section style="margin-top:var(--el-space-6)">
+      <h2 style="font-family:var(--el-font-display);font-weight:600;font-size:var(--el-fs-xl);letter-spacing:-0.01em;margin:0 0 var(--el-space-2);color:var(--el-ink)">Install <small style="font-family:var(--el-font-mono);font-size:var(--el-fs-xs);color:var(--el-ink-soft);letter-spacing:0.08em;text-transform:uppercase;margin-left:var(--el-space-2);font-weight:500">pick a language</small></h2>
+      <div style="margin-top:var(--el-space-3)">
+        <div class="el-tabs-h" style="flex-wrap:wrap">
+          <span class="tab on" data-target="#install-html">HTML</span>
+          <span class="tab" data-target="#install-npm">npm</span>
+          <span class="tab" data-target="#install-py">Python</span>
+          <span class="tab" data-target="#install-ts">TypeScript</span>
+        </div>
+
+        <div class="panel on" id="install-html">
+          <button class="el-card" data-copy="<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/tokens.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/themes.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/base.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/elements-display.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/elements-lists.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/elements-controls.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/elements-dataviz.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/elements-containers.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/elements-inputs.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/elements-interactions.css&quot;>
+<link rel=&quot;stylesheet&quot; href=&quot;greyok-ui-framework/elements-size.css&quot;>
+<script src=&quot;greyok-ui-framework/theme-switcher.js&quot; defer>&lt;/script>
+<script src=&quot;greyok-ui-framework/elements.js&quot; defer>&lt;/script>" style="float:right;margin:0 0 var(--el-space-2);padding:4px 10px;font-size:11px;cursor:pointer">Copy</button>
+          <pre style="margin:0;padding:var(--el-space-4);background:var(--el-panel-2);border-radius:0 0 var(--el-r-md) var(--el-r-md);overflow-x:auto;font-family:var(--el-font-mono);font-size:var(--el-fs-sm)">&lt;link rel="stylesheet" href="greyok-ui-framework/tokens.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/themes.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/base.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/elements-display.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/elements-lists.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/elements-controls.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/elements-dataviz.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/elements-containers.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/elements-inputs.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/elements-interactions.css"&gt;
+&lt;link rel="stylesheet" href="greyok-ui-framework/elements-size.css"&gt;
+&lt;script src="greyok-ui-framework/theme-switcher.js" defer&gt;&lt;/script&gt;
+&lt;script src="greyok-ui-framework/elements.js" defer&gt;&lt;/script&gt;</pre>
+        </div>
+
+        <div class="panel" id="install-npm" style="display:none">
+          <button class="el-card" data-copy="npm install greyok-ui-framework" style="float:right;margin:0 0 var(--el-space-2);padding:4px 10px;font-size:11px;cursor:pointer">Copy</button>
+          <pre style="margin:0;padding:var(--el-space-4);background:var(--el-panel-2);border-radius:0 0 var(--el-r-md) var(--el-r-md);overflow-x:auto;font-family:var(--el-font-mono);font-size:var(--el-fs-sm)">npm install greyok-ui-framework</pre>
+        </div>
+
+        <div class="panel" id="install-py" style="display:none">
+          <button class="el-card" data-copy="from greyok_ui_framework import ElTheme, ElWidget, get_theme
+
+theme = get_theme('cockpit')
+btn = ElWidget(parent, 'btn', theme=theme, text='Run', command=handler)
+btn.pack()" style="float:right;margin:0 0 var(--el-space-2);padding:4px 10px;font-size:11px;cursor:pointer">Copy</button>
+          <pre style="margin:0;padding:var(--el-space-4);background:var(--el-panel-2);border-radius:0 0 var(--el-r-md) var(--el-r-md);overflow-x:auto;font-family:var(--el-font-mono);font-size:var(--el-fs-sm)">from greyok_ui_framework import ElTheme, ElWidget, get_theme
+
+theme = get_theme('cockpit')           # any of 12 themes
+btn = ElWidget(parent, 'btn', theme=theme, text='Run', command=handler)
+btn.pack()
+
+# or use the dataclass directly
+print(f'bg={theme.bg}  accent={theme.accent}  live={theme.live}')</pre>
+        </div>
+
+        <div class="panel" id="install-ts" style="display:none">
+          <button class="el-card" data-copy="import 'greyok-ui-framework/typescript/elements.d.ts';
+
+const pill = document.querySelector('.el-pill.ok') as HTMLSpanElement;
+const tabs = document.querySelector('.el-tabs-h') as HTMLDivElement;" style="float:right;margin:0 0 var(--el-space-2);padding:4px 10px;font-size:11px;cursor:pointer">Copy</button>
+          <pre style="margin:0;padding:var(--el-space-4);background:var(--el-panel-2);border-radius:0 0 var(--el-r-md) var(--el-r-md);overflow-x:auto;font-family:var(--el-font-mono);font-size:var(--el-fs-sm)">import 'greyok-ui-framework/typescript/elements.d.ts';
+
+const pill = document.querySelector('.el-pill.ok') as HTMLSpanElement;
+const tabs = document.querySelector('.el-tabs-h') as HTMLDivElement;</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Theme gallery ─── -->
+    <section style="margin-top:var(--el-space-6)">
+      <h2 style="font-family:var(--el-font-display);font-weight:600;font-size:var(--el-fs-xl);letter-spacing:-0.01em;margin:0 0 var(--el-space-2);color:var(--el-ink)">Themes <small style="font-family:var(--el-font-mono);font-size:var(--el-fs-xs);color:var(--el-ink-soft);letter-spacing:0.08em;text-transform:uppercase;margin-left:var(--el-space-2);font-weight:500">12 swappable skins · live preview</small></h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--el-space-3);margin:var(--el-space-4) 0">
+
+        <div class="el-card" data-theme="neutral" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>neutral</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">dark</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="polaroid" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>polaroid</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">light</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="cockpit" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>cockpit</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">dark</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="cockpit-paper" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>cockpit-paper</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">warm</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="console" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>console</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">dark</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="compact" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>compact</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">dark</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="casebook" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>casebook</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">light</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="agent-paper" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>agent-paper</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">light</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="agent-pulse" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>agent-pulse</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">dark</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="agent-history" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>agent-history</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">light</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="terminal" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>terminal</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">CRT</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+        <div class="el-card" data-theme="swiss" style="padding:var(--el-space-3)">
+          <div class="el-cluster" style="justify-content:space-between">
+            <strong>swiss</strong>
+            <span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">light</span>
+          </div>
+          <div style="display:flex;gap:4px;margin:var(--el-space-2) 0">
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-bg)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-panel)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-accent)"></span>
+            <span style="width:22px;height:22px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);background:var(--el-ink)"></span>
+          </div>
+          <div style="display:flex;gap:var(--el-space-2);align-items:center;margin-top:var(--el-space-2);flex-wrap:wrap">
+            <span class="el-pill ok">OK</span>
+            <span class="el-dot live"></span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ─── Footer ─── -->
+    <footer style="text-align:center;padding:var(--el-space-6) 0 var(--el-space-4);color:var(--el-ink-soft);font-size:var(--el-fs-sm);border-top:1px solid var(--el-line);margin-top:var(--el-space-6)">
+      <p>MIT © 2026 <a href="https://github.com/greyok00" style="color:var(--el-accent)">greyok00</a> · <a href="https://github.com/greyok00/greyok-ui-framework" style="color:var(--el-accent)">github.com/greyok00/greyok-ui-framework</a></p>
+      <p><span style="color:var(--el-ink-soft);font:11px var(--el-font-mono);letter-spacing:0.06em;text-transform:uppercase">100 elements · 12 themes · 6 sizes · 0 build</span></p>
+    </footer>
+
+  </main>
+
+  <!-- Panel switch script (only 4 LOC; tabs.js handler exists but we need panel-on toggle). -->
+  <script>
+    document.querySelectorAll('.install-tabs .el-tabs-h .tab, .el-tabs-h .tab[data-target^="#install"]').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.el-tabs-h .tab[data-target^="#install"]').forEach(t => t.classList.remove('on'));
+        tab.classList.add('on');
+        document.querySelectorAll('.panel[id^="install-"]').forEach(p => p.style.display = 'none');
+        const tgt = document.querySelector(tab.dataset.target);
+        if (tgt) tgt.style.display = 'block';
+      });
+    });
+  </script>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

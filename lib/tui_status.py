@@ -54,43 +54,145 @@ except ImportError:  # pragma: no cover - venv ships wcwidth
     _wcswidth = None
 
 
+# ── Terminal capability detection ──────────────────────────────────────────────
+# Respect NO_COLOR, TERM=dumb, and non-TTY. Honor a `--unicode` flag (set via
+# ``set_unicode(True)`` at startup) so users on width-unsafe terminals can
+# opt out of box-drawing. See docs/ux/DESIGN-PRINCIPLES.md §4.4, §4.5.
+
+import os
+import sys as _sys
+
+
+def _detect_color() -> int:
+    """Return color capability in bits (0/8/24). Honors NO_COLOR + TERM=dumb."""
+    if os.environ.get("NO_COLOR"):
+        return 0
+    if not _sys.stdout.isatty():
+        return 0
+    term = os.environ.get("TERM", "")
+    if term in ("dumb", ""):
+        return 0
+    if os.environ.get("COLORTERM") in ("truecolor", "24bit"):
+        return 24
+    if term.endswith("-256color"):
+        return 8
+    return 8  # safe default
+
+
+_COLOR_BITS: int = _detect_color()
+_UNICODE: bool = True  # flipped by set_unicode(); default to Unicode for modern terminals
+
+
+def set_unicode(enabled: bool) -> None:
+    """Toggle Unicode box-drawing. ASCII fallback is always rendered if False.
+
+    Call at startup based on a --unicode CLI flag or env knob
+    (CORTEXAGENT_TUI_UNICODE=0 to disable). Default True.
+    """
+    global _UNICODE
+    _UNICODE = bool(enabled)
+
+
+def color_bits() -> int:
+    """Read-only view of detected color capability."""
+    return _COLOR_BITS
+
+
+def is_unicode() -> bool:
+    """Read-only view of Unicode box-drawing state."""
+    return _UNICODE
+
+
+def set_title(title: str) -> None:
+    """Update the terminal window title via OSC 0.
+
+    Honors the same env checks: skipped if non-TTY or TERM=dumb or NO_COLOR
+    (NO_COLOR doesn't strictly apply, but a NO_COLOR user wants minimal
+    terminal side-effects anyway). Safe to call on every render tick.
+    """
+    if not _sys.stdout.isatty():
+        return
+    if os.environ.get("TERM", "") in ("dumb", ""):
+        return
+    # OSC 0 ; <title> ST — terminator is BEL (\x07) for max compatibility.
+    safe = title.replace("\x1b", "").replace("\x07", "")
+    _sys.stdout.write(f"\x1b]0;{safe}\x07")
+    _sys.stdout.flush()
+
+
 # ── ANSI color ───────────────────────────────────────────────────────────────
 # 24-bit truecolor via OSC-equivalent SGR. Pairs every color with a glyph
 # so colorblind users and forced-colors terminals still read the state.
+# When _COLOR_BITS == 0, all color escapes collapse to no-ops (RESET only).
 
 def _sgr(code: str) -> str:
-    """Wrap ``text`` `` in an ANSI SGR sequence. Caller must pair with reset."""
+    """Wrap ``text`` `` in an ANSI SGR sequence. Caller must pair with reset.
+
+    Returns empty string when color is suppressed (NO_COLOR / non-TTY /
+    TERM=dumb). Callers that previously wrote ``_sgr(code) + glyph + RESET``
+    become ``glyph`` automatically in that mode — callers don't need to
+    branch themselves.
+    """
+    if _COLOR_BITS == 0:
+        return ""
     return f"\x1b[{code}m"
 
 
-RESET = "\x1b[0m"
-DIM = "\x1b[2m"
-BOLD = "\x1b[1m"
+RESET = "\x1b[0m" if _COLOR_BITS > 0 else ""
+DIM = "\x1b[2m" if _COLOR_BITS > 0 else ""
+BOLD = "\x1b[1m" if _COLOR_BITS > 0 else ""
 
 # Palette — green / cyan / purple / yellow / red. Hex matches the constants
 # already used by lib/tui.py (BG, BG2, TEXT, …). Do not duplicate numbers;
 # import from lib.tui if needed.
-GREEN = "38;2;74;139;92"      # ready / success
-CYAN = "38;2;150;220;255"     # runtime panel accent
-PURPLE = "38;2;180;140;200"   # SlimToken panel accent
-YELLOW = "38;2;220;180;80"    # warming / stale
-RED = "38;2;196;85;77"      # unavailable / failure
-DIM_GREY = "38;2;136;136;136"  # hint rows
+GREEN_24 = "38;2;74;139;92"      # ready / success
+CYAN_24 = "38;2;150;220;255"     # runtime panel accent
+PURPLE_24 = "38;2;180;140;200"   # SlimToken panel accent
+YELLOW_24 = "38;2;220;180;80"    # warming / stale
+RED_24 = "38;2;196;85;77"        # unavailable / failure
+DIM_GREY_24 = "38;2;136;136;136"  # hint rows
 
-_STATUS_GLYPH = {
-    "ready": ("●", GREEN),
-    "warming": ("◷", YELLOW),
-    "unavailable": ("!", RED),
-    "generating": ("●", GREEN),
-    "waiting_tool": ("◷", YELLOW),
-    "preparing": ("◈", CYAN),
-    "retrying": ("◷", YELLOW),
-    "idle": ("·", DIM_GREY),
-}
+# 8-color fallback palette (works on every vt100-compatible terminal).
+GREEN_8 = "32"
+CYAN_8 = "36"
+PURPLE_8 = "35"
+YELLOW_8 = "33"
+RED_8 = "31"
+DIM_GREY_8 = "90"
+
+
+def _pick(bit24: str, bit8: str) -> str:
+    """Pick a color SGR code based on the live _COLOR_BITS."""
+    return bit24 if _COLOR_BITS >= 24 else bit8
+
+
+def GREEN() -> str: return _pick(GREEN_24, GREEN_8)
+def CYAN() -> str: return _pick(CYAN_24, CYAN_8)
+def PURPLE() -> str: return _pick(PURPLE_24, PURPLE_8)
+def YELLOW() -> str: return _pick(YELLOW_24, YELLOW_8)
+def RED() -> str: return _pick(RED_24, RED_8)
+def DIM_GREY() -> str: return _pick(DIM_GREY_24, DIM_GREY_8)
+
+
+# Glyph table uses the live pickers so a test that toggles bits gets the
+# right code.
+def _STATUS_GLYPH() -> dict:
+    return {
+        "ready": ("●", GREEN()),
+        "warming": ("◷", YELLOW()),
+        "unavailable": ("!", RED()),
+        "generating": ("●", GREEN()),
+        "waiting_tool": ("◷", YELLOW()),
+        "preparing": ("◈", CYAN()),
+        "retrying": ("◷", YELLOW()),
+        "idle": ("·", DIM_GREY()),
+    }
 
 
 def _color(text: str, code: str) -> str:
     """Apply a 24-bit color to text. Caller is responsible for pairing."""
+    if _COLOR_BITS == 0:
+        return text
     return f"{_sgr(code)}{text}{RESET}"
 
 
@@ -101,11 +203,56 @@ def _pair_with_glyph(text: str, glyph: str, code: str) -> str:
     terminal still sees the marker. The text is bolded but stays default
     foreground for max readability.
     """
+    if _COLOR_BITS == 0:
+        return f"{glyph} {BOLD}{text}{RESET}"
     return f"{_sgr(code)}{glyph}{RESET} {BOLD}{text}{RESET}"
 
 
 def _dim(text: str) -> str:
+    if _COLOR_BITS == 0:
+        return text
     return f"{DIM}{text}{RESET}"
+
+
+# ── Box-drawing characters (Unicode default; ASCII fallback) ────────────────
+# Per DESIGN-PRINCIPLES.md §4.5: never mix Unicode and ASCII on the same
+# line; default to ASCII on terminals with known width bugs.
+
+# Source-of-truth pairs: ASCII first, Unicode second. Live selection
+# happens via the B_* accessors below (they read _UNICODE at call time so
+# ``set_unicode(False)`` takes effect immediately).
+_BOX_PAIRS = {
+    "TL": ("+", "╭"),
+    "TR": ("+", "╮"),
+    "BL": ("+", "╰"),
+    "BR": ("+", "╯"),
+    "H":  ("-", "─"),
+    "V":  ("|", "│"),
+}
+
+
+def B_TOP_LEFT() -> str:
+    return _BOX_PAIRS["TL"][1] if _UNICODE else _BOX_PAIRS["TL"][0]
+
+
+def B_TOP_RIGHT() -> str:
+    return _BOX_PAIRS["TR"][1] if _UNICODE else _BOX_PAIRS["TR"][0]
+
+
+def B_BOTTOM_LEFT() -> str:
+    return _BOX_PAIRS["BL"][1] if _UNICODE else _BOX_PAIRS["BL"][0]
+
+
+def B_BOTTOM_RIGHT() -> str:
+    return _BOX_PAIRS["BR"][1] if _UNICODE else _BOX_PAIRS["BR"][0]
+
+
+def B_HORIZONTAL() -> str:
+    return _BOX_PAIRS["H"][1] if _UNICODE else _BOX_PAIRS["H"][0]
+
+
+def B_VERTICAL() -> str:
+    return _BOX_PAIRS["V"][1] if _UNICODE else _BOX_PAIRS["V"][0]
 
 
 # ── Cell-aware width measurement ─────────────────────────────────────────────
@@ -313,7 +460,7 @@ def runtime_rows(rt: RuntimeView, drop: set) -> List[str]:
         r2 = ""
 
     # Row 3: model + phase
-    glyph, color = _STATUS_GLYPH.get(rt.phase.value, ("·", DIM_GREY))
+    glyph, color = _STATUS_GLYPH().get(rt.phase.value, ("·", DIM_GREY()))
     state_word = {
         WorkPhase.READY: "model ready",
         WorkPhase.WARMING: "model warming up",
@@ -344,7 +491,6 @@ def slimtoken_rows(st: SlimTokenView, drop: set) -> List[str]:
         return [_dim(r1), _dim(r2), _dim(r3)]
 
     pct = f"{st.saved_pct:.0f}%" if st.saved_pct is not None else "0%"
-    saved = _format_int(st.tin) if hasattr(st, "tin") else _format_int(st.tokens_saved or 0)
     saved = _format_int(st.tokens_saved or 0)
     r1 = f"saved {pct} · {saved} tok"
 
@@ -367,7 +513,7 @@ def memory_rows(mem: MemoryView, drop: set) -> List[str]:
         r3 = mem.detail_hint or "m for details"
         # The trailing ! is itself the red signal; we still color the word.
         return [
-            f"{_sgr(RED)}!{RESET} {_dim('memory unavailable')}",
+            f"{_sgr(RED())}!{RESET} {_dim('memory unavailable')}",
             _dim(r2),
             _dim(r3),
         ]
@@ -403,33 +549,36 @@ def panel_block(title: str, rows: List[str], width: int, accent: str) -> str:
     if width < 6:
         width = 6
     title_part = f" {title} "
-    # Top border: ╭─ TITLE ─…─╮
+    # Top border: corner-glyph + TITLE + dashes + corner-glyph
+    # Outer width = inner + 2 (matches content rows).
+    # Border row cells: corner(1) + dash(1) + title(T) + dashes(N) + corner(1)
+    #   = T + N + 3. We need T + N + 3 = inner + 2, so N = inner - T - 1.
     top_inner = width
     title_cells = display_width(title_part)
     if title_cells + 2 > top_inner:
-        # Title too long — truncate.
-        title_part = fit_to_cells(title_part, top_inner - 2, "left")
+        # Title too long — truncate to leave room for the corner glyphs.
+        title_part = fit_to_cells(title_part, max(1, top_inner - 2), "left")
         title_cells = display_width(title_part)
-    dash_count = max(0, top_inner - title_cells - 0)
+    dash_count = max(0, top_inner - title_cells - 1)
     top = (
-        _sgr(accent) + "╭─" + RESET
+        _sgr(accent) + B_TOP_LEFT() + B_HORIZONTAL() + RESET
         + _sgr(accent) + title_part + RESET
-        + _sgr(accent) + "─" * dash_count + RESET
-        + _sgr(accent) + "╮" + RESET
+        + _sgr(accent) + B_HORIZONTAL() * dash_count + RESET
+        + _sgr(accent) + B_TOP_RIGHT() + RESET
     )
     mid: List[str] = []
     for r in rows:
-        # Each content row gets │ … │ with the content fit/padded to width.
+        # Each content row gets vbar + content + vbar, content fit/padded to width.
         content = fit_to_cells(r, width, "left")
         # The leading/trailing border glyphs use the accent color so the
         # whole panel reads as a single bordered region.
         mid.append(
-            _sgr(accent) + "│" + RESET
+            _sgr(accent) + B_VERTICAL() + RESET
             + content
-            + _sgr(accent) + "│" + RESET
+            + _sgr(accent) + B_VERTICAL() + RESET
         )
     bot = (
-        _sgr(accent) + "╰" + "─" * width + "╯" + RESET
+        _sgr(accent) + B_BOTTOM_LEFT() + B_HORIZONTAL() * width + B_BOTTOM_RIGHT() + RESET
     )
     return "\n".join([top] + mid + [bot])
 
@@ -443,7 +592,7 @@ def work_line(work: WorkLineView, width: int) -> str:
     a Unicode block bar with **no** fake percent. Determinate phases
     (PREPARING with a measured progress) get a percent + bar.
     """
-    glyph, color = _STATUS_GLYPH.get(work.phase.value, ("·", DIM_GREY))
+    glyph, color = _STATUS_GLYPH().get(work.phase.value, ("·", DIM_GREY()))
     label = work.label
     parts = [_pair_with_glyph("", glyph, color) + " " + _dim(label)]
     # Retry block
@@ -513,11 +662,42 @@ def _join_footer(items: Sequence[Tuple[str, str]]) -> str:
         if key in ("Esc", "r", "ctrl+c"):
             parts.append(_dim(f"{key} {label}"))
         else:
-            parts.append(f"{_sgr(CYAN)}{key}{RESET} {_dim(label)}")
+            parts.append(f"{_sgr(CYAN())}{key}{RESET} {_dim(label)}")
     return " · ".join(parts)
 
 
 # ── Top-level strip renderer ─────────────────────────────────────────────────
+
+def _inner_widths(width: int) -> Tuple[str, int, int]:
+    """Compute the layout + (inner_width for top panels, inner_width for bottom).
+
+    Returns:
+        (layout, top_inner, mem_inner)
+
+    Width math (inner = content cells between `│`; outer = inner + 2 for borders):
+      3up   — total outer = 3*(inner + 2) + 2*gap = 3*inner + 8
+              ⇒ inner = floor((width - 8) / 3), capped at 90 (no min — width is the floor)
+      2+1   — top outer = 2*(inner + 2) + gap = 2*inner + 5
+              ⇒ inner = floor((width - 5) / 2), capped at 90
+              bottom inner = width - 2 (memory gets the full width)
+      stack — inner = width - 2 (each panel on its own row band)
+
+    At very small widths (<20), panel_block clamps to its 6-cell minimum and
+    the terminal clips the excess. We never inflate a panel wider than width.
+    """
+    if width >= 96:
+        layout = "3up"
+        inner = min(90, max(6, (width - 8) // 3))
+        return layout, inner, inner
+    if width >= 64:
+        layout = "2plus1"
+        inner = min(90, max(6, (width - 5) // 2))
+        mem_inner = min(90, max(6, width - 2))
+        return layout, inner, mem_inner
+    layout = "stack"
+    inner = min(90, max(6, width - 2))
+    return layout, inner, inner
+
 
 def strip_render(view: StatusView) -> str:
     """Render the full bottom region: optional work line + 3-panel strip + footer.
@@ -527,10 +707,11 @@ def strip_render(view: StatusView) -> str:
       >= 64  : 2+1 (Runtime | SlimToken on top, Memory full-width below)
       else   : vertical stack (Runtime, then SlimToken, then Memory)
 
-    Returns a multi-line string ready to ``Static.update()``.
+    Returns a multi-line string ready to ``Static.update()``. Every rendered
+    row is width-aware so nothing shoots out the side of the terminal.
     """
     width = max(20, view.width)
-    panel_w = max(48, min(90, width - 2))
+    layout, top_inner, mem_inner = _inner_widths(width)
     gap = " "
 
     rt_drop: set = set()
@@ -549,14 +730,6 @@ def strip_render(view: StatusView) -> str:
     if width < 56:
         rt_drop.add("token_rates")
 
-    # Determine layout.
-    if width >= 96:
-        layout = "3up"
-    elif width >= 64:
-        layout = "2plus1"
-    else:
-        layout = "stack"
-
     rt_rows = runtime_rows(view.runtime, rt_drop)
     st_rows = slimtoken_rows(view.slimtoken, st_drop)
     mem_rows = memory_rows(view.memory, mem_drop)
@@ -569,29 +742,25 @@ def strip_render(view: StatusView) -> str:
     # Top spacer removed by spec rule: no blank spacer lines.
 
     if layout == "3up":
-        rt_panel = panel_block("RUNTIME", rt_rows, panel_w, CYAN).splitlines()
-        st_panel = panel_block("SLIMTOKEN", st_rows, panel_w, PURPLE).splitlines()
-        mem_panel = panel_block("MEMORY", mem_rows, panel_w, GREEN).splitlines()
+        rt_panel = panel_block("RUNTIME", rt_rows, top_inner, CYAN()).splitlines()
+        st_panel = panel_block("SLIMTOKEN", st_rows, top_inner, PURPLE()).splitlines()
+        mem_panel = panel_block("MEMORY", mem_rows, top_inner, GREEN()).splitlines()
         for a, b, c in zip(rt_panel, st_panel, mem_panel):
             out_lines.append(a + gap + b + gap + c)
     elif layout == "2plus1":
-        # Runtime + SlimToken side-by-side on the top three rows; Memory
-        # full-width (panel_w + 2 wide on each side of the terminal) below.
-        # Each top-panel is panel_w wide; the bottom memory panel matches
-        # the combined width (panel_w + gap + panel_w) using the same
-        # panel_w but stretched.
-        rt_panel = panel_block("RUNTIME", rt_rows, panel_w, CYAN).splitlines()
-        st_panel = panel_block("SLIMTOKEN", st_rows, panel_w, PURPLE).splitlines()
+        # Runtime + SlimToken side-by-side on the top block; Memory full-width
+        # below. Top inner is computed to keep the top row at ≤ width cells.
+        rt_panel = panel_block("RUNTIME", rt_rows, top_inner, CYAN()).splitlines()
+        st_panel = panel_block("SLIMTOKEN", st_rows, top_inner, PURPLE()).splitlines()
         for a, b in zip(rt_panel, st_panel):
             out_lines.append(a + gap + b)
-        mem_w = min(90, width - 2)
-        mem_panel = panel_block("MEMORY", mem_rows, mem_w, GREEN).splitlines()
+        mem_panel = panel_block("MEMORY", mem_rows, mem_inner, GREEN()).splitlines()
         out_lines.extend(mem_panel)
     else:
         # Stack — each panel on its own row band.
-        out_lines.extend(panel_block("RUNTIME", rt_rows, panel_w, CYAN).splitlines())
-        out_lines.extend(panel_block("SLIMTOKEN", st_rows, panel_w, PURPLE).splitlines())
-        out_lines.extend(panel_block("MEMORY", mem_rows, panel_w, GREEN).splitlines())
+        out_lines.extend(panel_block("RUNTIME", rt_rows, top_inner, CYAN()).splitlines())
+        out_lines.extend(panel_block("SLIMTOKEN", st_rows, top_inner, PURPLE()).splitlines())
+        out_lines.extend(panel_block("MEMORY", mem_rows, mem_inner, GREEN()).splitlines())
 
     # Footer (unbordered, one line).
     out_lines.append(footer_line(view.shortcuts, width))

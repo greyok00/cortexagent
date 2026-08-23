@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="neutral">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inputs · el-framework</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../themes.css">
+  <link rel="stylesheet" href="../base.css">
+  <link rel="stylesheet" href="../elements-inputs.css">
+  <link rel="stylesheet" href="../elements-controls.css">
+</head>
+<body class="el-reset">
+  <header class="el-demo-bar">
+    <strong>Inputs</strong>
+    <select id="theme-picker" data-theme-picker>
+      <option>neutral</option><option>polaroid</option><option>cockpit</option>
+      <option>cockpit-paper</option><option>console</option><option>compact</option>
+      <option>casebook</option><option>agent-paper</option><option>agent-pulse</option>
+      <option>agent-history</option><option>terminal</option><option>swiss</option>
+    </select>
+    <a href="index.html">← index</a>
+  </header>
+
+  <main class="el-page">
+    <h1>Input primitives</h1>
+
+    <h2>Input · Textarea · Prompt</h2>
+    <div class="el-stack" style="max-width:420px">
+      <input class="el-input" placeholder="Single-line input…">
+      <textarea class="el-textarea" placeholder="Multi-line textarea…"></textarea>
+      <textarea class="el-prompt" placeholder="Ask the agent…"></textarea>
+    </div>
+
+    <h2>Search bar</h2>
+    <div class="el-search-bar" style="max-width:480px">
+      <input class="el-search" placeholder="Search across all sources…">
+      <select class="el-dropdown"><option>All</option><option>SIEM</option></select>
+      <button class="el-btn">Go</button>
+    </div>
+
+    <h2>File upload</h2>
+    <label class="el-file-upload" style="width:320px">
+      <span class="icon">⬆</span>
+      <strong>Drop files here</strong>
+      <span class="hint">or click to browse</span>
+    </label>
+
+    <h2>Color swatch input</h2>
+    <div class="el-cluster">
+      <input type="color" class="el-swatch-input" value="#0e7c86">
+      <input type="color" class="el-swatch-input" value="#b8693c">
+      <input type="color" class="el-swatch-input" value="#d62828">
+    </div>
+
+    <h2>Signature pad</h2>
+    <canvas class="el-signature-pad" width="320" height="120"></canvas>
+
+    <h2>Audio waveform</h2>
+    <div class="el-audio-waveform" style="width:320px">
+      <span class="bar played" style="height:30%"></span>
+      <span class="bar played" style="height:60%"></span>
+      <span class="bar played" style="height:40%"></span>
+      <span class="bar" style="height:50%"></span>
+      <span class="bar" style="height:80%"></span>
+      <span class="bar" style="height:30%"></span>
+      <span class="bar" style="height:60%"></span>
+      <span class="bar" style="height:90%"></span>
+      <span class="bar" style="height:45%"></span>
+      <span class="bar" style="height:20%"></span>
+      <span class="bar" style="height:55%"></span>
+      <span class="bar" style="height:75%"></span>
+    </div>
+
+    <h2>Code block</h2>
+    <pre class="el-code-block"><span class="el-comment">// theme-switcher.js</span>
+<span class="el-keyword">function</span> <span class="el-fn">apply</span>(slug) {
+  document.documentElement.dataset.theme = slug;
+  localStorage.setItem(<span class="el-string">'el-theme'</span>, slug);
+}
+
+<span class="el-keyword">const</span> DEFAULT = <span class="el-string">'neutral'</span>;
+<span class="el-keyword">const</span> VALID   = <span class="el-keyword">new</span> <span class="el-fn">Set</span>([<span class="el-string">'neutral'</span>, <span class="el-string">'polaroid'</span>, <span class="el-number">12</span>]);</pre>
+
+    <h2>Kbd input</h2>
+    <input class="el-kbd-input" value="⌘K">
+  </main>
+
+  <script src="../theme-switcher.js"></script>
+  <script src="../elements.js"></script>
+</body>
+</html>

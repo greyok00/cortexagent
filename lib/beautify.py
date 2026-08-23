@@ -280,25 +280,6 @@ def _render_tree(lines: List[str]) -> str:
     return "\n".join(lines)
 
 
-def _render_flowchart(lines: List[str]) -> str:
-    """Render a simple flowchart from text."""
-    chart = []
-    chart.append("  ┌─────────────┐")
-    chart.append("  │    INPUT    │")
-    chart.append("  └──────┬──────┘")
-    chart.append("         │")
-    chart.append("         ▼")
-    chart.append("  ┌─────────────┐")
-    chart.append("  │  PROCESS    │")
-    chart.append("  └──────┬──────┘")
-    chart.append("         │")
-    chart.append("         ▼")
-    chart.append("  ┌─────────────┐")
-    chart.append("  │   OUTPUT    │")
-    chart.append("  └─────────────┘")
-    return "\n".join(chart)
-
-
 # ── New Chart Detection (beautify.py v2) ────────────────────────────────
 # Detects numeric series and renders them as sparklines or multi-sparklines
 # instead of the old bar/line/pie charts.

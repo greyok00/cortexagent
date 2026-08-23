@@ -1,0 +1,56 @@
+{
+  "name": "greyok-ui-framework",
+  "version": "0.1.0",
+  "description": "greyok-ui-framework — ~100 CSS primitives, 12 swappable themes, 6 size buckets. Works in HTML/CSS, Tkinter (Python bridge), and TypeScript. Drop in tokens + theme + element CSS, pick a theme, ship.",
+  "type": "module",
+  "main": "elements.js",
+  "exports": {
+    ".": "./elements.js",
+    "./tokens.css": "./tokens.css",
+    "./themes.css": "./themes.css",
+    "./base.css": "./base.css",
+    "./elements-display.css": "./elements-display.css",
+    "./elements-lists.css": "./elements-lists.css",
+    "./elements-controls.css": "./elements-controls.css",
+    "./elements-dataviz.css": "./elements-dataviz.css",
+    "./elements-containers.css": "./elements-containers.css",
+    "./elements-inputs.css": "./elements-inputs.css",
+    "./elements-interactions.css": "./elements-interactions.css",
+    "./elements-size.css": "./elements-size.css",
+    "./theme-switcher.js": "./theme-switcher.js",
+    "./python": "./python/greyok_ui_framework.py",
+    "./typescript": "./typescript/elements.d.ts"
+  },
+  "files": [
+    "*.css",
+    "*.js",
+    "demo/",
+    "python/",
+    "typescript/",
+    "assets/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "demo": "python3 -m http.server 8768 --bind 127.0.0.1",
+    "verify": "bash bin/verify.sh"
+  },
+  "keywords": [
+    "ui-framework",
+    "css-framework",
+    "design-system",
+    "themes",
+    "tkinter",
+    "typescript",
+    "greyok"
+  ],
+  "author": "greyok00",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/greyok00/greyok-ui-framework.git"
+  }
+}

@@ -1,598 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CortexAgent — Pipeline Visualization</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Pipeline — the code in action</title>
+<link rel="icon" href="data:,">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  background: #0a0a0f;
-  color: #e0e0e0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  overflow: hidden;
-  height: 100vh;
-  user-select: none;
-}
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 30% 30% at 25% 35%, rgba(59,130,246,0.08), transparent),
-    radial-gradient(ellipse 25% 25% at 75% 65%, rgba(139,92,246,0.06), transparent),
-    radial-gradient(ellipse 20% 20% at 55% 80%, rgba(6,182,212,0.05), transparent);
-  animation: nebula 30s ease-in-out infinite alternate;
-}
-@keyframes nebula {
-  0% { opacity: 0.5; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.1); }
-  100% { opacity: 0.6; transform: scale(1.05); }
-}
-canvas { display: block; position: fixed; inset: 0; z-index: 0; }
-
-#loader {
-  position: fixed; inset: 0; z-index: 9999;
-  background: #0a0a0f; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 20px;
-  transition: opacity 0.6s ease;
-}
-#loader.hidden { opacity: 0; pointer-events: none; }
-#loader .ring {
-  width: 50px; height: 50px; border-radius: 50%;
-  border: 2px solid rgba(201,168,76,0.15);
-  border-top-color: #c9a84c;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-#loader .label {
-  font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
-  color: #666;
-}
-
-#stage-nav {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
-  pointer-events: none;
-}
-#stage-nav > * { pointer-events: auto; }
-
-.stage-flow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(10,10,26,0.72);
-  backdrop-filter: blur(20px) saturate(150%);
-  border: 1px solid rgba(201,168,76,0.14);
-  border-radius: 14px;
-  padding: 8px 10px;
-  flex-wrap: wrap;
-  max-width: calc(100vw - 420px);
-}
-.flow-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.flow-stage {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border-radius: 9px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.35s ease;
-}
-.flow-stage:hover {
-  background: rgba(255,255,255,0.05);
-  transform: translateY(-1px);
-}
-.flow-stage.active {
-  border-color: var(--stage-color, rgba(201,168,76,0.5));
-  background: color-mix(in srgb, var(--stage-color, #c9a84c) 16%, transparent);
-  box-shadow: 0 0 20px color-mix(in srgb, var(--stage-color, #c9a84c) 28%, transparent);
-}
-.flow-stage.done {
-  opacity: 0.8;
-}
-.flow-num {
-  width: 22px; height: 22px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700;
-  border: 1.5px solid rgba(201,168,76,0.35);
-  color: #c9a84c;
-  flex-shrink: 0;
-  transition: all 0.3s ease;
-  font-variant-numeric: tabular-nums;
-}
-.flow-stage.active .flow-num {
-  background: var(--stage-color, #c9a84c);
-  color: #0a0a0f;
-  border-color: var(--stage-color, #c9a84c);
-  box-shadow: 0 0 14px var(--stage-color, #c9a84c);
-}
-.flow-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #c8c8d0;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-.flow-stage.active .flow-name { color: #fff; }
-.flow-arrow {
-  color: #888;
-  font-size: 15px;
-  flex-shrink: 0;
-  animation: arrowPulse 2s ease-in-out infinite;
-}
-@keyframes arrowPulse {
-  0%, 100% { opacity: 0.3; transform: translateX(0); }
-  50% { opacity: 1; transform: translateX(2px); }
-}
-
-.prompt-selector {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.prompt-selector label {
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #666;
-}
-.prompt-dropdown {
-  position: relative;
-}
-.prompt-dropdown select {
-  appearance: none;
-  background: rgba(10,10,26,0.7);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(201,168,76,0.12);
-  border-radius: 8px;
-  padding: 8px 32px 8px 12px;
-  font-size: 12px;
-  color: #e0e0e0;
-  font-family: inherit;
-  cursor: pointer;
-  min-width: 220px;
-  transition: all 0.3s ease;
-}
-.prompt-dropdown select:hover {
-  border-color: rgba(201,168,76,0.3);
-}
-.prompt-dropdown select:focus {
-  outline: none;
-  border-color: #c9a84c;
-}
-.prompt-dropdown::after {
-  content: '▾';
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #666;
-  font-size: 12px;
-}
-.prompt-dropdown select option {
-  background: #0a0a16;
-  color: #e0e0e0;
-  padding: 8px;
-}
-
-#controls {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-.control-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  background: rgba(10,10,26,0.7);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(201,168,76,0.12);
-  padding: 12px 20px;
-  border-radius: 14px;
-}
-.ctrl-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid rgba(201,168,76,0.3);
-  background: rgba(201,168,76,0.08);
-  color: #c9a84c;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-.ctrl-btn:hover {
-  background: rgba(201,168,76,0.2);
-  border-color: #c9a84c;
-  box-shadow: 0 0 20px rgba(201,168,76,0.2);
-}
-.ctrl-btn.active {
-  background: #c9a84c;
-  color: #0a0a0f;
-  box-shadow: 0 0 24px rgba(201,168,76,0.4);
-}
-.speed-control {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-.speed-control label {
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: #666;
-}
-.speed-control input[type="range"] {
-  width: 180px;
-  height: 4px;
-  -webkit-appearance: none;
-  background: rgba(201,168,76,0.2);
-  border-radius: 2px;
-  outline: none;
-}
-.speed-control input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #c9a84c;
-  cursor: pointer;
-  box-shadow: 0 0 12px rgba(201,168,76,0.5);
-}
-.speed-val {
-  font-size: 12px;
-  font-weight: 600;
-  color: #c9a84c;
-  font-variant-numeric: tabular-nums;
-  min-width: 40px;
-  text-align: center;
-}
-.divider {
-  width: 1px;
-  height: 32px;
-  background: rgba(201,168,76,0.2);
-}
-
-#content {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-.stage-content {
-  max-width: 720px;
-  width: 90%;
-  text-align: center;
-  opacity: 0;
-  transform: scale(0.95);
-  transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.stage-content.active {
-  opacity: 1;
-  transform: scale(1);
-}
-.stage-label {
-  font-size: 11px;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  color: #6a6a72;
-  margin-bottom: 14px;
-}
-.stage-title {
-  font-size: 46px;
-  font-weight: 300;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #fff;
-  margin-bottom: 6px;
-  text-shadow: 0 0 40px color-mix(in srgb, currentColor 35%, transparent);
-  transition: color 0.6s ease;
-  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
-}
-.stage-sub {
-  font-size: 11px;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: #c9a84c;
-  margin-bottom: 28px;
-  font-family: 'JetBrains Mono', monospace;
-  opacity: 0.75;
-}
-.stage-prompt {
-  font-size: 17px;
-  line-height: 1.7;
-  color: #f0f0f0;
-  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: 0.015em;
-  text-align: center;
-  white-space: normal;
-  word-break: break-word;
-  max-width: 720px;
-  padding: 28px 32px;
-  background: linear-gradient(180deg, rgba(201,168,76,0.04) 0%, transparent 100%);
-  border-top: 1px solid rgba(201,168,76,0.22);
-  border-bottom: 1px solid rgba(201,168,76,0.22);
-  position: relative;
-}
-.stage-prompt code {
-  font-family: 'JetBrains Mono', monospace;
-  background: rgba(201,168,76,0.08);
-  border: 1px solid rgba(201,168,76,0.15);
-  padding: 1px 5px;
-  border-radius: 4px;
-  color: #c9a84c;
-  font-size: 13px;
-  font-style: normal;
-}
-.stage-prompt p { margin-bottom: 10px; }
-.stage-prompt p:last-child { margin-bottom: 0; }
-
-/* ── Sand host + particles ───────────────────────────────────────────────── */
-#sand-host {
-  position: relative;
-  display: inline-block;
-  line-height: 1.7;
-  vertical-align: middle;
-}
-.sand-letter {
-  display: inline-block;
-  position: relative;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-.sand-letter.dissolving {
-  opacity: 0;
-  transform: translateY(-6px) scale(0.9);
-}
-.sand-space { display: inline-block; }
-.sand-particle {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 5;
-  will-change: transform, opacity;
-}
-
-/* ── Slide-in right-side explainer drawer ───────────────────────────────── */
-#explainer {
-  position: fixed;
-  top: 96px;
-  right: 28px;
-  width: 360px;
-  max-height: calc(100vh - 180px);
-  z-index: 60;
-  background: linear-gradient(160deg, rgba(20,20,32,0.92), rgba(10,10,18,0.92));
-  backdrop-filter: blur(24px) saturate(140%);
-  border: 1px solid rgba(201,168,76,0.18);
-  border-radius: 14px;
-  padding: 24px 26px;
-  opacity: 0;
-  transform: translateX(40px);
-  transition: opacity 0.55s cubic-bezier(0.4,0,0.2,1), transform 0.55s cubic-bezier(0.4,0,0.2,1);
-  pointer-events: none;
-  overflow-y: auto;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.45);
-}
-#explainer.active {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-#explainer .x-num {
-  font-size: 10px;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: #c9a84c;
-  font-family: 'JetBrains Mono', monospace;
-  margin-bottom: 4px;
-  opacity: 0.85;
-}
-#explainer .x-title {
-  font-size: 22px;
-  font-weight: 400;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #fff;
-  font-family: 'Cormorant Garamond', serif;
-  margin-bottom: 6px;
-}
-#explainer .x-sub {
-  font-size: 10px;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: #6a6a72;
-  font-family: 'JetBrains Mono', monospace;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid rgba(201,168,76,0.16);
-}
-#explainer .x-body {
-  font-size: 14px;
-  line-height: 1.7;
-  color: #d8d8e0;
-}
-#explainer .x-body p { margin-bottom: 10px; }
-#explainer .x-body code {
-  font-family: 'JetBrains Mono', monospace;
-  background: rgba(201,168,76,0.08);
-  border: 1px solid rgba(201,168,76,0.15);
-  padding: 1px 5px;
-  border-radius: 4px;
-  color: #c9a84c;
-  font-size: 12px;
-}
-#explainer .x-tokens {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(201,168,76,0.16);
-  font-size: 11px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: #c9a84c;
-  font-family: 'JetBrains Mono', monospace;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-#explainer .x-tokens .v {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-/* On narrow screens the drawer collapses below the stage content */
-@media (max-width: 1100px) {
-  #explainer {
-    right: 16px; width: 300px;
-  }
-}
-.stage-prompt code {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  background: rgba(201,168,76,0.08);
-  border: 1px solid rgba(201,168,76,0.15);
-  padding: 1px 5px;
-  border-radius: 4px;
-  color: #c9a84c;
-  font-size: 13px;
-}
-.stage-prompt p { margin-bottom: 10px; }
-.stage-prompt p:last-child { margin-bottom: 0; }
-
-#transition {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: radial-gradient(circle at center, rgba(201,168,76,0.18), transparent 70%);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.55s ease;
-}
-#transition.flash {
-  opacity: 1;
-}
-
-#status {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 100;
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #888;
-  font-family: 'JetBrains Mono', monospace;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.breathing-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: #c9a84c;
-  box-shadow: 0 0 8px rgba(201,168,76,0.6);
-  animation: breathe 2.4s ease-in-out infinite;
-}
-@keyframes breathe {
-  0%, 100% { opacity: 0.45; transform: scale(0.85); }
-  50%      { opacity: 1.0;  transform: scale(1.15); }
-}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0a0a0f;}
+  #scene{position:fixed;inset:0;}
+  /* Minimal speed slider — the one control the spec requires. Blends into the scene. */
+  #speed{position:fixed;left:50%;bottom:1.4rem;transform:translateX(-50%);z-index:10;
+    display:flex;align-items:center;gap:.6rem;font:300 .6rem/1 'Helvetica Neue',Arial,sans-serif;
+    letter-spacing:.22em;text-transform:uppercase;color:#8a7d68;pointer-events:none;}
+  #speed input{pointer-events:auto;width:9rem;accent-color:#c9a84c;background:transparent;cursor:pointer;}
+  #speed .v{color:#c9a84c;min-width:2.2rem;text-align:right;}
 </style>
 </head>
 <body>
-
-<div id="loader">
-  <div class="ring"></div>
-  <div class="label">Loading Pipeline Visualization</div>
-</div>
-
-<div id="stage-nav">
-  <div class="stage-flow" id="stage-flow"></div>
-  <div class="prompt-selector">
-    <label>Previous Prompts</label>
-    <div class="prompt-dropdown">
-      <select id="prompt-select"></select>
-    </div>
-  </div>
-</div>
-
-<div id="content">
-  <div class="stage-content active" id="stage-display">
-    <div class="stage-label" id="stage-label">—</div>
-    <div class="stage-title" id="stage-title">SELECT A PROMPT</div>
-    <div class="stage-sub" id="stage-sub">awaiting input</div>
-    <div class="stage-prompt" id="stage-prompt"><span class="sand-host" id="sand-host"></span></div>
-  </div>
-</div>
-
-<aside id="explainer">
-  <div class="x-num" id="x-num">—</div>
-  <div class="x-title" id="x-title">—</div>
-  <div class="x-sub" id="x-sub">—</div>
-  <div class="x-body" id="x-body">—</div>
-  <div class="x-tokens">
-    <span>Tokens</span><span class="v" id="x-tokens-v">—</span>
-  </div>
-</aside>
-
-<div id="controls">
-  <div class="control-row">
-    <button class="ctrl-btn" id="btn-prev" title="Previous Stage">◀</button>
-    <button class="ctrl-btn" id="btn-play" title="Play/Pause">▶</button>
-    <button class="ctrl-btn" id="btn-next" title="Next Stage">▶</button>
-    <div class="divider"></div>
-    <div class="speed-control">
-      <label>Speed</label>
-      <input type="range" id="speed-slider" min="0.5" max="5" step="0.5" value="1.5">
-    </div>
-    <span class="speed-val" id="speed-val">1.5×</span>
-    <div class="divider"></div>
-    <button class="ctrl-btn" id="btn-reset" title="Reset">↺</button>
-  </div>
-</div>
-
-<div id="transition"></div>
-<div id="status"><span class="breathing-dot"></span><span id="status-text">Live · local</span></div>
+<div id="scene"></div>
+<div id="speed"><span>Speed</span><input id="speed-slider" type="range" min="0.4" max="3" step="0.1" value="1"><span class="v" id="speed-val">1.0×</span></div>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "/three.module.min.js",
-    "three/addons/": "/addons/"
+    "three": "/assets/vendor/three.module.min.js",
+    "three/addons/": "/assets/vendor/addons/",
+    "bidi-js": "/assets/vendor/troika/bidi.mjs",
+    "troika-three-utils": "/assets/vendor/troika/troika-three-utils.esm.js",
+    "troika-worker-utils": "/assets/vendor/troika/troika-worker-utils.esm.js",
+    "webgl-sdf-generator": "/assets/vendor/troika/webgl-sdf-generator.mjs",
+    "troika-three-text": "/assets/vendor/troika/troika-three-text.esm.js"
   }
 }
 </script>
@@ -600,703 +37,461 @@ canvas { display: block; position: fixed; inset: 0; z-index: 0; }
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { Text, configureTextBuilder } from 'troika-three-text';
+
+/* Run typesetting on the main thread — air-gapped / CSP-safe (no worker fetch). */
+configureTextBuilder({ useWorker: false });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE PIPELINE — molten-gold journey (spec: WEBUI-3D-PIPELINE.md)
+   A single molten-gold prompt entity travels a path through 6 stage
+   landmarks, transforming at each. Camera-driven (dolly/arc per stage),
+   NOT a strip. Pure 3D. UI only.
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const STAGES = [
-  {
-    name: 'COLLECT', icon: '📥', color: '#7AA2F7', sub: 'prompt_intake',
-    desc: 'Collect the user\'s prompt and build the initial token component set.',
-    detail: `<p>Your prompt arrives and is immediately parsed into <strong>typed token components</strong>, each categorized by source and priority:</p>
-<p><code>system</code> — core policy & behavioral rules (pinned)<br>
-<code>user</code> — your actual request (pinned)<br>
-<code>tool_schema</code> — tool definitions & parameters<br>
-<code>retrieval</code> — search / memory / file context (high)<br>
-<code>history</code> — previous turns (compressible)<br>
-<code>tool_output</code> — tool results (compressible)</p>
-<p>Each block is assigned a <strong>priority tier</strong> — pinned, high, compressible, or discardable — which determines how SlimToken handles it later.</p>`,
-    tokenEst: 3200
-  },
-  {
-    name: 'COMPOSE', icon: '🧩', color: '#9ECE6A', sub: 'frame_assemble',
-    desc: 'Frame the collected blocks with the active policy, reserving output capacity and validating the request structure.',
-    detail: `<p>Compose applies the <strong>policy frame</strong> to the typed blocks:</p>
-<p>• Reserves output token capacity (<code>max_output_tokens</code>)<br>
-• Validates a usable user request exists<br>
-• Sums total tokens against the input budget<br>
-• Marks the request <span style="color:#9ECE6A">valid</span> or flags errors</p>
-<p>E.g. a 156,000-token window with 3,431 output reserved leaves <code>152,569</code> tokens of input budget.</p>`,
-    tokenEst: 3200
-  },
-  {
-    name: 'FRAME_OF_REF', icon: '🎯', color: '#BB9AF3', sub: 'frame_of_ref',
-    desc: 'Determine the model\'s frame of reference — profile, system instructions, and behavioral constraints.',
-    detail: `<p>Selects the active <strong>system profile</strong> and behavioral constraints based on route and model identity:</p>
-<p>• Model-specific system instructions (e.g. CortexAgent profile)<br>
-• Behavioral constraints from skills and policies<br>
-• Output contracts & response format<br>
-• Tool authorization & capability flags</p>
-<p>This frame is <strong>pinned</strong> — always preserved through minification.</p>`,
-    tokenEst: 1842
-  },
-  {
-    name: 'MEMORY_CHECK', icon: '🧠', color: '#E0AF68', sub: 'memory_check',
-    desc: 'Check hot memory and previous minification runs for patterns that might affect compression.',
-    detail: `<p>Checks whether SlimToken has <strong>seen similar prompts</strong> before:</p>
-<p>• Hot memory cache lookup — recent structure?<br>
-• Minify run history — typical savings %?<br>
-• Pattern matching — deduplicatable tool outputs?</p>
-<p>Matches enable <span style="color:#E0AF68">aggressive optimization</span>; otherwise conservative defaults.</p>`,
-    tokenEst: 3200
-  },
-  {
-    name: 'SLIMTOKEN', icon: '⚡', color: '#C9A84C', sub: 'slimtoken_minify',
-    desc: 'Apply the SlimToken minification pipeline — the core compression engine, 7 sub-stages.',
-    detail: `<p><strong>SLIMTOKEN</strong> is the heart of context optimization. It runs 7 sub-stages:</p>
-<p><code>1. TOOLS</code> — strip unused params, simplify schemas<br>
-<code>2. SYSTEM</code> — remove filler, blank-line bloat<br>
-<code>3. MESSAGES</code> — strip leading filler phrases<br>
-<code>4. DEDUP</code> — stub duplicate tool_results by hash<br>
-<code>5. DISTILL</code> — compress older turns<br>
-<code>5b. DOM</code> — prune large HTML results (optional)<br>
-<code>6. BUDGET</code> — hard token budget enforcement</p>
-<p>All stages are <strong>pair-safe</strong> — a failure in one never breaks inference.</p>`,
-    tokenEst: 2400,
-    hasSubStages: true
-  },
-  {
-    name: 'TOOL_ROUTING', icon: '🛠', color: '#7FD4C9', sub: 'tool_routing',
-    desc: 'Route the optimized prompt to the appropriate tools — determine which to execute and in what order.',
-    detail: `<p>Determines <strong>which tools</strong> the model needs to invoke:</p>
-<p>• Analyzes tool schemas against the request<br>
-• Builds the tool_call structure with typed params<br>
-• Registers tool results for the next iteration<br>
-• Handles multi-step tool chains (read → analyze → write)</p>
-<p>Tool routing is <strong>high priority</strong> — never compressed, a missing tool call breaks functionality.</p>`,
-    tokenEst: 2856
-  },
-  {
-    name: 'FINALIZE', icon: '✅', color: '#9ECE6A', sub: 'context_fit',
-    desc: 'Validate the optimized request fits the context window and is provider-ready.',
-    detail: `<p>Final <strong>sanity checks</strong>:</p>
-<p>• <code>valid</code> — fits the budget?<br>
-• <code>fits</code> — still fits after minification?<br>
-• <code>schema_valid</code> — tool schemas well-formed?<br>
-• <code>template_applied</code> — provider template correct?</p>
-<p>If it doesn't fit, finalize triggers a <span style="color:#F7768E">hard drop</span> — the oldest history turns are removed until it fits. SlimToken's budget backstop.</p>`,
-    tokenEst: 2400
-  },
-  {
-    name: 'PREFILL', icon: '📖', color: '#7AA2F7', sub: 'prefill',
-    desc: 'Send the optimized prompt to the model for input token evaluation (prefill phase).',
-    detail: `<p>The <strong>fast first pass</strong> where the model reads the entire optimized prompt:</p>
-<p>• <code>input_tokens</code> — how many tokens the model processes<br>
-• <code>input_tps</code> — tokens per second during prefill<br>
-• VRAM used during prefill</p>
-<p>Typically very fast — a few hundred tokens/second on consumer hardware. The model builds its internal state representations.</p>`,
-    tokenEst: 2400
-  },
-  {
-    name: 'DECODE', icon: '⏳', color: '#F7768E', sub: 'decode',
-    desc: 'The model generates the response token-by-token — the slow, compute-intensive phase.',
-    detail: `<p>Decode is the <strong>slow phase</strong> where output is produced token by token:</p>
-<p>• <code>output_tokens</code> — total generated<br>
-• <code>output_tps</code> — decoding speed<br>
-• Latency — first token to last</p>
-<p>Real-time TPS is tracked so you can see if the model is running slow (VRAM pressure, CPU contention). Output minification runs here too.</p>`,
-    tokenEst: 0
-  },
-  {
-    name: 'DELIVER', icon: '📤', color: '#C9A84C', sub: 'stream_out',
-    desc: 'Stream the completed response to the user — the final delivery stage.',
-    detail: `<p>Sends the response to your active session:</p>
-<p>• Streaming — response arrives incrementally via SSE<br>
-• Status — <code>success</code> or <code>error</code> with details<br>
-• Token cost — total tokens consumed</p>
-<p>Logged to the <strong>cost ledger</strong> for cumulative tracking across all requests.</p>`,
-    tokenEst: 0
-  }
+  { name:'PROMPT',        label:'RAW PROMPT',        color:0xffd98a, heat:0.30, scale:1.00, amp:0.35, freq:1.2, kw:'raw prompt' },
+  { name:'SLIMTOKEN',     label:'MINIFY · COMPRESS', color:0xffc24a, heat:0.55, scale:0.70, amp:0.20, freq:1.6, kw:'compress · minify' },
+  { name:'FRAME OF REF',  label:'REFRAME · BUSINESS', color:0xffa63a, heat:0.70, scale:0.85, amp:0.15, freq:2.5, kw:'reframe · business' },
+  { name:'MEMORY CHECK',  label:'KEYWORDS FLASH',    color:0xff8a1a, heat:0.85, scale:0.90, amp:0.25, freq:1.8, kw:'keywords flash' },
+  { name:'OVERSEER ROUTE',label:'ROUTE · MODEL',     color:0xff6a00, heat:1.00, scale:1.00, amp:0.20, freq:2.0, kw:'route · model' },
+  { name:'GENERATE',      label:'FINAL ANSWER',      color:0xfff0c0, heat:1.20, scale:1.30, amp:0.30, freq:1.4, kw:'final answer' },
 ];
 
-const SUB_STAGES = [
-  { name: 'TOOLS', desc: 'Minify tool definitions — strip unused params, simplify schemas' },
-  { name: 'SYSTEM', desc: 'Remove filler, blank lines, and redundant instructions' },
-  { name: 'MESSAGES', desc: 'Strip leading filler phrases from per-message content' },
-  { name: 'DEDUP', desc: 'Fingerprint content, stub duplicate tool_results' },
-  { name: 'DISTILL', desc: 'Compress older conversation turns (max chars)' },
-  { name: 'DOM', desc: 'Prune large HTML tool results (optional)' },
-  { name: 'BUDGET', desc: 'Hard token budget enforcement — drop oldest if over limit' }
-];
-
-const API_BASE = '';  // relative — works on :8090 or :8093 proxy
-let currentStage = 0;
-let isPlaying = false;
-let speed = 1.5;
-let promptHistory = [];
-let selectedPrompt = '';
-let selectedTransform = null;
-
-const canvas = document.createElement('canvas');
-document.body.insertBefore(canvas, document.body.firstChild);
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+/* ── renderer: cinematic tone mapping ── */
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.getElementById('scene').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a0f);
-scene.fog = new THREE.FogExp2(0x0a0a0f, 0.02);
+scene.fog = new THREE.FogExp2(0x0a0a0f, 0.018);
 
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 6, 20);
-camera.lookAt(0, 0, 0);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(0, 4, 16);
 
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.enablePan = false;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.7;
-controls.minDistance = 12;
-controls.maxDistance = 30;
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.05;
+controls.enablePan = false; controls.autoRotate = false;
+controls.minDistance = 6; controls.maxDistance = 30;
 
-// Soft cinematic lighting — no harsh spots
-scene.add(new THREE.AmbientLight(0xffffff, 0.18));
-const fillLight = new THREE.DirectionalLight(0xa8b2c8, 0.25);
-fillLight.position.set(8, 6, 10);
-scene.add(fillLight);
+/* ── post: RenderPass → UnrealBloomPass → OutputPass (real tooling) ── */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.1, 0.6, 0.85);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 
-// ── Minimal-luxury gyroscope: thin white + gold rings ──────────────────────
-const gyro = new THREE.Group();
-const ringDefs = [
-  // white — large outer
-  { r: 6.2, tube: 0.012, tiltX: Math.PI / 2.1, tiltZ: 0,            speed:  0.006, color: 0xffffff, opacity: 0.32 },
-  // gold — primary
-  { r: 5.0, tube: 0.018, tiltX: Math.PI / 2.6, tiltZ: Math.PI / 5,    speed: -0.009, color: 0xc9a84c, opacity: 0.55 },
-  // white — mid
-  { r: 3.9, tube: 0.008, tiltX: -Math.PI / 2.4, tiltZ: -Math.PI / 3,  speed:  0.011, color: 0xffffff, opacity: 0.20 },
-  // gold — inner accent
-  { r: 2.7, tube: 0.014, tiltX: Math.PI / 3.5, tiltZ: Math.PI / 7,    speed: -0.015, color: 0xc9a84c, opacity: 0.42 },
-];
-const gyroRings = ringDefs.map((d) => {
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(d.r, d.tube, 8, 120),
-    new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: d.opacity })
-  );
-  ring.rotation.x = d.tiltX;
-  ring.rotation.z = d.tiltZ;
-  ring.userData = { speed: d.speed, tiltX: d.tiltX, tiltZ: d.tiltZ };
-  gyro.add(ring);
-  return ring;
-});
-scene.add(gyro);
+/* ── environment map: metals are 100% reflection — this is the whole look ── */
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-// Subtle ambient haze (low count, monochrome, slow drift)
-const AMBIENT_COUNT = 220;
-const ambientGeom = new THREE.BufferGeometry();
-const ambientPos = new Float32Array(AMBIENT_COUNT * 3);
-for (let i = 0; i < AMBIENT_COUNT; i++) {
-  ambientPos[i*3]   = (Math.random() - 0.5) * 60;
-  ambientPos[i*3+1] = (Math.random() - 0.5) * 28;
-  ambientPos[i*3+2] = (Math.random() - 0.5) * 40;
+/* warm key light: metals are 100% reflection — this adds the molten sparkle */
+scene.add(new THREE.PointLight(0xffb45a, 3, 0, 2).translateY(3));
+
+/* ── Ashima 3D simplex noise (compact) ── */
+const NOISE_GLSL = `
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+  vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g; vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+  i=mod289(i); vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+  float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.0*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+  vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w;
+  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
 }
-ambientGeom.setAttribute('position', new THREE.BufferAttribute(ambientPos, 3));
-const ambientPoints = new THREE.Points(ambientGeom, new THREE.PointsMaterial({
-  size: 0.05, color: 0xc9a84c, transparent: true, opacity: 0.18,
-  blending: THREE.AdditiveBlending, sizeAttenuation: true,
-  depthWrite: false,
-}));
-scene.add(ambientPoints);
+float fbm(vec3 p){ float v=0.0,a=0.5; for(int i=0;i<4;i++){ v+=a*snoise(p); p*=2.02; a*=0.5; } return v*0.5+0.5; }
+`;
 
-// ── Stage markers along the inner ring: tiny gold dots, no emoji ───────────
-const stageGroups = [];
-STAGES.forEach((stage, i) => {
-  const group = new THREE.Group();
-  const angle = (i / STAGES.length) * Math.PI * 2;
-  group.position.set(Math.cos(angle) * 5.0, 0, Math.sin(angle) * 5.0);
-  // tiny gold dot — sphere with subtle emission
+/* ── the molten-gold prompt entity ──
+   MeshPhysicalMaterial + onBeforeCompile displacement (keeps PBR reflections
+   + tone mapping) + blackbody ramp injected into the fragment output.
+   uNoiseAmp/uNoiseFreq drive the per-stage shape morph. */
+const entityUniforms = { uTime:{value:0}, uHeat:{value:0.3}, uNoiseAmp:{value:0.35}, uNoiseFreq:{value:1.2} };
+const entityMat = new THREE.MeshPhysicalMaterial({
+  metalness:1.0, roughness:0.15, clearcoat:1.0, clearcoatRoughness:0.10,
+  iridescence:0.45, envMapIntensity:1.4, color:0xffc24a,
+});
+entityMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uTime = entityUniforms.uTime;
+  shader.uniforms.uHeat = entityUniforms.uHeat;
+  shader.uniforms.uNoiseAmp = entityUniforms.uNoiseAmp;
+  shader.uniforms.uNoiseFreq = entityUniforms.uNoiseFreq;
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', `#include <common>\n${NOISE_GLSL}\nuniform float uTime; uniform float uNoiseAmp; uniform float uNoiseFreq;`)
+    .replace('#include <begin_vertex>',
+      `#include <begin_vertex>\n transformed += normal * (snoise(position*uNoiseFreq + uTime*0.4) - 0.5) * uNoiseAmp;`);
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', `#include <common>\n${NOISE_GLSL}\nuniform float uTime; uniform float uHeat;`)
+    .replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
+      `vec3 vp = vViewPosition + position;
+       float n = fbm(vp*1.1 + uTime*0.22);
+       n = clamp(n + (uHeat-0.5)*0.5, 0.0, 1.0);
+       vec3 white=vec3(1.0,0.95,0.80), gold=vec3(1.0,0.72,0.20),
+            orange=vec3(0.85,0.25,0.05), dark=vec3(0.10,0.02,0.01);
+       vec3 ramp = mix(mix(dark,orange,smoothstep(0.0,0.4,n)), mix(gold,white,smoothstep(0.6,1.0,n)), n);
+       vec3 molten = mix(outgoingLight, ramp, 0.5) + ramp*0.95;
+       gl_FragColor = vec4( molten, diffuseColor.a );`);
+};
+const entity = new THREE.Mesh(new THREE.SphereGeometry(1.0, 96, 96), entityMat);
+scene.add(entity);
+
+/* soft glow halo around the entity */
+function softDot(){
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const g=c.getContext('2d');
+  const grd=g.createRadialGradient(64,64,0,64,64,64);
+  grd.addColorStop(0,'rgba(255,240,200,1)'); grd.addColorStop(0.3,'rgba(255,190,110,0.5)');
+  grd.addColorStop(0.7,'rgba(200,120,40,0.12)'); grd.addColorStop(1,'rgba(120,60,20,0)');
+  g.fillStyle=grd; g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+const haloTex = softDot();
+const entityHalo = new THREE.Sprite(new THREE.SpriteMaterial({
+  map:haloTex, color:0xffb45a, transparent:true, opacity:0.6,
+  blending:THREE.AdditiveBlending, depthWrite:false }));
+entityHalo.scale.set(4.5,4.5,1);
+entity.add(entityHalo);
+
+/* ── 6 stage landmarks: identity + glow + halo ── */
+const stageNodes = [];
+const stagePoints = [];
+const RING_R = 6.0;
+STAGES.forEach((s, i) => {
+  const a = (i/STAGES.length)*Math.PI*2 - Math.PI/2;
+  const pos = new THREE.Vector3(Math.cos(a)*RING_R, 0, Math.sin(a)*RING_R);
+  stagePoints.push(pos);
+  const g = new THREE.Group();
+  g.position.copy(pos);
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.05, 12, 12),
-    new THREE.MeshBasicMaterial({ color: 0xc9a84c, transparent: true, opacity: 0.85 })
-  );
-  group.add(dot);
-  group.userData = { baseOpacity: 0.85, baseScale: 1 };
-  scene.add(group);
-  stageGroups.push(group);
+    new THREE.SphereGeometry(0.10, 20, 20),
+    new THREE.MeshBasicMaterial({ color:s.color, transparent:true, opacity:0.9 }));
+  g.add(dot);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map:haloTex, color:s.color, transparent:true, opacity:0.35,
+    blending:THREE.AdditiveBlending, depthWrite:false }));
+  halo.scale.set(2.2,2.2,1);
+  g.add(halo);
+  scene.add(g);
+  stageNodes.push({ group:g, dot, halo, stage:s });
 });
 
-// Faint dashed orbit through all 10 markers (gold)
-const pathPoints = stageGroups.map((g) => g.position.clone());
-const pathCurve = new THREE.CatmullRomCurve3(pathPoints);
+/* faint dashed orbit through the landmarks */
+const pathCurve = new THREE.CatmullRomCurve3(stagePoints, true, 'centripetal', 0.5);
 const dashedPath = new THREE.Line(
-  new THREE.BufferGeometry().setFromPoints(pathCurve.getPoints(120)),
-  new THREE.LineDashedMaterial({
-    color: 0xc9a84c, transparent: true, opacity: 0.18,
-    dashSize: 0.18, gapSize: 0.22,
-  })
-);
+  new THREE.BufferGeometry().setFromPoints(pathCurve.getPoints(160)),
+  new THREE.LineDashedMaterial({ color:0xc9a84c, transparent:true, opacity:0.15,
+    dashSize:0.2, gapSize:0.25 }));
 dashedPath.computeLineDistances();
 scene.add(dashedPath);
-// ── Active marker: the gold dot that travels along the orbit during animation ──
-const activeMarker = new THREE.Mesh(
-  new THREE.SphereGeometry(0.13, 16, 16),
-  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 })
-);
-// Soft radial-gradient texture so the halo is a glow, not a flat square
-const _haloTex = (() => {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d');
-  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grd.addColorStop(0, 'rgba(255,235,180,1)');
-  grd.addColorStop(0.35, 'rgba(201,168,76,0.6)');
-  grd.addColorStop(1, 'rgba(201,168,76,0)');
-  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
+
+/* ── ember particles (additive, 1 draw call) ── */
+const EMBERS = 3000;
+const emberGeom = new THREE.BufferGeometry();
+const ePos = new Float32Array(EMBERS*3), eVel = new Float32Array(EMBERS*3), eLife = new Float32Array(EMBERS);
+for (let i=0;i<EMBERS;i++){ ePos[i*3]=0; ePos[i*3+1]=0; ePos[i*3+2]=0; eLife[i]=1; }
+emberGeom.setAttribute('position', new THREE.BufferAttribute(ePos,3));
+const emberMat = new THREE.PointsMaterial({
+  map:haloTex, color:0xffa63a, size:0.12, transparent:true, opacity:0.8,
+  blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true });
+const embers = new THREE.Points(emberGeom, emberMat);
+scene.add(embers);
+function spawnEmber(at, burst){
+  for (let i=0;i<EMBERS;i++){
+    if (eLife[i] < 1) continue;
+    eLife[i]=0;
+    ePos[i*3]=at.x; ePos[i*3+1]=at.y; ePos[i*3+2]=at.z;
+    const k = burst ? 1 : 0.5;
+    eVel[i*3]=(Math.random()-0.5)*4*k; eVel[i*3+1]=1.5+Math.random()*4*k; eVel[i*3+2]=(Math.random()-0.5)*4*k;
+    return;
+  }
+}
+function updateEmbers(dt){
+  for (let i=0;i<EMBERS;i++){
+    if (eLife[i]>=1) continue;
+    eLife[i]+=dt*0.8;
+    eVel[i*3+1]-=2.5*dt;
+    ePos[i*3]+=eVel[i*3]*dt; ePos[i*3+1]+=eVel[i*3+1]*dt; ePos[i*3+2]+=eVel[i*3+2]*dt;
+    if (eLife[i]>=1){ ePos[i*3+1]=-99; }
+  }
+  emberGeom.attributes.position.needsUpdate = true;
+}
+
+/* ── distant star field: depth + cinematic contrast (pure 3D Points) ── */
+const STARS = 900;
+const starPos = new Float32Array(STARS*3);
+for (let i=0;i<STARS;i++){
+  const th = Math.random()*Math.PI*2, ph = Math.acos(2*Math.random()-1);
+  const r = 45 + Math.random()*35;
+  starPos[i*3]   = Math.sin(ph)*Math.cos(th)*r;
+  starPos[i*3+1] = Math.sin(ph)*Math.sin(th)*r;
+  starPos[i*3+2] = Math.cos(ph)*r;
+}
+const starGeom = new THREE.BufferGeometry();
+starGeom.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({
+  map:haloTex, color:0xd8e2ff, size:0.5, transparent:true, opacity:0.9,
+  blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true });
+scene.add(new THREE.Points(starGeom, starMat));
+
+/* ── in-scene SDF prompt text (troika-three-text, font bundled locally) ── */
+const FONT_URL = '/assets/vendor/troika/LiberationSans-Bold.ttf';
+function makeText(size, color){
+  const t = new Text();
+  t.font = FONT_URL;
+  t.fontSize = size;
+  t.color = color;
+  t.anchorX = 'center';
+  t.anchorY = 'middle';
+  t.text = '';
+  t.sync();
   return t;
-})();
-const activeHalo = new THREE.Sprite(new THREE.SpriteMaterial({
-  map: _haloTex, color: 0xc9a84c, transparent: true, opacity: 0.85,
-  blending: THREE.AdditiveBlending, depthWrite: false,
-}));
-activeHalo.scale.set(3.5, 3.5, 1);
-activeMarker.add(activeHalo);
-scene.add(activeMarker);
+}
+const stageLabel = makeText(0.72, 0xffe6a8);
+stageLabel.text = 'RAW PROMPT';
+stageLabel.sync();
+scene.add(stageLabel);
 
-const stageFlowEl = document.getElementById('stage-flow');
-const promptSelectEl = document.getElementById('prompt-select');
-const stageLabelEl = document.getElementById('stage-label');
-const stageTitleEl = document.getElementById('stage-title');
-const stageSubEl = document.getElementById('stage-sub');
-const stagePromptEl = document.getElementById('stage-prompt');
-const statusEl = document.getElementById('status');
-const statusTextEl = document.getElementById('status-text');
-const transitionEl = document.getElementById('transition');
-const explainerEl = document.getElementById('explainer');
-const xNumEl = document.getElementById('x-num');
-const xTitleEl = document.getElementById('x-title');
-const xSubEl = document.getElementById('x-sub');
-const xBodyEl = document.getElementById('x-body');
-const xTokensEl = document.getElementById('x-tokens-v');
-const btnPrev = document.getElementById('btn-prev');
-const btnNext = document.getElementById('btn-next');
-const btnPlay = document.getElementById('btn-play');
-const btnReset = document.getElementById('btn-reset');
-const speedSlider = document.getElementById('speed-slider');
-const speedVal = document.getElementById('speed-val');
-
-const flowStages = [];
-STAGES.forEach((stage, i) => {
-  const item = document.createElement('div');
-  item.className = 'flow-item';
-  const flow = document.createElement('div');
-  flow.className = 'flow-stage' + (i === 0 ? ' active' : '');
-  flow.style.setProperty('--stage-color', stage.color);
-  flow.innerHTML = `<span class="flow-num">${i + 1}</span><span class="flow-name">${stage.icon} ${stage.name}</span>`;
-  flow.title = stage.desc;
-  flow.addEventListener('click', () => {
-    switchStage(i);
-  });
-  item.appendChild(flow);
-  flowStages.push(flow);
-  if (i < STAGES.length - 1) {
-    const arrow = document.createElement('span');
-    arrow.className = 'flow-arrow';
-    arrow.textContent = '→';
-    item.appendChild(arrow);
-  }
-  stageFlowEl.appendChild(item);
+/* keyword flash texts (memory check) — pooled, shown around the entity */
+const KEYWORDS = ['memory', 'context', 'retrieve', 'match', 'rank', 'recall'];
+const kwTexts = KEYWORDS.map((w, i) => {
+  const t = makeText(0.34, 0xffa63a);
+  t.text = w;
+  t.sync();
+  t.visible = false;
+  scene.add(t);
+  return t;
 });
 
-function updateStageFlow() {
-  flowStages.forEach((flow, i) => {
-    flow.classList.toggle('active', i === currentStage);
-    flow.classList.toggle('done', i < currentStage);
-  });
-}
-
-async function loadPromptHistory() {
-  try {
-    // Try to fetch real prompts from the overseer API
-    const resp = await fetch('/api/overseer');
-    const data = await resp.json();
-    // Pull prompts from prompt_queue if available
-    const queue = data.prompt_queue;
-    const items = Array.isArray(queue) ? queue : (queue?.items || []);
-    if (items.length > 0) {
-      promptHistory = items.slice(0, 20).map(i =>
-        (typeof i === 'string' ? i : (i.text || i.message || i.prompt || JSON.stringify(i)))
-      ).filter(Boolean);
-      populatePromptDropdown();
-      // Auto-select the latest prompt
-      if (promptHistory.length > 0 && promptSelectEl) {
-        promptSelectEl.value = promptHistory.length - 1;
-        selectedPrompt = promptHistory[promptSelectEl.value];
-        selectedTransform = generateTransform(selectedPrompt);
-        currentStage = 0;
-        updateDisplay();
-        updateStageFlow();
-      }
-      return;
-    }
-  } catch(e) {
-    console.log('[pipeline] No prompt history from API:', e.message);
-  }
-  // Fallback: use sample prompts so the UI is never empty
-  const samplePrompts = [
-    "Analyze the security posture of our web application",
-    "Write a business plan for a SaaS startup",
-    "Investigate the network traffic patterns on subnet 10.0.0.0/24",
-    "Create a comprehensive incident response plan",
-    "Review this code for potential vulnerabilities",
-  ];
-  promptHistory = samplePrompts;
-  populatePromptDropdown();
-  // Auto-select so the animation shows content immediately
-  if (promptHistory.length > 0 && promptSelectEl) {
-    promptSelectEl.value = promptHistory.length - 1;
-    selectedPrompt = promptHistory[promptSelectEl.value];
-    selectedTransform = generateTransform(selectedPrompt);
-    currentStage = 0;
-    updateDisplay();
-    updateStageFlow();
-  }
-}
-
-function populatePromptDropdown() {
-  promptSelectEl.innerHTML = '';
-  promptHistory.forEach((prompt, i) => {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = prompt.substring(0, 50) + (prompt.length > 50 ? '...' : '');
-    promptSelectEl.appendChild(opt);
-  });
-  promptSelectEl.addEventListener('change', () => {
-    selectedPrompt = promptHistory[promptSelectEl.value];
-    selectedTransform = generateTransform(selectedPrompt);
-    currentStage = 0;
-    updateDisplay();
-    if (!isPlaying) updateStageFlow();
-  });
-}
-
-// ── Sand-letter animation ─────────────────────────────────────────────────
-// Each letter of the displayed prompt text is broken into a tiny DOM span.
-// When the stage changes, those letters dissolve into drifting "sand" particles
-// (small gold dots that swirl), then re-form as the new prompt's letters.
-const SAND_PALETTE = ['#c9a84c', '#f0e0a8', '#a07a30', '#ffffff'];
-const sandParticles = [];     // currently drifting particles
-let sandHost = null;          // the host element being animated
-let sandCurrentText = '';
-let sandAnimating = false;
-let sandReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-function _sandRand(min, max) { return min + Math.random() * (max - min); }
-function _sandColor() { return SAND_PALETTE[(Math.random() * SAND_PALETTE.length) | 0]; }
-
-function _spawnSandParticle(host, x, y, intensity = 1) {
-  const p = document.createElement('span');
-  p.className = 'sand-particle';
-  // Each particle is a 2-4px gold dot
-  const sz = _sandRand(2.2, 3.6) * intensity;
-  p.style.width = sz + 'px';
-  p.style.height = sz + 'px';
-  p.style.left = x + 'px';
-  p.style.top = y + 'px';
-  p.style.background = _sandColor();
-  p.style.boxShadow = `0 0 ${sz * 2}px ${_sandColor()}`;
-  host.appendChild(p);
-  // Lifetime motion: drift up + side + fade
-  const dx = _sandRand(-120, 120);
-  const dy = _sandRand(-180, -60);   // upward
-  const dur = _sandRand(700, 1300);
-  const start = performance.now();
-  const vx = dx / dur * 1000;
-  const vy = dy / dur * 1000;
-  sandParticles.push({
-    el: p, x, y, vx, vy,
-    born: start, life: dur,
-  });
-}
-
-function _sandTick() {
-  if (!sandAnimating) return;
-  const now = performance.now();
-  for (let i = sandParticles.length - 1; i >= 0; i--) {
-    const p = sandParticles[i];
-    const t = (now - p.born) / p.life;
-    if (t >= 1) {
-      p.el.remove();
-      sandParticles.splice(i, 1);
-      continue;
-    }
-    // Slight gravity pulls back down + rotation for "sand in wind"
-    const drag = 0.985;
-    p.vx *= drag;
-    p.vy = p.vy * drag + 0.18 * 16; // gentle gravity (px/frame at 60fps)
-    p.x += p.vx * 0.016;
-    p.y += p.vy * 0.016;
-    p.el.style.transform = `translate(${p.x}px, ${p.y}px) rotate(${t * 360}deg)`;
-    p.el.style.opacity = String(Math.max(0, 1 - t * 0.95));
-  }
-  if (sandParticles.length) requestAnimationFrame(_sandTick);
-  else sandAnimating = false;
-}
-
-function _disintegrate(host) {
-  if (!host) return;
-  const rect = host.getBoundingClientRect();
-  const hostRect = { left: rect.left, top: rect.top };
-  const letters = host.querySelectorAll('.sand-letter');
-  letters.forEach((l) => {
-    const r = l.getBoundingClientRect();
-    const cx = r.left - hostRect.left + r.width / 2;
-    const cy = r.top - hostRect.top + r.height / 2;
-    // Spawn 6-10 particles per letter
-    const n = 6 + ((Math.random() * 4) | 0);
-    for (let k = 0; k < n; k++) {
-      _spawnSandParticle(host, cx + _sandRand(-4, 4), cy + _sandRand(-3, 3));
-    }
-    l.classList.add('dissolving');
-  });
-  sandAnimating = true;
-  requestAnimationFrame(_sandTick);
-}
-
-function _buildLetters(host, text) {
-  host.innerHTML = '';
-  // Wrap text into .sand-letter spans for each character; spaces become thin gaps
-  const frag = document.createDocumentFragment();
-  for (const ch of text) {
-    if (ch === '\n') {
-      frag.appendChild(document.createElement('br'));
-      continue;
-    }
-    if (ch === ' ') {
-      const s = document.createElement('span');
-      s.className = 'sand-space';
-      s.innerHTML = '&nbsp;';
-      frag.appendChild(s);
-      continue;
-    }
-    const span = document.createElement('span');
-    span.className = 'sand-letter';
-    span.textContent = ch;
-    frag.appendChild(span);
-  }
-  host.appendChild(frag);
-}
-
-function animateSandText(host, newText) {
-  if (!host) return;
-  if (newText === sandCurrentText && host.childElementCount > 0) {
-    return; // no-op
-  }
-  sandHost = host;
-  // If we had previous content, disintegrate it first; then build new letters.
-  const hadPrev = host.querySelector('.sand-letter');
-  const doBuild = () => _buildLetters(host, newText);
-  if (hadPrev && !sandReducedMotion) {
-    _disintegrate(host);
-    setTimeout(doBuild, sandReducedMotion ? 0 : 280);
-  } else {
-    doBuild();
-  }
-  sandCurrentText = newText;
-}
-
-function generateTransform(prompt) {
-  // Keys match STAGES[*].sub values — the lookup uses stage.sub directly.
-  return {
-    prompt_intake: prompt,
-    frame_assemble: `[COMPOSE] Framed with policy · output reserved · request valid`,
-    frame_of_ref: `[FRAME_OF_REF] Profile: CortexAgent · constraints: active · output contract: set`,
-    memory_check: `[MEMORY_CHECK] Hot memory hit → 3 domains · savings pattern: 34% · confidence: 0.87`,
-    slimtoken_minify: `[SLIMTOKEN] TOOLS→SYSTEM→MESSAGES→DEDUP→DISTILL→BUDGET\n"${prompt}"\n[SAVED: ${Math.floor(prompt.length / 4)} tokens · ~${Math.max(1, Math.floor(prompt.length / 12))}× compression]`,
-    tool_routing: `[TOOL_ROUTING] → [PRIORITY: HIGH] → [MODEL: overseer] → build tool_calls`,
-    context_fit: `[FINALIZE] valid ✅ · fits ✅ · schema_valid ✅ · template_applied ✅`,
-    prefill: `[PREFILL] Model reading optimized prompt\ninput_tokens: 2,412 · input_tps: ~800`,
-    decode: `[DECODE] Generating response token-by-token\noutput_tps: 42 · streaming…`,
-    stream_out: `[DELIVER] Streamed via SSE\nstatus: success · total_tokens: 3,187`,
-  };
-}
-
-function updateDisplay() {
-  const stage = STAGES[currentStage];
-  const transform = selectedTransform || {};
-  const stageContent = transform[stage.sub] || selectedPrompt || '';
-
-  const display = document.getElementById('stage-display');
-  display.classList.remove('active');
-
-  // Drive the right-side explainer — slide in when there's content, out otherwise
-  if (selectedPrompt) {
-    xNumEl.textContent = `Stage ${String(currentStage + 1).padStart(2, '0')} of ${String(STAGES.length).padStart(2, '0')}`;
-    xTitleEl.textContent = stage.name.replace(/_/g, ' ');
-    xSubEl.textContent = stage.sub.replace(/_/g, ' ');
-    xBodyEl.innerHTML = stage.detail || `<p>${stage.desc}</p>`;
-    xTokensEl.textContent = `~${stage.tokenEst.toLocaleString()}`;
-    explainerEl.classList.add('active');
-  } else {
-    explainerEl.classList.remove('active');
-  }
-
-  setTimeout(() => {
-    stageLabelEl.textContent = `Stage ${String(currentStage + 1).padStart(2, '0')} of ${String(STAGES.length).padStart(2, '0')}`;
-    stageTitleEl.textContent = stage.name.replace(/_/g, ' ');
-    stageTitleEl.style.color = stage.color;
-    stageSubEl.textContent = stage.sub.replace(/_/g, ' ');
-
-    // Center = literal prompt text ONLY, animated by the sand host
-    const sandHost = document.getElementById('sand-host');
-    if (sandHost) {
-      const text = stageContent || '';
-      animateSandText(sandHost, text);
-    }
-
-    display.classList.add('active');
-  }, 300);
-
-  transitionEl.classList.add('flash');
-  setTimeout(() => transitionEl.classList.remove('flash'), 400);
-  updateStageFlow();
-  updateStageNodes();
-}
-
-function switchStage(index) {
-  if (index < 0 || index >= STAGES.length) return;
-  currentStage = index;
-  updateDisplay();
-}
-
-function updateStageNodes() {
-  // Tiny stage dots pulse subtly when active, dim when pending
-  stageGroups.forEach((group, i) => {
-    const dot = group.children[0];
-    const isActive = i === currentStage;
-    const scale = isActive ? (1.0 + Math.sin(performance.now() * 0.004) * 0.4) : 1.0;
-    group.scale.setScalar(scale);
-    dot.material.opacity = isActive ? 1.0 : (i < currentStage ? 0.55 : 0.25);
-  });
-}
-
-btnPrev.addEventListener('click', () => switchStage(currentStage - 1));
-btnNext.addEventListener('click', () => switchStage(currentStage + 1));
-
-btnPlay.addEventListener('click', () => {
-  isPlaying = !isPlaying;
-  btnPlay.textContent = isPlaying ? '⏸' : '▶';
-  btnPlay.classList.toggle('active', isPlaying);
-  if (isPlaying) autoPlay();
-  else clearTimeout(playTimeout);
+/* stage index markers (01→06) — makes the ring read as a pipeline */
+const stageIdx = [];
+STAGES.forEach((s, i) => {
+  const idx = makeText(0.26, 0x8a7d68);
+  idx.text = String(i+1).padStart(2, '0');
+  idx.sync();
+  idx.position.set(0, -0.5, 0);
+  stageNodes[i].group.add(idx);
+  stageIdx.push(idx);
 });
 
-function autoPlay() {
-  if (!isPlaying) return;
-  setTimeout(() => {
-    if (!isPlaying) return;
-    switchStage((currentStage + 1) % STAGES.length);
-    autoPlay();
-  }, 3000 / speed);
+/* ── overseer-route satellites: small molten masses that fork off ── */
+const satMat = new THREE.MeshPhysicalMaterial({
+  metalness:1.0, roughness:0.2, clearcoat:1.0, clearcoatRoughness:0.15,
+  envMapIntensity:1.2, color:0xff6a00, emissive:0xff6a00, emissiveIntensity:0.4 });
+const satellites = [];
+for (let i=0;i<3;i++){
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 24), satMat);
+  m.visible = false;
+  scene.add(m);
+  satellites.push({ mesh:m, active:false, t:0, from:new THREE.Vector3(), to:new THREE.Vector3() });
 }
 
-btnReset.addEventListener('click', () => {
-  currentStage = 0;
-  isPlaying = false;
-  btnPlay.textContent = '▶';
-  btnPlay.classList.remove('active');
-  updateStageFlow();
-  updateDisplay();
-});
+/* ── cinematic drive: camera dollies to each stage; entity transforms ── */
+let currentStage = 0;
+let stageT = 0;            // 0..1 progress toward next stage
+let speed = 1.0;
+let labelOpacity = 1;
+let labelTarget = 1;
+let lastLabel = '';
+const STAGE_HOLD = 4.0;    // seconds per stage at 1.0×
+const camTarget = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+let arcAngle = 0;
 
-speedSlider.addEventListener('input', () => {
-  speed = parseFloat(speedSlider.value);
-  speedVal.textContent = speed.toFixed(1) + '×';
-});
+function setLabel(text, color){
+  if (text === lastLabel) return;
+  lastLabel = text;
+  stageLabel.text = text;
+  stageLabel.color = color;
+  stageLabel.sync();
+  labelTarget = 1;
+  labelOpacity = 0;
+  for (let b=0;b<10;b++) spawnEmber(entity.position, true);
+}
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+function flashKeywords(){
+  kwTexts.forEach((t, i) => {
+    const a = (i/KEYWORDS.length)*Math.PI*2;
+    t.position.copy(entity.position).add(new THREE.Vector3(Math.cos(a)*1.7, 0.4+Math.sin(i*1.7)*0.3, Math.sin(a)*1.7));
+    t.visible = true;
+    t.material.opacity = 0;
+  });
+}
 
-console.log('Setting up loader hide...');
+function fork(){
+  const next = stagePoints[(currentStage+1)%STAGES.length];
+  satellites.forEach((s, i) => {
+    s.active = true; s.t = 0;
+    s.from.copy(entity.position);
+    s.to.copy(next).add(new THREE.Vector3((i-1)*0.8, 0.5, 0));
+    s.mesh.visible = true;
+    s.mesh.position.copy(s.from);
+  });
+}
 
-// Immediate loader hide for debugging
-setTimeout(() => {
-  const loader = document.getElementById('loader');
-  if (loader && !loader.classList.contains('hidden')) {
-    loader.classList.add('hidden');
-    setTimeout(() => loader.remove(), 700);
-  }
-}, 1000);
+function setStage(i){
+  currentStage = i;
+  const s = STAGES[i];
+  setLabel(s.label, s.color);
+  for (let b=0;b<14;b++) spawnEmber(entity.position, true);
+  const p = stagePoints[i];
+  camTarget.set(p.x*0.7, 1.6, p.z*0.7 + 4.5);
+  camLook.copy(p);
+  arcAngle = 0;
+  if (i === 3) flashKeywords();
+  if (i === 4) fork();
+}
 
-requestAnimationFrame(() => {
-  console.log('Animation frame triggered');
-  const loader = document.getElementById('loader');
-  console.log('Loader element:', loader);
-  if (loader) {
-    loader.classList.add('hidden');
-    console.log('Loader hidden');
-    setTimeout(() => loader.remove(), 700);
-  }
-});
+function step(dt){
+  stageT += dt * speed;
+  if (stageT >= STAGE_HOLD){ stageT = 0; setStage((currentStage+1)%STAGES.length); }
+  // entity follows the path (arc-length, uniform speed)
+  const t = (currentStage + stageT/STAGE_HOLD) / STAGES.length;
+  const pos = pathCurve.getPointAt(t % 1);
+  entity.position.copy(pos);
+  entity.lookAt(pos.clone().add(pathCurve.getTangentAt(t % 1)));
+  // transform: ease toward current stage's heat / morph / scale
+  const s = STAGES[currentStage];
+  entityUniforms.uHeat.value += (s.heat - entityUniforms.uHeat.value)*0.08;
+  entityUniforms.uNoiseAmp.value += (s.amp - entityUniforms.uNoiseAmp.value)*0.08;
+  entityUniforms.uNoiseFreq.value += (s.freq - entityUniforms.uNoiseFreq.value)*0.08;
+  const pulseFreq = busy ? 0.02 : 0.004;
+  const pulse = 1 + Math.sin(performance.now()*pulseFreq)*(busy ? 0.09 : 0.05);
+  const targetScale = s.scale * pulse;
+  entity.scale.lerp(new THREE.Vector3(targetScale,targetScale,targetScale), 0.08);
+  // camera dolly + slow arc during hold
+  arcAngle += dt*0.15*speed;
+  const arc = new THREE.Vector3(Math.cos(arcAngle)*0.6, 0, Math.sin(arcAngle)*0.6);
+  camera.position.lerp(camTarget.clone().add(arc), 0.02);
+  camera.lookAt(camLook);
+  // label: billboard above entity, fade in/out
+  labelOpacity += (labelTarget - labelOpacity)*0.06;
+  stageLabel.material.opacity = labelOpacity;
+  stageLabel.position.copy(entity.position).add(new THREE.Vector3(0, 3.0, 0));
+  stageLabel.lookAt(camera.position);
+  // keyword flash animation (memory check)
+  kwTexts.forEach((t, i) => {
+    if (!t.visible) return;
+    const ph = (performance.now()*0.002 + i*0.4) % 1;
+    t.material.opacity = Math.sin(ph*Math.PI);
+    t.scale.setScalar(1 + Math.sin(ph*Math.PI)*0.3);
+    const a = (i/KEYWORDS.length)*Math.PI*2;
+    t.position.copy(entity.position).add(new THREE.Vector3(Math.cos(a)*1.7, 0.4+Math.sin(i*1.7)*0.3, Math.sin(a)*1.7));
+    t.lookAt(camera.position);
+    if (ph > 0.95) t.visible = false;
+  });
+  // satellites fly off
+  satellites.forEach((s) => {
+    if (!s.active) return;
+    s.t += dt*0.6*speed;
+    if (s.t >= 1){ s.active=false; s.mesh.visible=false; return; }
+    s.mesh.position.lerpVectors(s.from, s.to, s.t);
+    s.mesh.scale.setScalar(1 - s.t*0.6);
+  });
+  // stage node pulse + billboard index markers
+  stageNodes.forEach((n, i) => {
+    const active = i === currentStage;
+    const sc = active ? (1 + Math.sin(performance.now()*0.006)*0.3) : 1;
+    n.group.scale.setScalar(sc);
+    n.halo.material.opacity = active ? 0.6 : 0.25;
+  });
+  stageIdx.forEach((t) => { t.lookAt(camera.position); });
+  // live-when-busy: emit a trickle of embers matching the real generation rate
+  if (busy && Math.random() < liveTps*0.02) spawnEmber(entity.position, false);
+}
 
-// Fallback: force hide loader after 3 seconds
-setTimeout(() => {
-  const loader = document.getElementById('loader');
-  if (loader && !loader.classList.contains('hidden')) {
-    loader.classList.add('hidden');
-    setTimeout(() => loader.remove(), 700);
-  }
-}, 3000);
-
-function animate(now) {
+/* ── render loop ── */
+const clock = new THREE.Clock();
+let _last = performance.now();
+function animate(){
   requestAnimationFrame(animate);
-  const elapsed = now * 0.001;
-
-  ambientPoints.rotation.y += 0.0008;
-  const ap = ambientGeom.attributes.position.array;
-  for (let i = 0; i < AMBIENT_COUNT; i++) {
-    ap[i*3+1] += Math.sin(now * 0.001 + i) * 0.002;
-  }
-  ambientGeom.attributes.position.needsUpdate = true;
-
-  // Stage dots stay anchored (no bobbing — calmer, more luxurious)
-
-  // Rotate the central gyroscope rings — each on its own axis, in its own direction
-  gyroRings.forEach((ring) => {
-    const d = ring.userData;
-    ring.rotation.z += d.speed;
-    ring.rotation.x = d.tiltX + Math.sin(elapsed * 0.4) * 0.08;
-  });
-
-  // Active marker travels along the curve from one stage dot to the next.
-  // It uses smooth interpolation for a luxurious flowing motion.
-  if (selectedPrompt && STAGES.length > 1) {
-    const seg = currentStage / (STAGES.length - 1);
-    const pulse = Math.sin(now * 0.001 * Math.PI) * 0.5 + 0.5; // 0..1 over ~2s
-    const pos = pathCurve.getPoint(seg);
-    activeMarker.position.copy(pos);
-    activeMarker.scale.setScalar(0.9 + pulse * 0.35);
-  } else {
-    // Idle: float the marker along the curve slowly
-    const seg = (elapsed * 0.05) % 1;
-    const pos = pathCurve.getPoint(seg);
-    activeMarker.position.copy(pos);
-    activeMarker.scale.setScalar(0.9 + Math.sin(elapsed * 1.5) * 0.15);
-  }
-
+  const now = performance.now();
+  const dt = Math.min((now-_last)/1000, 0.05); _last = now;
+  entityUniforms.uTime.value = clock.elapsedTime;
+  step(dt);
+  updateEmbers(dt);
+  bloom.strength = 1.15 + entityUniforms.uHeat.value*0.45
+                 + (busy ? Math.min(liveTps*0.03, 0.5) : 0);
   controls.update();
-  renderer.render(scene, camera);
+  composer.render();
 }
 
-loadPromptHistory();
-requestAnimationFrame(animate);
+/* ── speed slider ── */
+const slider = document.getElementById('speed-slider');
+const sval = document.getElementById('speed-val');
+slider.addEventListener('input', () => { speed = parseFloat(slider.value); sval.textContent = speed.toFixed(1)+'×'; });
 
-// Debug: log errors
+/* ── live-when-busy / cinematic-when-idle (poll :8090/live/tps) ──
+   Reflects real pipeline activity when the engine is generating; falls back
+   to the calm scripted journey when idle or when the feed is unreachable. */
+let liveTps = 0, busy = false;
+function pollLive(){
+  fetch('/live/tps', { cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (!d){ busy = false; liveTps = 0; return; }
+      const tps = d.current_tok_s || 0;
+      const inTps = d.current_in_tps || 0;
+      busy = (tps > 0.5) || (inTps > 120);
+      liveTps = tps;
+    })
+    .catch(() => { busy = false; liveTps = 0; });
+}
+pollLive();
+setInterval(pollLive, 2000);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+});
+
+/* ── headless test hook ── */
+window.__pipeline = {
+  stageCount: STAGES.length,
+  stageNames: STAGES.map(s=>s.name),
+  hasEntity: !!entity, hasPath: !!pathCurve, hasEmbers: EMBERS,
+  hasOutputPass: true, hasTroika: !!stageLabel,
+  currentStage: () => currentStage,
+  entityPos: () => entity.position.toArray().map(n=>+n.toFixed(2)),
+  heat: () => +entityUniforms.uHeat.value.toFixed(2),
+  scale: () => +entity.scale.x.toFixed(2),
+  label: () => stageLabel.text,
+  live: () => ({ busy, liveTps: +liveTps.toFixed(1) }),
+  jumpTo: (i) => setStage(i % STAGES.length),
+  gl: () => { composer.render(); return renderer; },
+  // Deterministic state-machine driver: advances the pipeline by `dt` seconds
+  // (default 0.05 = one 60fps frame). Independent of requestAnimationFrame,
+  // which headless/backgrounded tabs throttle to 0. Lets the full journey
+  // (stage advance, heat ramp, path motion, embers) be verified via JS alone.
+  tick: (dt=0.05) => { step(dt); updateEmbers(dt); composer.render(); },
+};
+
+setStage(0);
+animate();
 window.addEventListener('error', (e) => console.error('Pipeline error:', e));
-console.log('Pipeline initialized');
 </script>
 </body>
 </html>

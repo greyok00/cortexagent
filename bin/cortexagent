@@ -124,19 +124,15 @@ fi
 DAEMON_MODE=0
 if python3 "$REPO_ROOT/lib/control.py" 2>/dev/null | grep -q "daemon present: True"; then
   DAEMON_MODE=1
-  echo "CortexAgent daemon detected — using managed models (daemon mode)."
+  : # 2026-08-20 user feedback: don't print daemon-detection lines in chat area
 fi
 
 # ── Always-on overseer status (one line, CLI feedback) ────────────────────────
 # The overseer systemd user service keeps the 0.5b tiny + scheduler running
 # independent of this CLI. Surface its state so the user can see it's always on
 # (and gets a fix hint if it isn't). Non-fatal — never blocks the session.
-_ov_pid="$(python3 "$REPO_ROOT/lib/overseer.py" status 2>/dev/null | head -1)"
-if [ -n "${_ov_pid}" ]; then
-  echo "${_ov_pid}"
-else
-  echo "Overseer: not running — start with: systemctl --user start cortexagent-overseer"
-fi
+# 2026-08-20 user feedback: overseer status line clutters the popup chat area
+# — silence here; status is still visible via `cortexagent overseer status`.
 unset _ov_pid
 
 # ── Backend (llama.cpp) — defined early so kill_stale can use LLAMA_DIR ──────
@@ -185,7 +181,7 @@ if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
       systemctl --user start cortexagent-tray.service >/dev/null 2>&1 || true
     fi
     if systemctl --user is-active --quiet cortexagent-tray.service 2>/dev/null; then
-      echo "CortexAgent tray: 🟢 active (systemd user unit)"
+      : # 2026-08-20 user feedback: tray status silent
     fi
   else
     # No systemd unit — fall back to a detached nohup. The tray still owns the
@@ -194,17 +190,13 @@ if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
       nohup python3 -m lib.tray > "${HOME}/.cortexagent/logs/tray.log" 2>&1 &
       disown || true
       sleep 1
-      echo "CortexAgent tray: 🟢 started (no systemd unit, background)"
+      : # 2026-08-20 user feedback: tray status silent
     fi
   fi
 fi
 
-# ── Webui status (informational; the webui runs separately if enabled) ──────
-if ss -ltn 2>/dev/null | grep -q ":8090 "; then
-  echo "Web UI: http://127.0.0.1:8090/ (running)"
-  echo "Starting standalone CLI session (independent from web UI)."
-  echo ""
-fi
+# ── Webui status removed 2026-08-20: WebUI (8090 pipeline + 8093 security)
+# was removed entirely — the tray + dashboard are the only interface.
 
 # --list-models: show available models and exit
 for arg in "$@"; do
@@ -310,7 +302,7 @@ try:
         data = json.load(f)
 except Exception:
     data = {}
-data["defaultProvider"] = "cortex-big"
+data["defaultProvider"] = "cortex-local"
 data["defaultModel"] = "cortexagent"
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
@@ -330,12 +322,15 @@ if [ "${PROVIDER}" = "openai" ] && [ -z "${OPENAI_API_KEY}" ]; then
 fi
 
 # Force the agent's default provider/model in ~/.cortex/agent/settings.json.
-# local → cortex-big/cortexagent (hardened). Cloud → the matching provider.
+# local → cortex-local/cortexagent (OpenAI-completions via the :8081 slimtoken
+# proxy — NOT cortex-big, which is the old Radius protocol that bypasses the
+# proxy and talks straight to :8080, so no compression/recording). Cloud → the
+# matching provider.
 python3 - "$PROVIDER" "$_AGENT_SETTINGS" <<'PY'
 import json, os, sys
 provider, path = sys.argv[1], sys.argv[2]
 if provider == "local":
-    dp, dm = "cortex-big", "cortexagent"
+    dp, dm = "cortex-local", "cortexagent"
 elif provider == "anthropic":
     dp, dm = "anthropic-cloud", os.environ.get("CORTEXAGENT_ANTHROPIC_MODEL", "claude-sonnet-5")
 elif provider == "openai":
@@ -383,7 +378,6 @@ KV_OFFLOAD="${CORTEXAGENT_KV_OFFLOAD:-1}"  # 1 = KV cache on GPU (fast); 0 = for
 B="${CORTEXAGENT_B:-2048}"          # logical batch (max tokens processed per batch)
 UB="${CORTEXAGENT_UB:-1024}"        # ubatch / physical batch (prompt-eval parallelism)
 LOG="${CORTEXAGENT_LOG:-$HOME/.cortexagent-server.log}"
-WEBUI_ENABLED="${CORTEXAGENT_WEBUI_ENABLED:-1}"
 
 # ── The agent CLI binary (stock; the wrapper carries the brand) ────────────
 AGENT_CLI="${CORTEXAGENT_CLI:-cortex}"
@@ -481,17 +475,17 @@ if [ "$DAEMON_MODE" = "1" ]; then
   # probes free VRAM (informational) and loads the big 35B on :8080. If the
   # load fails, the daemon logs the failure and leaves :8080 down — there is
   # no fallback swap path anymore.
-  echo "Daemon mode — requesting model load via control socket..."
+  # 2026-08-20 user feedback: don't print daemon-mode chat noise. The model
+  # is still loadable via the daemon's own logs / status.
   python3 -c "import sys,os; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
 r=control.send_request('session-start', timeout=300); \
 m=os.path.basename(str(r.get('model','?'))); \
-print('  model:', m) if r.get('ok') else print('  session-start failed:', r)" 2>&1 \
-    || echo "  (control socket request failed — the proxy will reload on demand)"
+pass" 2>&1 \
+    || true
 elif ss -ltn 2>/dev/null | grep -q ":${PORT} "; then
-  echo "Port ${PORT} in use — assuming a llama-server is already running; reusing it."
+  : # 2026-08-20 user feedback: silent — port-reuse line clutters popup chat
 else
-  echo "Starting llama-server on 127.0.0.1:${PORT} (model: $(basename "${MODEL}"))..."
-  echo "  ctx=${CTX} kv=${CTK}/${CTV} ngl=${NGL} fa=${FA} slots=${NP} b=${B} ub=${UB} kv_offload=${KV_OFFLOAD} kv_unified=on"
+  : # 2026-08-20 user feedback: silent — llama-server startup lines clutter popup chat
   LD_LIBRARY_PATH="${LLAMA_DIR}/bin" nohup "${LLAMA_DIR}/bin/llama-server" \
     -m "${MODEL}" -c "${CTX}" -ngl "${NGL}" --alias "${ALIAS}" \
     -fa "${FA}" -ctk "${CTK}" -ctv "${CTV}" -np "${NP}" \
@@ -514,7 +508,7 @@ else
     echo "llama-server did not become ready in 180s — see ${LOG}" >&2
     kill "${SERVER_PID}" 2>/dev/null || true; exit 1
   fi
-  echo "llama-server ready (pid ${SERVER_PID}). Log: ${LOG}"
+  : # 2026-08-20 user feedback: silent — ready line clutters popup chat
 fi
 
 # ── Cleanup: free VRAM on exit ───────────────────────────────────────────────
@@ -531,16 +525,10 @@ cleanup() {
     kill "${PROXY_PID}" 2>/dev/null || true
     wait "${PROXY_PID}" 2>/dev/null || true
   fi
-  # Stop webui first (if we started it)
   if [ -n "${BRAVE_PID:-}" ] && kill -0 "${BRAVE_PID}" 2>/dev/null; then
-    echo "Stopping Brave CDP (pid ${BRAVE_PID})..."
+    : # 2026-08-20 user feedback: silent — Brave CDP stop line clutters popup chat
     kill "${BRAVE_PID}" 2>/dev/null || true
     wait "${BRAVE_PID}" 2>/dev/null || true
-  fi
-  if [ -n "${WEBUI_PID:-}" ] && kill -0 "${WEBUI_PID}" 2>/dev/null; then
-    echo "Stopping cortexagent webui (pid ${WEBUI_PID})..."
-    kill "${WEBUI_PID}" 2>/dev/null || true
-    wait "${WEBUI_PID}" 2>/dev/null || true
   fi
   # The overseer + tiny 0.5b are an ALWAYS-ON systemd user service — do NOT
   # stop them here. Closing cortexagent must free only the big model's ~13 GB
@@ -553,7 +541,7 @@ cleanup() {
     # Daemon owns the big model — notify it the session ended, then unload the
     # big model NOW to free VRAM on close. The daemon's idle-unload may be
     # disabled, so don't rely on it. The tiny 0.5b + overseer stay up.
-    echo "Daemon mode — ending session + unloading big model to free VRAM..."
+    : # 2026-08-20 user feedback: silent — daemon-mode shutdown line clutters popup chat
     python3 -c "import sys; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
 control.send_request('session-end', timeout=5); \
 control.send_request('unload', which='big', timeout=30)" 2>/dev/null || true
@@ -563,7 +551,7 @@ control.send_request('unload', which='big', timeout=30)" 2>/dev/null || true
     # can't accidentally hit the tiny (alias "cortexagent-tiny") or Ollama's
     # llama-server.
     if curl -sf -m 2 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
-      echo "Stopping big-model llama-server on :${PORT} — freeing VRAM..."
+      : # 2026-08-20 user feedback: silent — big-model stop line clutters popup chat
       python3 "${REPO_ROOT}/lib/model_backend.py" stop big >/dev/null 2>&1 || true
     fi
   fi
@@ -601,13 +589,13 @@ BRAVE_PID=""
 BRAVE_ENABLED="${CORTEXAGENT_BRAVE_ENABLED:-1}"
 if [ "${BRAVE_ENABLED}" = "1" ]; then
   if ss -ltn 2>/dev/null | grep -q ":9222 "; then
-    echo "Brave CDP already reachable on 127.0.0.1:9222 — reusing it."
+    : # 2026-08-20 user feedback: don't print Brave CDP status in chat area
   else
     BRAVE_BIN="${CORTEXAGENT_BRAVE_BIN:-$(command -v brave-browser || command -v brave || command -v google-chrome || true)}"
     if [ -n "${BRAVE_BIN}" ]; then
       BRAVE_DATA_DIR="${CORTEXAGENT_BRAVE_DATA_DIR:-$HOME/.cortexagent/brave-cdp-profile}"
       mkdir -p "${BRAVE_DATA_DIR}" "${HOME}/.cortexagent/logs"
-      echo "Starting Brave CDP on 127.0.0.1:9222..."
+      : # 2026-08-20 user feedback: don't print Brave CDP status in chat area
       nohup "${BRAVE_BIN}" --remote-debugging-port=9222 \
         --no-first-run --no-default-browser-check \
         --user-data-dir="${BRAVE_DATA_DIR}" \
@@ -616,7 +604,7 @@ if [ "${BRAVE_ENABLED}" = "1" ]; then
       BRAVE_PID=$!
       sleep 1
       if kill -0 "${BRAVE_PID}" 2>/dev/null; then
-        echo "Brave CDP started (pid ${BRAVE_PID})."
+        : # Brave CDP up — silent
       else
         echo "Brave CDP failed to start (non-fatal) — see ${HOME}/.cortexagent/logs/brave-cdp.log" >&2
         BRAVE_PID=""
@@ -626,34 +614,6 @@ if [ "${BRAVE_ENABLED}" = "1" ]; then
     fi
   fi
 fi
-if [ "${WEBUI_ENABLED}" = "1" ] && [ -f "${REPO_ROOT}/lib/webui.py" ]; then
-  WEBUI_PORT="${CORTEXAGENT_WEBUI_PORT:-8090}"
-  WEBUI_BIND="${CORTEXAGENT_WEBUI_BIND:-127.0.0.1}"
-  if [ "${WEBUI_BIND}" = "127.0.0.1" ] && ss -ltn 2>/dev/null | grep -q ":${WEBUI_PORT} "; then
-    echo "Webui port ${WEBUI_PORT} in use — reusing existing webui."
-  else
-    echo "Starting cortexagent webui on ${WEBUI_BIND}:${WEBUI_PORT}..."
-    # Provide profile/model context to the webui via env
-    export CORTEXAGENT_PROFILE="${CORTEXAGENT_PROFILE:-default}"
-    export CORTEXAGENT_MODEL_ALIAS="${ALIAS}"
-    nohup python3 "${REPO_ROOT}/lib/webui.py" serve \
-      > "${HOME}/.cortexagent/logs/webui.log" 2>&1 &
-    WEBUI_PID=$!
-    # Don't fail the session if webui didn't bind (informational only)
-    sleep 1
-    if kill -0 "${WEBUI_PID}" 2>/dev/null; then
-      echo "Webui ready (pid ${WEBUI_PID}). Log: ${HOME}/.cortexagent/logs/webui.log"
-      echo "  → http://${WEBUI_BIND}:${WEBUI_PORT}/"
-      if [ -n "${CORTEXAGENT_WEBUI_TOKEN:-}" ]; then
-        echo "  → token auth enabled (X-CortexAgent-Token or Authorization: Bearer)"
-      fi
-    else
-      echo "Webui failed to start (non-fatal) — see ${HOME}/.cortexagent/logs/webui.log" >&2
-      WEBUI_PID=""
-    fi
-  fi
-fi
-
 # ── Start grammar proxy (strips grammar field that llama-server can't parse) ─
 # Daemon mode: the daemon already runs the reload-aware proxy on this port —
 # reuse it (starting our own would fail to bind / double-strip).
@@ -670,13 +630,13 @@ if [ "$DAEMON_MODE" = "0" ] && [ -f "${REPO_ROOT}/lib/grammar_proxy.py" ]; then
   PROXY_PID=$!
   sleep 1
   if kill -0 "${PROXY_PID}" 2>/dev/null; then
-    echo "Grammar proxy ready (pid ${PROXY_PID}) on port ${PROXY_PORT}"
+    : # 2026-08-20 user feedback: silent — proxy-ready line clutters popup chat
   else
     echo "Grammar proxy failed to start (non-fatal)" >&2
     PROXY_PID=""
   fi
 elif [ "$DAEMON_MODE" = "1" ]; then
-  echo "Daemon mode — reusing daemon grammar proxy on port ${PROXY_PORT}"
+  : # 2026-08-20 user feedback: silent — daemon-mode proxy line clutters popup chat
 fi
 
 # ── Block ollama.com cloud probes (CORTEX_OFFLINE=1) ────────────────────────
@@ -827,9 +787,10 @@ trap '[ -n "${_TICKER_PID}" ] && kill "${_TICKER_PID}" 2>/dev/null || true' EXIT
 # system_minify path and the tiny_llm default — no CLAUDE.md.
 # Branding: surface the cortex name so the user knows which binary is running.
 # (CORTEX_QUIET=1 silences it for one-shots / scripts.)
-if [ -z "${CORTEX_QUIET:-}" ]; then
-  echo "🐺 cortexagent → ${AGENT_CLI} (renamed pi.dev fork) · model $(basename "${MODEL}")"
-fi
+# 2026-08-20 user feedback: silent — the � wolf brand line clutters the
+# popup chat area. The brand is shown by the TUI's own ${logo} (interactive-
+# mode.ts). Skip this echo.
+:
 cd "${REPO_ROOT}"
 # Filter out our custom flags before passing to cortex
 FILTERED_ARGS=()

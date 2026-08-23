@@ -452,7 +452,7 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
     print(f"[{ts}] {emoji} {msg}", file=sys.stderr)
     try:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(LOG_FILE, "a") as f:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"[{ts}] {msg}\n")
     except Exception:
         pass

@@ -1,106 +1,57 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="console">
 <head>
-<meta charset="utf-8">
-<title>Tray popup · palette variant</title>
-<link rel="stylesheet" href="../_elements/elements.css">
-<style>
-  /* Console-Log — Plex Mono */
-  :root {
-    --el-bg: #0e1117;
-    --el-panel: #161b22;
-    --el-panel-2: #1c2128;
-    --el-line: #30363d;
-    --el-ink: #c9d1d9;
-    --el-ink-soft: #8b949e;
-    --el-accent: #58a6ff;
-    --el-ok: #3fb950;
-    --el-warn: #d29922;
-    --el-fail: #f85149;
-    --el-live: #58a6ff;
-    --el-font-body: 'JetBrains Mono', 'SF Mono', monospace;
-    --el-font-display: 'JetBrains Mono', 'SF Mono', monospace;
-    --el-font-mono: 'JetBrains Mono', 'SF Mono', monospace;
-  }
-  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 13px/1.5 var(--el-font-body); }
-  .popup { width: 672px; height: 372px; padding: 16px 18px; background: var(--el-panel); border: 1px solid var(--el-line); border-radius: 6px; }
-  .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--el-line); }
-  .head h1 { font: 700 14px/1 var(--el-font-display); margin: 0; }
-  .head h1 small { font: 11px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
-  .summary { display: flex; gap: 24px; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--el-line); margin-bottom: 10px; }
-  .summary .stat { font: 11px var(--el-font-mono); color: var(--el-ink-soft); }
-  .summary .stat b { color: var(--el-fail); font-size: 18px; margin-right: 4px; }
-  .palette { background: var(--el-panel-2); border: 1px solid var(--el-line); border-radius: 4px; }
-  .palette .input { width: 100%; padding: 10px 14px; background: transparent; border: 0; border-bottom: 1px solid var(--el-line); color: var(--el-ink); font: 13px var(--el-font-mono); outline: none; }
-  .palette .input:focus { border-bottom-color: var(--el-accent); }
-  .palette .results { padding: 4px 0; max-height: 220px; overflow-y: auto; }
-  .palette .results .row { display: grid; grid-template-columns: 60px 1fr 60px; gap: 12px; padding: 6px 14px; cursor: pointer; font: 12px var(--el-font-mono); }
-  .palette .results .row:hover, .palette .results .row.sel { background: rgba(88,166,255,0.12); }
-  .palette .results .row .key { color: var(--el-accent); font-weight: 700; }
-  .cross { display: flex; gap: 10px; padding: 8px 0 0; border-top: 1px dashed var(--el-line); margin-top: 10px; }
-  .foot { font: 10px var(--el-font-mono); color: var(--el-ink-soft); margin-top: 10px; text-align: center; letter-spacing: 0.08em; }
-  .hint { font: 10px var(--el-font-mono); color: var(--el-ink-soft); padding: 4px 14px; }
-</style>
+  <meta charset="utf-8">
+  <title>Tray popup · palette variant</title>
+  <link rel="stylesheet" href="../_elements/tokens.css">
+  <link rel="stylesheet" href="../_elements/themes.css">
+  <link rel="stylesheet" href="../_elements/base.css">
+  <link rel="stylesheet" href="../_elements/elements-display.css">
+  <link rel="stylesheet" href="../_elements/elements-controls.css">
+  <link rel="stylesheet" href="../_elements/elements-size.css">
 </head>
-<body>
-<div class="popup">
+<body class="el-reset">
+<div class="el-tray-frame">
 
-  <div class="head">
-    <h1>Tray popup · ⌘K palette <small>type to focus action</small></h1>
-    <button class="el-btn" onclick="alert('Raising Brave window')">Focus Brave �</button>
-  </div>
-
-  <div class="summary">
-    <div class="stat"><b>3</b>/ 9 checks fail</div>
-    <div class="stat"><b style="color:var(--el-warn);">2</b>· staged rules</div>
-    <div class="stat"><b style="color:var(--el-accent);">4</b>· cases open</div>
-    <div class="stat" style="margin-left:auto;color:var(--el-ink-soft);">last update · 11:13:18</div>
-  </div>
+  <h1 style="font:700 var(--el-fs-md)/1 var(--el-font-display);margin:0 0 var(--el-space-2);color:var(--el-ink)">Command palette <small style="font:var(--el-fs-sm) var(--el-font-mono);color:var(--el-accent);margin-left:var(--el-space-2)">12 themes · GitHub-dark console</small></h1>
 
   <div class="el-palette">
-    <input class="input" placeholder="⌘K  type to filter…  (try: block, isolate, OSINT, run)">
-    <div class="hint">10 actions · click to focus · Enter to launch · read-only status pills only</div>
+    <input class="input" placeholder="Type a command or search…" value="theme">
     <div class="results">
-      <div class="row sel">
-        <span class="key">SIEM</span><span>focus Brave window — last focus 2m ago</span><span class="el-badge live">3</span>
-      </div>
-      <div class="row">
-        <span class="key">SOAR</span><span>approve block-src — KEV CVE-2025-30872</span><span class="el-badge warn">2</span>
-      </div>
-      <div class="row">
-        <span class="key">SOAR</span><span>disable enrich-cve — noisy</span><span class="el-badge"></span>
-      </div>
-      <div class="row">
-        <span class="key">OSINT</span><span>show CASE-01 — Reinhart trust trace (read-only)</span><span class="el-badge">12</span>
-      </div>
-      <div class="row">
-        <span class="key">OSINT</span><span>show CASE-04 — Q4 cohort (read-only)</span><span class="el-badge">3</span>
-      </div>
-      <div class="row">
-        <span class="key">SEC</span><span>pause automation until 13:00</span><span class="el-badge"></span>
-      </div>
-      <div class="row">
-        <span class="key">RUN</span><span>re-run "Rule 401 vs 402" with last params</span><span class="el-badge"></span>
-      </div>
-      <div class="row">
-        <span class="key">SHOW</span><span>recent failures · last 24h</span><span class="el-badge">9</span>
-      </div>
-      <div class="row">
-        <span class="key">EXPORT</span><span>export run log → ~/cortexagent/logs/</span><span class="el-badge"></span>
-      </div>
-      <div class="row">
-        <span class="key">NAV</span><span>switch to OSINT :9999 (read-only status)</span><span class="el-badge ok">4</span>
-      </div>
+      <div class="row"><span class="key">/theme</span><span>Switch theme</span><span>⌘T</span></div>
+      <div class="row sel"><span class="key">/themes</span><span>Browse all 12 themes</span><span>⌘⇧T</span></div>
+      <div class="row"><span class="key">/find</span><span>Open findings</span><span>⌘F</span></div>
+      <div class="row"><span class="key">/find --sev</span><span>Filter findings by severity</span><span>⌘⇧F</span></div>
+      <div class="row"><span class="key">/playbook</span><span>List playbooks</span><span>⌘P</span></div>
+      <div class="row"><span class="key">/playbook run</span><span>Run a playbook</span><span>⌘⇧P</span></div>
+      <div class="row"><span class="key">/help</span><span>Show help</span><span>⌘?</span></div>
+      <div class="row"><span class="key">/quit</span><span>Quit tray</span><span>⌘Q</span></div>
     </div>
   </div>
 
-  <div class="cross">
-    <span class="el-pill ok" data-hover-detail data-detail="OSINT :9999 · 4 cases open · 12 facts in CASE-01">OSINT :9999 · 4 cases</span>
-    <span class="el-pill warn" data-hover-detail data-detail="Security-UI · 7 events / 2 staged rules">Security-UI · 7 events</span>
+  <h2 style="font:700 var(--el-fs-xs) var(--el-font-mono);color:var(--el-ink-soft);letter-spacing:0.14em;text-transform:uppercase;margin:var(--el-space-3) 0 var(--el-space-1)">Segmented · view filter</h2>
+  <div class="el-segmented">
+    <button class="on">All</button>
+    <button>CRIT</button>
+    <button>HIGH</button>
+    <button>MED</button>
+    <button>LOW</button>
   </div>
 
-  <div class="foot">— monitor-only · no cross-project launches —</div>
+  <h2 style="font:700 var(--el-fs-xs) var(--el-font-mono);color:var(--el-ink-soft);letter-spacing:0.14em;text-transform:uppercase;margin:var(--el-space-3) 0 var(--el-space-1)">Switch theme</h2>
+  <div class="el-cluster">
+    <button class="el-btn el--sm" data-set-theme="neutral">neutral</button>
+    <button class="el-btn el--sm" data-set-theme="polaroid">polaroid</button>
+    <button class="el-btn el--sm" data-set-theme="cockpit">cockpit</button>
+    <button class="el-btn el--sm" data-set-theme="console">console</button>
+    <button class="el-btn el--sm" data-set-theme="casebook">casebook</button>
+    <button class="el-btn el--sm" data-set-theme="terminal">terminal</button>
+  </div>
+
+  <div style="font:var(--el-fs-xs) var(--el-font-mono);color:var(--el-ink-soft);margin-top:var(--el-space-3);text-align:center;letter-spacing:0.08em">console · data-theme="console"</div>
 </div>
+
+<script src="../_elements/theme-switcher.js"></script>
 <script src="../_elements/elements.js"></script>
 </body>
 </html>

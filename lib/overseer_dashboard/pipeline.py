@@ -129,8 +129,8 @@ def compose(blocks: List[M.TokenComponent], context_window: int,
 
 # ── SlimToken (dry-run) ──────────────────────────────────────────────────────
 def slimtoken(compose: M.ComposeResult, policy: str = "balanced",
-              dedup: bool = True, history_compact_threshold: int = 2000,
-              retrieval_budget: int = 2000, dry_run: bool = True,
+              dedup: bool = True, history_compact_threshold: int = 500,
+              retrieval_budget: int = 1500, dry_run: bool = True,
               ) -> M.SlimTokenResult:
     """Optimize eligible blocks while preserving pinned content.
 
@@ -184,7 +184,7 @@ def slimtoken(compose: M.ComposeResult, policy: str = "balanced",
                 reason="oversized retrieval summarized", tokens_before=b.tokens,
                 tokens_after=trimmed))
             after += trimmed
-        elif b.category == "tool_output" and b.tokens > 2000:
+        elif b.category == "tool_output" and b.tokens > 500:
             trimmed = int(b.tokens * 0.5)
             actions.append(M.SlimTokenAction(
                 block_id=b.id, category=b.category, action="compacted",
@@ -242,8 +242,8 @@ class DryRunResult:
 def dry_run(prompt: str, context_window: int = 156000,
             max_output_tokens: int = 3431, policy: str = "balanced",
             preset: str = "simple", dedup: bool = True,
-            history_compact_threshold: int = 2000,
-            retrieval_budget: int = 2000,
+            history_compact_threshold: int = 500,
+            retrieval_budget: int = 1500,
             ) -> DryRunResult:
     """Run Compose + SlimToken + Finalize without sending an inference request.
 

@@ -210,8 +210,8 @@ def generate_report(results: Dict) -> None:
     
     # Save report
     report_file = Path.home() / ".cortexagent" / "test_results" / f"full_test_{int(time.time())}.json"
-    with open(report_file, "w") as f:
-        json.dump(report, f, indent=2, default=str)
+    with open(report_file, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2, ensure_ascii=False, default=str)
     
     # Print summary
     log(f"\n{'='*70}", CYAN)

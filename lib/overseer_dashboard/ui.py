@@ -109,7 +109,7 @@ def _detect_scale(root: tk.Tk) -> float:
 
 def _load_pos() -> Optional[Dict[str, int]]:
     try:
-        with POS_FILE.open() as f:
+        with POS_FILE.open(encoding="utf-8") as f:
             d = json.load(f)
         if isinstance(d, dict) and "x" in d and "y" in d:
             return d
@@ -371,7 +371,9 @@ class Dashboard(tk.Tk):
         _frame, body = W.section(col, "RUNTIME HEALTH", W.GREEN, scale=self._scale)
         _frame.pack(fill="x", pady=2, anchor="n")
         self._health_rows: Dict[str, tk.Label] = {}
-        for key, label in (("big", "Big model"), ("tiny", "Tiny overseer"),
+        # UI labels are "Model" + "Overseer" (user-facing). Internal keys
+        # big/tiny remain unchanged behind the scenes.
+        for key, label in (("big", "Model"), ("tiny", "Overseer"),
                            ("proxy", "Proxy"), ("backend", "Backend")):
             row = tk.Frame(body, bg=W.PANEL)
             row.pack(fill="x", pady=2)
@@ -411,8 +413,27 @@ class Dashboard(tk.Tk):
     def _build_center(self, grid: tk.Frame) -> None:
         col = tk.Frame(grid, bg=W.BG)
         col.grid(row=0, column=1, sticky="nsew", padx=3)
+        # Wrap the entire center column in a canvas with clip region so that
+        # sections never overflow into the pathway strip below.
+        col_canvas = tk.Canvas(col, bg=W.BG, highlightthickness=0, bd=0)
+        col_canvas.pack(fill="both", expand=True)
+        col_frame = tk.Frame(col_canvas, bg=W.BG)
+        col_canvas.create_window((0, 0), window=col_frame, anchor="nw")
+        def _scroll_update(_e=None):
+            col_canvas.configure(scrollregion=col_canvas.bbox("all"))
+        col_frame.bind("<Configure>", _scroll_update)
+        # Mouse-wheel scrolling: bind once per canvas instance.
+        self._center_canvas = col_canvas
+        def _mw(e):
+            col_canvas.yview_scroll(int(-1*(e.delta/120)), "units")
+        col_canvas.bind_all("<MouseWheel>", _mw, add=True)
+        col_canvas.bind_all("<Button-4>", _mw, add=True)
+        col_canvas.bind_all("<Button-5>", _mw, add=True)
+        sc_y = ttk.Scrollbar(col, orient="vertical", command=col_canvas.yview)
+        sc_y.pack(side="right", fill="y")
+        col_canvas.configure(yscrollcommand=lambda s, e: sc_y.set(s, e))
         # Model identity
-        _frame, body = W.section(col, "MODEL & ROUTE", W.BLUE, scale=self._scale)
+        _frame, body = W.section(col_frame, "MODEL & ROUTE", W.BLUE, scale=self._scale)
         _frame.pack(fill="x", pady=2, anchor="n")
         self._model_lbl = tk.Label(body, text="Model: unknown", bg=W.PANEL, fg=W.FG,
                                    font=W._f(13, self._scale, bold=True), anchor="w")
@@ -422,7 +443,7 @@ class Dashboard(tk.Tk):
                                    font=W._f(11, self._scale), anchor="w")
         self._route_lbl.pack(fill="x")
         # Token Pipeline
-        _frame, body = W.section(col, "TOKEN PIPELINE", W.PURPLE, scale=self._scale)
+        _frame, body = W.section(col_frame, "TOKEN PIPELINE", W.PURPLE, scale=self._scale)
         _frame.pack(fill="x", pady=2, anchor="n")
         stages = ("COLLECT", "COMPOSE", "SLIMTOKEN", "FINALIZE",
                   "PREFILL", "DECODE", "DELIVER")
@@ -446,7 +467,7 @@ class Dashboard(tk.Tk):
                                          justify="left")
         self._pipeline_detail.pack(fill="x", pady=(2, 0))
         # Live Inference
-        _frame, body = W.section(col, "LIVE INFERENCE + TOKEN DETAIL",
+        _frame, body = W.section(col_frame, "LIVE INFERENCE + TOKEN DETAIL",
                                  W.CYAN, scale=self._scale)
         _frame.pack(fill="x", pady=2, anchor="n")
         self._inf_rows: Dict[str, tk.Label] = {}
@@ -468,7 +489,7 @@ class Dashboard(tk.Tk):
         self._no_work.pack(fill="x", pady=2)
         # Test Harness — placed in the center column so it's always visible
         # (the right column is settings-only and scrolls).
-        _frame, body = W.section(col, "TEST HARNESS", W.GREEN, scale=self._scale)
+        _frame, body = W.section(col_frame, "TEST HARNESS", W.GREEN, scale=self._scale)
         _frame.pack(fill="x", pady=2, anchor="n")
         self._build_test_harness(body)
 
@@ -585,21 +606,21 @@ class Dashboard(tk.Tk):
                 "slimtoken_policy": "aggressive",
                 "target_context_budget": 80000,
                 "dedup": True,
-                "history_compact_threshold": 1024,
-                "retrieval_budget": 1024,
+                "history_compact_threshold": 256,
+                "retrieval_budget": 500,
             },
             "normal": {
                 "slimtoken_policy": "balanced",
                 "target_context_budget": 120000,
                 "dedup": True,
-                "history_compact_threshold": 2000,
-                "retrieval_budget": 2000,
+                "history_compact_threshold": 500,
+                "retrieval_budget": 1500,
             },
             "conservative": {
                 "slimtoken_policy": "conservative",
                 "target_context_budget": 150000,
                 "dedup": False,
-                "history_compact_threshold": 4000,
+                "history_compact_threshold": 2000,
                 "retrieval_budget": 4000,
             },
             "custom": {},
@@ -801,7 +822,7 @@ class Dashboard(tk.Tk):
         badge = tk.Label(top, text=f"{saved_pct:.1f}%\nsaved", bg=saved_color,
                          fg="#0d0d12",
                          font=W._f(18, self._scale, bold=True),
-                         padx=10, pady=4, bd=1, relief="solid", justify="center")
+                         padx=8, pady=2, justify="center")
         badge.pack(side="left")
         meta = tk.Frame(top, bg=W.PANEL)
         meta.pack(side="left", fill="x", expand=True, padx=10)

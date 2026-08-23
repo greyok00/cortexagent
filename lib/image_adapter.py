@@ -35,15 +35,28 @@ _model = None  # lazy singleton
 
 def _get_model():
     """Load (once) the Moondream 2 model. GPU when the VRAM budget allows,
-    else CPU (never evicts the big model / overseer / whisper)."""
+    else CPU (never evicts the big model / overseer / whisper).
+
+    Load pattern: from_pretrained to the chosen device, then .to(device) to
+    guarantee the move. Moondream's remote-code module occasionally ignores
+    device_map={"": "cuda"} under trust_remote_code=True and lands on CPU
+    when CUDA is wanted; the explicit .to() forces the placement.
+
+    Device is decided at load time from a fresh vram.budget_mib() probe — not
+    stashed at module import — so the choice reflects VRAM pressure at the
+    moment of the actual model allocation."""
     global _model
     if _model is None:
+        import torch
         from transformers import AutoModelForCausalLM
         from lib import vram
-        device = "cuda" if vram.can_fit(MOONDREAM_VRAM_MB) else "cpu"
+        want_cuda = vram.can_fit(MOONDREAM_VRAM_MB) if torch.cuda.is_available() else False
+        device = "cuda" if want_cuda else "cpu"
+        # Load directly to the chosen device — don't rely on device_map when
+        # trust_remote_code=True (Moondream's hf_moondream.py can ignore it).
         _model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID, revision=REVISION, trust_remote_code=True,
-            device_map={"": device})
+        ).to(device)
         # Defensive: transformers 5.13 corrupts persistent=False buffers
         # (attn_mask, freqs_cis) during from_pretrained. The cache's
         # hf_moondream.py patches this, but rebuild here too so the adapter

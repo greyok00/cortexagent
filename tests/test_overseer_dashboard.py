@@ -41,7 +41,7 @@ class TestLayouts(unittest.TestCase):
 
     def test_default_dimensions(self) -> None:
         from lib.overseer_dashboard.ui import DEFAULT_W, DEFAULT_H
-        self.assertEqual((DEFAULT_W, DEFAULT_H), (1440, 900))
+        self.assertEqual((DEFAULT_W, DEFAULT_H), (1920, 1080))
 
     def test_fallback_dimensions(self) -> None:
         from lib.overseer_dashboard.ui import FALLBACK_W, FALLBACK_H

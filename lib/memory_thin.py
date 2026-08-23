@@ -40,12 +40,24 @@ def _now_ts() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _try_daemon(content: str) -> bool:
-    """Try writing via daemon socket."""
+def _try_daemon(message: dict) -> bool:
+    """Try writing via daemon socket.
+
+    Tags the payload with platform="cortexagent" so the daemon lands it in the
+    same hot file (memory/hot/cortexagent.jsonl) that read/read_all/search read.
+    Previously only {"content": ...} was sent, so the daemon defaulted to
+    platform "claude" and wrote to claude.jsonl — appends never round-tripped.
+    """
     if not DAEMON_SOCKET.exists():
         return False
     try:
-        payload = json.dumps({"content": content}, ensure_ascii=False) + "\n"
+        payload = json.dumps({
+            "role": message.get("role", "user"),
+            "content": message.get("content", ""),
+            "platform": "cortexagent",
+            "metadata": {k: v for k, v in message.items()
+                         if k not in ("role", "content", "timestamp")},
+        }, ensure_ascii=False) + "\n"
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(1.0)
             s.connect(str(DAEMON_SOCKET))
@@ -73,7 +85,7 @@ def append(content: str, role: str = "user", *, session: str = "cortexagent",
         except Exception:
             pass  # Non-fatal, session awareness is optional
 
-    if _try_daemon(line):
+    if _try_daemon(message):
         return HOT_FILE
     HOT_FILE.parent.mkdir(parents=True, exist_ok=True)
     _atomic_append(HOT_FILE, line)
@@ -181,32 +193,32 @@ if __name__ == "__main__":
     a.add_argument("content")
     a.add_argument("--role", "-r", default="user")
     a.add_argument("--session-status", "-s", default=None)
-    args = ap.parse_args()
-    if args.cmd == "append":
-        print(append(args.content, role=args.role, session_status=args.session_status))
 
     r = sub.add_parser("read")
     r.add_argument("--n", type=int, default=5)
-    args = ap.parse_args()
-    if args.cmd == "read":
-        for entry in read_last(args.n):
-            print(json.dumps(entry, ensure_ascii=False))
 
     s = sub.add_parser("search")
     s.add_argument("query")
     s.add_argument("--limit", type=int, default=10)
-    args = ap.parse_args()
-    if args.cmd == "search":
-        for entry in search(args.query, limit=args.limit):
-            print(json.dumps(entry, ensure_ascii=False))
 
     c = sub.add_parser("cold")
     c.add_argument("content")
-    args = ap.parse_args()
-    if args.cmd == "cold":
-        print(write_cold(args.content))
 
-    p = sub.add_parser("sessions")
+    sub.add_parser("sessions")
+
+    # All subparsers are registered BEFORE parse_args — a single parse then
+    # dispatch (previously parse_args ran mid-registration, so every subcommand
+    # but append errored).
     args = ap.parse_args()
-    if args.cmd == "sessions":
+    if args.cmd == "append":
+        print(append(args.content, role=args.role, session_status=args.session_status))
+    elif args.cmd == "read":
+        for entry in read_last(args.n):
+            print(json.dumps(entry, ensure_ascii=False))
+    elif args.cmd == "search":
+        for entry in search(args.query, limit=args.limit):
+            print(json.dumps(entry, ensure_ascii=False))
+    elif args.cmd == "cold":
+        print(write_cold(args.content))
+    elif args.cmd == "sessions":
         print(json.dumps(check_sessions(), indent=2, ensure_ascii=False))

@@ -172,7 +172,7 @@ class Palette:
         Returns: Dict mapping role -> [r, g, b] or None if not found.
         """
         try:
-            with open(theme_path, "r") as f:
+            with open(theme_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             return None

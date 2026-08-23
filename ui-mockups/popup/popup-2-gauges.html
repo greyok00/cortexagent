@@ -1,89 +1,54 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="cockpit">
 <head>
-<meta charset="utf-8">
-<title>Tray popup · gauges variant</title>
-<link rel="stylesheet" href="../_elements/elements.css">
-<style>
-  /* Cockpit Panel — aviation HMI */
-  :root {
-    --el-bg: #0a1218;
-    --el-panel: #0f1a22;
-    --el-panel-2: #14242e;
-    --el-line: #1c2a36;
-    --el-ink: #dde6f0;
-    --el-ink-soft: #6b8497;
-    --el-accent: #ffb000;
-    --el-ok: #5fe09a;
-    --el-warn: #ffd166;
-    --el-fail: #ff5a52;
-    --el-live: #ffb000;
-    --el-font-body: 'JetBrains Mono', 'Courier New', monospace;
-    --el-font-display: 'JetBrains Mono', 'Courier New', monospace;
-    --el-font-mono: 'JetBrains Mono', 'Courier New', monospace;
-  }
-  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 13px/1.4 var(--el-font-body); }
-  .popup { width: 672px; height: 372px; padding: 14px 18px; background: var(--el-panel); border: 1px solid var(--el-line); border-radius: 4px; box-shadow: inset 0 0 24px rgba(0,0,0,.5); }
-  .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--el-line); }
-  .head h1 { font: 700 14px/1 var(--el-font-display); margin: 0; letter-spacing: 0.08em; text-transform: uppercase; }
-  .head h1 small { font: 11px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
-  .gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 18px 8px; background: var(--el-panel-2); border: 1px solid var(--el-line); border-radius: 4px; }
-  .gauges .el-gauge { width: 100%; height: 56px; }
-  .row-block { display: flex; gap: 14px; align-items: stretch; margin-top: 10px; }
-  .runs { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-  .run { font: 11px var(--el-font-mono); padding: 6px 10px; border-left: 3px solid var(--el-line); background: var(--el-panel-2); display: grid; grid-template-columns: 60px 120px 1fr 60px; gap: 10px; align-items: center; }
-  .run.HIGH { border-left-color: var(--el-fail); }
-  .run.OK { border-left-color: var(--el-ok); }
-  .run .lvl { color: var(--el-accent); font-weight: 700; }
-  .run.HIGH .lvl { color: var(--el-fail); }
-  .run.OK .lvl { color: var(--el-ok); }
-  .run .dur { color: var(--el-ink-soft); text-align: right; }
-  .cross { display: flex; gap: 10px; padding: 6px 0 0; }
-  .foot { font: 10px var(--el-font-mono); color: var(--el-ink-soft); margin-top: 10px; text-align: center; letter-spacing: 0.12em; }
-  .section-label { font: 700 10px var(--el-font-mono); color: var(--el-ink-soft); letter-spacing: 0.14em; text-transform: uppercase; margin: 6px 0 4px; }
-</style>
+  <meta charset="utf-8">
+  <title>Tray popup · gauges variant</title>
+  <link rel="stylesheet" href="../_elements/tokens.css">
+  <link rel="stylesheet" href="../_elements/themes.css">
+  <link rel="stylesheet" href="../_elements/base.css">
+  <link rel="stylesheet" href="../_elements/elements-display.css">
+  <link rel="stylesheet" href="../_elements/elements-lists.css">
+  <link rel="stylesheet" href="../_elements/elements-containers.css">
+  <link rel="stylesheet" href="../_elements/elements-size.css">
 </head>
-<body>
-<div class="popup">
+<body class="el-reset">
+<div class="el-tray-frame" style="padding:var(--el-space-4)">
 
-  <div class="head">
-    <h1>Tray popup · gauges <small>9-check · cockpit HMI</small></h1>
-    <button class="el-btn" onclick="alert('Raising Brave window')">Focus Brave ⤴</button>
+  <h1 style="font:700 var(--el-fs-md)/1 var(--el-font-display);margin:0;color:var(--el-accent);letter-spacing:0.04em">System gauges <small style="font:var(--el-fs-sm) var(--el-font-mono);color:var(--el-ink-soft);margin-left:var(--el-space-2)">cockpit HMI · monitor</small></h1>
+
+  <div class="el-cluster" style="margin:var(--el-space-3) 0;justify-content:space-between">
+    <div class="el-gauge"><div class="name">CPU</div><div class="val">42</div></div>
+    <div class="el-gauge warn"><div class="name">MEM</div><div class="val">88</div></div>
+    <div class="el-gauge ok"><div class="name">DSK</div><div class="val">12</div></div>
+    <div class="el-gauge"><div class="name">NET</div><div class="val">66</div></div>
+    <div class="el-gauge fail"><div class="name">ERR</div><div class="val">!</div></div>
+    <div class="el-gauge ok"><div class="name">OK</div><div class="val">✓</div></div>
+    <div class="el-gauge"><div class="name">TMP</div><div class="val">55</div></div>
+    <div class="el-gauge"><div class="name">I/O</div><div class="val">21</div></div>
   </div>
 
-  <div class="gauges">
-    <span class="el-gauge fail"><span class="name">AUDITD</span><span class="val">FAIL</span></span>
-    <span class="el-gauge ok"><span class="name">DNS</span><span class="val">OK</span></span>
-    <span class="el-gauge ok"><span class="name">SSHD</span><span class="val">OK</span></span>
-
-    <span class="el-gauge fail"><span class="name">NFT</span><span class="val">FAIL</span></span>
-    <span class="el-gauge warn"><span class="name">FIREWALL</span><span class="val">WARN</span></span>
-    <span class="el-gauge ok"><span class="name">FAPOLICY</span><span class="val">OK</span></span>
-
-    <span class="el-gauge fail"><span class="name">APPARMOR</span><span class="val">FAIL</span></span>
-    <span class="el-gauge fail"><span class="name">INTEGRITY</span><span class="val">FAIL</span></span>
-    <span class="el-gauge ok"><span class="name">LOCKDOWN</span><span class="val">OK</span></span>
+  <h2 style="font:700 var(--el-fs-xs) var(--el-font-mono);color:var(--el-accent);letter-spacing:0.14em;text-transform:uppercase;margin:var(--el-space-3) 0 var(--el-space-1)">Live feed · 5s</h2>
+  <div class="el-barograph" style="height:48px">
+    <span class="bar" style="height:30%"></span><span class="bar" style="height:50%"></span>
+    <span class="bar" style="height:40%"></span><span class="bar warn" style="height:80%"></span>
+    <span class="bar" style="height:60%"></span><span class="bar" style="height:30%"></span>
+    <span class="bar warn" style="height:70%"></span><span class="bar" style="height:45%"></span>
+    <span class="bar fail" style="height:90%"></span><span class="bar" style="height:55%"></span>
+    <span class="bar" style="height:42%"></span><span class="bar" style="height:68%"></span>
+    <span class="bar warn" style="height:75%"></span><span class="bar" style="height:50%"></span>
+    <span class="bar" style="height:35%"></span><span class="bar ok" style="height:20%"></span>
+    <span class="bar" style="height:48%"></span><span class="bar" style="height:62%"></span>
   </div>
 
-  <div class="row-block">
-    <div style="flex:2;">
-      <div class="section-label">Recent SOAR runs</div>
-      <div class="runs">
-        <div class="run HIGH"><span class="lvl">HIGH</span><span>11:13 · block-src</span><span>KEV CVE-2025-30872</span><span class="dur">0.8 s</span></div>
-        <div class="run OK"><span class="lvl">OK</span><span>10:47 · isolate-host</span><span>workstation-07 quarantined</span><span class="dur">5m 12s</span></div>
-        <div class="run HIGH"><span class="lvl">HIGH</span><span>09:22 · enrich-cve</span><span>CVE-2025-30901</span><span class="dur">3.4 s</span></div>
-      </div>
-    </div>
-    <div style="flex:1;">
-      <div class="section-label">Cross-status</div>
-      <div class="cross" style="flex-direction:column;align-items:flex-start;">
-        <span class="el-pill ok" data-hover-detail data-detail="OSINT :9999 · 4 cases open · 12 facts in CASE-01">OSINT · 4 cases</span>
-        <span class="el-pill warn" data-hover-detail data-detail="Security-UI · 7 events / 2 staged rules">Security · 7 ev</span>
-      </div>
-    </div>
+  <h2 style="font:700 var(--el-fs-xs) var(--el-font-mono);color:var(--el-accent);letter-spacing:0.14em;text-transform:uppercase;margin:var(--el-space-3) 0 var(--el-space-1)">Quick state</h2>
+  <div class="el-cluster">
+    <span class="el-pill ok"><span class="el-dot ok"></span>healthy</span>
+    <span class="el-pill warn"><span class="el-dot warn"></span>degraded</span>
+    <span class="el-pill fail"><span class="el-dot fail"></span>critical</span>
+    <span class="el-pill live"><span class="el-dot live"></span>live</span>
   </div>
 
-  <div class="foot">— 4 / 9 FAIL · 1 / 9 WARN · 4 / 9 OK · monitor-only —</div>
+  <div style="font:var(--el-fs-xs) var(--el-font-mono);color:var(--el-ink-soft);margin-top:var(--el-space-3);text-align:center;letter-spacing:0.08em">cockpit · aviation HMI · data-theme="cockpit"</div>
 </div>
 </body>
 </html>

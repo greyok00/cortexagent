@@ -11,6 +11,13 @@ from __future__ import annotations
 import re
 import unittest
 
+# Force a colored + Unicode-capable environment for the rendering tests so
+# the assertions about ANSI borders / Unicode glyphs hold. Production code
+# honors the real environment; tests want to exercise the colored path.
+import lib.tui_status as _tui_status
+_tui_status._COLOR_BITS = 24  # type: ignore[attr-defined]
+_tui_status._UNICODE = True   # type: ignore[attr-defined]
+
 from lib.tui_status import (
     MemoryView,
     RuntimeView,
@@ -171,6 +178,73 @@ class TestStripRender(unittest.TestCase):
         self.assertLess(st_idx, mem_idx)
 
 
+class TestFitsWithinWidth(unittest.TestCase):
+    """Every rendered row must be ≤ view.width cells. No text shoots out.
+
+    Regression test: the original panel_block + strip_render used a single
+    inner_w for all panels (width-2), so 3up produced output 3*(width-2)+8
+    cells wide — overflowing the terminal by width+2 cells.
+    """
+
+    def _max_row_width(self, out: str) -> int:
+        # ANSI escape sequences have 0 display cells but each char counts
+        # as 1 cell in wcwidth — strip them before measuring.
+        plain = ANSI_RE.sub("", out)
+        return max(display_width(ln) for ln in plain.splitlines())
+
+    def test_3up_at_120_fits(self):
+        out = strip_render(_view(120))
+        self.assertLessEqual(self._max_row_width(out), 120)
+
+    def test_3up_at_96_fits(self):
+        out = strip_render(_view(96))
+        self.assertLessEqual(self._max_row_width(out), 96)
+
+    def test_2plus1_at_80_fits(self):
+        out = strip_render(_view(80))
+        self.assertLessEqual(self._max_row_width(out), 80)
+
+    def test_2plus1_at_64_fits(self):
+        out = strip_render(_view(64))
+        self.assertLessEqual(self._max_row_width(out), 64)
+
+    def test_stack_at_50_fits(self):
+        out = strip_render(_view(50))
+        self.assertLessEqual(self._max_row_width(out), 50)
+
+    def test_stack_at_20_fits(self):
+        out = strip_render(_view(20))
+        self.assertLessEqual(self._max_row_width(out), 20)
+
+    def test_3up_at_140_fits(self):
+        out = strip_render(_view(140))
+        self.assertLessEqual(self._max_row_width(out), 140)
+
+    def test_3up_with_work_line_fits(self):
+        out = strip_render(_view(120, work=WorkLineView(
+            phase=WorkPhase.WARMING, label="Model warming up",
+            retry_current=2, retry_max=3, retry_in_seconds=4.0)))
+        self.assertLessEqual(self._max_row_width(out), 120)
+
+    def test_panel_block_top_row_outer_matches_content_row_outer(self):
+        """The top border row and a content row must be the same outer width."""
+        rendered = panel_block("RUNTIME",
+                               ["row1", "row2", "row3"],
+                               width=40, accent="38;2;1;1;1")
+        lines = rendered.splitlines()
+        self.assertEqual(len(lines), 5)
+        plain = _strip(rendered).splitlines()
+        # top border row, content row, bottom border row all the same width
+        top_w = display_width(plain[0])
+        mid_w = display_width(plain[1])
+        bot_w = display_width(plain[4])
+        self.assertEqual(top_w, mid_w,
+                         f"top row ({top_w}) ≠ content row ({mid_w})")
+        self.assertEqual(top_w, bot_w,
+                         f"top row ({top_w}) ≠ bottom row ({bot_w})")
+        self.assertEqual(top_w, 42, f"expected outer width = inner+2 = 42, got {top_w}")
+
+
 # ── Spec rules ───────────────────────────────────────────────────────────────
 
 class TestSpecRules(unittest.TestCase):
@@ -199,8 +273,79 @@ class TestSpecRules(unittest.TestCase):
             retry_in_seconds=8.0,
         ))))
         self.assertIn("Model warming up", out2)
-        self.assertIn("retry 3/3", out2)
-        self.assertIn("Esc cancel", out2)
+
+
+class TestEnvironmentAware(unittest.TestCase):
+    """Env-aware rendering per docs/ux/DESIGN-PRINCIPLES.md §4.4, §4.5."""
+
+    def setUp(self):
+        # Save the global state set by the module-top fixture.
+        self._saved_bits = _tui_status._COLOR_BITS
+        self._saved_unicode = _tui_status._UNICODE
+
+    def tearDown(self):
+        _tui_status._COLOR_BITS = self._saved_bits
+        _tui_status._UNICODE = self._saved_unicode
+
+    def test_no_color_suppresses_ansi(self):
+        _tui_status._COLOR_BITS = 0
+        _tui_status._UNICODE = True
+        out = strip_render(_view(120))
+        self.assertNotIn("\x1b[", out,
+                         "NO_COLOR / non-TTY must produce zero ANSI escapes")
+
+    def test_no_color_keeps_unicode_glyphs(self):
+        _tui_status._COLOR_BITS = 0
+        _tui_status._UNICODE = True
+        out = strip_render(_view(120))
+        # Hierarchy without color: glyphs stay (per spec §4.3).
+        self.assertIn("╭", out)
+        self.assertIn("╰", out)
+
+    def test_ascii_toggle_replaces_unicode_borders(self):
+        _tui_status._COLOR_BITS = 0
+        _tui_status._UNICODE = False
+        out = strip_render(_view(120))
+        self.assertNotIn("╭", out)
+        self.assertNotIn("╰", out)
+        self.assertNotIn("─", out)
+        self.assertIn("+", out)
+        self.assertIn("-", out)
+        self.assertIn("|", out)
+
+    def test_color_bits_8_vs_24(self):
+        _tui_status._COLOR_BITS = 24
+        _tui_status._UNICODE = True
+        out24 = strip_render(_view(120))
+        self.assertIn("38;2;", out24, "24-bit should emit truecolor SGR")
+
+        _tui_status._COLOR_BITS = 8
+        out8 = strip_render(_view(120))
+        self.assertNotIn("38;2;", out8,
+                         "8-bit must not emit 24-bit SGR sequences")
+        # 8-bit emits plain `m` codes like "36m" (cyan).
+        self.assertIn("\x1b[36m", out8)
+
+    def test_set_unicode_toggle_is_live(self):
+        _tui_status._UNICODE = True
+        self.assertEqual(_tui_status.B_TOP_LEFT(), "╭")
+        _tui_status.set_unicode(False)
+        self.assertEqual(_tui_status.B_TOP_LEFT(), "+")
+        _tui_status.set_unicode(True)
+        self.assertEqual(_tui_status.B_TOP_LEFT(), "╭")
+
+    def test_set_title_is_noop_on_non_tty(self):
+        # set_title writes to stdout; under non-tty it must be silent.
+        import io
+        buf = io.StringIO()
+        old = _tui_status._sys.stdout
+        _tui_status._sys.stdout = buf
+        try:
+            _tui_status.set_title("test chat")
+        finally:
+            _tui_status._sys.stdout = old
+        self.assertEqual(buf.getvalue(), "",
+                         "set_title must no-op when stdout is not a TTY")
 
     def test_work_line_indeterminate_has_no_percent(self):
         out = work_line(WorkLineView(

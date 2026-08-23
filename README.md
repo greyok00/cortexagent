@@ -84,6 +84,43 @@ Dictate to CortexAgent with a floating control window you use **with the mouse a
 
 ---
 
+## CortexAgent Console
+
+The **CortexAgent Console** is a compact floating window that sits next to your chat — it gives you a graphical surface for chat, the active task list, and your open browser tabs, all without leaving the agent. The console binds to `127.0.0.1` and never reaches the network.
+
+![CortexAgent Console](docs/img/cortexagent-console.png)
+
+### What it gives you
+
+| Surface | What you see / do there |
+|---|---|
+| **Chat stream** | The same conversation as the TUI, with the latest user prompt + assistant reply rendered inline. Tool calls collapse to one-line indicators while they run and expand on demand. |
+| **Active task panel** | The primary in-flight task (subject + active form spinner) is always shown at the top of the left rail so you can see what the agent is doing without opening the TUI. |
+| **Browser tabs strip** | A live list of your open Brave tabs, populated from the CDP endpoint on `127.0.0.1:9222`. Click a tab to switch to it in Brave — activation goes through Chromium's `Page.bringToFront`, not title guessing, so it picks the right tab even when many share a prefix. |
+| **Hotkey footer** | One-line key reminders (interrupt, clear/exit, commands, bash, expand) styled like real keys. |
+| **Speech-to-text buttons** | The same Toggle STT / Enter buttons from the tray popout, attached directly to the console. |
+
+### Where it runs
+
+```
+bin/cortexagent          # starts both the agent (TUI) AND the console tray item
+lib/browser_console.py   # the console itself (Tkinter + WebSocket to CDP)
+```
+
+The console is launched as a system-tray entry; clicking it raises the window. The window starts collapsed (thin strip) and expands on demand — the chevron was removed in 2026-08-21 to avoid focus-stealing breaks.
+
+### How tabs work
+
+- Read from `http://127.0.0.1:9222/json` (Brave must have been started with `--remote-debugging-port=9222`).
+- Activation uses `Page.bringToFront` over each tab's `webSocketDebuggerUrl` — this is the canonical Chromium-side focus path and is the only reliable way to choose a tab when several are open.
+- If CDP fails, the console falls back to X11 (`xdotool`) title-matching. The Brave window is raised without `--sync` to avoid hangs.
+
+### Localhost binding (HARD)
+
+The console, the TUI, and the pipeline server all bind to `127.0.0.1` only. They never listen on `0.0.0.0`. This is enforced in code and checked by `bin/verify`.
+
+---
+
 ## How it works (at a glance)
 
 | Piece | What it does |
@@ -108,3 +145,31 @@ Dictate to CortexAgent with a floating control window you use **with the mouse a
 ## License
 
 MIT — see `LICENSE`.
+
+---
+
+## Accessibility
+
+> **Honest a11y statement.** Read this before depending on any one surface.
+
+| Surface | Accessibility status | Notes |
+|---|---|---|
+| **TUI** (`cortex`) | ✅ Keyboard-only navigation. Honors `NO_COLOR`, `TERM=dumb`, `--unicode` flag, OSC window titles. Glyph + label pairs every status. | Best text-based experience. Voice control / per-widget screen-reader hints are not implemented. |
+| **Web / pipeline** (`http://127.0.0.1:8090`) | ⚠️ Visualization-only; not a chat surface. Focus styles on interactive elements. |
+| **Web / security** (`http://127.0.0.1:8093`) | ⚠️ Skeleton CSS + ARIA added (skip-link, focus-visible, `<main>` landmark). axe-core in CI not yet configured. No formal NVDA/VoiceOver pass yet. |
+| **Tkinter desktop console** | ❌ **Not accessible to screen readers on Linux** without [Tka11y](https://pypi.org/project/Tka11y/) (last released 2009). Tk bug [0e294d96](https://core.tcl-lang.org/tk/info/0e294d9604) means widgets don't expose to AT-SPI. **The TUI and web surfaces are the primary a11y targets.** The Tk console is an ergonomic convenience for mouse users, not an a11y investment. |
+
+**Conventions we follow** (see `docs/ux/DESIGN-PRINCIPLES.md` for full):
+
+- WCAG 2.2 AA contrast (4.5:1 text, 3:1 UI components).
+- Slash command vocabulary is identical across all surfaces.
+- Streaming output throttled for screen readers (≤1 announcement/sec).
+- Tool calls are never silent — always announced.
+- Keyboard-first; handedness is a secondary concern.
+- Color is never the sole signal — always paired with glyph + label.
+
+**What we do not yet do:**
+
+- axe-core is not yet wired into CI on web changes.
+- No formal NVDA + VoiceOver pass before releases.
+- No scheduled sessions with disabled users (per the §2.7 plan in the design doc).

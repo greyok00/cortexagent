@@ -157,11 +157,31 @@ class PreFlightResult:
         }
 
 
+# Prompt keywords → capability name, so a capability table configured via
+# CORTEXAGENT_MODEL_CAPABILITIES ({"vision": true, "web": false, ...}) actually
+# gates the request. Empty/absent table = no restrictions (current default).
+_CAPABILITY_KEYWORDS = {
+    "vision": ("image", "picture", "photo", "screenshot", "visual", "see"),
+    "web": ("web", "internet", "browse", "search the web", "fetch url", "http"),
+    "tools": ("run tool", "call tool", "execute code", "shell", "tool call"),
+    "long_context": ("long context", "128k", "whole file", "entire codebase"),
+    "audio": ("audio", "speech", "voice", "transcribe", "listen"),
+}
+
+
 class PreFlightGate:
     def __init__(self, max_iterations: int = 100):
         self.max_iterations = max_iterations
         self.capabilities = _load_capabilities()
         self._iter: Dict[str, int] = {}
+
+    def _requested_capability(self, prompt: str) -> Optional[str]:
+        """Return the capability the prompt asks for, or None if none is named."""
+        low = prompt.lower()
+        for cap, keywords in _CAPABILITY_KEYWORDS.items():
+            if any(kw in low for kw in keywords):
+                return cap
+        return None
 
     def check(self, prompt: str, profile: str = "default",
               budget_remaining: Optional[float] = None) -> PreFlightResult:
@@ -211,6 +231,19 @@ class PreFlightGate:
                 "• What's the symptom or expected behavior?\n"
                 "• Any constraints (no restart, must keep model X, etc)?"
             )
+            return result
+
+        # Capability gate: if a capability table is configured and the prompt
+        # requests a capability that isn't enabled, block rather than run blind.
+        if self.capabilities:
+            cap = self._requested_capability(prompt)
+            if cap and not bool(self.capabilities.get(cap, False)):
+                result.passed = False
+                result.blocked = True
+                result.reason = (
+                    f"Capability '{cap}' requested but not enabled "
+                    f"(CORTEXAGENT_MODEL_CAPABILITIES={self.capabilities})")
+                return result
         return result
 
     def reset_iterations(self, profile: str) -> None:

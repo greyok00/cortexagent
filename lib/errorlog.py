@@ -59,7 +59,7 @@ def _append(log_file: Path | None, line: str) -> None:
         return
     try:
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(log_file, "a") as f:
+        with open(log_file, "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {line}\n")
     except Exception:
         pass

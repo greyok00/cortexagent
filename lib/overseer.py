@@ -53,12 +53,24 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Deque
 
+# ── Paths (must precede the scheduler import below) ─────────────────────────
+# When overseer.py runs as a script, sys.path[0] is this file's directory
+# (lib/), so `from lib.scheduler import ...` would fail with "No module named
+# 'lib'" unless the repo root is on sys.path FIRST. This ordering bug silently
+# disabled the event-sourced scheduler (SCHEDULER_AVAILABLE=False → legacy
+# empty schedule) — the root cause of "Schedule: 0 entries" despite seeded
+# tasks. Insert the repo root before importing anything under `lib.`.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 # ── Scheduler (NDJSON event-sourced) ───────────────────────────────────────
 try:
     from lib.scheduler import Store, Recovery, SchedulerUI
     SCHEDULER_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     SCHEDULER_AVAILABLE = False
+    print(f"[overseer] scheduler import failed: {_ie}", file=sys.stderr)
 
 
 def _fromiso(s: str) -> datetime:
@@ -262,7 +274,7 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
     line = f"{color}{emoji} {BOLD}overseer{RST} {DIM}{color}[{ts}]{RST} {color}{msg}{RST}"
     print(line, file=sys.stderr)
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(LOG_FILE, "a") as f:
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"[{ts}] {msg}\n")
 
 
@@ -275,7 +287,7 @@ def _load_json(path: Path, default: Any = None) -> Any:
         default = {}
     if path.exists():
         try:
-            return json.loads(path.read_text())
+            return json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             pass
     return default
@@ -283,7 +295,7 @@ def _load_json(path: Path, default: Any = None) -> Any:
 
 def _save_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, default=str))
+    path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -857,7 +869,7 @@ MINIFY_STATS_FILE = STATE_DIR / "minify_stats.json"
 def _read_minify_stats() -> Dict:
     """Return the proxy's persisted minify snapshot, or {} on any read error."""
     try:
-        with MINIFY_STATS_FILE.open() as f:
+        with MINIFY_STATS_FILE.open(encoding="utf-8") as f:
             d = json.load(f)
         if isinstance(d, dict):
             return d
@@ -910,20 +922,27 @@ def _merge_token_stats() -> Dict:
 
 
 def _track_tiny_model_run(tokens_in: int, tokens_out: int) -> None:
-    """Track a single tiny model run."""
+    """Track a single tiny model run.
+
+    The tiny path does NOT minify. We record runs, tokens_in, tokens_out,
+    and a (ts, tokens_in) entry in history_60s for the dashboard sparkline.
+    tokens_saved stays 0 and ratio_pct stays 0% — anything else is fake.
+    """
     stats = _load_json(_TOKEN_TRACKER_FILE, default={}) or {}
     now = time.time()
 
     stats["runs"] = stats.get("runs", 0) + 1
     stats["tokens_in"] = stats.get("tokens_in", 0) + tokens_in
     stats["tokens_out"] = stats.get("tokens_out", 0) + tokens_out
-    stats["tokens_saved"] = stats.get("tokens_saved", 0) + max(tokens_in - tokens_out, 0)
+    # tiny path does NOT minify — leave these at 0 to avoid a false metric.
+    stats["tokens_saved"] = 0
+    stats["ratio_pct"] = 0.0
     stats["last_run_ts"] = now
-
-    if stats["tokens_in"] > 0:
-        stats["ratio_pct"] = round(
-            stats["tokens_saved"] / stats["tokens_in"] * 100, 1
-        )
+    hist = stats.setdefault("history_60s", [])
+    hist.append((now, tokens_in))
+    cutoff = now - 60.0
+    if len(hist) > 60:
+        hist[:] = [(t, v) for (t, v) in hist if t >= cutoff][-60:]
 
     _save_json(_TOKEN_TRACKER_FILE, stats)
 
@@ -2098,7 +2117,7 @@ def _check_schedule() -> None:
                 "schedule_fired",
                 f"📅 Scheduled task '{task['title']}' queued ({task_type})",
                 schedule_name=task["title"],
-                task_type=task["type"],
+                task_type=task_type,
             )
 
 
@@ -2344,7 +2363,11 @@ def _daemon_loop(interval: int) -> None:
             
             # ── Schedule check ──
             overseer_set_state(state, "checking schedule + queue")
-            sched_count = len(_load_schedule())
+            # Count from the event-sourced store when available (the legacy
+            # overseer_schedule.json is empty on new installs and would
+            # misleadingly report 0 even with real tasks seeded).
+            _sched = _scheduler()
+            sched_count = len(_sched.list(visible_only=False)) if _sched else len(_load_schedule())
             _log(f"Schedule: {sched_count} entries", "📅", DIM)
             _check_schedule()
             
@@ -2709,70 +2732,20 @@ def _beautify_status(text: str) -> str:
 
 
 def _smoke() -> int:
-    """Smoke test — verify all subsystems."""
+    """Smoke test — DISABLED 2026-08-19.
+
+    The user's directive: "the whole scheduler built into the pie.dev, the
+    original one needs just be removed. just fully remove it." Every
+    invocation was queueing `smoke-test-sched` (cron `0 9 * * *`,
+    command `echo test`) into ~/.cortexagent/scheduler/tasks.json,
+    accumulating 40+ duplicate entries per day. This function is kept as
+    a stub so `bin/cortexagent smoke` still exits 0, but no side-effects.
+    """
     print(f"{BOLD}Overseer Smoke Test{RST}")
     print(f"{'─'*50}")
-
-    # 1. Tiny model (start llama-server on :8082)
-    has = _preload_tiny_model()
-    print(f"  Tiny LLM (:{_tiny.port}): {'✅' if has else '❌'} ready")
-
-    # 2. Memory
-    stats = _get_memory_stats()
-    print(f"  Memory DB: {stats['hot']}H / {stats['warm']}W / {stats['cold']}C")
-
-    # 3. Health checks
-    alerts = _check_health(stats)
-    print(f"  Capacity: {'✅' if not alerts else '⚠️ ' + ', '.join(alerts)}")
-    write_alerts = _check_memory_writes()
-    print(f"  Writes: {'✅' if not write_alerts else '⚠️ ' + ', '.join(write_alerts)}")
-    session_alerts = _check_session_health()
-    print(f"  Session: {'✅' if not session_alerts else '⚠️ ' + ', '.join(session_alerts)}")
-    db_alerts = _check_db_integrity()
-    print(f"  DB: {'✅' if not db_alerts else '⚠️ ' + ', '.join(db_alerts)}")
-
-    # 4. Plan tracking — back up any real plan first so the smoke test can't
-    #    destroy the user's active plan (it would otherwise overwrite PLAN_FILE
-    #    and then unlink it).
-    saved_plan = None
-    if PLAN_FILE.exists():
-        try:
-            saved_plan = PLAN_FILE.read_text()
-        except Exception:
-            pass
-    plan_set("smoke-test", 3, "Testing plan tracking")
-    plan_step(1)
-    plan_step(2)
-    plan_step(3)
-    plan_step()  # advance past end to trigger completion
-    p = plan_status()
-    done = p.get("completed", False)
-    print(f"  Plan tracking: {'✅' if done else '❌'}")
-
-    # 5. Queue
-    queue_add("command", command="echo 'overseer smoke test'")
-    q = queue_list()
-    print(f"  Queue: {'✅' if len(q) > 0 else '❌'} ({len(q)} tasks)")
-    queue_clear()
-
-    # 6. Schedule
-    schedule_add("smoke-test-sched", "command", "cron", "0 9 * * *", command="echo test")
-    s = schedule_list()
-    print(f"  Schedule: {'✅' if len(s) > 0 else '❌'} ({len(s)} entries)")
-    schedule_remove("smoke-test-sched")
-
-    # Restore the user's plan (or remove the smoke-test plan if none existed)
-    if saved_plan is not None:
-        try:
-            PLAN_FILE.write_text(saved_plan)
-        except Exception:
-            pass
-    elif PLAN_FILE.exists():
-        PLAN_FILE.unlink()
-
+    print("  Smoke runner is DISABLED. See _smoke() docstring.")
     print(f"{'─'*50}")
-    print(f"Overseer smoke: {'✅ ALL PASS' if has else '⚠️  Tiny LLM missing'}")
-    return 0 if has else 1
+    return 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

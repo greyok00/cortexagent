@@ -129,7 +129,7 @@ class Recovery:
         """Load all events from NDJSON log, sorted by checksum/timestamp."""
         events = []
         try:
-            with EVENTS_FILE.open() as f:
+            with EVENTS_FILE.open(encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:

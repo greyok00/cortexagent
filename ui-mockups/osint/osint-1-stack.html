@@ -1,159 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="casebook">
 <head>
-<meta charset="utf-8">
-<title>OSINT · stack variant</title>
-<link rel="stylesheet" href="../_elements/elements.css">
-<style>
-  /* Casebook Notebook — cream paper */
-  :root {
-    --el-bg: #f5efe0;
-    --el-panel: #ebe2c8;
-    --el-panel-2: #e0d5b0;
-    --el-line: #c9b985;
-    --el-ink: #3a3424;
-    --el-ink-soft: #6e6248;
-    --el-accent: #8b5e34;
-    --el-ok: #5a7a4a;
-    --el-warn: #b88a2c;
-    --el-fail: #a83232;
-    --el-live: #8b5e34;
-  }
-  body { margin: 0; padding: 24px; background: var(--el-bg); color: var(--el-ink); font: 14px/1.5 var(--el-font-body); }
-  .layout { width: 1180px; max-width: 100%; display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
-  .head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 2px solid var(--el-line); margin-bottom: 8px; }
-  .head h1 { font: 700 18px/1 var(--el-font-display); margin: 0; }
-  .head h1 small { font: 12px var(--el-font-mono); color: var(--el-ink-soft); margin-left: 8px; }
-  .search-bar { display: flex; gap: 8px; align-items: center; }
-  .search-bar input { flex: 1; padding: 10px 14px; background: var(--el-panel); border: 1px solid var(--el-line); color: var(--el-ink); font: 13px var(--el-font-mono); }
-  .search-bar select { padding: 10px; background: var(--el-panel); border: 1px solid var(--el-line); color: var(--el-ink); font: 12px var(--el-font-mono); }
-  .filters { display: flex; gap: 6px; padding: 8px 0; flex-wrap: wrap; }
-  .results { display: flex; flex-direction: column; gap: 10px; }
-  .result { background: var(--el-panel); border: 1px solid var(--el-line); border-left: 3px solid var(--el-accent); padding: 12px 16px; }
-  .result .meta { display: flex; gap: 12px; font: 11px var(--el-font-mono); color: var(--el-ink-soft); margin-bottom: 6px; }
-  .result .title { font: 700 14px var(--el-font-display); color: var(--el-ink); margin-bottom: 4px; }
-  .result .summary { font: 13px var(--el-font-body); color: var(--el-ink); margin-bottom: 8px; }
-  .result .gallery { display: flex; gap: 6px; margin-bottom: 8px; }
-  .result .gallery .ph { width: 56px; height: 56px; background: var(--el-panel-2); border: 1px solid var(--el-line); display: flex; align-items: center; justify-content: center; font: 9px var(--el-font-mono); color: var(--el-ink-soft); }
-  .result .chips { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
-  .result .actions { display: flex; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--el-line); }
-  .drawer { background: var(--el-panel); border: 1px solid var(--el-line); padding: 16px; height: fit-content; }
-  .drawer h3 { font: 700 12px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--el-line); }
-  .drawer .case { font: 12px var(--el-font-mono); padding: 6px 8px; border-left: 2px solid var(--el-line); margin-bottom: 4px; cursor: pointer; }
-  .drawer .case.active { border-left-color: var(--el-accent); background: var(--el-panel-2); }
-  .drawer .case .count { float: right; color: var(--el-ink-soft); }
-  .facts { margin-top: 14px; }
-  .fact { font: 11px var(--el-font-mono); padding: 4px 6px; background: var(--el-panel-2); border-left: 2px solid var(--el-line); margin-bottom: 3px; }
-  .fact b { color: var(--el-accent); }
-</style>
+  <meta charset="utf-8">
+  <title>OSINT · casebook variant</title>
+  <link rel="stylesheet" href="../_elements/tokens.css">
+  <link rel="stylesheet" href="../_elements/themes.css">
+  <link rel="stylesheet" href="../_elements/base.css">
+  <link rel="stylesheet" href="../_elements/elements-display.css">
+  <link rel="stylesheet" href="../_elements/elements-lists.css">
+  <link rel="stylesheet" href="../_elements/elements-containers.css">
+  <link rel="stylesheet" href="../_elements/elements-interactions.css">
+  <link rel="stylesheet" href="../_elements/elements-size.css">
 </head>
-<body>
-<div class="layout">
+<body class="el-reset">
+<div class="el-lg-frame" style="padding:var(--el-space-4)">
 
-  <div class="head">
-    <h1>OSINT · casebook <small>127.0.0.1:9999 · search + extract + cases</small></h1>
-    <div class="search-bar">
-      <input class="el-search" value='"reinhart" AND "larkspur" 2024..2026' style="width:340px;">
-      <select class="el-dropdown"><option>searxng · all</option><option>searxng · sec.state</option><option>google · cse</option></select>
-      <button class="el-btn">Search ▸</button>
-    </div>
+  <h1 style="font:700 var(--el-fs-xl)/1 var(--el-font-display);margin:0;color:var(--el-accent)">Casebook · CASE-01 <small style="font:var(--el-fs-sm) var(--el-font-body);color:var(--el-ink-soft);margin-left:var(--el-space-2)">cream paper · warm brown</small></h1>
+
+  <div class="el-cluster" style="margin:var(--el-space-3) 0">
+    <span class="el-pill fail">CRIT</span>
+    <span class="el-pill warn">2 facts pending</span>
+    <span class="el-pill ok">verified</span>
+    <span class="el-pill ghost">created 2026-08-12</span>
   </div>
 
-  <main>
-    <div class="filters">
-      <span class="el-chip added">+ person</span>
-      <span class="el-chip added">+ trust</span>
-      <span class="el-chip">+ property</span>
-      <span class="el-chip">+ filings</span>
-      <span class="el-chip">2024..2026</span>
-      <span class="el-chip">save filter</span>
+  <div class="el-tabs-h" id="t1">
+    <button class="tab on" data-target="#tab-stack">Stack</button>
+    <button class="tab" data-target="#tab-graph">Graph</button>
+    <button class="tab" data-target="#tab-timeline">Timeline</button>
+  </div>
+
+  <div class="el-stack" id="tab-stack" data-tabpanel data-group style="margin-top:var(--el-space-3)">
+
+    <div class="el-panel">
+      <div class="el-panel-head">Subject · primary</div>
+      <div class="el-big-num">192.0.2.41<span class="lbl">/24</span></div>
+      <p style="color:var(--el-ink-soft);margin:var(--el-space-2) 0 0">First observed 2026-08-08. Cross-listed in 3 cases.</p>
     </div>
 
-    <div class="results" style="margin-top:12px;">
+    <div class="el-panel">
+      <div class="el-panel-head">Facts · 12</div>
+      <ul class="el-task-list">
+        <li class="done"><input type="checkbox" checked> IP registered to AS-12345 (Russia)</li>
+        <li class="done"><input type="checkbox" checked> SSH brute force · 14 attempts</li>
+        <li class="done"><input type="checkbox" checked> sudo escalation denied</li>
+        <li><input type="checkbox"> Linked to 2 other IPs in same /24</li>
+        <li><input type="checkbox"> Verify via second source</li>
+      </ul>
+    </div>
 
-      <div class="result">
-        <div class="meta"><span>searxng · 11s</span><span>rank #1</span><span>ca sec.state</span><span>2024-09-22</span></div>
-        <div class="title">Reinhart Family Trust — initial filing</div>
-        <div class="summary">CA Secretary of State filing 2024-09-22 establishes the Reinhart Family Trust with R. Larkspur as sole trustee; trust corpus includes 120 Ward St Larkspur (quitclaim #M-2025-018442 recorded 2025-03-14).</div>
-        <div class="chips">
-          <span class="el-chip">trustee: R. Larkspur</span>
-          <span class="el-chip">trust corpus</span>
-          <span class="el-chip">120 Ward St</span>
-        </div>
-        <div class="gallery">
-          <div class="ph">sec.state</div><div class="ph">recorder</div><div class="ph">larkspur.gov</div>
-        </div>
-        <div class="actions">
-          <button class="el-btn ghost">+ save to case</button>
-          <button class="el-btn ghost">re-extract ▸</button>
-          <span style="margin-left:auto;color:var(--el-ink-soft);font:11px var(--el-font-mono);">12 facts extracted</span>
-        </div>
+    <div class="el-panel">
+      <div class="el-panel-head">Sources · 4</div>
+      <div class="el-cluster">
+        <span class="el-chip ok">SearXNG</span>
+        <span class="el-chip ok">Shodan</span>
+        <span class="el-chip warn">whois</span>
+        <span class="el-chip">Honeypot</span>
       </div>
-
-      <div class="result">
-        <div class="meta"><span>searxng · 11s</span><span>rank #2</span><span>marin recorder</span><span>2025-03-14</span></div>
-        <div class="title">Quitclaim #M-2025-018442 — 120 Ward St</div>
-        <div class="summary">Quitclaim deed recorded Marin County Recorder 2025-03-14 transferring 120 Ward St Larkspur CA 94939 into the Reinhart Family Trust. Prior grantor: Margaret Reinhart (Coldwell Banker Marin realtor).</div>
-        <div class="chips">
-          <span class="el-chip">grantor: M. Reinhart</span>
-          <span class="el-chip">120 Ward St</span>
-          <span class="el-chip">quitclaim</span>
-        </div>
-        <div class="actions">
-          <button class="el-btn ghost">+ save to case</button>
-          <button class="el-btn ghost">re-extract �</button>
-          <span style="margin-left:auto;color:var(--el-ink-soft);font:11px var(--el-font-mono);">7 facts extracted</span>
-        </div>
-      </div>
-
-      <div class="result">
-        <div class="meta"><span>searxng · 11s</span><span>rank #3</span><span>larkspur.gov</span><span>2025-04-02</span></div>
-        <div class="title">Public notice · 120 Ward St trust transfer</div>
-        <div class="summary">City of Larkspur public notice 2025-04-02 announcing trust transfer of 120 Ward St; 30-day objection window. References Marin Recorder doc #M-2025-018442. No objections filed.</div>
-        <div class="chips">
-          <span class="el-chip">public notice</span>
-          <span class="el-chip">no objections</span>
-        </div>
-        <div class="actions">
-          <button class="el-btn ghost">+ save to case</button>
-          <button class="el-btn ghost">re-extract ▸</button>
-          <span style="margin-left:auto;color:var(--el-ink-soft);font:11px var(--el-font-mono);">3 facts extracted</span>
-        </div>
-      </div>
-
-    </div>
-  </main>
-
-  <aside class="drawer">
-    <h3>Case files · 4 open</h3>
-    <div class="case active">
-      <span>CASE-01 · Reinhart trust</span>
-      <span class="count">12</span>
-    </div>
-    <div class="case">
-      <span>CASE-02 · assessor refresh</span>
-      <span class="count">5</span>
-    </div>
-    <div class="case">
-      <span>CASE-03 · Larkspur 2024</span>
-      <span class="count">8</span>
-    </div>
-    <div class="case">
-      <span>CASE-04 · Q4 cohort</span>
-      <span class="count">3</span>
     </div>
 
-    <div class="facts">
-      <h3 style="font: 700 11px var(--el-font-mono); color: var(--el-accent); letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 6px;">CASE-01 facts</h3>
-      <div class="fact"><b>person:</b> Margaret Reinhart — realtor Coldwell Banker Marin</div>
-      <div class="fact"><b>trust:</b> Reinhart Family Trust — established 2024-09-22</div>
-      <div class="fact"><b>trustee:</b> R. Larkspur</div>
-      <div class="fact"><b>property:</b> 120 Ward St, Larkspur CA 94939</div>
-      <div class="fact"><b>deed:</b> Quitclaim #M-2025-018442 · 2025-03-14</div>
-      <div class="fact"><b>filing:</b> CA sec.state — 2024-09-22</div>
-    </div>
-  </aside>
+  </div>
 
+  <div style="font:var(--el-fs-xs) var(--el-font-mono);color:var(--el-ink-soft);margin-top:var(--el-space-3);text-align:center;letter-spacing:0.08em">casebook · data-theme="casebook"</div>
 </div>
+
+<script src="../_elements/theme-switcher.js"></script>
+<script src="../_elements/elements.js"></script>
 </body>
 </html>

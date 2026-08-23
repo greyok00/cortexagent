@@ -71,7 +71,6 @@ def _scan_active_sessions() -> List[Dict]:
       cmdline contains  /lib/daemon.py
       cmdline contains  /lib/overseer.py
       cmdline contains  /lib/grammar_proxy.py
-      cmdline contains  /lib/webui.py
       cmdline contains  /lib/diffusion_backend.py  (diffusers run)
 
     The user explicitly does NOT want generic Claude / ollama launches picked
@@ -120,7 +119,6 @@ def _scan_active_sessions() -> List[Dict]:
             ("/lib/daemon.py",        "daemon"),
             ("/lib/overseer.py",      "overseer"),
             ("/lib/grammar_proxy.py", "proxy"),
-            ("/lib/webui.py",         "webui"),
             ("/lib/diffusion_backend.py", "diffusion"),
         ):
             if marker in args:
@@ -141,7 +139,7 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
     print(line, file=sys.stderr)
     try:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(LOG_FILE, "a") as f:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"[{ts}] {msg}\n")
     except OSError:
         pass  # best-effort — don't let logging failure mask the real error
@@ -229,9 +227,7 @@ def _vram_by_process() -> Dict[str, Any]:
     for line in proc.stdout.splitlines():
         # csv-ish row: pid, name, used_mib  (name may contain spaces)
         try:
-            pid_s, mib_s = line.rsplit(",", 1)
-            name = pid_s.split(",", 1)[0] if "," in pid_s else ""
-            # actually the schema is "pid, process_name, used_memory" — reparse
+            # schema is "pid, process_name, used_memory"
             first, rest = line.split(",", 1)
             name, mib_s = rest.rsplit(",", 1)
             pid_i = int(first.strip())

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import os
 import sys
 import threading
 import time
@@ -34,8 +35,28 @@ from typing import Any, Dict, List, Optional
 
 import websocket  # websocket-client
 
+# Stealth / humanizer / guard / pool — stdlib-only, integrated always-active
+# components. Imported lazily-guarded at top so a failure in one never blocks
+# the core CDP transport (graceful degradation: automation still works without
+# the stealth layer if something is off).
+import stealth                      # §1,§2 fingerprint + init script
+import injection_guard              # §5 prompt-injection defense
+import browser_cdp_guard            # §4 CDP connection security
+try:
+    import humanizer as _humanizer_mod  # §3 HumanizedAction dispatcher
+except Exception:
+    _humanizer_mod = None
+
 CDP_HTTP = "http://127.0.0.1:9222"
 CDP_URL = CDP_HTTP  # alias kept for the MCP server import
+
+# --- Stealth / humanizer / guard state ------------------------------------
+_PROFILE_NAME = os.environ.get("STEALTH_PROFILE", "default")
+_profile: Optional[Dict[str, Any]] = None       # derived coherent device profile
+_stealth_script: Optional[str] = None           # JS init script (built once)
+_isolated_ctx: Dict[str, int] = {}              # target_id -> isolated world ctxId
+_stealth_applied: set = set()                    # target_ids with init injected
+_guard: Any = None                              # CDPGuard instance (on demand)
 
 # Per-target locks: serialize within one tab (one websocket), parallelize across
 # tabs. Falls back to a module-level lock for non-target-scoped ops.
@@ -143,6 +164,12 @@ def _get_ws(target_id: str) -> Any:
     ws.send(json.dumps({"id": _next_id(target_id), "method": "Runtime.enable"}))
     ws.send(json.dumps({"id": _next_id(target_id), "method": "Page.enable"}))
     _ws_cache[target_id] = ws
+    # Inject the stealth init script + create an isolated agent world. Best-effort:
+    # a failure here must never block the core transport (graceful degradation).
+    try:
+        _ensure_stealth(target_id)
+    except Exception:
+        pass
     _invalidate_tabs_cache()  # a fresh connect implies the cache may be stale
     with _metrics_lock:
         _metrics["reconnects"] += 1
@@ -294,6 +321,159 @@ def close() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Stealth layer (§1,§2): init-script injection + isolated agent worlds
+# ---------------------------------------------------------------------------
+
+def _real_ua() -> str:
+    """Read the real user-agent from the patched Brave binary's /json/version.
+
+    Per spec the UA is generated from the real binary's actual capabilities,
+    never spoofed independently of the rest of the fingerprint.
+    """
+    try:
+        with urllib.request.urlopen(CDP_HTTP + "/json/version", timeout=3) as r:
+            return json.load(r).get("User-Agent", "")
+    except Exception:
+        return ""
+
+
+def _ensure_profile() -> None:
+    """Derive the coherent device profile once from the real UA + profile name."""
+    global _profile, _stealth_script
+    if _profile is not None:
+        return
+    seed = stealth.profile_seed(_PROFILE_NAME)
+    _profile = stealth.derive_profile(seed, _real_ua())
+    _stealth_script = stealth.build_init_script(_profile)
+
+
+def _ensure_stealth(target_id: str) -> None:
+    """Register the stealth init script for new documents AND apply it to the
+    current document now, then create an isolated execution world for agent
+    scripts. Idempotent per target.
+
+    The init script runs in the MAIN world (required: it must intercept the
+    page's canvas/WebGL/navigator calls). Agent-injected scripts run in an
+    ISOLATED world (createIsolatedWorld) so they never pollute the page's JS
+    context.
+    """
+    if target_id in _stealth_applied:
+        return
+    _ensure_profile()
+    if not _stealth_script:
+        return
+    with _lock_for(target_id):
+        # Register for all future navigations (new documents) in this target.
+        _cmd(target_id, "Page.addScriptToEvaluateOnNewDocument",
+             {"source": _stealth_script, "runImmediately": True, "worldName": ""})
+        # Apply to the current document now. The init script is idempotent (it
+        # guards on window.__stealth_patched__ and returns early), so even if
+        # runImmediately already applied it this is a safe no-op — it does NOT
+        # re-capture the patched prototypes as "originals" (which would recurse).
+        _eval(target_id, _stealth_script)
+        # Isolated world for agent scripts.
+        if target_id not in _isolated_ctx:
+            try:
+                frame = _cmd(target_id, "Page.getFrameTree", {})
+                fid = frame.get("frameTree", {}).get("frame", {}).get("id")
+                if fid:
+                    res = _cmd(target_id, "Page.createIsolatedWorld",
+                               {"frameId": fid, "worldName": "cortexagent-agent",
+                                "grantUniveralAccess": True})
+                    _isolated_ctx[target_id] = int(res.get("executionContextId"))
+            except Exception:
+                pass
+    _stealth_applied.add(target_id)
+
+
+def _isolated_eval(target_id: str, expression: str, timeout: float = 8.0) -> Any:
+    """Evaluate JS in the agent's isolated execution world (never the page's
+    main context). Falls back to main-world _eval if no isolated world exists
+    or the cached one is stale. Retries once on a stale context."""
+    ctx = _isolated_ctx.get(target_id)
+    if ctx is None:
+        return _eval(target_id, expression, timeout=timeout)
+    for attempt in (1, 2):
+        try:
+            ws = _get_ws(target_id)
+            ws.settimeout(max(0.5, timeout))
+            msg_id = _next_id(target_id)
+            ws.send(json.dumps({"id": msg_id, "method": "Runtime.evaluate",
+                                "params": {"expression": expression, "returnByValue": True,
+                                           "contextId": ctx}}))
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                try:
+                    msg = json.loads(ws.recv())
+                except Exception:
+                    break
+                if msg.get("id") == msg_id:
+                    r = msg.get("result", {})
+                    if "exceptionDetails" in r:
+                        # Stale isolated context -> recreate once.
+                        if attempt == 1:
+                            _isolated_ctx.pop(target_id, None)
+                            _stealth_applied.discard(target_id)
+                            _ensure_stealth(target_id)
+                            break
+                        return None
+                    return r.get("result", {}).get("value")
+        except Exception:
+            pass
+        if attempt == 2:
+            break
+    return _eval(target_id, expression, timeout=timeout)
+
+
+def navigate_raw(tab: Any = None, url: str = "", wait_until: str = "domcontentloaded",
+                 timeout: int = 30) -> Dict[str, str]:
+    """Navigate a tab and return {title, url}. Raw — no humanizer layer."""
+    target_id = resolve_tab(tab)
+    _cmd(target_id, "Page.navigate", {"url": url}, timeout=timeout)
+    time.sleep(0.5)  # let the new document start
+    title = _eval(target_id, "document.title || ''", timeout=timeout)
+    href = _eval(target_id, "location.href || ''", timeout=timeout)
+    return {"title": title or "", "url": href or url}
+
+
+# ---------------------------------------------------------------------------
+# CDP connection security (§4): guard lifecycle
+# ---------------------------------------------------------------------------
+
+def start_guard(kill: bool = False) -> Any:
+    """Start the CDP guard watching for an exposed endpoint / foreign client
+    attachment. Refuses to run if the debug port is bound to a routable iface."""
+    global _guard
+    if _guard is not None:
+        return _guard
+    if not browser_cdp_guard.assert_localhost(int(CDP_HTTP.rsplit(":", 1)[1])):
+        browser_cdp_guard.alert("GUARD_REFUSED_EXPOSED", {"endpoint": CDP_HTTP})
+        return None
+    _guard = browser_cdp_guard.CDPGuard(sys.modules[__name__], kill=kill)
+    _guard.start()
+    return _guard
+
+
+def stop_guard() -> None:
+    global _guard
+    if _guard is not None:
+        _guard.stop()
+        _guard = None
+
+
+def stealth_status() -> Dict[str, Any]:
+    """Report the live stealth/humanizer/guard state for diagnostics."""
+    return {
+        "profile": _profile.get("osFamily") if _profile else None,
+        "seed": _profile.get("seed") if _profile else None,
+        "stealth_applied_targets": list(_stealth_applied),
+        "isolated_contexts": dict(_isolated_ctx),
+        "humanizer_enabled": (_humanizer_mod._enabled() if _humanizer_mod else False),
+        "guard_running": bool(_guard),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 
@@ -368,13 +548,19 @@ def new_tab(url: str = "") -> str:
 
 def navigate(tab: Any = None, url: str = "", wait_until: str = "domcontentloaded",
              timeout: int = 30) -> Dict[str, str]:
-    """Navigate a tab and return {title, url}."""
-    target_id = resolve_tab(tab)
-    _cmd(target_id, "Page.navigate", {"url": url}, timeout=timeout)
-    time.sleep(0.5)  # let the new document start
-    title = _eval(target_id, "document.title || ''", timeout=timeout)
-    href = _eval(target_id, "location.href || ''", timeout=timeout)
-    return {"title": title or "", "url": href or url}
+    """Navigate a tab (humanized) and return {title, url}.
+
+    Routes through the HumanizedAction dispatcher (§3) when the humanizer is
+    enabled; otherwise calls navigate_raw directly. The humanizer adds a
+    pre-navigation delay to mimic natural pacing; STEALTH_HUMANIZER=0 disables.
+    """
+    if _humanizer_mod:
+        try:
+            return _humanizer_mod.get_humanizer(sys.modules[__name__]).navigate(
+                tab, url, wait_until=wait_until, timeout=timeout)
+        except Exception:
+            pass
+    return navigate_raw(tab, url, wait_until=wait_until, timeout=timeout)
 
 
 def fetch(tab: Any = None, url: str = "", selector: str = "body",
@@ -414,10 +600,23 @@ def _click_js(selector: str, by_text: bool) -> str:
 
 
 def click(tab: Any = None, selector: str = "", by_text: bool = False,
-          timeout: int = 10) -> None:
-    """Click an element by CSS selector or accessible text."""
+          timeout: int = 10) -> bool:
+    """Click an element by CSS selector or accessible text.
+
+    Routes through the HumanizedAction dispatcher (§3): real Bezier mouse
+    movement + jittered click point + occasional misclick/correction via CDP
+    Input.dispatchMouseEvent. Falls back to synthetic el.click() if the
+    humanizer is disabled (STEALTH_HUMANIZER=0) or unavailable.
+    """
+    if _humanizer_mod:
+        try:
+            return _humanizer_mod.get_humanizer(sys.modules[__name__]).click(
+                tab, selector, by_text=by_text, timeout=timeout)
+        except Exception:
+            pass
     target_id = resolve_tab(tab)
     _eval(target_id, _click_js(selector, by_text), timeout=timeout)
+    return True
 
 
 def _type_js(selector: str, text: str, by_text: bool, submit: bool) -> str:
@@ -447,10 +646,24 @@ def _type_js(selector: str, text: str, by_text: bool, submit: bool) -> str:
 
 
 def type_text(tab: Any = None, selector: str = "", text: str = "",
-              by_text: bool = False, submit: bool = False, timeout: int = 10) -> None:
-    """Type text into an element; optionally press Enter after."""
+              by_text: bool = False, submit: bool = False, timeout: int = 10) -> bool:
+    """Type text into an element; optionally press Enter after.
+
+    Routes through the HumanizedAction dispatcher (§3): per-character CDP key
+    events with humanized timing + occasional mistype/backspace correction,
+    falling back to the native-value-setter (reliable for React/LWC controlled
+    inputs) if the key-event path produces a mismatch. STEALTH_HUMANIZER=0
+    disables and uses the setter directly.
+    """
+    if _humanizer_mod:
+        try:
+            return _humanizer_mod.get_humanizer(sys.modules[__name__]).type_text(
+                tab, selector, text, by_text=by_text, submit=submit, timeout=timeout)
+        except Exception:
+            pass
     target_id = resolve_tab(tab)
     _eval(target_id, _type_js(selector, text, by_text, submit), timeout=timeout)
+    return True
 
 
 def evaluate(tab: Any = None, expression: str = "", timeout: int = 10) -> Any:
@@ -460,17 +673,31 @@ def evaluate(tab: Any = None, expression: str = "", timeout: int = 10) -> Any:
 
 
 def snapshot(tab: Any = None, depth: int = 10) -> Any:
-    """Return the accessibility tree of a tab (list of AX nodes)."""
+    """Return the accessibility tree of a tab (list of AX nodes).
+
+    AX node text/labels are scraped content -> sanitized via the injection
+    guard (§5) before returning.
+    """
     target_id = resolve_tab(tab)
-    return _cmd(target_id, "Accessibility.getFullAXTree", {}, timeout=10)
+    tree = _cmd(target_id, "Accessibility.getFullAXTree", {}, timeout=10)
+    nodes = tree.get("nodes") if isinstance(tree, dict) else tree
+    if isinstance(nodes, list):
+        return injection_guard.sanitize_dom_nodes(nodes)
+    return tree
 
 
 def read_text(tab: Any = None, selector: str = "body") -> str:
-    """Return the inner text of a selector (default: whole page body)."""
+    """Return the inner text of a selector (default: whole page body).
+
+    All scraped DOM text is treated as UNTRUSTED and run through the
+    injection guard (§5) before it can enter agent context.
+    """
     target_id = resolve_tab(tab)
     js = f"(document.querySelector({json.dumps(selector)}) || document.body).innerText || ''"
     val = _eval(target_id, js)
-    return val.strip() if isinstance(val, str) else ""
+    if not isinstance(val, str):
+        return ""
+    return injection_guard.sanitize(val.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -592,7 +819,7 @@ def page_text(tab: Any = None, iframe_marker: str = "") -> str:
     """
     target_id = resolve_tab(tab)
     val = _eval(target_id, js)
-    return val if isinstance(val, str) else ""
+    return injection_guard.sanitize(val) if isinstance(val, str) else ""
 
 
 # ---------------------------------------------------------------------------
