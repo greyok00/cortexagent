@@ -366,6 +366,30 @@ def poll_osv(packages: list[tuple[str, str]] | None = None) -> list[dict]:
     return out
 
 
+URLHAUS_DUMP = "https://urlhaus.abuse.ch/downloads/csv_recent/"
+
+
+def poll_urlhaus() -> set[str]:
+    """Return the set of recent malicious URLs from URLHaus (best-effort).
+
+    Borrowed from ThreatDeck's IOC enrichment idea; folded into our own
+    intel pipeline rather than run as a separate tool. Used to tag entries
+    whose refs contain a known-bad URL.
+    """
+    try:
+        data = _http_get(URLHAUS_DUMP, timeout=30.0).decode("utf-8", "replace")
+    except Exception:
+        return set()
+    bad: set[str] = set()
+    for line in data.splitlines():
+        if line.startswith("#") or not line.strip():
+            continue
+        parts = line.split(",")
+        if len(parts) >= 3 and parts[2].startswith("http"):
+            bad.add(parts[2].strip('"'))
+    return bad
+
+
 def pin_dependencies() -> list[tuple[str, str]]:
     """Discover pinned (ecosystem, package-name) tuples from project lockfiles."""
     pkgs: list[tuple[str, str]] = []
@@ -700,6 +724,17 @@ def main() -> int:
         return _smoke()
     if args.cmd == "poll":
         new = poll_cve_feeds(since=args.since, skip_osv=not args.include_osv)
+        # URLHaus IOC enrichment: tag entries whose refs hit a recent bad URL.
+        try:
+            bad = poll_urlhaus()
+        except Exception:
+            bad = set()
+        if bad:
+            for e in new:
+                refs = e.get("refs") or []
+                hits = [r for r in refs if r in bad]
+                if hits:
+                    e["urlhaus_match"] = hits
         print(f"[poll] {len(new)} new entries written to {_INTEL_FILE}")
         for e in new[:10]:
             print(f"  {e['cve_id']:18s} CVSS={e.get('cvss_v3') or '-':>4}  KEV={e['kev']!s:<5}  T={','.join(e.get('mitre_techniques', []))}")
