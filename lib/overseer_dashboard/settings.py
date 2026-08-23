@@ -38,7 +38,7 @@ def _default_definitions() -> Dict[str, M.SettingValue]:
         "backend": M.SettingValue("backend", "Backend / provider", "Ollama",
                                  kind="select", group="runtime", disruptive=True,
                                  tooltip="Inference provider."),
-        "context_window": M.SettingValue("context_window", "Context window", 156000,
+        "context_window": M.SettingValue("context_window", "Context window", 131072,
                                          kind="number", group="runtime", disruptive=True,
                                          min=4096, max=262144, step=1024,
                                          tooltip="Max context tokens. Changing resets active work."),

@@ -121,7 +121,7 @@ def _env_float(name: str, conf_section: str, conf_key: str,
 # key (e.g. CORTEXAGENT_UNLOCK_BIG_CTX=1) — the testing/tuning escape hatch.
 # When unlocked, env > conf > default precedence is restored for that key.
 LOCKED_KEYS = {
-    "big_ctx": 98304,
+    "big_ctx": 131072,
     "big_ub": 2560,
     "big_ngl": 999,
     "big_fa": "on",
@@ -295,7 +295,7 @@ class Config:
         # (Measured: 35B = 13.7 GB at 128k/ub512; ub=1024 adds ~0.43 GB buffer.)
         # LOCKED in LOCKED_KEYS below; override only via CORTEXAGENT_UNLOCK=1.
         self.big_ctx = _env_locked_int(
-            "big_ctx", "CORTEXAGENT_CTX", "backend", "big_ctx", 98304)
+            "big_ctx", "CORTEXAGENT_CTX", "backend", "big_ctx", 131072)
         self.big_ngl = _env_locked_int(
             "big_ngl", "CORTEXAGENT_NGL", "backend", "big_ngl", 999)
         self.big_fa = _env_locked(
@@ -522,7 +522,7 @@ def _cli() -> int:
         # Honors CORTEXAGENT_UNLOCK: when a key is unlocked, emit the env/conf
         # value (fall through to normal resolution) instead of the pin.
         env_map = {
-            "big_ctx": ("CORTEXAGENT_CTX", 98304),
+            "big_ctx": ("CORTEXAGENT_CTX", 131072),
             "big_ub": ("CORTEXAGENT_UB", 2560),
             "big_ngl": ("CORTEXAGENT_NGL", 999),
             "big_fa": ("CORTEXAGENT_FA", "on"),
