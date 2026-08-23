@@ -370,20 +370,26 @@ def _ensure_stealth(target_id: str) -> None:
         # guards on window.__stealth_patched__ and returns early), so even if
         # runImmediately already applied it this is a safe no-op — it does NOT
         # re-capture the patched prototypes as "originals" (which would recurse).
-        _eval(target_id, _stealth_script)
-        # Isolated world for agent scripts.
-        if target_id not in _isolated_ctx:
-            try:
-                frame = _cmd(target_id, "Page.getFrameTree", {})
-                fid = frame.get("frameTree", {}).get("frame", {}).get("id")
-                if fid:
-                    res = _cmd(target_id, "Page.createIsolatedWorld",
-                               {"frameId": fid, "worldName": "cortexagent-agent",
-                                "grantUniveralAccess": True})
-                    _isolated_ctx[target_id] = int(res.get("executionContextId"))
-            except Exception:
-                pass
+        _eval(target_id, _stealth_script, timeout=20.0)
+        # The isolated agent world is created LAZILY by _isolated_eval (most tabs
+        # never need it), so it does not add round-trips to every connect.
     _stealth_applied.add(target_id)
+
+
+def _create_isolated_world(target_id: str) -> None:
+    """Lazily create the agent's isolated execution world for a target."""
+    if target_id in _isolated_ctx:
+        return
+    try:
+        frame = _cmd(target_id, "Page.getFrameTree", {}, timeout=10.0)
+        fid = frame.get("frameTree", {}).get("frame", {}).get("id")
+        if fid:
+            res = _cmd(target_id, "Page.createIsolatedWorld",
+                       {"frameId": fid, "worldName": "cortexagent-agent",
+                        "grantUniveralAccess": True}, timeout=10.0)
+            _isolated_ctx[target_id] = int(res.get("executionContextId"))
+    except Exception:
+        pass
 
 
 def _isolated_eval(target_id: str, expression: str, timeout: float = 8.0) -> Any:
@@ -391,6 +397,9 @@ def _isolated_eval(target_id: str, expression: str, timeout: float = 8.0) -> Any
     main context). Falls back to main-world _eval if no isolated world exists
     or the cached one is stale. Retries once on a stale context."""
     ctx = _isolated_ctx.get(target_id)
+    if ctx is None:
+        _create_isolated_world(target_id)
+        ctx = _isolated_ctx.get(target_id)
     if ctx is None:
         return _eval(target_id, expression, timeout=timeout)
     for attempt in (1, 2):
@@ -413,8 +422,8 @@ def _isolated_eval(target_id: str, expression: str, timeout: float = 8.0) -> Any
                         # Stale isolated context -> recreate once.
                         if attempt == 1:
                             _isolated_ctx.pop(target_id, None)
-                            _stealth_applied.discard(target_id)
-                            _ensure_stealth(target_id)
+                            _create_isolated_world(target_id)
+                            ctx = _isolated_ctx.get(target_id)
                             break
                         return None
                     return r.get("result", {}).get("value")
