@@ -30,7 +30,7 @@ cortexagent             # starts the TUI chat + the system tray (which owns the 
 - **Local-by-default model** — Qwen3.6-35B MoE runs on your GPU via llama.cpp. No cloud, no account, no API key.
 - **Automatic memory** — remembers across sessions (hot working memory + curated cold knowledge), so you do not re-explain yourself.
 - **Token compression (SlimToken)** — your context is minified before it reaches the model, so you fit more into the context window.
-- **Speech-to-text (STT)** — dictate instead of type, using a small popout control with the mouse and your voice only.
+- **Speech-to-text (STT)** — talk instead of type. A popout with two big buttons (Start/Stop + Enter) lets you dictate hands-free, no keyboard needed.
 - **Overseer routing** — a dedicated small model plans and routes your request to the big model.
 - **Domain memory** — recalled context from your own notes is injected automatically.
 
@@ -70,16 +70,6 @@ bin/cortexagent-browser-health           # human summary
 bin/cortexagent-browser-health --json    # machine-readable
 bin/cortexagent-browser-health --watch 2 # live ticker (Ctrl-C to stop)
 ```
-
----
-
-## Speech-to-text popout
-
-Dictate to CortexAgent with a floating control window you use **with the mouse and your voice only** — no keyboard required.
-
-- Open it from the system tray under **STT Controls**.
-- Two big, easy-to-click buttons: **Toggle STT** (start/stop voice input) and **Enter** (submit what you said).
-- Your voice is transcribed locally (faster-whisper) and appears in the chat box.
 
 ---
 
@@ -144,31 +134,3 @@ The console, the TUI, and the pipeline server all bind to `127.0.0.1` only. They
 ## License
 
 MIT — see `LICENSE`.
-
----
-
-## Accessibility
-
-> **Honest a11y statement.** Read this before depending on any one surface.
-
-| Surface | Accessibility status | Notes |
-|---|---|---|
-| **TUI** (`cortex`) | ✅ Keyboard-only navigation. Honors `NO_COLOR`, `TERM=dumb`, `--unicode` flag, OSC window titles. Glyph + label pairs every status. | Best text-based experience. Voice control / per-widget screen-reader hints are not implemented. |
-| **Web / pipeline** (`http://127.0.0.1:8090`) | ⚠️ Visualization-only; not a chat surface. Focus styles on interactive elements. |
-| **Web / security** (`http://127.0.0.1:8093`) | ⚠️ Skeleton CSS + ARIA added (skip-link, focus-visible, `<main>` landmark). axe-core in CI not yet configured. No formal NVDA/VoiceOver pass yet. |
-| **Tkinter desktop console** | ❌ **Not accessible to screen readers on Linux** without [Tka11y](https://pypi.org/project/Tka11y/) (last released 2009). Tk bug [0e294d96](https://core.tcl-lang.org/tk/info/0e294d9604) means widgets don't expose to AT-SPI. **The TUI and web surfaces are the primary a11y targets.** The Tk console is an ergonomic convenience for mouse users, not an a11y investment. |
-
-**Conventions we follow** (see `docs/ux/DESIGN-PRINCIPLES.md` for full):
-
-- WCAG 2.2 AA contrast (4.5:1 text, 3:1 UI components).
-- Slash command vocabulary is identical across all surfaces.
-- Streaming output throttled for screen readers (≤1 announcement/sec).
-- Tool calls are never silent — always announced.
-- Keyboard-first; handedness is a secondary concern.
-- Color is never the sole signal — always paired with glyph + label.
-
-**What we do not yet do:**
-
-- axe-core is not yet wired into CI on web changes.
-- No formal NVDA + VoiceOver pass before releases.
-- No scheduled sessions with disabled users (per the §2.7 plan in the design doc).
