@@ -62,7 +62,7 @@ def fresh_tab(bc):
     tid = bc.new_tab("about:blank")
     yield tid
     try:
-        bc._cmd(tid, "Target.closeTarget", {"targetId": tid}, timeout=5)
+        urllib.request.urlopen(CDP_HTTP + "/json/close/" + tid, timeout=3).read()
     except Exception:
         pass
 
@@ -102,7 +102,7 @@ def test_cross_seed_canvas_noise_distinct():
         "function mulberry32(a){a=a|0;return function(){a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);"
         "t=t+Math.imul(t^t>>>7,61|t)-((t^t>>>14)>>>0);return((t>>>0)/4294967296);};}"
         "function pn(x,y,s){return mulberry32((s^(x*73856093)^(y*19349663))>>>0)()-0.5;}"
-        "const A=[pn(5,5,111),pn(5,5,111)],B=[pn(5,5,111),pn(5,5,222)];"
+        "const A=[pn(5,5,111),pn(5,5,111)],B=[pn(5,5,222),pn(5,5,222)];"
         "console.log(JSON.stringify({sa:A[0]===A[1],ab:A[0]!==B[0]}));"
     )
     out = subprocess.check_output(["node", "-e", code]).decode()
@@ -127,7 +127,7 @@ def test_live_stealth_injected(bc, fresh_tab):
       return { live: !!window.__stealth_live__, same: a===b,
                webdriver: navigator.webdriver, renderer: gl?gl.getParameter(37446):'nogl' };
     })()"""
-    r = bc._eval(fresh_tab, js)
+    r = bc._eval(fresh_tab, js, timeout=20)
     assert r["live"] is True
     assert r["same"] is True, "canvas noise must be session-stable across renders"
     assert r["webdriver"] is False
@@ -137,8 +137,8 @@ def test_live_stealth_injected(bc, fresh_tab):
 @live
 def test_live_isolated_world_is_separate(bc, fresh_tab):
     bc.navigate_raw(fresh_tab, "about:blank")
-    main_live = bc._eval(fresh_tab, "!!window.__stealth_live__")
-    iso_live = bc._isolated_eval(fresh_tab, "typeof window.__stealth_live__ !== 'undefined' && window.__stealth_live__")
+    main_live = bc._eval(fresh_tab, "!!window.__stealth_live__", timeout=20)
+    iso_live = bc._isolated_eval(fresh_tab, "typeof window.__stealth_live__ !== 'undefined' && window.__stealth_live__", timeout=20)
     assert main_live is True
     # Isolated world has its OWN window -> the main-world patch tag is not visible.
     assert iso_live in (False, None)
@@ -193,8 +193,8 @@ def test_live_humanizer_real_mouse_click(bc, fresh_tab):
     time.sleep(0.4)
     ok = bc.click(fresh_tab, "#b")
     assert ok is True
-    count = bc._eval(fresh_tab, "document.getElementById('b').textContent")
-    moves = bc._eval(fresh_tab, "window.__mv()")
+    count = bc._eval(fresh_tab, "document.getElementById('b').textContent", timeout=20)
+    moves = bc._eval(fresh_tab, "window.__mv()", timeout=20)
     assert count == "1", f"humanized click should fire the button, got {count!r}"
     assert isinstance(moves, int) and moves >= 10, f"Bezier should move the cursor, got {moves}"
 

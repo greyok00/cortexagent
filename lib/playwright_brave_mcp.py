@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from browser_control import (
     CDP_URL, close, list_tabs, navigate, fetch, click, type_text,
     evaluate, snapshot, read_text, fill_and_send,
+    start_guard, stop_guard, stealth_status,
 )
 
 
@@ -87,6 +88,7 @@ TOOLS = [
         "submit": {"type": "boolean", "description": "Press Enter after filling (default true)."},
         "tab": _TAB,
     }, ["text"]),
+    _tool("brave_stealth_status", "Report live stealth/humanizer/CDP-guard state (profile, seed, applied targets, isolated worlds).", {}, []),
 ]
 
 
@@ -208,6 +210,8 @@ def _dispatch_call(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         return _handle_snapshot(args)
     if name == "brave_fill_send":
         return _handle_fill_send(args)
+    if name == "brave_stealth_status":
+        return _ok_result(stealth_status())
     return _err_result(f"Unknown tool: {name}")
 
 
@@ -217,7 +221,13 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     params = req.get("params", {})
 
     if method == "initialize":
-        return {"jsonrpc": "2.0", "id": _id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "playwright-brave-mcp", "version": "1.1"}}}
+        # Always-active CDP guard (§4): starts watching for an exposed endpoint
+        # / foreign client attachment. Refuses silently if the port is on 0.0.0.0.
+        try:
+            start_guard()
+        except Exception:
+            pass
+        return {"jsonrpc": "2.0", "id": _id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "playwright-brave-mcp", "version": "1.2"}}}
 
     if method == "notifications/initialized":
         return None

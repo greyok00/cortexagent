@@ -2,7 +2,7 @@
 
 **A private, local AI coding agent that runs entirely on your machine — no cloud, no API key, no data leaves your computer.**
 
-CortexAgent combines a local llama.cpp model with a clean terminal chat interface, automatic memory, and a live view of every step of your request — from prompt to response.
+CortexAgent combines a local llama.cpp model with a clean terminal chat interface, automatic memory, and the **CortexAgent Console** — a floating window that puts chat, your active task, and your open browser tabs in one place.
 
 ---
 
@@ -14,11 +14,11 @@ git clone <repo>/cortexagent
 cd cortexagent
 ./install.sh            # sets up config, memory, and the `cortexagent` command
 
-# 2. Launch the terminal TUI
-cortexagent
+# 2. Launch
+cortexagent             # starts the TUI chat + the system tray (which owns the Console)
 ```
 
-`cortexagent` opens the terminal chat interface. Your first prompt loads the local model and you are talking to your own private agent.
+`cortexagent` opens the terminal chat interface. The Console opens from the system tray. Your first prompt loads the local model and you are talking to your own private agent.
 
 > Everything binds to `127.0.0.1`. Nothing leaves your machine.
 
@@ -26,9 +26,8 @@ cortexagent
 
 ## Core features
 
+- **CortexAgent Console** — a single floating window with chat, the active task, and your open browser tabs. Tray-launched, mouse-friendly, localhost-only. See the [CortexAgent Console](#cortexagent-console) section below.
 - **Local-by-default model** — Qwen3.6-35B MoE runs on your GPU via llama.cpp. No cloud, no account, no API key.
-- **One terminal interface** — a single clean TUI (`cortex`) for chatting and reviewing output. No other terminal UIs.
-- **Live processing animation** — watch your request move through each stage: context prep → SlimToken compression → sending → generating → done.
 - **Automatic memory** — remembers across sessions (hot working memory + curated cold knowledge), so you do not re-explain yourself.
 - **Token compression (SlimToken)** — your context is minified before it reaches the model, so you fit more into the context window.
 - **Speech-to-text (STT)** — dictate instead of type, using a small popout control with the mouse and your voice only.
