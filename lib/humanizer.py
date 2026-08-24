@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""humanizer — HumanizedAction dispatcher for browser_control (§3).
 
-Every high-level action (click / type / scroll / navigate) routes through this
-module. It is ON by default; disable with the env var STEALTH_HUMANIZER=0 or by
-constructing Humanizer(enabled=False). It is *not* structurally non-bypassable:
-callers can still use browser_control._eval/_cmd directly, but the public
-action API enforces humanized pacing. (Configurable off-switch by design.)
-
-What it adds over raw browser_control:
-  - Bezier-curve mouse movement between actions via CDP Input.dispatchMouseEvent
-    (real cursor path, never instant jumps or straight lines).
-  - Jittered click point inside the element bounding box.
-  - Randomized inter-action delays + periodic longer idle "break" windows.
-  - Occasional misclick (offset) followed by a visible correction re-click, at
-    a low realistic frequency. For typing: occasional mistype + backspace.
-  - Per-target cursor memory so the next move starts where the last ended.
-
-Reliability is preserved: humanized typing uses real per-char CDP key events
-with a fallback to the native-value-setter if the resulting value mismatches
-(the technique that works for React/LWC controlled inputs).
-"""
 from __future__ import annotations
 
 import json
@@ -28,33 +8,30 @@ import random
 import time
 from typing import Any, Dict, Optional, Tuple
 
-import humanize  # existing Bezier + timing primitives (flat lib/ on sys.path)
+import humanize
 
 
 def _enabled() -> bool:
     return os.environ.get("STEALTH_HUMANIZER", "1") not in ("0", "false", "False")
 
 
-# Low rate of deliberate mistakes — enough to look human, not enough to slow work.
+
 MISCICK_RATE = 0.04
 MISTYPE_RATE = 0.03
-IDLE_BREAK_RATE = 0.05      # chance of a longer "break" window after an action
+IDLE_BREAK_RATE = 0.05
 IDLE_BREAK_BAND = (2.0, 6.0)
 
 
 class Humanizer:
-    """Wraps browser_control's low-level CDP send with human pacing.
 
-    bc is the browser_control module (imported lazily to avoid a cycle).
-    """
 
     def __init__(self, bc: Any, enabled: Optional[bool] = None) -> None:
         self.bc = bc
         self.enabled = _enabled() if enabled is None else enabled
-        # per-target last cursor position
+
         self._cursor: Dict[str, Tuple[float, float]] = {}
 
-    # -- low level ----------------------------------------------------------
+
     def _dispatch(self, target_id: str, method: str, params: Dict[str, Any]) -> Any:
         return self.bc._cmd(target_id, method, params, timeout=10.0)
 
@@ -75,7 +52,7 @@ class Humanizer:
         return r if (isinstance(r, dict) and r.get("ok")) else None
 
     def _move_to(self, target_id: str, x: float, y: float) -> None:
-        """Move the cursor to (x,y) along a Bezier curve, dispatching mouseMoved."""
+
         start = self._cursor.get(target_id, (random.uniform(50, 400), random.uniform(50, 300)))
         x0, y0 = start
         path = humanize.bezier_path(x0, y0, x, y, steps=random.randint(14, 22), curve=0.2)
@@ -93,7 +70,7 @@ class Humanizer:
             "type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1, "buttons": 0})
 
     def _point_in(self, bbox: Dict[str, float]) -> Tuple[float, float]:
-        # jittered point inside the box, biased toward center
+
         cx, cy = bbox["x"] + bbox["w"] / 2, bbox["y"] + bbox["h"] / 2
         jx = cx + random.uniform(-bbox["w"] / 3, bbox["w"] / 3)
         jy = cy + random.uniform(-bbox["h"] / 3, bbox["h"] / 3)
@@ -103,7 +80,7 @@ class Humanizer:
         if random.random() < IDLE_BREAK_RATE:
             time.sleep(random.uniform(*IDLE_BREAK_BAND))
 
-    # -- public actions -----------------------------------------------------
+
     def click(self, tab: Any, selector: str, by_text: bool = False, timeout: int = 10) -> bool:
         target_id = self.bc.resolve_tab(tab)
         bbox = self._bbox(target_id, selector, by_text)
@@ -114,7 +91,7 @@ class Humanizer:
             return True
         time.sleep(humanize.get_action_delay("hover"))
         x, y = self._point_in(bbox)
-        # occasional misclick: offset well off center, then correct
+
         if random.random() < MISCICK_RATE:
             ox = x + random.choice([-1, 1]) * (bbox["w"] * 0.6)
             oy = y + random.choice([-1, 1]) * (bbox["h"] * 0.6)
@@ -134,7 +111,7 @@ class Humanizer:
     def type_text(self, tab: Any, selector: str, text: str, by_text: bool = False,
                   submit: bool = False, timeout: int = 10) -> bool:
         target_id = self.bc.resolve_tab(tab)
-        # focus the element first
+
         focus_js = (
             f"[...document.querySelectorAll('*')].find(e => e.textContent && e.textContent.trim() === {json.dumps(selector)})"
             if by_text else f"document.querySelector({json.dumps(selector)})"
@@ -143,7 +120,7 @@ class Humanizer:
         if not self.enabled:
             self.bc._eval(target_id, self.bc._type_js(selector, text, by_text, submit), timeout=timeout)
             return True
-        time.sleep(humanize.get_action_delay("type"))   # pre-field delay
+        time.sleep(humanize.get_action_delay("type"))
         for ch in text:
             if random.random() < MISTYPE_RATE and ch not in ("\n", "\t", " "):
                 self._dispatch(target_id, "Input.dispatchKeyEvent", {
@@ -157,7 +134,7 @@ class Humanizer:
             self._dispatch(target_id, "Input.dispatchKeyEvent", {
                 "type": "char", "text": ch, "key": ch if ch.isalnum() else ""})
             time.sleep(humanize.get_action_delay("type"))
-        # verify value; fall back to setter if key events didn't take (controlled inputs)
+
         val = self.bc._eval(target_id, f"(() => {{ const el = {focus_js}; return el ? el.value : null; }})()")
         if val != text:
             self.bc._eval(target_id, self.bc._type_js(selector, text, by_text, False), timeout=timeout)
@@ -173,7 +150,7 @@ class Humanizer:
         if not self.enabled:
             self.bc._eval(target_id, f"window.scrollBy(0,{int(dy)})")
             return
-        # smooth-ish incremental scroll
+
         remaining = dy
         while remaining != 0:
             step = int(dy * 0.2) if abs(remaining) > 200 else remaining
@@ -188,7 +165,7 @@ class Humanizer:
         return self.bc.navigate_raw(tab, url, wait_until=wait_until, timeout=timeout)
 
 
-# module-level singleton, lazily bound to browser_control
+
 _H: Optional[Humanizer] = None
 
 

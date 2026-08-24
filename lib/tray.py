@@ -1,29 +1,5 @@
 #!/usr/bin/env python3
-"""lib/tray.py — the CortexAgent system-tray app that owns the overseer.
 
-Launch with ``cortexagent tray`` (or pin it to a desktop shortcut / Windows
-Start-menu entry). It is a SEPARATE PERSISTENT PROCESS from the CLI:
-
-  - On start it brings up the overseer (``overseer.py start``).
-  - "Launch CLI" opens a terminal running the agent. Closing that terminal /
-    CLI does NOT touch the overseer — they are independent processes.
-  - The menu offers manual model reload, overseer restart, and config reload.
-  - ONLY quitting the tray stops the overseer (stability: the overseer survives
-    CLI closes; only the tray's Quit tears it down).
-
-GUI: uses ``pystray`` + ``Pillow`` if installed (cross-platform: Linux GTK/
-AppIndicator, macOS, Windows). If pystray is absent, it falls back to a
-HEADLESS keeper: owns the overseer just the same, reads single-key commands on
-stdin (s/r/o/c/q) and exits cleanly on SIGINT/SIGTERM — so the stability
-guarantee holds even on a headless box or without GUI deps.
-
-CLI:
-  python3 -m lib.tray             # run the tray (GUI if pystray present, else headless)
-  python3 -m lib.tray --headless  # force headless keeper mode
-  python3 -m lib.tray --check     # report deps + exit (no run)
-
-No Ollama, no hardcoded home paths (all via lib.config.CFG).
-"""
 from __future__ import annotations
 
 import os
@@ -40,8 +16,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-# Force GTK backend on Linux — AppIndicator (default on many distros)
-# doesn't render icons in MATE's status menu. GTK StatusIcon works everywhere.
+
+
 if sys.platform == "linux":
     os.environ.setdefault("PYSTRAY_BACKEND", "gtk")
 
@@ -56,15 +32,15 @@ _OVERSEER = _REPO_ROOT / "lib" / "overseer.py"
 _CLI = _REPO_ROOT / "engine" / "cli.py"
 _LAUNCHER = _REPO_ROOT / "bin" / "cortexagent"
 
-# Tray menu label literals — TITLE CASE (each major word capitalized).
-# No period, no emoji, no all-caps. Pinned by feedback-tray-label-format.md.
-# Edit the memory, not these.
+
+
+
 _LABEL_START = "Start Main Model"
 _LABEL_STOP = "Stop Main Model"
 
-# Set by _run_gui once the pystray icon exists. The SIGTERM/SIGINT handler
-# uses it to stop the icon so `systemctl stop` / `pkill -f lib.tray` cleanly
-# removes the tray instead of leaving a stuck icon until systemd force-kills.
+
+
+
 _ICON = None
 
 
@@ -72,7 +48,7 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
     print(f"{color}{emoji} {BOLD}tray{RST} {msg}{RST}", file=sys.stderr, flush=True)
 
 
-# ── Overseer ownership ───────────────────────────────────────────────────────
+
 
 def _overseer_pid() -> Optional[int]:
     pid_file = CFG.state_dir / "overseer.pid"
@@ -105,7 +81,7 @@ def _overseer_stop() -> bool:
     _log("stopping overseer…", "🛑", YELLOW)
     r = subprocess.run([sys.executable, str(_OVERSEER), "stop"],
                        capture_output=True, text=True, timeout=40)
-    # overseer stop also unloads the tiny model (frees VRAM)
+
     stopped = _overseer_pid() is None
     _log(("overseer stopped" if stopped else "overseer stop incomplete"),
          "✅" if stopped else "⚠️", GREEN if stopped else YELLOW)
@@ -118,7 +94,7 @@ def _overseer_restart() -> bool:
     return _overseer_start()
 
 
-# ── Model + config actions (via the daemon control socket) ───────────────────
+
 
 def _run_cli(*args: str, timeout: int = 120) -> tuple[int, str]:
     try:
@@ -139,7 +115,7 @@ def _status_text() -> str:
 
 
 def _stop_big() -> str:
-    """Stop the big model via the daemon control socket (frees ~13 GB VRAM)."""
+
     _log("stopping big model…", "🛑", YELLOW)
     try:
         from lib import control
@@ -150,7 +126,7 @@ def _stop_big() -> str:
 
 
 def _start_big() -> str:
-    """Start the big model via the daemon control socket."""
+
     _log("starting big model…", "🔄", CYAN)
     try:
         from lib import control
@@ -161,11 +137,7 @@ def _start_big() -> str:
 
 
 def _is_big_running() -> bool:
-    """Best-effort check: is the big model currently loaded?
 
-    Reads the real daemon status payload (control.send_request('status')
-    returns {'big': {'running': bool, ...}, ...}). Never raises.
-    """
     try:
         from lib import control
         r = control.send_request("status", timeout=5)
@@ -178,7 +150,7 @@ def _is_big_running() -> bool:
 
 
 def _toggle_big() -> str:
-    """Toggle the primary model: stop if running, start if not."""
+
     if _is_big_running():
         return _stop_big()
     return _start_big()
@@ -193,9 +165,9 @@ def _reload_models() -> str:
 
 
 def _reload_config() -> str:
-    """Reload config by restarting the daemon (re-reads config) + overseer."""
+
     _log("reloading config — restarting daemon + overseer…", "🔄", CYAN)
-    # Stop daemon (graceful via socket), then start it fresh.
+
     from lib import control
     msgs = []
     try:
@@ -212,11 +184,11 @@ def _reload_config() -> str:
     return "\n".join(msgs)
 
 
-# ── Launch the CLI in a terminal (cross-platform) ────────────────────────────
+
 
 def _cli_command() -> list[str]:
-    """The command to run inside the terminal."""
-    # Prefer the installed `cortexagent` on PATH; fall back to the repo launcher.
+
+
     if shutil.which("cortexagent"):
         return ["cortexagent"]
     return ["bash", str(_LAUNCHER)]
@@ -227,20 +199,20 @@ def _launch_cli() -> None:
     _log(f"launching CLI in a terminal: {' '.join(cmd)}", "🖥️", CYAN)
     try:
         if os.name == "nt":
-            # Windows: open a new cmd window running the agent.
+
             subprocess.Popen(["cmd", "/c", "start", "CortexAgent", "cmd", "/k"] + cmd)
             return
         if sys.platform == "darwin":
-            # macOS: open Terminal.
+
             subprocess.Popen(["open", "-a", "Terminal"] + cmd)
             return
-        # Linux: try real standard graphical terminals first (full-featured
-        # DE-native panes — readable font, full window, the actual user
-        # experience), then fall through to the legacy fallbacks.
-        # Each entry is (argv_prefix, needs_bash_wrap). gnome-terminal uses
-        # `--` then the cmd; konsole/xterm/alacritty/kitty use `-e <cmd>`;
-        # x-terminal-emulator is the Debian helper which can resolve to a
-        # half-broken wrapper, so it sits near the end of the list.
+
+
+
+
+
+
+
         candidates = [
             (["mate-terminal", "--", "bash", "-lc"],      "wrap-bash"),
             (["gnome-terminal", "--", "bash", "-lc"],     "wrap-bash"),
@@ -267,14 +239,14 @@ def _launch_cli() -> None:
                 return
             except Exception as e:
                 _log(f"{term} failed ({e}) — trying next", "⚠️", YELLOW)
-        # Last resort: run in the background in this process's session.
+
         _log("no terminal emulator found — running CLI in background", "⚠️", YELLOW)
         subprocess.Popen(cmd, start_new_session=True)
     except Exception as e:
         _log(f"failed to launch CLI: {e}", "❌", RED)
 
 
-# ── Headless keeper mode (no pystray) ────────────────────────────────────────
+
 
 _HEADLESS_HELP = (
     f"{DIM}headless keeper — keys:{RST} "
@@ -289,7 +261,7 @@ def _run_headless(quit_event: threading.Event) -> None:
     while not quit_event.is_set():
         sys.stdout.write(f"{BOLD}tray>{RST} ")
         sys.stdout.flush()
-        # Read one key/line without blocking the signal handler.
+
         try:
             line = sys.stdin.readline()
         except KeyboardInterrupt:
@@ -312,18 +284,15 @@ def _run_headless(quit_event: threading.Event) -> None:
             print(_HEADLESS_HELP)
 
 
-# ── GUI tray (pystray + Pillow) ──────────────────────────────────────────────
+
 
 def _patch_pystray_notify() -> None:
-    """Patch pystray's notification D-Bus handler to ignore notification
-    daemon errors. This prevents the system-tray icon from crashing when the
-    notification daemon is slow to start, disappears, or returns stale IDs.
-    The tray icon itself works fine — only the notification close call fails."""
+
     try:
         import pystray._util.notify_dbus as nd
         orig_hide = getattr(nd, 'NotifyDBus', None)
         if orig_hide is None:
-            # Newer pystray may use a different class name.
+
             for attr in dir(nd):
                 cls = getattr(nd, attr)
                 if hasattr(cls, 'hide') and hasattr(cls, '_notify'):
@@ -338,25 +307,24 @@ def _patch_pystray_notify() -> None:
                     pass
             orig_hide.hide = safe_hide
     except Exception:
-        pass  # Non-critical — tray works even without this patch
+        pass
 
 
 def _make_icon_image():
-    """CortexAgent tray icon — the square logo asset if present, else a small
-    64x64 wolf head drawn with Pillow."""
+
     from PIL import Image, ImageDraw  # type: ignore
-    # Try logo file (jpg or png), then fall back to drawn wolf head
+
     for ext in ("png", "jpg"):
         logo = Path(__file__).resolve().parent.parent / "assets" / f"cortexagentsquarelogo.{ext}"
         if logo.exists():
             try:
                 return Image.open(logo).convert("RGBA").resize((64, 64), Image.LANCZOS)
             except Exception:
-                pass  # fall through to the drawn mark
+                pass
     img = Image.new("RGBA", (64, 64), (15, 17, 21, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([6, 6, 58, 58], radius=12, fill=(150, 220, 255, 255))
-    # crude "CA" — two rounded bars
+
     d.rectangle([16, 18, 22, 46], fill=(15, 17, 21, 255))
     d.rectangle([16, 18, 30, 24], fill=(15, 17, 21, 255))
     d.rectangle([16, 31, 28, 37], fill=(15, 17, 21, 255))
@@ -367,7 +335,7 @@ def _make_icon_image():
 
 
 def _run_gui(quit_event: threading.Event) -> None:
-    _patch_pystray_notify()  # Guard notification daemon failures
+    _patch_pystray_notify()
     import pystray  # type: ignore
     from pystray import MenuItem as MI, Menu  # type: ignore
 
@@ -397,8 +365,7 @@ def _run_gui(quit_event: threading.Event) -> None:
         _launch_cli()
 
     def on_toggle_big(icon, item):
-        """Tray click → toggle the primary model (start if stopped, stop if running).
-        Rebuilds the menu so the label flips between 'Start' and 'Stop'."""
+
         _toast(icon, _toggle_big(), "ok")
         try:
             icon.update_menu()
@@ -406,26 +373,15 @@ def _run_gui(quit_event: threading.Event) -> None:
             pass
 
     def _big_label_text(_item) -> str:
-        """Dynamic label callback for the toggle button.
-        pystray's update_menu() only re-renders items whose text/checked/
-        enabled are callables — so this re-reads daemon state on every refresh
-        and the label flips between 'Start' / 'Stop' as expected."""
+
         return _LABEL_STOP if _is_big_running() else _LABEL_START
 
     def _big_action_wrapper(icon, item) -> None:
-        """Wraps on_toggle_big and refreshes the menu after the click so the
-        new label is visible immediately. Pystray's ancestor menu is `item`
-        but we don't need it here — the wrapper is bound at construction time."""
+
         on_toggle_big(icon, item)
 
     def on_dashboard(icon, item):
-        """Tray click → popout overseer dashboard (NOT any webui).
-        Opens a small Tk window with overseer state + big-model steps +
-        rotating idle tip. See lib/tray_dashboard.py.
 
-        Force-reloads lib.tray_dashboard so file edits land without a
-        tray-daemon restart (otherwise sys.modules serves stale code).
-        """
         try:
             import importlib
             import lib.tray_dashboard  # noqa: F401  (ensure registered)
@@ -444,26 +400,26 @@ def _run_gui(quit_event: threading.Event) -> None:
     def on_quit(icon, item):
         _log("Quit — tearing down overseer", "🛑", YELLOW)
         quit_event.set()
-        # Stop the icon FIRST so the tray disappears immediately. The overseer
-        # teardown can block (up to 40s) and must never hold the icon hostage —
-        # otherwise the tray looks stuck and unclosable.
+
+
+
         try:
             icon.stop()
         except Exception:
             pass
         _overseer_stop()
-        # 2026-08-22 user feedback: "it never closes the big model, even
-        # when you fully exit the program." Unload the big model on quit
-        # so the 13.7 GB VRAM footprint is freed.
+
+
+
         try:
             if _is_big_running():
                 _log(_stop_big(), "🛑", YELLOW)
         except Exception as e:
             _log(f"big model unload on quit failed: {e}", "⚠️", YELLOW)
 
-    # ── Open STT controls window ──────────────────────────────────────────
+
     def on_stt_controls(icon, item):
-        """Open the floating STT control window."""
+
         try:
             import importlib
             import lib.stt_controls as _sc
@@ -473,9 +429,9 @@ def _run_gui(quit_event: threading.Event) -> None:
         except Exception as e:
             _toast(icon, f"Failed to open STT controls: {e}", "info")
 
-    # ── Open browser console window ───────────────────────────────────────
+
     def on_browser_console(icon, item):
-        """Open the floating browser-automation chat console."""
+
         try:
             import importlib
             import lib.browser_console as _bc
@@ -492,16 +448,16 @@ def _run_gui(quit_event: threading.Event) -> None:
         Menu.SEPARATOR,
         MI("Open STT Controls", on_stt_controls),
         Menu.SEPARATOR,
-        # Dynamic label: text is a callable so update_menu() re-reads daemon
-        # state on every refresh and the label flips 'Start' ↔ 'Stop'.
+
+
         MI(_big_label_text, _big_action_wrapper),
         Menu.SEPARATOR,
         MI("Quit", on_quit),
     )
     icon = pystray.Icon("cortexagent", _make_icon_image(),
                         "CortexAgent", menu)
-    # Double-click tray icon → open overseer dashboard (the local popout,
-    # not the deferred :8090 webui).
+
+
     try:
         icon.on_activate = on_dashboard
     except Exception:
@@ -511,14 +467,14 @@ def _run_gui(quit_event: threading.Event) -> None:
     global _ICON
     _ICON = icon
 
-    # Periodic refresh — call icon.update_menu() every 3s so the Start/Stop
-    # label stays in sync with the daemon's real `big.running` state.
-    # Without this, the label only refreshes after a click and gets stale
-    # when something else (bin/cortexagent, the CLI, the daemon itself)
-    # changes the model state under the tray's feet.
-    # 2026-08-22 user feedback: "it never changes to say stop so make it
-    # say start/stop. It should detect llama-server running." This timer
-    # closes that gap.
+
+
+
+
+
+
+
+
     def _refresh_tick():
         try:
             icon.update_menu()
@@ -532,7 +488,7 @@ def _run_gui(quit_event: threading.Event) -> None:
     icon.run()
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+
 
 def _have_pystray() -> bool:
     try:
@@ -543,7 +499,7 @@ def _have_pystray() -> bool:
 
 
 def check() -> int:
-    """Report tray dependencies + overseer state, then exit (no run)."""
+
     print(f"pystray: {'installed' if _have_pystray() else 'NOT installed (headless mode)'}")
     try:
         import PIL  # noqa: F401
@@ -558,9 +514,9 @@ def _signal_shutdown(quit_event: threading.Event) -> None:
     def handler(signum, frame):
         _log(f"signal {signum} — tearing down overseer and exiting", "🛑", YELLOW)
         quit_event.set()
-        # Stop the GUI icon first so the tray disappears on SIGTERM/SIGINT
-        # (e.g. `systemctl --user stop cortexagent-tray.service`). Without this
-        # the icon keeps running until systemd force-kills the process.
+
+
+
         icon = _ICON
         if icon is not None:
             try:
@@ -568,9 +524,9 @@ def _signal_shutdown(quit_event: threading.Event) -> None:
             except Exception:
                 pass
         _overseer_stop()
-        # 2026-08-22 user feedback: "it never closes the big model, even
-        # when you fully exit the program." Unload big model on signal too
-        # so SIGTERM/SIGINT from systemd still frees VRAM.
+
+
+
         try:
             if _is_big_running():
                 _log(_stop_big(), "🛑", YELLOW)
@@ -584,7 +540,7 @@ def run(force_headless: bool = False) -> int:
     signal.signal(signal.SIGINT, _signal_shutdown(quit_event))
     signal.signal(signal.SIGTERM, _signal_shutdown(quit_event))
 
-    # Own the overseer from the start.
+
     _overseer_start()
 
     use_gui = (not force_headless) and _have_pystray()
@@ -602,13 +558,13 @@ def run(force_headless: bool = False) -> int:
                  "⚠️", YELLOW)
         _run_headless(quit_event)
 
-    # Final cleanup if not already done (e.g. GUI quit path already stopped it).
+
     if _overseer_pid():
         _overseer_stop()
-    # 2026-08-22 user feedback: "it never closes the big model, even when
-    # you fully exit the program." Final safety net — unload big model
-    # on tray exit regardless of which path got us here (GUI quit, signal,
-    # forced kill, headless fallback).
+
+
+
+
     try:
         if _is_big_running():
             _log(_stop_big(), "🛑", YELLOW)

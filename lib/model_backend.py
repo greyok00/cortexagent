@@ -1,22 +1,5 @@
 #!/usr/bin/env python3
-"""lib/model_backend.py — manage a single llama-server process.
 
-One ``LlamaServer`` instance = one GGUF model on one TCP port. Used for:
-  - the big coding model   (port 8080 — managed by the daemon in the new arch)
-  - the tiny LFM2.5-1.2B overseer model (port 8082 — managed by lib/overseer.py)
-
-No Ollama. Pure subprocess + HTTP ``/health`` polling. All paths resolve
-through ``lib/config.py`` (env → conf → default), so nothing here is hardcoded
-to a home directory.
-
-Usage::
-
-    from lib.model_backend import LlamaServer
-    srv = LlamaServer("tiny", CFG.tiny_model, port=CFG.tiny_model_port, ctx=4096)
-    srv.start()          # spawn + wait for /health
-    srv.is_healthy()     # True/False
-    srv.stop()           # terminate → free VRAM
-"""
 from __future__ import annotations
 
 import os
@@ -35,7 +18,7 @@ from lib.config import CFG  # noqa: E402
 
 
 class LlamaServer:
-    """Owns one llama-server process for the lifetime of this object."""
+
 
     def __init__(
         self,
@@ -64,7 +47,7 @@ class LlamaServer:
         self.startup_timeout = int(startup_timeout)
         self.proc: Optional[subprocess.Popen] = None
 
-    # ── paths / urls ──────────────────────────────────────────────────────────
+
     @property
     def binary(self) -> Path:
         return self.llama_dir / "bin" / "llama-server"
@@ -81,9 +64,9 @@ class LlamaServer:
     def running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
-    # ── health ─────────────────────────────────────────────────────────────────
+
     def is_healthy(self, timeout: float = 3.0) -> bool:
-        """True iff llama-server answers /health with HTTP 200."""
+
         try:
             req = urllib.request.Request(self.health_url, method="GET")
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -91,13 +74,9 @@ class LlamaServer:
         except Exception:
             return False
 
-    # ── lifecycle ─────────────────────────────────────────────────────────────
-    def start(self, timeout: Optional[int] = None) -> bool:
-        """Spawn llama-server and wait for /health. Reuses an already-healthy server.
 
-        Returns True if the server is healthy (either pre-existing or freshly
-        started), False on any failure. Safe to call repeatedly.
-        """
+    def start(self, timeout: Optional[int] = None) -> bool:
+
         if self.is_healthy():
             return True
         timeout = int(timeout if timeout is not None else self.startup_timeout)
@@ -127,14 +106,14 @@ class LlamaServer:
             p for p in [f"{self.llama_dir}/bin", env.get("LD_LIBRARY_PATH", "")] if p
         )
         log_fh = open(self.log_file, "ab")
-        # start_new_session: decouple from the caller's process group so the
-        # server survives a SIGINT to the parent (e.g. Ctrl-C in a foreground
-        # CLI). The caller is expected to stop() it explicitly to free VRAM.
+
+
+
         self.proc = subprocess.Popen(
             cmd, env=env, stdout=log_fh, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL, start_new_session=True,
         )
-        log_fh.close()  # parent's fd no longer needed — child has a dup'd copy
+        log_fh.close()
 
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -151,12 +130,7 @@ class LlamaServer:
         return False
 
     def stop(self) -> bool:
-        """Terminate the server (SIGTERM → SIGKILL) to free VRAM.
 
-        If we don't own the handle (e.g. the server was started by a previous
-        daemon instance), fall back to killing any llama-server bound to our
-        port by best-effort ps matching.
-        """
         if self.proc is None:
             return self._kill_port_server()
         try:
@@ -173,7 +147,7 @@ class LlamaServer:
         except Exception as e:
             print(f"[model_backend] {self.name} stop error: {e}", file=sys.stderr)
         self.proc = None
-        # Belt-and-suspenders: ensure nothing is left holding the port/VRAM.
+
         self._kill_port_server()
         return True
 
@@ -183,14 +157,7 @@ class LlamaServer:
         return self.start()
 
     def _kill_port_server(self) -> bool:
-        """Best-effort: kill any llama-server bound to our --port.
 
-        Uses a regex with word boundaries to avoid substring collisions
-        (``--port 8080`` must NOT match ``--port 80808``), and handles both
-        ``--port 8080`` and ``--port=8080`` syntax. After SIGTERM, verifies
-        the PID still exists via ``/proc/<pid>`` before sending SIGKILL to
-        prevent a PID-reuse race.
-        """
         import re as _re
         pat = _re.compile(rf'--port[=\s]+{self.port}\b')
         try:
@@ -205,7 +172,7 @@ class LlamaServer:
                         pid = int(line.split()[0])
                         os.kill(pid, 15)
                         time.sleep(1)
-                        # Verify PID wasn't recycled before SIGKILL.
+
                         if os.path.exists(f"/proc/{pid}"):
                             os.kill(pid, 9)
                     except (ProcessLookupError, ValueError, OSError):
@@ -215,7 +182,7 @@ class LlamaServer:
         return True
 
 
-# ── CLI smoke ─────────────────────────────────────────────────────────────────
+
 def _cli() -> int:
     if len(sys.argv) < 2:
         print("usage: model_backend.py {start|stop|health} [name]", file=sys.stderr)

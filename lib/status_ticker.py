@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
-"""cortexagent status ticker — live bottom-line that updates every second.
 
-Different from statusline.py: that one renders ONCE per Claude Code
-statusLine hook call (once per prompt submit). This ticker runs as a
-background thread inside the CLI session and overwrites the same line
-in place every second, so the user always sees fresh data.
-
-Output: single line, ANSI cursor-up + erase-line before each render so
-the bar sits at the bottom of the terminal and never scrolls.
-
-Reads:
-  - daemon control socket (status command) — model, VRAM, sessions
-  - grammar proxy /metrics                 — token rate, minify savings
-  - ~/.cortexagent/minify_stats.json       — savings snapshot (fallback)
-
-Fails soft: any error returns "" so the ticker line never blows up.
-"""
 from __future__ import annotations
 
 import json
@@ -33,12 +17,12 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 try:
-    from lib.config import CFG  # author tag is configurable (CORTEXAGENT_AUTHOR)
+    from lib.config import CFG
 except Exception:
     CFG = None
 
 
-# ── Daemon control socket (status snapshot, low latency) ─────────────────────
+
 
 def _daemon_status(timeout: float = 0.4) -> dict[str, Any]:
     sock = Path.home() / ".cortexagent" / "control.sock"
@@ -86,7 +70,7 @@ def _minify_snapshot() -> dict[str, Any]:
         return {}
 
 
-# ── Formatting helpers ──────────────────────────────────────────────────────
+
 
 def _ctx_str(daemon: dict[str, Any]) -> str:
     cw = daemon.get("context_window") or {}
@@ -152,7 +136,7 @@ def _minify_str(minify: dict[str, Any]) -> str:
 
 
 def render_line() -> str:
-    """Compose the live status line. Pulls from daemon, proxy, snapshot."""
+
     daemon = _daemon_status()
     proxy = _proxy_metrics()
     minify = _minify_snapshot()
@@ -195,22 +179,10 @@ def render_line() -> str:
     return " · ".join(str(p) for p in parts if p)
 
 
-# ── Background ticker ───────────────────────────────────────────────────────
+
 
 class StatusTicker:
-    """Background thread that overwrites a single status line every interval.
 
-    Usage:
-        t = StatusTicker(interval=1.0)
-        t.start()
-        ... do work ...
-        t.stop()
-
-    The ticker prints `\x1b[1A\x1b[2K<line>` so the previous line is cleared
-    before the new one is written — keeping the bar pinned to the bottom of
-    the terminal without scrolling. When stdout is not a TTY, the line is
-    printed fresh each tick instead.
-    """
 
     def __init__(self, interval: float = 1.0, stream=None) -> None:
         self.interval = interval
@@ -236,8 +208,8 @@ class StatusTicker:
 
     def _emit(self, line: str) -> None:
         if self._is_tty:
-            # Cursor-up + erase-line + newline + new content. ANSI sequences
-            # stripped to the simplest reliable subset.
+
+
             self.stream.write(f"\x1b[1A\x1b[2K{line}\n")
             self.stream.flush()
         else:
@@ -245,8 +217,8 @@ class StatusTicker:
             self.stream.flush()
 
     def _run(self) -> None:
-        # Prime: print a blank line first so the cursor-up sequence has a
-        # line above to clear on subsequent ticks.
+
+
         try:
             self.stream.write("\n")
             self.stream.flush()
@@ -263,14 +235,14 @@ class StatusTicker:
                 except Exception:
                     pass
                 last_emit = now
-            # Sleep in short slices so stop() is responsive.
+
             self._stop.wait(0.1)
 
 
-# ── Smoke-test entry point ──────────────────────────────────────────────────
+
 
 def _smoke() -> int:
-    """Run a single render to stdout and exit 0. Used by the smoke gate."""
+
     try:
         line = render_line()
         print(line or "CortexAgent")
@@ -283,7 +255,7 @@ def _smoke() -> int:
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         sys.exit(_smoke())
-    # Default: run the ticker for ~5s then exit (handy for manual testing).
+
     t = StatusTicker(interval=1.0)
     t.start()
     try:

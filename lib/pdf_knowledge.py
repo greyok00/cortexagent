@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""pdf_knowledge.py — Extract practical knowledge from technical PDFs into Coding_Practices DB.
 
-Uses pdftotext for extraction and the tiny LLM (LFM2.5-1.2B) to identify
-actionable practices. Saves only practical info — no intros, no fluff.
-
-Usage:
-  python3 pdf_knowledge.py /path/to/book.pdf                    # Process one PDF
-  python3 pdf_knowledge.py /path/to/dir/                        # Process all PDFs in dir
-  python3 pdf_knowledge.py --list                               # List already processed
-  python3 pdf_knowledge.py --source "Book Title" --status       # Check what's extracted
-"""
 import json, os, re, sqlite3, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 from datetime import datetime
@@ -17,16 +7,16 @@ from datetime import datetime
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-from lib import tiny_llm  # LFM2.5-1.2B on llama-server :8082 (no Ollama)
+from lib import tiny_llm
 
-# ── Config ───────────────────────────────────────────────────────────────────
+
 DB = Path.home() / ".config/cortexllm" / "cortexllm.db"
-CHUNK_SIZE = 1500  # chars per chunk (fits in 1.2B context)
+CHUNK_SIZE = 1500
 CHUNK_OVERLAP = 200
-MAX_CHUNKS_PER_PDF = 50  # safety limit
+MAX_CHUNKS_PER_PDF = 50
 PROCESSED_LOG = Path.home() / ".cortexagent" / "logs" / "pdf_processed.json"
 
-# ── DB ─────────────────────────────────────────────────────────────────────
+
 
 def get_db():
     conn = sqlite3.connect(str(DB))
@@ -47,7 +37,7 @@ def practice_exists(category: str, practice: str) -> bool:
 def insert_practice(category: str, practice: str, description: str,
                     source: str, priority: str = "medium", tags: list = None):
     if practice_exists(category, practice):
-        return False  # skip duplicate
+        return False
     conn = get_db()
     conn.execute(
         "INSERT INTO Coding_Practices (category, practice, description, source, priority, tags) "
@@ -59,10 +49,10 @@ def insert_practice(category: str, practice: str, description: str,
     return True
 
 
-# ── PDF Text Extraction ────────────────────────────────────────────────────
+
 
 def extract_text(pdf_path: str) -> str:
-    """Extract text from PDF using pdftotext."""
+
     result = subprocess.run(
         ["pdftotext", "-layout", pdf_path, "-"],
         capture_output=True, text=True, timeout=120
@@ -74,7 +64,7 @@ def extract_text(pdf_path: str) -> str:
 
 
 def chunk_text(text: str) -> list:
-    """Split text into overlapping chunks."""
+
     chunks = []
     start = 0
     while start < len(text) and len(chunks) < MAX_CHUNKS_PER_PDF:
@@ -82,7 +72,7 @@ def chunk_text(text: str) -> list:
         if end >= len(text):
             chunks.append(text[start:].strip())
             break
-        # Try to break at a sentence boundary
+
         break_at = text.rfind(". ", start + CHUNK_SIZE - 100, end + 100)
         if break_at > start:
             end = break_at + 1
@@ -91,10 +81,10 @@ def chunk_text(text: str) -> list:
     return chunks
 
 
-# ── LLM Extraction ─────────────────────────────────────────────────────────
+
 
 def query_llm(prompt: str, max_tokens: int = 256) -> str:
-    """Query the tiny LFM2.5-1.2B LLM on llama-server :8082 (no Ollama)."""
+
     try:
         result = tiny_llm.query(prompt, max_tokens=max_tokens, temperature=0.1, timeout=60)
         return result or ""
@@ -104,10 +94,7 @@ def query_llm(prompt: str, max_tokens: int = 256) -> str:
 
 
 def extract_practices_from_chunk(chunk: str, source: str) -> list:
-    """Use tiny LLM to extract practical practices from a text chunk.
 
-    Returns list of (category, practice, description, priority, tags).
-    """
     prompt = (
         "Extract practical cybersecurity or programming practices from this text. "
         "For each practice found, output EXACTLY one line in this format:\n"
@@ -147,7 +134,7 @@ def extract_practices_from_chunk(chunk: str, source: str) -> list:
     return practices
 
 
-# ── Processing ─────────────────────────────────────────────────────────────
+
 
 def get_processed() -> set:
     if PROCESSED_LOG.exists():
@@ -166,7 +153,7 @@ def mark_processed(pdf_path: str):
 
 
 def process_pdf(pdf_path: str, source_name: str = None):
-    """Process a single PDF and extract practices into the DB."""
+
     pdf_path = str(Path(pdf_path).resolve())
 
     if pdf_path in get_processed():
@@ -206,7 +193,7 @@ def process_pdf(pdf_path: str, source_name: str = None):
         else:
             print("(no practices found)")
 
-        time.sleep(0.5)  # rate limit
+        time.sleep(0.5)
 
     if total_inserted > 0:
         mark_processed(pdf_path)
@@ -216,7 +203,7 @@ def process_pdf(pdf_path: str, source_name: str = None):
 
 
 def list_processed():
-    """List all processed PDFs and their contributions."""
+
     processed = get_processed()
     if not processed:
         print("No PDFs processed yet.")
@@ -236,7 +223,7 @@ def list_processed():
 
 
 def show_source_status(source: str):
-    """Show what's been extracted from a specific source."""
+
     conn = get_db()
     rows = conn.execute(
         "SELECT category, practice, priority FROM Coding_Practices WHERE source LIKE ? ORDER BY category",
@@ -254,7 +241,7 @@ def show_source_status(source: str):
         print(f"  {pri} [{r['category']}] {r['practice']}")
 
 
-# ── CLI ────────────────────────────────────────────────────────────────────
+
 
 def main():
     if len(sys.argv) < 2:
@@ -271,7 +258,7 @@ def main():
         show_source_status(sys.argv[2])
         return 0
 
-    # Process a path (file or directory)
+
     path = Path(cmd)
     if not path.exists():
         print(f"Path not found: {path}")

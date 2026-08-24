@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""cortexagent_call — hook-friendly CLI into the CortexAgent memory system.
 
-Thin shim over the in-repo memory manager:
-  hot write (300-row FIFO cap) + checkpoint (session resume)
-  prune/dedup (2000 cap, 70/30) + event logging.
-
-Used by cortexagent hooks to save prompts/responses and pull recent context.
-
-Usage:
-    cortexagent_call.py recent --limit 12
-    cortexagent_call.py write --role user --content "..."
-    cortexagent_call.py write --role assistant --content "..."
-    cortexagent_call.py search "query" --limit 10
-"""
 import argparse
 import json
 import os
@@ -35,7 +22,7 @@ except Exception as e:
 
 
 def add_message(content: str, role: str = "user"):
-    """Save through the memory manager pipeline (cap + checkpoint + prune)."""
+
     if manager is None:
         return False
     try:
@@ -47,7 +34,7 @@ def add_message(content: str, role: str = "user"):
 
 
 def get_hot(limit: int = 12):
-    """Recent hot messages for this platform, oldest-first (for injection)."""
+
     if manager is None:
         return []
     try:
@@ -58,7 +45,7 @@ def get_hot(limit: int = 12):
 
 
 def get_resume():
-    """Last user request + context for quick session recovery."""
+
     if manager is None:
         return {}
     try:
@@ -68,7 +55,7 @@ def get_resume():
 
 
 def search(query: str, limit: int = 10):
-    """Read-only hot-memory search."""
+
     if db is None:
         return []
     try:
@@ -83,7 +70,7 @@ def search(query: str, limit: int = 10):
 
 
 def _fmt_recent(limit: int):
-    """Format resume + recent hot memory for SessionStart injection."""
+
     lines = []
     resume = get_resume()
     if resume and resume.get("command"):

@@ -1,29 +1,5 @@
 #!/usr/bin/env python3
-"""lib/event_feed.py — Unix-socket event feed for CortexAgent subsystems.
 
-Aggregates live state from the four Overseer subsystems and serves it over a
-Unix domain socket so the cortex-hud widget (and the security-console project)
-can render it without coupling to Overseer internals.
-
-Sources (all read-only, best-effort):
-  - compression  → ~/.cortexagent/minify_stats.json   (written by grammar_proxy)
-  - routing      → ~/.cortexagent/routing_state.json  (written by grammar_proxy)
-  - scheduling   → ~/.cortexagent/scheduler/          (event-sourced store)
-  - memory       → ~/.config/cortexllm/memory/        (hot/cold/warm tiers)
-  - live events  → ~/.cortexagent/state/webui_session.jsonl (SessionBridge)
-
-Protocol (NDJSON over the socket):
-  On connect, the server sends one snapshot line, then streams event lines:
-    {"type":"snapshot","data":{...}}
-    {"type":"event","event_type":"compression|routing|scheduled_task|memory|idle",
-     "message":"...","severity":"info|low|medium|high|critical",
-     "timestamp":"...","data":{...}}
-
-Usage:
-  python3 lib/event_feed.py            # run the daemon (foreground)
-  python3 lib/event_feed.py --once     # print one snapshot, exit
-  python3 lib/event_feed.py --smoke    # self-test
-"""
 from __future__ import annotations
 
 import json
@@ -35,7 +11,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -48,9 +24,9 @@ ROUTING_STATE = _STATE_DIR / "routing_state.json"
 BRIDGE_FILE = _STATE_DIR / "state" / "webui_session.jsonl"
 MEMORY_DIR = Path.home() / ".config" / "cortexllm" / "memory"
 
-RING_SIZE = 200          # recent events kept for late-joining clients
-POLL_INTERVAL = 1.0      # seconds between state polls
-BRIDGE_POLL = 0.5        # seconds between SessionBridge tails
+RING_SIZE = 200
+POLL_INTERVAL = 1.0
+BRIDGE_POLL = 0.5
 
 
 def _now_iso() -> str:
@@ -65,9 +41,9 @@ def _read_json(path: Path, default=None):
         return default
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  SNAPSHOT — current state of all four subsystems
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _compression_snapshot() -> dict:
     s = _read_json(MINIFY_STATS, {}) or {}
@@ -142,7 +118,7 @@ def _memory_snapshot() -> dict:
 
 
 def snapshot() -> dict:
-    """Full snapshot of all four subsystems."""
+
     return {
         "compression": _compression_snapshot(),
         "routing": _routing_snapshot(),
@@ -152,12 +128,12 @@ def snapshot() -> dict:
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  EVENT FEED — Unix-socket server + watcher
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 class EventFeed:
-    """Unix-socket server that serves a snapshot + streams live events."""
+
 
     def __init__(self, socket_path: Path = SOCKET_PATH):
         self.socket_path = socket_path
@@ -165,13 +141,13 @@ class EventFeed:
         self._clients: set[socket.socket] = set()
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
-        # Last-seen state for change detection.
+
         self._last_minify = None
         self._last_routing = None
         self._last_memory_write = None
         self._bridge_cursor = 0
 
-    # ── Ring buffer ────────────────────────────────────────────────────────
+
     def _push(self, ev: dict) -> None:
         with self._lock:
             self._ring.append(ev)
@@ -194,7 +170,7 @@ class EventFeed:
             "data": data or {},
         })
 
-    # ── Socket server ────────────────────────────────────────────────────────
+
     def _serve(self) -> None:
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -213,7 +189,7 @@ class EventFeed:
             except OSError:
                 break
             conn.settimeout(5)
-            # Send snapshot + recent ring, then stream.
+
             try:
                 conn.sendall((json.dumps({"type": "snapshot", "data": snapshot()}) + "\n").encode())
                 with self._lock:
@@ -228,9 +204,9 @@ class EventFeed:
         except Exception:
             pass
 
-    # ── Watchers ────────────────────────────────────────────────────────────
+
     def _watch_bridge(self) -> None:
-        """Tail the SessionBridge JSONL and forward overseer events."""
+
         while not self._shutdown.is_set():
             try:
                 if BRIDGE_FILE.exists():
@@ -246,7 +222,7 @@ class EventFeed:
                         self._bridge_cursor += 1
                         etype = ev.get("type", "message")
                         content = ev.get("content", "")
-                        # Map bridge events to feed event types.
+
                         if etype == "routing":
                             self._emit("routing", content, "info", {"route": ev.get("route")})
                         elif etype == "schedule_fired":
@@ -266,9 +242,9 @@ class EventFeed:
             self._shutdown.wait(BRIDGE_POLL)
 
     def _watch_state(self) -> None:
-        """Poll state files and emit events when they change."""
+
         while not self._shutdown.is_set():
-            # Compression
+
             m = _read_json(MINIFY_STATS, {}) or {}
             runs = m.get("runs", 0)
             if runs != self._last_minify:
@@ -278,7 +254,7 @@ class EventFeed:
                                f"tok ({m.get('ratio_pct',0)}% saved)",
                                "info", {"runs": runs, "ratio_pct": m.get("ratio_pct")})
                 self._last_minify = runs
-            # Routing
+
             r = _read_json(ROUTING_STATE, {}) or {}
             rkey = (r.get("route"), r.get("model"), r.get("router_mode"))
             if rkey != self._last_routing:
@@ -288,7 +264,7 @@ class EventFeed:
                                f"mode={r.get('router_mode')}",
                                "info", {"route": r.get("route"), "model": r.get("model")})
                 self._last_routing = rkey
-            # Memory
+
             mem = _memory_snapshot()
             mw = mem.get("last_write_ts")
             if mw != self._last_memory_write:
@@ -297,7 +273,7 @@ class EventFeed:
                 self._last_memory_write = mw
             self._shutdown.wait(POLL_INTERVAL)
 
-    # ── Run ─────────────────────────────────────────────────────────────────
+
     def run(self) -> None:
         threads = [
             threading.Thread(target=self._serve, daemon=True),
@@ -316,9 +292,9 @@ class EventFeed:
             t.join(timeout=2)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  CLI
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _smoke() -> int:
     fails = 0

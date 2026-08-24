@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""memory/db.py — SQLite-native storage for CortexAgent memory.
 
-Tables:
-  - Checkpoints: session restore points (profile, last_command, context)
-  - Memory_Hot: FIFO per-profile, capped at 300 rows
-  - Memory_Warm: per-profile context buffer (managed by manager)
-  - Memory_Cold: distilled facts (category, confidence, source, tags)
-  - Logs: event log for observability
-
-Connection model:
-  - One writer connection (singleton)
-  - Per-thread read-only connections
-  - WAL mode, busy_timeout 5000
-"""
 from __future__ import annotations
 
 import json
@@ -24,10 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# ── Config-driven DB path ──────────────────────────────────────────────────
-# Was hardcoded to ~/.config/cortexllm/cortexllm.db. Now resolved via
-# lib/config.py (env CORTEXAGENT_DB_PATH → conf → default). The default is the
-# SAME standard CortexLLM location, so existing installs are unchanged.
+
+
+
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -124,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_checkpoints_profile ON Checkpoints(profile, times
 
 
 class Database:
-    """Single-writer / multi-reader SQLite manager."""
+
 
     _instance: Optional["Database"] = None
     _lock = threading.Lock()
@@ -177,9 +164,9 @@ class Database:
             self._readers.conn.close()
             self._readers.conn = None
 
-    # ------------------------------------------------------------------
-    # Hot
-    # ------------------------------------------------------------------
+
+
+
     def add_to_hot(self, profile: str, role: str, content: str,
                    tokens_in: int = 0, tokens_out: int = 0,
                    metadata: Optional[dict] = None,
@@ -214,9 +201,9 @@ class Database:
         ).fetchone()
         return row["content"] if row else None
 
-    # ------------------------------------------------------------------
-    # Warm
-    # ------------------------------------------------------------------
+
+
+
     def add_to_warm(self, profile: str, role: str, content: str,
                     tokens_in: int = 0, tokens_out: int = 0,
                     metadata: Optional[dict] = None,
@@ -243,9 +230,9 @@ class Database:
         w.execute("DELETE FROM Memory_Warm WHERE profile = ?", (profile,))
         w.commit()
 
-    # ------------------------------------------------------------------
-    # Cold
-    # ------------------------------------------------------------------
+
+
+
     def add_to_cold(self, profile: str, category: str, fact: str,
                     source: str = "unknown", confidence: float = 0.5,
                     tags: Optional[List[str]] = None,
@@ -281,9 +268,9 @@ class Database:
         ).fetchall()
         return [r["category"] for r in rows]
 
-    # ------------------------------------------------------------------
-    # Checkpoints
-    # ------------------------------------------------------------------
+
+
+
     def save_checkpoint(self, profile: str, last_command: str,
                         context: Optional[dict] = None,
                         session_id: Optional[str] = None) -> int:
@@ -303,9 +290,9 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
-    # ------------------------------------------------------------------
-    # Logs
-    # ------------------------------------------------------------------
+
+
+
     def log_event(self, profile: str, event_type: str,
                   event_data: Optional[dict] = None,
                   task_id: Optional[str] = None,

@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""google_search.py — Google Custom Search (CSE) adapter.
 
-Public JSON API, opt-in via env:
-  GOOGLE_API_KEY   — required
-  GOOGLE_CSE_ID    — required (Custom Search Engine ID, "cx" param)
-
-Endpoint:
-  GET https://www.googleapis.com/customsearch/v1?q=...&key=...&cx=...&num=...
-
-Free tier: 100 queries/day. Returns up to 10 results per call.
-
-Disabled when either key is missing — `enabled=False` keeps the adapter
-out of `list_adapters(only_enabled=True)` and `search_all()` so the
-tool surface shows an actionable "not configured" rather than a fake stub.
-"""
 from __future__ import annotations
 
 import json
@@ -28,7 +14,7 @@ from .registry import register
 
 ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 TIMEOUT = 15.0
-MAX_NUM = 10  # CSE hard cap
+MAX_NUM = 10
 
 
 class GoogleCustomSearchAdapter(BaseAdapter):
@@ -40,7 +26,7 @@ class GoogleCustomSearchAdapter(BaseAdapter):
         self.cse_id = os.environ.get("GOOGLE_CSE_ID", "").strip()
         self.enabled = bool(self.api_key and self.cse_id)
 
-    # ── contract ───────────────────────────────────────────────────────────
+
     def authenticate(self) -> bool:
         return self.enabled
 
@@ -77,7 +63,7 @@ class GoogleCustomSearchAdapter(BaseAdapter):
         if not self.enabled:
             return {"status": "disabled",
                     "detail": "GOOGLE_API_KEY / GOOGLE_CSE_ID not set"}
-        # Cheap live probe — 1-result query against a benign term.
+
         try:
             params = urllib.parse.urlencode({
                 "q": "test",
@@ -99,5 +85,5 @@ class GoogleCustomSearchAdapter(BaseAdapter):
             return {"status": "error", "detail": str(e)[:200]}
 
 
-# ── Self-register on import ──────────────────────────────────────────────────
+
 register(GoogleCustomSearchAdapter())

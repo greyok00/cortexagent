@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""bin/cortexagent-rag-ingest — bulk ingest security research notes into cortexllm RAG.
 
-Reads each note in ~/.claude/projects/-home-grey/memory/security-research-*.md,
-chunks it, and ingests it into the cortexllm domain_db via lib.domain_ingest.
-Re-running is safe — duplicates dedupe by content hash.
-
-Domains are chosen by topic:
-  siem-soar / lsm-nft-dns / linux-hardening / cve-mitre → 'dfir'
-  (DFIR covers defensive forensics, vuln mgmt, hardening — natural fit)
-
-Idempotent. Run any time new research notes are added.
-"""
 from __future__ import annotations
 
 import json
@@ -24,12 +13,15 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from lib import domain_ingest  # noqa: E402
 
-MEMORY_DIR = Path.home() / ".claude" / "projects" / "-home-grey" / "memory"
+MEMORY_DIR = Path(os.environ.get(
+    "CORTEXAGENT_RAG_MEMORY_DIR",
+    str(Path.home() / ".claude" / "projects" / "memory"),
+))
 PATTERN = re.compile(r"^security-research-.*\.md$")
 
 DOMAIN = "dfir"
 
-# Skip these — not bulk-ingest material
+
 SKIP_KEYWORDS = ("-integration.md", "-shipped.md", "-complete.md",
                  "-fix.md", "-autostart-service.md", "-research-first")
 
@@ -51,9 +43,9 @@ def main() -> int:
     print(f"📚 Ingesting {len(notes)} research notes → domain={DOMAIN}")
     for path in notes:
         text = path.read_text()
-        # Drop YAML frontmatter
+
         body = re.sub(r"^---\n.*?\n---\n", "", text, count=1, flags=re.S)
-        # Use filename as source so re-ingest dedupes
+
         source = f"security-research/{path.name}"
         r = domain_ingest.ingest(DOMAIN, source, body)
         if not r.get("ok"):

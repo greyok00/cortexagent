@@ -1,12 +1,4 @@
-"""
-memory_thin.py — Single-session memory wrapper for CortexAgent.
 
-No tiers. No caps. Single linear history + cold facts.
-
-The hot layer is the active conversation buffer (NDJSON, no limit).
-The cold layer stores persistent knowledge facts (NDJSON, no limit).
-Warm was for cross-session merging — removed for single-session use.
-"""
 import json
 import os
 import socket
@@ -26,10 +18,10 @@ except ImportError:
         finally:
             os.close(fd)
 
-# Paths
+
 _HOME = Path.home()
 CORTEXLLM_DIR = _HOME / ".config/cortexllm"
-# Actual hot/cold paths used by the daemon (single-session, no per-profile)
+
 HOT_FILE = CORTEXLLM_DIR / "memory" / "hot" / "cortexagent.jsonl"
 COLD_FILE = CORTEXLLM_DIR / "memory" / "cold" / "cortexagent.jsonl"
 DAEMON_SOCKET = _HOME / ".cortexllm" / "memory.sock"
@@ -41,13 +33,7 @@ def _now_ts() -> str:
 
 
 def _try_daemon(message: dict) -> bool:
-    """Try writing via daemon socket.
 
-    Tags the payload with platform="cortexagent" so the daemon lands it in the
-    same hot file (memory/hot/cortexagent.jsonl) that read/read_all/search read.
-    Previously only {"content": ...} was sent, so the daemon defaulted to
-    platform "claude" and wrote to claude.jsonl — appends never round-tripped.
-    """
     if not DAEMON_SOCKET.exists():
         return False
     try:
@@ -69,21 +55,18 @@ def _try_daemon(message: dict) -> bool:
 
 def append(content: str, role: str = "user", *, session: str = "cortexagent",
            session_status: str = None, **meta) -> Path:
-    """Append to single-session hot memory. No cap, no tier.
 
-    Daemon first, direct fallback. Includes session awareness if session_status set.
-    """
     message = {"role": role, "content": content, "timestamp": _now_ts(), **meta}
     line = json.dumps(message, ensure_ascii=False) + "\n"
 
-    # Optional: broadcast session status for inter-session awareness
+
     if session_status:
         try:
             from lib.session_coordinator import get_coordinator
             coord = get_coordinator(session)
             coord.broadcast(status=session_status, task=content[:80])
         except Exception:
-            pass  # Non-fatal, session awareness is optional
+            pass
 
     if _try_daemon(message):
         return HOT_FILE
@@ -93,7 +76,7 @@ def append(content: str, role: str = "user", *, session: str = "cortexagent",
 
 
 def read_last(n: int = 5) -> List[Dict]:
-    """Read last N entries from hot memory."""
+
     if not HOT_FILE.exists():
         return []
     try:
@@ -108,7 +91,7 @@ def read_last(n: int = 5) -> List[Dict]:
 
 
 def read_all() -> List[Dict]:
-    """Read all entries from hot memory (no cap)."""
+
     if not HOT_FILE.exists():
         return []
     try:
@@ -118,7 +101,7 @@ def read_all() -> List[Dict]:
 
 
 def search(query: str, limit: int = 10) -> List[Dict]:
-    """Linear keyword search across hot memory."""
+
     if not query or not HOT_FILE.exists():
         return []
     q = query.lower()
@@ -139,7 +122,7 @@ def search(query: str, limit: int = 10) -> List[Dict]:
 
 
 def write_cold(content: str, **meta) -> Path:
-    """Append a cold knowledge fact. No cap."""
+
     entry = {"timestamp": _now_ts(), "content": content, **meta}
     line = json.dumps(entry, ensure_ascii=False) + "\n"
     COLD_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +131,7 @@ def write_cold(content: str, **meta) -> Path:
 
 
 def read_cold() -> List[Dict]:
-    """Read all cold facts."""
+
     if not COLD_FILE.exists():
         return []
     try:
@@ -158,13 +141,13 @@ def read_cold() -> List[Dict]:
 
 
 def cold_list() -> List[str]:
-    """List cold entry keys/timestamps."""
+
     return [f"{e['timestamp']}: {e.get('content', '')[:40]}" for e in read_cold()]
 
 
-# ─── Session Awareness ────────────────────────────────────────────────────
+
 def check_sessions() -> dict:
-    """Check what other sessions are doing. Returns session status dict."""
+
     try:
         from lib.session_coordinator import get_coordinator
         coord = get_coordinator("cortexagent")
@@ -174,7 +157,7 @@ def check_sessions() -> dict:
 
 
 def log_awareness(message: str, level: str = "info") -> dict:
-    """Log inter-session awareness to hot memory."""
+
     try:
         from lib.session_coordinator import get_coordinator
         coord = get_coordinator("cortexagent")
@@ -183,7 +166,7 @@ def log_awareness(message: str, level: str = "info") -> dict:
         return {"error": str(e)}
 
 
-# ─── CLI ──────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="Single-session memory wrapper")
@@ -206,9 +189,9 @@ if __name__ == "__main__":
 
     sub.add_parser("sessions")
 
-    # All subparsers are registered BEFORE parse_args — a single parse then
-    # dispatch (previously parse_args ran mid-registration, so every subcommand
-    # but append errored).
+
+
+
     args = ap.parse_args()
     if args.cmd == "append":
         print(append(args.content, role=args.role, session_status=args.session_status))

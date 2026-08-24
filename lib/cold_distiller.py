@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""cold_distiller — hot → cold memory distillation.
 
-Reads hot memory (the active conversation buffer), extracts high-signal
-facts via regex patterns, deduplicates them, and writes distilled facts to
-the cold memory table. Warm was removed in v0.4.2 — hot is the source.
-
-CLI:
-  python3 cold_distiller.py run [--profile NAME] [--min-confidence 0.5]
-  python3 cold_distiller.py daemon --interval 1800
-  python3 cold_distiller.py smoke
-"""
 from __future__ import annotations
 
 import json
@@ -30,7 +20,7 @@ from memory.manager import manager
 SEEN_FILE = Path.home() / ".cortexagent" / "state" / "cold_distiller_seen.json"
 
 
-# ── Patterns ──────────────────────────────────────────────────────────────
+
 KNOWLEDGE_PATTERNS = {
     "configuration": [
         r"(?:api|endpoint|base)\s*[=:]\s*[^\"'\s]+",
@@ -77,7 +67,7 @@ LOW_VALUE_PATTERNS = [
 ]
 
 
-# ── Seen-facts dedup store ────────────────────────────────────────────────
+
 def _load_seen_facts() -> Set[str]:
     try:
         if SEEN_FILE.exists():
@@ -96,22 +86,13 @@ def _save_seen_facts(seen: Set[str]) -> None:
         pass
 
 
-# ── Hot memory reader ────────────────────────────────────────────────────
+
 def _read_hot_entries(profile: Optional[str] = None) -> List[Dict]:
-    """Read hot memory. Prefers NDJSON (file-of-truth per the 2026-08-11
-    no-caps rule) and falls back to SQLite if NDJSON is missing.
 
-    NDJSON lives at ~/.config/cortexllm/memory/hot/<platform>.jsonl, written
-    atomically by lib/memory_thin.py on every prompt. Each line is a JSON
-    object with at least {role, content, timestamp}.
-
-    SQLite is the legacy read path — kept as a fallback for installs where
-    the in-tree manager wrote rows directly without mirroring to NDJSON.
-    """
     ndjson_entries: List[Dict] = []
     try:
-        from lib.memory_thin import HOT_FILE  # local import: not always importable
-        hot_dir = HOT_FILE.parent  # ~/.config/cortexllm/memory/hot
+        from lib.memory_thin import HOT_FILE
+        hot_dir = HOT_FILE.parent
         if profile:
             files = [hot_dir / f"{profile}.jsonl"]
         else:
@@ -146,7 +127,7 @@ def _read_hot_entries(profile: Optional[str] = None) -> List[Dict]:
     if ndjson_entries:
         return ndjson_entries
 
-    # Fallback: legacy SQLite read (Memory_Hot)
+
     try:
         if profile:
             rows = manager.get_hot_messages(platform=profile, limit=10000)
@@ -173,16 +154,9 @@ def _read_hot_entries(profile: Optional[str] = None) -> List[Dict]:
     return entries
 
 
-# ── Cold fact writer ──────────────────────────────────────────────────────
-def _write_cold_fact(category: str, fact: Dict, profile: str = "shared") -> bool:
-    """Write a distilled fact to the SQLite cold table. Returns True if written.
 
-    Profile normalization: the MCP server reads cold facts with the key
-    `platform:<platform>` (see memory/mcp_server.py:PROFILE). The distiller
-    receives `profile` as either `platform:<x>`, `<x>`, or `shared`; we
-    normalize to `platform:<platform>` so the MCP server can find what the
-    distiller wrote.
-    """
+def _write_cold_fact(category: str, fact: Dict, profile: str = "shared") -> bool:
+
     if profile and not profile.startswith("platform:") and profile != "shared":
         normalized = f"platform:{profile}"
     else:
@@ -202,7 +176,7 @@ def _write_cold_fact(category: str, fact: Dict, profile: str = "shared") -> bool
         return False
 
 
-# ── Distiller ─────────────────────────────────────────────────────────────
+
 class ColdDistiller:
     def __init__(self, min_confidence: float = 0.5):
         self.min_confidence = min_confidence
@@ -316,7 +290,7 @@ class ColdDistiller:
         return False
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+
 def _print_stats(stats: Dict) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] "
           f"Scanned: {stats['scanned']} | "

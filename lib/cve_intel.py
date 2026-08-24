@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""lib/cve_intel.py — CVE / KEV / EPSS / GHSA / OSV threat-intel ingestion.
 
-Polls public vulnerability feeds (NVD CVE 2.0, CISA KEV, FIRST EPSS, GitHub
-Security Advisories, OSV.dev) on a daily schedule and enriches each CVE with
-MITRE ATT&CK Enterprise technique mappings (CWE → technique ID lookup).
-
-The module is stdlib-only (urllib + json + sqlite). Writes a single NDJSON
-file at ``~/security-console/cve/intel.jsonl`` so other tools
-(``lib/sec_controls.py``, SIEM ingest) can consume the same
-data without re-querying upstream feeds.
-
-CLI surface:
-
-    python3 lib/cve_intel.py --smoke        # round-trip a fake CVE through every layer
-    python3 lib/cve_intel.py poll           # full poll, write intel
-    python3 lib/cve_intel.py poll --since 7d
-    python3 lib/cve_intel.py lookup CVE-2024-3094
-    python3 lib/cve_intel.py mitre T1190    # reverse lookup
-    python3 lib/cve_intel.py coverage       # MITRE M-code coverage of our hardening
-    python3 lib/cve_intel.py recent --since 7d --min-cvss 7.0
-"""
 from __future__ import annotations
 
 import argparse
@@ -37,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-# ── Paths ─────────────────────────────────────────────────────────────────
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _MITRE_MAP_FILE = _REPO_ROOT / "data" / "mitre_attack_mapping.json"
 _INTEL_DIR = Path.home() / "security-console" / "cve"
@@ -47,22 +27,16 @@ _FIREWALL_COMMANDS = Path.home() / "security-console" / "overseer" / "firewall_c
 
 
 def _ref_url(ref: Any) -> Optional[str]:
-    """Normalize a GitHub Security Advisory reference to a URL string.
 
-    GHSA entries can have references as either {"url": "..."} dicts OR plain
-    strings (depending on which GHSA endpoint emitted the entry). Earlier
-    code called .get('url') unconditionally and crashed when a string came
-    through. Both shapes must be accepted.
-    """
     if isinstance(ref, dict):
         return ref.get("url")
     if isinstance(ref, str):
         return ref.strip() or None
     return None
 
-# ── Feed endpoints ────────────────────────────────────────────────────────
+
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-NVD_KEY = os.environ.get("NVD_API_KEY", "").strip()  # opt-in
+NVD_KEY = os.environ.get("NVD_API_KEY", "").strip()
 
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
@@ -75,13 +49,13 @@ UA = "cortexagent-cve-intel/1.0 (+local)"
 _USER_AGENT = UA
 _SSL_CTX = ssl.create_default_context()
 
-# ── Mapping data (loaded lazily) ──────────────────────────────────────────
+
 _MITRE_MAP: dict[str, list[str]] | None = None
 _KEYWORD_MAP: dict[str, list[str]] | None = None
 
 
 def _load_mitre_map() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
-    """Load CWE→technique and keyword-fallback maps from data/mitre_attack_mapping.json."""
+
     global _MITRE_MAP, _KEYWORD_MAP
     if _MITRE_MAP is None or _KEYWORD_MAP is None:
         if not _MITRE_MAP_FILE.exists():
@@ -93,12 +67,12 @@ def _load_mitre_map() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     return _MITRE_MAP, _KEYWORD_MAP
 
 
-# ── HTTP helper (stdlib only, connection-pooled via http.client) ──────────
+
 def _http_get(url: str, params: dict | None = None, headers: dict | None = None,
               timeout: float = 30.0) -> bytes:
-    """GET a URL with optional query params, return raw bytes. Raises on error."""
+
     if params:
-        # url-encode safely
+
         qs = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}{qs}"
@@ -115,7 +89,7 @@ def _http_get(url: str, params: dict | None = None, headers: dict | None = None,
 
 def _http_get_json(url: str, params: dict | None = None,
                    headers: dict | None = None, timeout: float = 30.0) -> Any:
-    """GET a URL and decode JSON. Returns None on non-JSON response."""
+
     raw = _http_get(url, params=params, headers=headers, timeout=timeout)
     try:
         return json.loads(raw.decode("utf-8"))
@@ -123,7 +97,7 @@ def _http_get_json(url: str, params: dict | None = None,
         return None
 
 
-# ── Caching (ETag / If-Modified-Since) ─────────────────────────────────────
+
 def _cache_path(name: str) -> Path:
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return _CACHE_DIR / f"{name}.json"
@@ -146,9 +120,9 @@ def _write_cache(name: str, data: Any) -> None:
     _cache_path(name).write_text(json.dumps(data, default=str))
 
 
-# ── Feeds ─────────────────────────────────────────────────────────────────
+
 def poll_kev() -> set[str]:
-    """Return the set of CVE IDs currently in CISA KEV."""
+
     cached = _read_cache("kev", max_age_s=6 * 3600)
     if cached is not None:
         return set(cached)
@@ -159,11 +133,7 @@ def poll_kev() -> set[str]:
 
 
 def poll_nvd(since: str | None = None, limit: int = 200) -> list[dict]:
-    """Poll NVD CVE 2.0 for entries modified since the given ISO date.
 
-    ``since`` is ISO 8601 like ``"2026-08-11T00:00:00.000"``. ``None`` means
-    last 24h. ``limit`` is the per-page record limit (max 2000).
-    """
     if since is None:
         since = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S.000")
     params: dict[str, str | int] = {
@@ -174,7 +144,7 @@ def poll_nvd(since: str | None = None, limit: int = 200) -> list[dict]:
     try:
         data = _http_get_json(NVD_API, params=params, timeout=60.0) or {}
     except urllib.error.URLError as exc:
-        # Network failure — fall back to cache
+
         cached = _read_cache("nvd_recent", max_age_s=24 * 3600)
         if cached is not None:
             return cached
@@ -184,12 +154,12 @@ def poll_nvd(since: str | None = None, limit: int = 200) -> list[dict]:
         entry = _nvd_to_entry(v)
         if entry:
             entries.append(entry)
-    _write_cache("nvd_recent", entries[-200:])  # ring buffer
+    _write_cache("nvd_recent", entries[-200:])
     return entries
 
 
 def _nvd_to_entry(v: dict) -> dict | None:
-    """Normalize an NVD CVE 2.0 record into our CveEntry shape."""
+
     c = v.get("cve") or {}
     cid = c.get("id")
     if not cid:
@@ -247,11 +217,11 @@ def _nvd_to_entry(v: dict) -> dict | None:
 
 
 def poll_epss(cve_ids: Iterable[str]) -> dict[str, tuple[float, float]]:
-    """Return ``{cve_id: (score, percentile)}`` for the given IDs."""
+
     ids = list(cve_ids)
     if not ids:
         return {}
-    # EPSS accepts up to ~100 IDs per request via comma-separated
+
     out: dict[str, tuple[float, float]] = {}
     batch_size = 100
     for i in range(0, len(ids), batch_size):
@@ -271,7 +241,7 @@ def poll_epss(cve_ids: Iterable[str]) -> dict[str, tuple[float, float]]:
 
 def poll_ghsa(ecosystems: list[str] | None = None,
               since: str | None = None) -> list[dict]:
-    """Poll GitHub Security Advisories for the given ecosystems."""
+
     if ecosystems is None:
         ecosystems = ["npm", "pip", "go", "rust", "composer", "maven"]
     if since is None:
@@ -318,11 +288,11 @@ def _ghsa_to_entry(a: dict) -> dict | None:
 
 
 def poll_osv(packages: list[tuple[str, str]] | None = None) -> list[dict]:
-    """Poll OSV.dev for the given (ecosystem, name) packages."""
+
     if packages is None:
         packages = pin_dependencies()
     out: list[dict] = []
-    for eco, name in packages[:50]:  # cap to keep request count bounded
+    for eco, name in packages[:50]:
         body = json.dumps({"package": {"name": name, "ecosystem": eco}}).encode()
         req = urllib.request.Request(OSV_QUERY, data=body, headers={
             "User-Agent": _USER_AGENT,
@@ -337,7 +307,7 @@ def poll_osv(packages: list[tuple[str, str]] | None = None) -> list[dict]:
         for v in data.get("vulns", []) or []:
             cid = v.get("id") or ""
             if cid.startswith("GHSA-"):
-                # Map to CVE if aliases contain one
+
                 for alias in v.get("aliases", []):
                     if alias.startswith("CVE-"):
                         cid = alias
@@ -370,12 +340,7 @@ URLHAUS_DUMP = "https://urlhaus.abuse.ch/downloads/csv_recent/"
 
 
 def poll_urlhaus() -> set[str]:
-    """Return the set of recent malicious URLs from URLHaus (best-effort).
 
-    Borrowed from ThreatDeck's IOC enrichment idea; folded into our own
-    intel pipeline rather than run as a separate tool. Used to tag entries
-    whose refs contain a known-bad URL.
-    """
     try:
         data = _http_get(URLHAUS_DUMP, timeout=30.0).decode("utf-8", "replace")
     except Exception:
@@ -391,16 +356,16 @@ def poll_urlhaus() -> set[str]:
 
 
 def pin_dependencies() -> list[tuple[str, str]]:
-    """Discover pinned (ecosystem, package-name) tuples from project lockfiles."""
+
     pkgs: list[tuple[str, str]] = []
-    # pip freeze
+
     pip_freeze = _REPO_ROOT / "pip-freeze.txt"
     if pip_freeze.exists():
         for line in pip_freeze.read_text().splitlines():
             line = line.split("#", 1)[0].strip()
             if "==" in line:
                 pkgs.append(("PyPI", line.split("==", 1)[0]))
-    # package.json
+
     for pkg_json in _REPO_ROOT.rglob("package.json"):
         try:
             data = json.loads(pkg_json.read_text())
@@ -408,7 +373,7 @@ def pin_dependencies() -> list[tuple[str, str]]:
                 pkgs.append(("npm", name))
         except (OSError, json.JSONDecodeError):
             continue
-    # go.mod
+
     go_mod = _REPO_ROOT / "go.mod"
     if go_mod.exists():
         for line in go_mod.read_text().splitlines():
@@ -417,7 +382,7 @@ def pin_dependencies() -> list[tuple[str, str]]:
                 parts = line.split()
                 if len(parts) >= 2 and "/" in parts[1]:
                     pkgs.append(("Go", parts[1].split("/")[-1]))
-    # Cargo.lock (look for name = "...")
+
     cargo_lock = _REPO_ROOT / "Cargo.lock"
     if cargo_lock.exists():
         for line in cargo_lock.read_text().splitlines():
@@ -427,9 +392,9 @@ def pin_dependencies() -> list[tuple[str, str]]:
     return pkgs
 
 
-# ── MITRE enrichment ──────────────────────────────────────────────────────
+
 def enrich_with_mitre(entry: dict) -> dict:
-    """Mutate entry in-place to add ``mitre_techniques`` from CWE + summary."""
+
     techniques: list[str] = []
     cwe_map, kw_map = _load_mitre_map()
     for cwe in entry.get("cwe_ids", []):
@@ -440,12 +405,12 @@ def enrich_with_mitre(entry: dict) -> dict:
         for kw, techs in kw_map.items():
             if kw in text:
                 techniques.extend(techs)
-                break  # first match wins for keyword fallback
+                break
     entry["mitre_techniques"] = sorted(set(techniques))
     return entry
 
 
-# ── Diff + write ──────────────────────────────────────────────────────────
+
 def _load_seen_ids() -> set[str]:
     if not _INTEL_FILE.exists():
         return set()
@@ -463,13 +428,13 @@ def _load_seen_ids() -> set[str]:
 
 
 def diff_against_last(entries: list[dict]) -> list[dict]:
-    """Return only entries not yet present in the intel file."""
+
     seen = _load_seen_ids()
     return [e for e in entries if e["cve_id"] not in seen]
 
 
 def write_intel(entries: list[dict], append: bool = True) -> int:
-    """Append entries to intel.jsonl (one JSON object per line). Returns count written."""
+
     if not entries:
         return 0
     _INTEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -482,10 +447,10 @@ def write_intel(entries: list[dict], append: bool = True) -> int:
     return n
 
 
-# ── Query helpers (consumed by webui / converted_mcp_tools) ────────────────
+
 def recent(since: str = "7d", min_cvss: float = 0.0,
            kev_only: bool = False, limit: int = 100) -> list[dict]:
-    """Return entries newer than the given window (e.g. ``"7d"``, ``"24h"``)."""
+
     if not _INTEL_FILE.exists():
         return []
     window_s = _parse_window(since)
@@ -511,16 +476,16 @@ def recent(since: str = "7d", min_cvss: float = 0.0,
                     break
     except OSError:
         return []
-    # Sort newest first
+
     out.sort(key=lambda e: e.get("published") or e.get("last_modified") or "", reverse=True)
     return out
 
 
 def _parse_window(s: str) -> int:
-    """Parse ``"7d"``, ``"24h"``, ``"30m"`` → seconds."""
+
     m = re.match(r"^(\d+)([smhd])$", s.strip().lower())
     if not m:
-        return 7 * 86400  # default 7d
+        return 7 * 86400
     n, unit = int(m.group(1)), m.group(2)
     return n * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
 
@@ -535,7 +500,7 @@ def _iso_to_ts(s: str) -> float:
 
 
 def lookup(cve_id: str) -> dict | None:
-    """Find a single entry by CVE ID in the local intel cache, falling back to NVD."""
+
     if _INTEL_FILE.exists():
         try:
             with _INTEL_FILE.open(encoding="utf-8") as f:
@@ -548,14 +513,14 @@ def lookup(cve_id: str) -> dict | None:
                         return e
         except OSError:
             pass
-    # Fallback: live NVD fetch (single CVE)
+
     try:
         data = _http_get_json(NVD_API, params={"cveId": cve_id}, timeout=30.0) or {}
         for v in data.get("vulnerabilities", []):
             entry = _nvd_to_entry(v)
             if entry:
                 enrich_with_mitre(entry)
-                # Also tag KEV
+
                 kev = poll_kev()
                 if entry["cve_id"] in kev:
                     entry["kev"] = True
@@ -566,16 +531,16 @@ def lookup(cve_id: str) -> dict | None:
 
 
 def mitre_for_cve(cve_id: str) -> list[str]:
-    """Return ATT&CK technique IDs mapped to the given CVE."""
+
     entry = lookup(cve_id)
     if not entry:
         return []
     return entry.get("mitre_techniques", [])
 
 
-# ── Mitigation coverage (rough) ───────────────────────────────────────────
-# Static map of MITRE mitigation (M-code) → our local defense.
-# This is a starting point; full mapping requires a real STIX crosswalk.
+
+
+
 _LOCAL_MITIGATIONS: dict[str, str] = {
     "M1041": "Encrypt Sensitive Information (nftables + unbound DoT)",
     "M1056": "Pre-compromise (Brave Shields, CSP strict-dynamic)",
@@ -608,22 +573,22 @@ _LOCAL_MITIGATIONS: dict[str, str] = {
 
 
 def mitre_coverage() -> dict:
-    """Return coverage of MITRE mitigations by our local defenses."""
+
     covered = list(_LOCAL_MITIGATIONS.keys())
     return {
         "covered": sorted(covered),
         "uncovered": [],
-        "pct": round(100.0 * len(covered) / 42.0, 1),  # 42 = approx v15 mitigation count
+        "pct": round(100.0 * len(covered) / 42.0, 1),
         "mapping": _LOCAL_MITIGATIONS,
     }
 
 
-# ── Poll orchestration ────────────────────────────────────────────────────
+
 def poll_cve_feeds(since: str | None = "7d", skip_osv: bool = True) -> list[dict]:
-    """Top-level: fetch all feeds, enrich, diff against last, return new entries."""
+
     since_iso: str | None = None
     if since:
-        # Convert "7d" → ISO cutoff
+
         days = _parse_window(since) // 86400
         since_iso = (datetime.now(timezone.utc) - timedelta(days=max(days, 1))).strftime("%Y-%m-%dT%H:%M:%S.000")
     nvd_entries = poll_nvd(since=since_iso) if since_iso else poll_nvd()
@@ -631,7 +596,7 @@ def poll_cve_feeds(since: str | None = "7d", skip_osv: bool = True) -> list[dict
     epss_map = poll_epss(e["cve_id"] for e in nvd_entries)
     ghsa_entries = poll_ghsa(since=since_iso)
     entries = nvd_entries + ghsa_entries
-    # Dedupe by cve_id
+
     by_id: dict[str, dict] = {}
     for e in entries:
         by_id.setdefault(e["cve_id"], e).setdefault("sources", []).extend(
@@ -644,7 +609,7 @@ def poll_cve_feeds(since: str | None = "7d", skip_osv: bool = True) -> list[dict
             entry["epss_score"], entry["epss_percentile"] = epss_map[cid]
         enrich_with_mitre(entry)
     if not skip_osv:
-        # OSV queries are slow — only run for our pinned deps
+
         for entry in poll_osv():
             cid = entry["cve_id"]
             if cid in by_id:
@@ -658,14 +623,14 @@ def poll_cve_feeds(since: str | None = "7d", skip_osv: bool = True) -> list[dict
     return new_entries
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────
+
 def _is_smoke_argv(argv: list[str]) -> bool:
-    """Detect --smoke flag before argparse consumes subcommands."""
+
     return any(a == "--smoke" for a in argv[1:])
 
 
 def _smoke() -> int:
-    """Run a self-test: feed a fake CVE through every layer."""
+
     fake = {
         "cve_id": "CVE-2024-3094",
         "published": "2024-03-29T17:15:00.000",
@@ -724,7 +689,7 @@ def main() -> int:
         return _smoke()
     if args.cmd == "poll":
         new = poll_cve_feeds(since=args.since, skip_osv=not args.include_osv)
-        # URLHaus IOC enrichment: tag entries whose refs hit a recent bad URL.
+
         try:
             bad = poll_urlhaus()
         except Exception:
@@ -747,7 +712,7 @@ def main() -> int:
         print(json.dumps(entry, indent=2))
         return 0
     if args.cmd == "mitre":
-        # Reverse lookup: scan intel.jsonl for entries mapped to this technique
+
         if not _INTEL_FILE.exists():
             print(f"[mitre] no intel file at {_INTEL_FILE}")
             return 1

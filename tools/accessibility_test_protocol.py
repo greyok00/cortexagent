@@ -1,48 +1,5 @@
 #!/usr/bin/env python3
-"""
-CortexAgent accessibility test protocol — runnable conductor.
 
-Hand this to a test conductor (or run it yourself alongside an assistive-tech
-user). It walks a REAL screen-reader / keyboard-only / low-vision user through
-the core CortexAgent task on a chosen surface, times each step, and collects
-pass/fail + notes into a report.
-
-It does NOT replace scanners (axe / Lighthouse / WAVE) — it fills the gap scanners
-miss. Per docs/cross_platform_ux.md §2.5, scanners catch only ~30-50% of real AT
-failures and almost none of the interaction problems (focus flow, announcement
-ordering, gesture conflicts). Use BOTH.
-
-Baseline (must hold):
-  - run on every surface, with 3-5 distinct real AT/impaired profiles
-  - include at least one NOVICE AT user (fresh to the tool)
-  - record time-on-task vs a sighted baseline; a large gap = accessibility tax
-  - re-run when a NEW panel ships (each panel gets its own pass)
-
-The script supports the sighted-baseline comparison: run once with --baseline
-(a sighted/mouse user), then run AT passes; each AT step is compared to the
-baseline and flagged as an "accessibility tax" when it exceeds --tax-ratio.
-
-Usage:
-  python3 tools/accessibility_test_protocol.py --list
-  python3 tools/accessibility_test_protocol.py --surface web --baseline --tester sighted
-  python3 tools/accessibility_test_protocol.py --surface web --at NVDA --tester A
-  python3 tools/accessibility_test_protocol.py --surface desktop --at Narrator --tester B --novice
-  python3 tools/accessibility_test_protocol.py --surface tui --at Orca --tester C --timeout 120
-  python3 tools/accessibility_test_protocol.py --surface mobile --at VoiceOver --tester D
-
-Options:
-  --surface tui|desktop|web|mobile   surface under test (required)
-  --at NAME                          assistive tech (screen reader / magnifier / keyboard / ...)
-  --tester NAME                      tester/user id (e.g. A, B, "sarah")
-  --novice                           flag: user is new to assistive tech
-  --baseline                         record a sighted/mouse baseline (reference times)
-  --tax-ratio FLOAT                  AT time / baseline time that flags a tax (default 2.0)
-  --timeout SECS                     per-step hard timeout (default 120s; a yield here = tax)
-  --out DIR                         report directory (default ./accessibility-reports)
-  --list                            print the per-surface step lists and exit
-
-Exit code: 0 if no FAIL/TIMEOUT steps, 1 otherwise (for CI gating).
-"""
 
 import argparse
 import json
@@ -53,8 +10,8 @@ from datetime import datetime
 
 SURFACES = ("tui", "desktop", "web", "mobile")
 
-# Core task model: compose -> send -> read result -> recall from memory.
-# Wording is per-surface so the conductor reads a task the user can act on.
+
+
 STEPS = {
     "tui": [
         ("compose", "Compose", "Open the app and compose a prompt in the input bar."),
@@ -94,7 +51,7 @@ STEPS = {
     ],
 }
 
-# AT-relevant hints the conductor reads aloud to frame each trial.
+
 HINTS = {
     "read-result": "Output is live/streamed; the reader must keep up, not flood.",
     "interrupt": "Cancel must be discoverable by keyboard/AT, not only a corner button.",
@@ -107,7 +64,7 @@ RESULT_CHOICES = {"p": "pass", "f": "fail", "s": "skip", "x": "timeout"}
 
 
 def _timed_step(sid, label, instruction, timeout):
-    """Run one timed trial: Start -> user acts -> Stop -> score. Returns a record."""
+
     print("\n" + "=" * 72)
     print(f"  [{sid}] {label}")
     print(f"  TASK: {instruction}")
@@ -226,14 +183,14 @@ def main():
     for sid, label, ins in STEPS[args.surface]:
         try:
             rec = _timed_step(sid, label, ins, args.timeout)
-        except EOFError:  # conductor closed the terminal mid-session
+        except EOFError:
             print("\n  / input ended - finalizing with the steps completed so far")
             break
-        if rec is None:  # conductor quit
+        if rec is None:
             break
         records.append(rec)
 
-    # Baseline handling + accessibility-tax comparison.
+
     tax = None
     if args.baseline:
         _save_baseline(args.out, args.surface, records)

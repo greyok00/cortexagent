@@ -1,45 +1,5 @@
 #!/usr/bin/env python3
-"""lib/doctor.py — `cortexagent doctor`: detect + repair Claude Code settings drift.
 
-Claude Code can mutate its own settings across runs (statusLine, hooks,
-claudeMdExcludes, welcome chrome, even the onboarding banner strings in the
-binary). This doctor re-asserts the **CortexAgent custom** versions of every
-Claude-facing setting, rendered fresh from the repo templates that
-``install.sh`` / ``bin/cortexagent`` already use — so the source of truth is
-one place, not three.
-
-What it repairs (idempotent — re-running is a no-op when everything matches):
-  1. Isolated config dir exists (``$CORTEXAGENT_CONFIG_DIR`` / ~/.cortexagent-config).
-  2. ``settings.json`` in the config dir == rendered template ({{HOME}}→$HOME);
-     on drift → backup + re-render. Verifies the key custom fields:
-     quiet, spinnerTipsEnabled=false, claudeMdExcludes the global CLAUDE.md,
-     statusLine → our lib/statusline.py, the 3 hooks (SessionStart /
-     UserPromptSubmit / Stop).
-  3. ``mcp.json`` in the config dir has the cortexagent server (or is correctly
-     skipped when the MCP script is absent); on drift → backup + re-render.
-  4. The ``claude`` binary banner/tips patch (``lib/patch_binary.py``) — re-applies
-     if ``--check`` says NOT PATCHED. Opt out with --no-patch or
-     ``CORTEXAGENT_PATCH_BINARY=0``.
-  5. The ``assets/cortexagentsquarelogo.jpg`` asset exists (tray + webui need it).
-  6. (report-only) ``bin/cortexagent`` still has the env wiring the brand depends
-     on (IS_DEMO, ALT_SCREEN, banner call, MCP guard). The doctor does NOT
-     rewrite repo source — it flags tampering so a human re-runs install.
-
-The CLAUDE.md check was hard-removed (2026-08-11): the practical-reasoning
-profile is now injected at runtime via slimtoken system_minify and
-lib/tiny_llm's default system prompt — no file dependency that Claude Code
-updates can break.
-
-Non-destructive: every overwritten live file is copied to ``<name>.doctor.bak``
-first. NEVER touches the user's global ``~/.claude/CLAUDE.md``, memory DBs,
-or any PII — only the isolated CortexAgent config dir + the claude binary.
-
-CLI:
-  python3 -m lib.doctor             # check + repair, print a table
-  python3 -m lib.doctor --dry-run   # report only, no writes
-  python3 -m lib.doctor --json      # machine-readable
-  python3 -m lib.doctor --no-patch  # skip the claude binary patch step
-"""
 from __future__ import annotations
 
 import json
@@ -56,19 +16,19 @@ if str(_REPO_ROOT) not in sys.path:
 
 from lib.config import CFG  # noqa: F401,E402  (config dir resolution kept consistent with CFG defaults)
 
-# ── Colors (best-effort) ──────────────────────────────────────────────────────
+
 if sys.stderr.isatty():
     CYAN, GREEN, YELLOW, RED, DIM, BOLD, RST = (
         "\033[36m", "\033[32m", "\033[33m", "\033[31m", "\033[2m", "\033[1m", "\033[0m")
 else:
     CYAN = GREEN = YELLOW = RED = DIM = BOLD = RST = ""
 
-# Statuses for a check.
-HEALTHY = "healthy"      # was correct, nothing done
-FIXED = "fixed"          # was drifted, repaired
-DRY = "would-fix"        # --dry-run: drifted, would repair
-FLAG = "flag"            # report-only tamper detection (not auto-fixed)
-FAIL = "fail"           # couldn't repair (e.g. patch failed)
+
+HEALTHY = "healthy"
+FIXED = "fixed"
+DRY = "would-fix"
+FLAG = "flag"
+FAIL = "fail"
 
 
 class Check:
@@ -82,9 +42,9 @@ class Check:
         return self.status in (HEALTHY, FIXED, DRY, FLAG)
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+
 def _bak(path: Path) -> Path:
-    """Copy path → path.doctor.bak (timestamped) before overwriting. No-op if missing."""
+
     if not path.exists():
         return path
     bak = path.with_suffix(path.suffix + f".doctor.bak.{int(time.time())}")
@@ -108,7 +68,7 @@ def _render_settings(home: str) -> str:
 
 
 def _render_mcp(memory_cmd: str, fire_enabled: str, brave_enabled: str) -> tuple[str, bool]:
-    """Return (mcp_json_str, has_cortexagent). Mirrors bin/cortexagent's block."""
+
     servers: dict = {}
     mem_script = memory_cmd.split()[-1] if memory_cmd else ""
     has_cortexagent = bool(mem_script) and os.path.exists(mem_script)
@@ -139,7 +99,7 @@ def _render_mcp(memory_cmd: str, fire_enabled: str, brave_enabled: str) -> tuple
     return json.dumps({"mcpServers": servers}, indent=2) + "\n", has_cortexagent
 
 
-# ── checks ───────────────────────────────────────────────────────────────────
+
 def _check_config_dir(cfg_dir: Path, dry: bool) -> Check:
     if cfg_dir.exists():
         return Check("config dir exists", HEALTHY, str(cfg_dir))
@@ -153,9 +113,9 @@ def _check_config_dir(cfg_dir: Path, dry: bool) -> Check:
 
 
 def _check_profile_at_runtime() -> Check:
-    # Replaces the old _check_claude_md. The practical-reasoning profile is
-    # applied at runtime (slimtoken system_minify + lib/tiny_llm default
-    # system prompt) — there is no CLAUDE.md file to drift.
+
+
+
     return Check("practical-reasoning profile", HEALTHY,
                  "applied at runtime (slimtoken + tiny_llm)")
 
@@ -174,7 +134,7 @@ def _check_settings(cfg_dir: Path, home: str, dry: bool) -> Check:
         have_obj = None
     if have.strip() == want.strip():
         return Check("settings.json", HEALTHY, "matches rendered template")
-    # Field-level report even when we're going to repair.
+
     drifted = []
     for key in ("quiet", "spinnerTipsEnabled", "claudeMdExcludes", "statusLine", "hooks"):
         if have_obj and have_obj.get(key) != want_obj.get(key):
@@ -206,7 +166,7 @@ def _check_binary_patch(no_patch: bool, dry: bool) -> Check:
     pb = _REPO_ROOT / "lib" / "patch_binary.py"
     if not pb.exists():
         return Check("claude binary patch", FAIL, "lib/patch_binary.py missing")
-    # --check prints "Status: PATCHED"/"NOT PATCHED"/"UNKNOWN".
+
     try:
         r = subprocess.run([sys.executable, str(pb), "--check"],
                            capture_output=True, text=True, timeout=15)
@@ -235,8 +195,7 @@ def _check_asset() -> Check:
 
 
 def _check_launcher_wiring() -> Check:
-    """Report-only: bin/cortexagent still has the brand env wiring. Not auto-fixed
-    (it's repo source) — flags tampering so a human re-runs install."""
+
     la = _REPO_ROOT / "bin" / "cortexagent"
     if not la.exists():
         return Check("launcher wiring", FAIL, "bin/cortexagent missing")
@@ -256,14 +215,7 @@ def _check_launcher_wiring() -> Check:
 
 
 def _check_model_conf_lock(dry: bool) -> Check:
-    """Verify the model-conf lock: conf is read-only AND LOCKED_KEYS are active.
 
-    The real enforcement is ``lib/config.py`` LOCKED_KEYS — env vars + the conf
-    are ignored for the pinned big-model args (ctx/ub/ngl/fa/ctk/ctv/kv/np) so a
-    stray edit can't OOM the 16 GB card. The chmod 444 here is belt-and-suspenders
-    (stops accidental edits to the conf) + a visible signal. Reversible: chmod
-    644 to edit, or ``CORTEXAGENT_UNLOCK=1`` to bypass the pin for testing.
-    """
     conf = Path(os.environ.get("CORTEXAGENT_CONF",
                                str(Path.home() / ".cortexagent" / "cortexagent.conf")))
     if not conf.exists():
@@ -287,7 +239,7 @@ def _check_model_conf_lock(dry: bool) -> Check:
         os.chmod(conf, 0o444)
     except Exception as e:
         return Check("model conf lock", FAIL, f"chmod failed: {e}")
-    try:  # chattr +i needs root/cap — best-effort, silent if unavailable
+    try:
         subprocess.run(["chattr", "+i", str(conf)], capture_output=True, timeout=3)
     except Exception:
         pass
@@ -295,7 +247,7 @@ def _check_model_conf_lock(dry: bool) -> Check:
                   (f" (DRIFT remains: {drift})" if drift else ""))
 
 
-# ── runner ───────────────────────────────────────────────────────────────────
+
 def run(dry: bool = False, no_patch: bool = False) -> list[Check]:
     cfg_dir = Path(os.environ.get("CORTEXAGENT_CONFIG_DIR", str(Path.home() / ".cortexagent-config")))
     home = str(Path.home())
@@ -353,7 +305,7 @@ def main() -> int:
                            "ok": c.ok} for c in checks], indent=2))
     else:
         print(_format(checks, dry=args.dry_run))
-    # Exit non-zero only on real failures (not dry/flag — those are informational).
+
     return 1 if any(c.status == FAIL for c in checks) else 0
 
 

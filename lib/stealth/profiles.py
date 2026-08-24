@@ -1,23 +1,11 @@
-"""profiles — coherent real device profiles, seed-selected.
 
-Each profile ties together the spoofable signals (platform, hardware
-concurrency, device memory, WebGL vendor/renderer, screen, timezone) into one
-believable device. The user-agent string itself is NOT spoofed here: it is read
-from the real patched Brave binary at runtime (per spec: generate the UA from
-the real binary's actual capabilities, never independently), and the chosen
-profile is matched to that UA's OS so platform + WebGL + screen are coherent
-with the real UA.
-
-Selection is deterministic from the seed: same profile -> same device every
-session; distinct profiles -> distinct devices.
-"""
 from __future__ import annotations
 
 import re
 from typing import Any, Dict, List
 
-# Coherent devices grouped by OS family (matched to the real UA's OS).
-# WebGL vendor/renderer are real GPU strings that detection scripts accept.
+
+
 _PROFILES: Dict[str, List[Dict[str, Any]]] = {
     "linux": [
         {"platform": "Linux x86_64", "hardwareConcurrency": 8, "deviceMemory": 8,
@@ -57,7 +45,7 @@ _PROFILES: Dict[str, List[Dict[str, Any]]] = {
 
 
 def _os_from_ua(ua: str) -> str:
-    """Infer OS family from a real UA string. Falls back to linux."""
+
     if not ua:
         return "linux"
     if "Windows" in ua:
@@ -68,16 +56,11 @@ def _os_from_ua(ua: str) -> str:
 
 
 def derive_profile(seed: int, real_ua: str = "") -> Dict[str, Any]:
-    """Return a coherent device profile chosen deterministically by seed,
-    matched to the real UA's OS family.
 
-    real_ua is the live user-agent read from the patched Brave binary; we keep
-    it as the canonical UA and only make the spoofable signals coherent with it.
-    """
     osfam = _os_from_ua(real_ua)
     bucket = _PROFILES.get(osfam, _PROFILES["linux"])
     profile = dict(bucket[seed % len(bucket)])
-    profile["userAgent"] = real_ua  # never spoofed independently of the binary
+    profile["userAgent"] = real_ua
     profile["osFamily"] = osfam
     profile["seed"] = seed
     return profile
@@ -87,7 +70,7 @@ def list_profiles() -> List[str]:
     return list(_PROFILES.keys())
 
 
-# Regex kept for callers that want to sanity-check a UA against its profile OS.
+
 UA_OS_RE = re.compile(r"(Windows|Macintosh|Mac OS|Linux|X11|Android)")
 
 

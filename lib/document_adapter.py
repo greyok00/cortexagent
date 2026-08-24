@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""lib/document_adapter.py — extract text from documents (PDF/DOCX/XLSX/PPTX).
 
-Docling if installed (tables, reading order, OCR for scans), else format
-fallbacks: pdftotext for PDFs, python-docx for DOCX, openpyxl for XLSX,
-python-pptx for PPTX. Every path degrades gracefully — the adapter never
-raises; it returns {"ok", "text", "error"}.
-
-Usage:
-  python3 lib/document_adapter.py --smoke
-"""
 from __future__ import annotations
 
 import subprocess
@@ -22,13 +13,13 @@ if str(_REPO_ROOT) not in sys.path:
 
 
 def _extract_pdf(file: str) -> str:
-    """PDF text via Docling (if installed) else pdftotext -layout."""
+
     try:
         from docling.document_converter import DocumentConverter
         result = DocumentConverter().convert(file)
         return result.document.export_to_text()
     except Exception:
-        pass  # Docling missing or failed — fall back to pdftotext
+        pass
     try:
         out = subprocess.run(["pdftotext", "-layout", file, "-"],
                              capture_output=True, text=True, timeout=120)
@@ -74,7 +65,7 @@ def _extract_pptx(file: str) -> str:
 
 
 def parse_document(file: str) -> Dict[str, Any]:
-    """Extract text from a document. Returns {"ok", "text", "error"}."""
+
     path = Path(file)
     if not path.is_file():
         return {"ok": False, "text": "", "error": f"file not found: {file}"}
@@ -102,7 +93,7 @@ def _smoke() -> int:
     from pathlib import Path
     tmp = Path(tempfile.mkdtemp())
     try:
-        # sample PDF with a text layer via reportlab
+
         from reportlab.pdfgen import canvas
         pdf = tmp / "sample.pdf"
         c = canvas.Canvas(str(pdf))
@@ -112,12 +103,12 @@ def _smoke() -> int:
         if not r.get("ok") or "smoke test" not in r.get("text", ""):
             print(f"❌ pdf parse: {r}")
             fails += 1
-        # missing file → clean error
+
         r = parse_document(str(tmp / "nope.pdf"))
         if r.get("ok") or "not found" not in r.get("error", ""):
             print(f"❌ missing file: {r}")
             fails += 1
-        # unsupported format → clean error
+
         (tmp / "x.xyz").write_text("junk")
         r = parse_document(str(tmp / "x.xyz"))
         if r.get("ok") or "unsupported" not in r.get("error", ""):

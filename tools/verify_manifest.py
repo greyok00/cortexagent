@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""verify_manifest.py — verify the file-hash manifest against current tree.
 
-Usage:
-  python3 tools/verify_manifest.py [--quiet] [--json] [--strict]
-
-Exit codes:
-  0  no drift
-  1  drift detected (MODIFIED, MISSING)
-  2  manifest missing (run build_manifest.py)
-"""
 import argparse
 import hashlib
 import json
@@ -42,8 +33,8 @@ def main(argv=None) -> int:
             print(f"manifest missing: {MANIFEST}", file=sys.stderr)
             print("run: python3 tools/build_manifest.py", file=sys.stderr)
         return 2
-    # Import the canonical file list from build_manifest.
-    # (Reusing build_manifest._iter_files keeps verifier + builder in lockstep.)
+
+
     sys.path.insert(0, str(REPO_ROOT / "tools"))
     from build_manifest import _iter_files, TOPLEVEL_FILES, ROOTS
     manifest = json.loads(MANIFEST.read_text())
@@ -65,7 +56,7 @@ def main(argv=None) -> int:
             modified.append(rel)
         else:
             matched += 1
-    # Anything in expected that we didn't visit = MISSING
+
     for rel in expected:
         if rel not in checked_paths and rel != MANIFEST.name:
             missing.append(rel)

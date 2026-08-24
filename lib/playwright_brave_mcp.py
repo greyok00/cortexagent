@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""playwright_brave_mcp — MCP server controlling Brave via CDP on port 9222.
 
-Thin MCP transport over lib/browser_control (the general browser engine).
-Holds ONE persistent Playwright CDP connection per process — no per-call
-connect/close churn (which wedges the browser-level endpoint).
-
-Run as:  python3 lib/playwright_brave_mcp.py   (stdio MCP server)
-         python3 lib/playwright_brave_mcp.py smoke
-"""
 from __future__ import annotations
 
 import json
@@ -221,8 +213,8 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     params = req.get("params", {})
 
     if method == "initialize":
-        # Always-active CDP guard (§4): starts watching for an exposed endpoint
-        # / foreign client attachment. Refuses silently if the port is on 0.0.0.0.
+
+
         try:
             start_guard()
         except Exception:

@@ -1,16 +1,4 @@
-"""lib/overseer_dashboard/testharness.py — isolated test-run engine.
 
-Test runs are fully isolated from normal CLI conversations:
-  - each run gets an independent test session/request ID
-  - a test never replaces, cancels, mutates, or pollutes a normal
-    CortexAgent CLI conversation
-  - remote/paid backends require explicit confirmation
-  - the UI shows clearly whether a test runs active or pending settings
-
-By default a test is a **dry-run** (Compose + SlimToken + Finalize token math,
-no inference request). A real inference test is opt-in and, for remote/paid
-backends, gated behind confirmation.
-"""
 from __future__ import annotations
 
 import time
@@ -31,12 +19,11 @@ PRESETS = {
 
 
 class TestHarness:
-    """Owns test runs and history. Keeps at most two selected runs for
-    comparison."""
+
 
     def __init__(self) -> None:
         self.runs: List[M.TestRun] = []
-        self.selected: List[str] = []   # run ids selected for comparison
+        self.selected: List[str] = []
         self._counter = 0
 
     def _new_id(self) -> str:
@@ -49,7 +36,7 @@ class TestHarness:
                 model: str = "unknown", route: str = "cortex-big",
                 backend: str = "unknown",
                 ) -> M.TestRun:
-        """Run an isolated dry-run test. No inference request is sent."""
+
         run = M.TestRun(
             id=self._new_id(), label=PRESETS.get(preset, preset),
             started_at=time.strftime("%H:%M:%S"),
@@ -91,12 +78,12 @@ class TestHarness:
             self.selected.remove(run_id)
         else:
             self.selected.append(run_id)
-            # Keep at most two selected runs for comparison.
+
             if len(self.selected) > 2:
                 self.selected.pop(0)
 
     def comparison(self) -> Optional[Dict[str, Any]]:
-        """Build a comparison table for the selected runs (max 2)."""
+
         sel = [r for r in self.runs if r.id in self.selected]
         if len(sel) < 2:
             return None
@@ -114,7 +101,7 @@ class TestHarness:
 
 
 def build_pipeline_from_dryrun(dr: P.DryRunResult) -> List[M.PipelineStage]:
-    """Assemble the seven stages from a dry-run result."""
+
     comp, slim, fin = dr.compose, dr.slim, dr.finalize
     return [
         M.PipelineStage(name="COLLECT", state="complete",

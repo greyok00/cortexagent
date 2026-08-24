@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""lib/domain_ingest.py — chunk → embed → store for the domain knowledge layer.
 
-Ingests a source's text into a domain DB: split into ~200-word chunks with
-50-word overlap, batch-embed via all-MiniLM-L6-v2, store with content-hash
-dedup (idempotent re-ingest). Source is tracked per chunk so results can be
-cited back to origin.
-
-Chunk size is 200 words (~212 tokens) so each chunk fits the embedder's
-256-token context (MAX_SEQ in lib/domain_embed.py) with no truncation —
-a larger chunk would be cut to 256 tokens and its embedding would cover
-only part of the chunk.
-
-Usage:
-  python3 lib/domain_ingest.py --smoke
-"""
 from __future__ import annotations
 
 import sqlite3
@@ -27,13 +13,13 @@ if str(_REPO_ROOT) not in sys.path:
 
 from lib import domain_db  # noqa: E402
 
-CHUNK_TOKENS = 200  # ~212 tokens — fits the embedder's 256-token context (MAX_SEQ)
+CHUNK_TOKENS = 200
 OVERLAP = 50
 
 
 def chunk_text(text: str, chunk_tokens: int = CHUNK_TOKENS,
                overlap: int = OVERLAP) -> List[str]:
-    """Split text into ~chunk_tokens-word chunks with `overlap`-word overlap."""
+
     words = text.split()
     if not words:
         return []
@@ -41,8 +27,8 @@ def chunk_text(text: str, chunk_tokens: int = CHUNK_TOKENS,
     i = 0
     step = max(chunk_tokens - overlap, 1)
     while i < len(words):
-        # Skip a trailing partial chunk whose words are already covered by the
-        # previous chunk's overlap window (avoids "five" after "three four five").
+
+
         if chunks and len(words) - i <= overlap:
             break
         chunks.append(" ".join(words[i:i + chunk_tokens]))
@@ -51,7 +37,7 @@ def chunk_text(text: str, chunk_tokens: int = CHUNK_TOKENS,
 
 
 def ingest(domain: str, source: str, text: str) -> dict:
-    """Chunk → embed → store. Returns {"ok", "chunks", "error"}."""
+
     if domain not in domain_db.ALLOWED_DOMAINS:
         return {"ok": False, "chunks": 0, "error": f"unknown domain: {domain}"}
     if not source or not source.strip():
@@ -71,7 +57,7 @@ def ingest(domain: str, source: str, text: str) -> dict:
                 from lib.domain_embed import DomainEmbedder
                 embs = DomainEmbedder().embed_batch(chunks)
             except Exception:
-                embs = None  # FTS5-only fallback
+                embs = None
         stored = 0
         for i, chunk in enumerate(chunks):
             try:
@@ -79,7 +65,7 @@ def ingest(domain: str, source: str, text: str) -> dict:
                                        embs[i] if embs and i < len(embs) else None)
                 stored += 1
             except sqlite3.IntegrityError:
-                pass  # duplicate chunk (content-hash UNIQUE) — skip
+                pass
     finally:
         con.close()
     return {"ok": True, "chunks": stored, "error": ""}
@@ -87,7 +73,7 @@ def ingest(domain: str, source: str, text: str) -> dict:
 
 def _smoke() -> int:
     fails = 0
-    # chunk_text
+
     c = chunk_text("one two three four five", chunk_tokens=3, overlap=1)
     if c != ["one two three", "three four five"]:
         print(f"❌ chunk_text overlap: {c}")
@@ -95,7 +81,7 @@ def _smoke() -> int:
     if chunk_text("") != []:
         print("❌ chunk_text empty")
         fails += 1
-    # ingest into an isolated domain DB
+
     import tempfile
     from pathlib import Path
     import shutil

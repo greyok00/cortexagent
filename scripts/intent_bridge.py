@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/intent_bridge.py — classify a prompt for the cortex CLI's model auto-switch.
 
-The cortex CLI's models extension calls this before each agent turn to decide
-whether the tiny (:8082) or big (:8080) model should handle the prompt.
-Reuses the proven pre_flight_gate intent classifier.
-
-  python3 scripts/intent_bridge.py "hello there"
-  → {"ok": true, "intent": "conversation", "tier": "tiny"}
-
-Tier mapping: conversation/memory/scheduling/task-management → tiny (fast);
-everything else (command, file, retrieval, verification, ambiguous) → big.
-"""
 from __future__ import annotations
 
 import json

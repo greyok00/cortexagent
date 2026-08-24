@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""lib/soar_playbooks.py — CortexAgent → SOAR playbook dispatcher.
 
-Triggers defensive playbooks based on CortexAgent findings:
-
-1. cve_intel.findings → if severity=critical OR kev=True → enqueue firewall
-   block on IOC IPs (writes to ~/security-console/overseer/firewall_commands.jsonl);
-   also push desktop notification + email via the SIEM feed module.
-2. hardening_status posture → if status=fail → enqueue audit review.
-3. auditd drift (active rule count drops below baseline) → enqueue rule reload.
-
-All actions log to ~/security-console/soar/playbook_runs.jsonl for audit
-trail. Actions are defensive and non-destructive — they enqueue commands
-for the operator (root helper) to apply; they never mutate production
-state directly.
-
-CLI:
-    python3 lib/soar_playbooks.py --list          # show defined playbooks
-    python3 lib/soar_playbooks.py --run-on-recent # run on recent CVE findings
-    python3 lib/soar_playbooks.py --run-posture   # run on latest hardening posture
-    python3 lib/soar_playbooks.py --history 20    # show last 20 runs
-"""
 from __future__ import annotations
 
 import argparse
@@ -41,7 +21,7 @@ SOAR_DIR = Path.home() / "security-console" / "soar"
 PLAYBOOK_RUNS = SOAR_DIR / "playbook_runs.jsonl"
 FIREWALL_COMMANDS = Path.home() / "security-console" / "overseer" / "firewall_commands.jsonl"
 
-# Default playbooks (id, name, trigger_severity, action)
+
 DEFAULT_PLAYBOOKS = [
     ("cve_critical_notify", "CVE critical — desktop notification",
      "critical", "notify"),
@@ -58,16 +38,12 @@ DEFAULT_PLAYBOOKS = [
 ]
 
 
-# ── Action primitives ─────────────────────────────────────────────────────
+
 _IPV4 = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 
 
 def _action_notify(finding: dict) -> str:
-    """Desktop notification via the rich popup (falls back to notify-send).
 
-    Mirrors siem/soar.py, but opens a larger, styled window with the full
-    detail and an action button, so the operator has context to act on.
-    """
     try:
         from alert_popup import show_alert
     except ImportError:
@@ -83,7 +59,7 @@ def _action_notify(finding: dict) -> str:
         )
         return "rich notification sent"
     except Exception:
-        # last resort: plain toast
+
         import subprocess
         try:
             subprocess.run(
@@ -98,7 +74,7 @@ def _action_notify(finding: dict) -> str:
 
 
 def _open_log() -> None:
-    """Open the SOAR playbook run history for the operator."""
+
     import subprocess
     from pathlib import Path
     log = Path.home() / "security-console" / "soar" / "playbook_runs.jsonl"
@@ -111,14 +87,14 @@ def _open_log() -> None:
 
 
 def _action_block_ioc(finding: dict) -> str:
-    """Append firewall block commands for IOC IPs found in the detail text."""
+
     ips = _IPV4.findall(finding.get("detail") or "")
     if not ips:
         return "no IPs in finding; nothing to block"
     FIREWALL_COMMANDS.parent.mkdir(parents=True, exist_ok=True)
     appended: list[str] = []
     with FIREWALL_COMMANDS.open("a", encoding="utf-8") as f:
-        for ip in ips[:5]:  # cap per finding
+        for ip in ips[:5]:
             cmd = f"iptables -I INPUT -s {ip} -j DROP  # SOAR:{finding.get('id', '?')} {finding.get('kind', '')}\n"
             f.write(cmd)
             appended.append(ip)
@@ -130,7 +106,7 @@ def _action_log_only(finding: dict) -> str:
 
 
 def _action_audit_review(finding: dict) -> str:
-    """Enqueue a posture audit task in the overseer scheduler (best-effort)."""
+
     try:
         from lib.overseer import schedule_add
         schedule_add(
@@ -149,13 +125,7 @@ def _action_audit_review(finding: dict) -> str:
 
 
 def _action_auto_block_kev(finding: dict) -> str:
-    """KEV-driven auto-block: extract IOC IPs from finding raw JSON.
 
-    Reads the raw blob written by siem_bridge.push_cve_finding(), which carries
-    CPE list + refs. IPs come from refs URLs (vendor advisory URLs occasionally
-    include scanner IPs but typically the affected service). When refs are
-    unavailable, falls back to no-op logging.
-    """
     import json
     raw = finding.get("raw") or ""
     if not raw:
@@ -175,11 +145,7 @@ def _action_auto_block_kev(finding: dict) -> str:
 
 
 def _action_isolate_cpe(finding: dict) -> str:
-    """CPE-driven quarantine: log affected packages for operator review.
 
-    Doesn't mutate anything — writes to playbook history so an operator can
-    see which local packages might be affected by a KEV CVE.
-    """
     import json
     raw = finding.get("raw") or ""
     if not raw:
@@ -225,7 +191,7 @@ ACTIONS = {
 }
 
 
-# ── Run history ───────────────────────────────────────────────────────────
+
 def _ensure_soar_dir() -> None:
     SOAR_DIR.mkdir(parents=True, exist_ok=True)
     if not PLAYBOOK_RUNS.exists():
@@ -251,15 +217,15 @@ def load_history(limit: int = 50) -> list[dict]:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-    return out[-limit:][::-1]  # newest first
+    return out[-limit:][::-1]
 
 
-# ── Trigger evaluation ────────────────────────────────────────────────────
+
 def run_for_cve(cve_entry: dict, dry_run: bool = False) -> list[dict]:
-    """Run appropriate playbooks for a single CVE entry."""
+
     from lib import siem_bridge
     out: list[dict] = []
-    # Decide severity for playbook selection
+
     if cve_entry.get("kev"):
         severity = "critical"
     else:
@@ -295,7 +261,7 @@ def run_for_cve(cve_entry: dict, dry_run: bool = False) -> list[dict]:
 
 
 def run_for_posture(snap: dict, dry_run: bool = False) -> list[dict]:
-    """Run playbooks for hardening posture events that have failed."""
+
     out: list[dict] = []
     for name, v in snap.get("subsystems", {}).items():
         if v.get("status") != "fail":
@@ -329,7 +295,7 @@ def run_for_posture(snap: dict, dry_run: bool = False) -> list[dict]:
 
 
 def run_on_recent(since: str = "7d", dry_run: bool = False) -> dict:
-    """Pull recent CVEs from cve_intel and run playbooks for each."""
+
     from lib import cve_intel
     entries = cve_intel.recent(since=since, limit=200)
     out: list[dict] = []
@@ -345,7 +311,7 @@ def run_on_posture(dry_run: bool = False) -> dict:
     return {"fails_triggered": len(runs), "playbook_runs": runs}
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="CortexAgent → SOAR dispatcher")
     ap.add_argument("--list", action="store_true", help="list default playbooks")

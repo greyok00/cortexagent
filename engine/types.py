@@ -1,4 +1,4 @@
-"""CortexAgent Workflow Engine — Type Definitions"""
+
 from dataclasses import dataclass, field
 from typing import Optional
 from enum import Enum, auto

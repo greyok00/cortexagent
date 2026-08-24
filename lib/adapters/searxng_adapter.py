@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""searxng_adapter.py — SearXNG RSS adapter.
 
-Wraps the existing _web_search SearXNG behaviour as a structured adapter
-so `adapter_search` can fan out to the same local instances (:9999 first,
-:8888 fallback) without re-implementing the chain. No query behaviour
-change vs `lib/tool_registry.py:_web_search` lines 324-345 — same URLs,
-same RSS format, same XML regex parse.
-
-Env:
-  SEARXNG_URLS  — comma-separated base URLs, default
-                  "http://127.0.0.1:9999,http://127.0.0.1:8888"
-
-Always enabled when at least one URL is configured. health_check probes
-each URL sequentially with the same timeout.
-"""
 from __future__ import annotations
 
 import os
@@ -30,7 +16,7 @@ DEFAULT_URLS = ("http://127.0.0.1:9999", "http://127.0.0.1:8888")
 
 
 def _parse_rss(xml: str) -> List[Dict[str, str]]:
-    """Extract (title, link, description) triples from a SearXNG RSS feed."""
+
     items = re.findall(r"<item>(.*?)</item>", xml, re.S)
     out: List[Dict[str, str]] = []
     for item in items:
@@ -66,7 +52,7 @@ class SearXNGAdapter(BaseAdapter):
             self.urls = DEFAULT_URLS
         self.enabled = bool(self.urls)
 
-    # ── contract ───────────────────────────────────────────────────────────
+
     def authenticate(self) -> bool:
         return self.enabled
 
@@ -90,7 +76,7 @@ class SearXNGAdapter(BaseAdapter):
             except Exception as e:
                 last_err = e
                 continue
-        # No instance returned items — bubble up the last error if we have one
+
         if last_err is not None:
             raise RuntimeError(f"all searxng instances failed: {last_err}")
         return []
@@ -107,5 +93,5 @@ class SearXNGAdapter(BaseAdapter):
         return {"status": "error", "detail": f"no searxng reachable on {self.urls}"}
 
 
-# ── Self-register on import ──────────────────────────────────────────────────
+
 register(SearXNGAdapter())

@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""grammar_proxy.py — strips grammar field from Anthropic API requests.
 
-Claude Code sends a `grammar` parameter that llama-server can't parse.
-This proxy strips it and forwards everything else, including streaming.
-
-Also tracks token usage and exposes a /metrics endpoint for real-time
-token/s monitoring in the Claude Code status line.
-
-Usage:
-  python3 lib/grammar_proxy.py [port] [target]
-  # Default: port=8081, target=http://127.0.0.1:8080
-"""
 import json, os, sys, socket, threading, time, errno
 from datetime import datetime
 from pathlib import Path
@@ -18,24 +7,22 @@ from typing import Any, Dict
 import urllib.request
 
 
-# ── Tray dashboard state (consumed by lib/tray_dashboard.py) ───────────────
-# We approximate the big model's "Step N of M" progress by counting distinct
-# tool calls in the response body — each tool call represents a reasoning
-# step. The popout dashboard polls ~/.cortexagent/big_model_steps.json every
-# 1s and renders this. Writes are atomic (tmp + rename) so a half-written
-# file can't crash the dashboard reader.
+
+
+
+
+
+
 _DASHBOARD_STEPS = Path.home() / ".cortexagent" / "big_model_steps.json"
 
 
 def _emit_dashboard_step(body: bytes, elapsed: float) -> None:
-    """Count tool calls in the proxy response and write the dashboard state
-    file. Called once per forwarded response (non-streaming path).
-    """
+
     try:
         parsed = json.loads(body.decode("utf-8", errors="replace"))
     except Exception:
         return
-    # OpenAI / Anthropic responses carry tool_calls on choices[].message
+
     steps: list = []
     try:
         choices = parsed.get("choices") or []
@@ -46,7 +33,7 @@ def _emit_dashboard_step(body: bytes, elapsed: float) -> None:
                 fn = (tc.get("function") or {}).get("name") or f"tool_{i+1}"
                 steps.append({"label": f"call {fn}", "status": "done"})
             if not steps and msg.get("content"):
-                # Plain text reply — single step
+
                 steps = [{"label": "respond", "status": "done"}]
     except Exception:
         steps = []
@@ -67,21 +54,21 @@ def _emit_dashboard_step(body: bytes, elapsed: float) -> None:
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-from lib import control  # reload-aware: trigger big-model reload via the daemon
+from lib import control
 
-# ── Routing state (consumed by the event feed / cortex-hud) ──────────────────
-# The big-model route is selected at CLI launch via env vars (bin/cortexagent),
-# but we surface it here so the routing subsystem is real and queryable: every
-# forwarded request records the active route + model to routing_state.json and
-# emits a routing event to the SessionBridge. The full CortexRouter.status()
-# (with live health) is available for the event feed to poll.
+
+
+
+
+
+
 _ROUTING_STATE = Path.home() / ".cortexagent" / "routing_state.json"
-_ROUTER = None  # lazy CortexRouter instance
-_last_routing_key = None  # change-detection: only emit when the route actually changes
+_ROUTER = None
+_last_routing_key = None
 
 
 def _get_router():
-    """Lazily build the shared CortexRouter (import kept local for boot safety)."""
+
     global _ROUTER
     if _ROUTER is None:
         try:
@@ -94,12 +81,7 @@ def _get_router():
 
 
 def _emit_routing() -> None:
-    """Record the active route + emit a routing event. Best-effort.
 
-    Change-detected: only writes routing_state.json and emits a bridge event
-    when the route/model/mode actually changes, so the event feed isn't flooded
-    with an identical routing event on every request.
-    """
     global _last_routing_key
     router = _get_router()
     if router is None:
@@ -115,13 +97,13 @@ def _emit_routing() -> None:
         }
         key = (state["route"], state["model"], state["router_mode"])
         if key == _last_routing_key:
-            return  # unchanged — nothing to record or emit
+            return
         _last_routing_key = key
         _ROUTING_STATE.parent.mkdir(parents=True, exist_ok=True)
         tmp = _ROUTING_STATE.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(state))
         tmp.replace(_ROUTING_STATE)
-        # Emit a routing event to the SessionBridge (captured by the event feed).
+
         try:
             from lib.session_bridge import SessionBridge
             SessionBridge().write("proxy", {
@@ -139,12 +121,12 @@ def _emit_routing() -> None:
     except Exception as e:
         print(f"[proxy] routing emit failed: {e}", file=sys.stderr)
 
-# ── Minification pipeline (opt-out via CORTEXAGENT_MINIFY=off) ────────────────
-# On by default. Prefers the user's slimtoken engine (real compression:
-# dedup of repeated tool output + distill of old turns + budget backstop),
-# Single minify backend — slimtoken. The vendored lib/minify copy was
-# hard-removed (2026-08-11); slimtoken is the canonical pipeline. A parse
-# failure in any stage is caught and never blocks inference.
+
+
+
+
+
+
 try:
     from slimtoken.pipeline import minify_request, MinifyConfig
     _MINIFY_BACKEND = "slimtoken"
@@ -172,14 +154,14 @@ def _build_minify_cfg():
         stages.add("system")
     if _bool_env("CORTEXAGENT_MINIFY_MESSAGES", True):
         stages.add("messages")
-        # Real compression: dedup repeated tool results + distill old turns.
+
         stages.update(("dedup", "distill"))
     skip = {s.strip() for s in os.environ.get(
         "CORTEXAGENT_MINIFY_TOOL_SKIP", "").split(",") if s.strip()}
-    # slimtoken default = 131072: a HARD backstop at the server ceiling. If a
-    # request ever exceeds it (the 400-class bug: context grows to the ceiling,
-    # server rejects), history is dropped to fit instead of erroring. Auto-
-    # compact at 124k keeps normal traffic well under, so this rarely engages.
+
+
+
+
     _default_budget = 131072 if _MINIFY_OK else 0
     try:
         budget = int(os.environ.get("CORTEXAGENT_MINIFY_BUDGET", "") or _default_budget)
@@ -190,7 +172,7 @@ def _build_minify_cfg():
     except ValueError:
         keep_last = 8
     kw = dict(
-        token_budget=budget,           # slimtoken: 0→off, 131072→backstop
+        token_budget=budget,
         enabled_stages=stages,
         tool_skip=skip,
         keep_last=keep_last,
@@ -208,12 +190,12 @@ _MINIFY_CFG = _build_minify_cfg()
 _MINIFY_CHUNKED = _bool_env("CORTEXAGENT_MINIFY_CHUNKED", True)
 _MINIFY_RESPONSE = _bool_env("CORTEXAGENT_MINIFY_RESPONSE", True)
 
-# ── Tool-result size cap (R5) ─────────────────────────────────────────────────
-# A single oversized tool result (e.g. a broad `find` dumping 1MB of file paths)
-# can blow the context window ~5x and trigger the 400-class overflow. Cap each
-# tool_result's content at CORTEXAGENT_TOOL_RESULT_MAX chars (default 50k),
-# truncating with a marker so the model still sees the head of the output.
-# Applied BEFORE minify so slimtoken never has to chew on a megabyte blob.
+
+
+
+
+
+
 _TOOL_RESULT_MAX = int(os.environ.get("CORTEXAGENT_TOOL_RESULT_MAX", "50000") or 50000)
 
 
@@ -222,7 +204,7 @@ def _trunc_marker(removed: int) -> str:
 
 
 def _cap_tool_results(parsed, max_chars: int):
-    """Truncate oversized tool_result content in-place. Returns parsed."""
+
     if not isinstance(parsed, dict):
         return parsed
     for msg in parsed.get("messages", []):
@@ -237,7 +219,7 @@ def _cap_tool_results(parsed, max_chars: int):
                 if len(c) > max_chars:
                     item["content"] = c[:max_chars] + _trunc_marker(len(c) - max_chars)
             elif isinstance(c, list):
-                # tool_result content may be a list of {type: text} blocks.
+
                 total = sum(len(x.get("text", "")) for x in c if isinstance(x, dict))
                 if total > max_chars:
                     budget = max_chars
@@ -252,20 +234,20 @@ def _cap_tool_results(parsed, max_chars: int):
                             budget = 0
     return parsed
 
-# ── Prompt reframing (canonical slim engine) ────────────────────────────────
-# On by default. Reframes the LAST user message (the live prompt) BEFORE the
-# token-level minify, so every prompt flowing through the proxy is tightened
-# by the same canonical engine react_loop uses. Purely additive — any failure
-# skips reframing and forwards the request untouched. Tool results / system
-# messages are never touched (only role=="user" string content).
-#   CORTEXAGENT_REFRAISE=1   on (default)     0 off
-#   CORTEXAGENT_REFRAISE_SYSTEM=1  append the framed system prompt too (off)
+
+
+
+
+
+
+
+
 _REFRAISE = _bool_env("CORTEXAGENT_REFRAISE", True)
 _REFRAISE_SYSTEM = _bool_env("CORTEXAGENT_REFRAISE_SYSTEM", False)
 
 
 def _frame_fn():
-    """Import the canonical frame_prompt shim (lib or top-level)."""
+
     try:
         from lib import prompt_framing
         return prompt_framing.frame_prompt
@@ -275,8 +257,7 @@ def _frame_fn():
 
 
 def _append_system(msgs: list, add_sys: str) -> None:
-    """Append the framed system prompt to an existing system message, or
-    prepend a new one if the request has none."""
+
     for m in msgs:
         if isinstance(m, dict) and m.get("role") == "system":
             cur = m.get("content")
@@ -287,8 +268,7 @@ def _append_system(msgs: list, add_sys: str) -> None:
 
 
 def _reframe_user_prompt(parsed: dict) -> tuple[dict, int]:
-    """Reframe the last user message in-place via the canonical slim engine.
-    Returns (parsed, saved_chars); saved_chars is 0 if nothing applied."""
+
     if not _REFRAISE:
         return parsed, 0
     msgs = parsed.get("messages")
@@ -319,12 +299,12 @@ def _reframe_user_prompt(parsed: dict) -> tuple[dict, int]:
         return parsed, saved
     return parsed, 0
 
-# ── Output-side minify (R4) ──────────────────────────────────────────────────
-# Slimtoken has no response minify, so we run a thin local helper. Strips
-# model-generated filler ("Sure!", "Here is the code:", "Let me know if…")
-# from the assistant message content. Operates on already-buffered response
-# chunks AFTER upstream sends a "data: [DONE]" sentinel — never on a live
-# stream (would corrupt partial tokens). Bounded to ~16 KB scan per call.
+
+
+
+
+
+
 _FILLER_PATTERNS = (
     "Sure!\n", "Sure!\n\n", "Sure, ", "Sure.\n",
     "Here is the code:\n", "Here is the code:\n\n",
@@ -337,19 +317,14 @@ _FILLER_PATTERNS = (
 
 
 def minify_response(body: bytes) -> bytes:
-    """Strip model-generated filler phrases from a buffered response.
 
-    No-op for streams (SSE chunks have no [DONE] yet); caller must buffer
-    the full response first. Returns body unchanged on any parse error so a
-    malformed payload still reaches the client.
-    """
     if not _MINIFY_RESPONSE or not body:
         return body
     try:
         text = body.decode("utf-8", errors="replace")
     except Exception:
         return body
-    # SSE responses are line-delimited; only touch data: lines (object schema).
+
     out_lines = []
     changed = False
     for line in text.split("\n"):
@@ -363,7 +338,7 @@ def minify_response(body: bytes) -> bytes:
         except Exception:
             out_lines.append(line)
             continue
-        # OpenAI-style choices[].delta.content / choices[].message.content
+
         try:
             choices = obj.get("choices") or []
             for ch in choices:
@@ -374,8 +349,8 @@ def minify_response(body: bytes) -> bytes:
                     c = msg.get("content")
                 if isinstance(c, str):
                     new = c
-                    # Strip ALL consecutive leading filler phrases (slimtoken
-                    # parity) — a model may emit "Sure!\nHere is the code:\n…".
+
+
                     while True:
                         hit = False
                         for pat in _FILLER_PATTERNS:
@@ -398,7 +373,7 @@ def minify_response(body: bytes) -> bytes:
         return body
     return ("\n".join(out_lines)).encode("utf-8")
 
-# ── Token Tracking ───────────────────────────────────────────────────────────
+
 _token_lock = threading.Lock()
 _token_metrics = {
     "prompt_tokens": 0,
@@ -407,13 +382,13 @@ _token_metrics = {
     "requests": 0,
     "total_time_s": 0.0,
     "started_at": datetime.now().isoformat(),
-    "current_tok_s": 0.0,    # tokens/s for the last request (output)
-    "current_in_tps": 0.0,   # input tokens/s for the last request (prompt eval rate)
-    "current_out_tps": 0.0,  # output tokens/s for the last request (decode rate)
-    "avg_tok_s": 0.0,        # running average
-    "avg_in_tps": 0.0,       # running average input rate
-    "avg_out_tps": 0.0,      # running average output rate
-    "last_request_ts": 0.0,  # unix ts of the last completed inference (0 = none yet)
+    "current_tok_s": 0.0,
+    "current_in_tps": 0.0,
+    "current_out_tps": 0.0,
+    "avg_tok_s": 0.0,
+    "avg_in_tps": 0.0,
+    "avg_out_tps": 0.0,
+    "last_request_ts": 0.0,
 }
 
 
@@ -439,26 +414,19 @@ def _record_tokens(prompt_tokens: int, completion_tokens: int, elapsed: float):
             _token_metrics["avg_in_tps"] = round(avg_in, 1)
 
 
-# ── Session-id registry ─────────────────────────────────────────────────────
-# When a request carries `X-CortexAgent-Session: <id>`, capture it in a small
-# in-memory table so the proxy knows which UI surface (CLI vs webui) is the
-# originator. CLI surfaces pick the bound claude PID; the webui picks a uuid
-# derived from that PID's session so both UIs share context on the same proxy
-# chokepoint. TTL-swept (1h) so the dict can't grow unbounded.
+
+
+
+
+
+
 _session_lock = threading.Lock()
-_sessions: Dict[str, Dict[str, Any]] = {}  # id → {origin, pid, kind, ts}
+_sessions: Dict[str, Dict[str, Any]] = {}
 _SESSION_TTL = 3600.0
 
 
 def _register_session(hdr: Dict[str, str], kind: str = "unknown") -> str:
-    """Read X-CortexAgent-Session from the parsed header map (case-preserved
-    keys). If absent, return "" without registering. Returned id is the value
-    the caller can stamp onto outbound headers / logs.
 
-    Origin (webui vs cli) is read from the explicit X-CortexAgent-Origin
-    header set by the webui chat handler. When absent, falls back to the
-    caller-supplied ``kind`` so HTTP-vs-other transports still bucket
-    correctly."""
     sid = (hdr.get("X-CortexAgent-Session")
            or hdr.get("x-cortexagent-session")
            or "").strip()
@@ -470,8 +438,8 @@ def _register_session(hdr: Dict[str, str], kind: str = "unknown") -> str:
     now = time.time()
     with _session_lock:
         _sessions[sid] = {"origin": origin, "kind": kind, "ts": now}
-        # Cheap inline sweep: drop entries older than TTL. Bounded to ~64 entries
-        # in practice — one per active surface — so this is constant-time.
+
+
         if len(_sessions) > 64:
             cutoff = now - _SESSION_TTL
             for k in list(_sessions.keys()):
@@ -481,46 +449,41 @@ def _register_session(hdr: Dict[str, str], kind: str = "unknown") -> str:
 
 
 def _snapshot_sessions() -> Dict[str, Dict[str, Any]]:
-    """Return a copy of the current session table for /metrics consumption."""
+
     with _session_lock:
         return {k: dict(v) for k, v in _sessions.items()}
 
 
-# ── Minify stats (persistent + rolling) ─────────────────────────────────────
-# Mirrors `_token_metrics` for tokens: cumulative counters in-memory + a small
-# JSON snapshot file the overseer/dashboard poll. Stored alongside the proxy's
-# token metrics so a single /metrics fetch surfaces everything the UI needs.
-#
-# Snapshot file layout (atomic tmp+rename):
-#   ~/.cortexagent/minify_stats.json
-#     {runs, tokens_in, tokens_out, tokens_saved, ratio_pct,
-#      last_run_ts, last_saved_pct, history_60s: [(ts, saved_pct), ...]}
-#
-# `history_60s` is a rolling 60s sample of savings percent — the dashboard
-# renders it as a sparkline (replaces nothing, additive).
+
+
+
+
+
+
+
+
+
+
+
+
 _minify_lock = threading.Lock()
 _minify_stats = {
     "runs": 0,
     "tokens_in": 0,
     "tokens_out": 0,
     "tokens_saved": 0,
-    "ratio_pct": 0.0,         # lifetime saved / in (0-100)
+    "ratio_pct": 0.0,
     "last_run_ts": 0.0,
-    "last_saved_pct": 0.0,    # last request's saved/in * 100
-    "history_60s": [],        # [(ts, saved_pct)] cap 60 (1Hz trim, kept short)
+    "last_saved_pct": 0.0,
+    "history_60s": [],
     "errors": 0,
 }
 _MINIFY_STATS_FILE = Path.home() / ".cortexagent" / "minify_stats.json"
-_MINIFY_HIST_CAP = 60       # ~60s at 1 sample per successful minify run
+_MINIFY_HIST_CAP = 60
 
 
 def _load_minify_stats() -> None:
-    """Load persisted minify stats at startup so restarts don't reset counters.
 
-    Without this, every proxy restart wipes the cumulative runs/tokens/ratio
-    back to 0 and rebuilds them from scratch — losing the lifetime history the
-    event feed and dashboard report.
-    """
     global _minify_stats
     try:
         with _MINIFY_STATS_FILE.open(encoding="utf-8") as f:
@@ -531,17 +494,11 @@ def _load_minify_stats() -> None:
                     if k in d:
                         _minify_stats[k] = d[k]
     except Exception:
-        pass  # no persisted stats yet — start fresh
+        pass
 
 
 def _record_minify(mstats, reframe_saved_chars: int = 0) -> None:
-    """Update cumulative counters from a MinifyStats instance and persist.
 
-    reframe_saved_chars: chars the user-prompt reframe step removed BEFORE
-    minify_request ran. minify_request's tokens_in is post-reframe, so we add
-    the reframe savings back (est. ~4 chars/token) to reflect the real
-    compression in the cumulative ratio.
-    """
     try:
         tin = int(getattr(mstats, "tokens_in", 0) or 0)
         tout = int(getattr(mstats, "tokens_out", 0) or 0)
@@ -565,13 +522,13 @@ def _record_minify(mstats, reframe_saved_chars: int = 0) -> None:
             _minify_stats["last_saved_pct"] = saved_pct
             hist = _minify_stats["history_60s"]
             hist.append((now, saved_pct))
-            # Trim to last 60s — keep the most recent ~60 samples.
+
             cutoff = now - 60.0
             if len(hist) > _MINIFY_HIST_CAP:
                 hist[:] = [(t, v) for (t, v) in hist if t >= cutoff][-_MINIFY_HIST_CAP:]
             errs = getattr(mstats, "errors", None) or []
             _minify_stats["errors"] += len(errs) if isinstance(errs, (list, tuple)) else 0
-        # Atomic write so a half-flushed snapshot can't crash the reader.
+
         try:
             _MINIFY_STATS_FILE.parent.mkdir(parents=True, exist_ok=True)
             tmp = _MINIFY_STATS_FILE.with_suffix(".json.tmp")
@@ -584,7 +541,7 @@ def _record_minify(mstats, reframe_saved_chars: int = 0) -> None:
 
 
 def _get_minify_snapshot() -> Dict[str, Any]:
-    """Read the persisted minify snapshot. Returns live dict (caller may copy)."""
+
     try:
         with _MINIFY_STATS_FILE.open(encoding="utf-8") as f:
             d = json.load(f)
@@ -592,21 +549,21 @@ def _get_minify_snapshot() -> Dict[str, Any]:
             return d
     except Exception:
         pass
-    # Fall back to in-memory state if the file is missing/unreadable.
+
     with _minify_lock:
         return dict(_minify_stats)
 
 
-# ── VRAM cache (throttled nvidia-smi) ────────────────────────────────────────
-# The statusline is a fresh process per render, so a per-render nvidia-smi
-# would be too slow. The proxy is long-lived: one nvidia-smi per _VRAM_TTL s,
-# cached in-process and served to every /metrics poll.
+
+
+
+
 _VRAM_TTL = 3.0
 _vram_cache = {"ts": 0.0, "used": None, "total": None}
 
 
 def _vram_mib():
-    """Return (used_mib, total_mib), cached for _VRAM_TTL seconds. None on failure."""
+
     now = time.time()
     if now - _vram_cache["ts"] < _VRAM_TTL:
         return _vram_cache["used"], _vram_cache["total"]
@@ -620,7 +577,7 @@ def _vram_mib():
         _vram_cache.update(ts=now, used=used, total=total)
         return used, total
     except Exception:
-        _vram_cache["ts"] = now  # backoff so a failing GPU doesn't spam nvidia-smi
+        _vram_cache["ts"] = now
         return _vram_cache["used"], _vram_cache["total"]
 
 
@@ -637,7 +594,7 @@ def _get_metrics() -> str:
     return json.dumps(m, indent=2)
 
 
-# ── Diagnostics ──────────────────────────────────────────────────────────────
+
 _DUMP = os.environ.get("CORTEXAGENT_PROXY_DUMP", "")
 
 
@@ -684,8 +641,7 @@ def pipe(src, dst, stop, resp_buf=None):
 
 
 def _dechunk(data: bytes):
-    """Decode an HTTP chunked-transfer body. Returns bytes, or None if the
-    body is incomplete / malformed (caller falls back to raw passthrough)."""
+
     out = b""
     i = 0
     n = len(data)
@@ -702,9 +658,9 @@ def _dechunk(data: bytes):
         if size == 0:
             break
         if i + size + 2 > n:
-            return None  # incomplete data chunk
+            return None
         out += data[i:i + size]
-        i += size + 2  # data + trailing CRLF
+        i += size + 2
     return out
 
 
@@ -714,7 +670,7 @@ class ProxyHandler:
         self.addr = addr
         self.target = target
 
-    # ── Reload-aware target management ──────────────────────────────────────
+
     def _target_healthy(self, timeout=2):
         try:
             h, p = self.target
@@ -725,16 +681,16 @@ class ProxyHandler:
             return False
 
     def _touch_activity(self):
-        # Reset the daemon idle timer (best-effort; daemon may be absent in
-        # legacy per-session mode — a failed ping is silently ignored).
+
+
         try:
             control.send_request("activity", timeout=2)
         except Exception:
             pass
 
     def _ensure_target(self):
-        # If the big model is idle-unloaded, ask the daemon to reload it, then
-        # wait for /health. Returns True once the target is reachable.
+
+
         if self._target_healthy(timeout=2):
             return True
         print(f"[proxy] target {self.target} down — requesting reload...", file=sys.stderr)
@@ -752,13 +708,7 @@ class ProxyHandler:
         return False
 
     def _connect_with_reload(self, timeout: float = 90):
-        """Connect to the target, reloading the big model on a refused connect.
 
-        Handles the race where the target goes down between ``_ensure_target``'s
-        health check and the actual connect (e.g. the daemon unloads big on a
-        session-end that lands in that window). Returns a connected socket, or
-        None if the target can't be reached after a reload attempt.
-        """
         for attempt in (1, 2):
             dst = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             dst.settimeout(timeout)
@@ -802,7 +752,7 @@ class ProxyHandler:
             if not head_bytes:
                 return
             self._forward(head_bytes, body)
-            # Record the active route + emit a routing event (best-effort).
+
             _emit_routing()
         except Exception as e:
             print(f"[proxy] handle error: {e}", file=sys.stderr)
@@ -813,13 +763,7 @@ class ProxyHandler:
                 pass
 
     def _read_request(self):
-        """Read full HTTP request headers + body. Returns (head_bytes, body).
 
-        5s client-side timeout prevents handler threads from blocking forever
-        on a client that connects but never sends data (the root cause of
-        CLOSE-WAIT leaks). Lower than the upstream timeout so the proxy
-        fails fast on stuck clients and the client can retry quickly.
-        """
         self.conn.settimeout(5)
         buf = b""
         try:
@@ -828,7 +772,7 @@ class ProxyHandler:
                 if not chunk:
                     return None, b""
                 buf += chunk
-                if len(buf) > (1 << 20):  # 1 MB header guard
+                if len(buf) > (1 << 20):
                     return None, b""
         except socket.timeout:
             return None, b""
@@ -842,8 +786,9 @@ class ProxyHandler:
         if len(parts) < 2:
             return
         method = parts[0].upper()
+        path = parts[1] if len(parts) > 1 else "/"
 
-        # ── Handle /metrics endpoint ──
+
         if method == "GET" and len(parts) > 1 and parts[1] == "/metrics":
             resp = f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len(_get_metrics())}\r\n\r\n{_get_metrics()}"
             try:
@@ -852,7 +797,21 @@ class ProxyHandler:
                 pass
             return
 
-        # Parse headers into an ordered map (lowercased keys, original case kept).
+
+
+
+
+
+
+        if method == "GET":
+            if not self._target_healthy(timeout=2):
+                if path == "/health":
+                    self._respond_502()
+                else:
+                    self._respond_503()
+                return
+
+
         order, hdr, orig = [], {}, {}
         for line in lines[1:]:
             if ":" not in line:
@@ -865,12 +824,12 @@ class ProxyHandler:
             orig[k] = raw
 
         if method == "POST":
-            # Reload-aware: ensure the big model is up before forwarding, and
-            # reset the daemon idle timer. Only POSTs are inference requests —
-            # GET /health probes must NOT trigger a reload (or idle-unload breaks).
-            # Also tag the request with the UI surface it came from, so the
-            # proxy knows CLI vs webui and any future log analytics can group
-            # by session-id (see _session_lock table above).
+
+
+
+
+
+
             try:
                 _register_session(hdr, kind="http")
             except Exception:
@@ -879,7 +838,7 @@ class ProxyHandler:
                 self._respond_503()
                 return
             self._touch_activity()
-            # Honor Expect: 100-continue so large-body clients will send the body.
+
             if "100-continue" in hdr.get("expect", "").lower():
                 try:
                     self.conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
@@ -896,10 +855,10 @@ class ProxyHandler:
                 self._forward_chunked(head_bytes, body)
                 return
             if is_chunked:
-                # Grammar stripping must run even when minify is off —
-                # otherwise chunked uploads pass `grammar` through to
-                # llama-server and 400. We dechunk, strip, and re-forward
-                # with a fresh Content-Length (no chunked re-encode).
+
+
+
+
                 _diag(method, parts[1] if len(parts) > 1 else "?",
                       cl, True, len(body), None,
                       "chunked → dechunk+grammar-strip only")
@@ -939,7 +898,7 @@ class ProxyHandler:
             _diag(method, parts[1] if len(parts) > 1 else "?",
                   cl, "chunked" in te, len(body), parsed, parse_err)
 
-            # Rebuild headers with corrected Content-Length.
+
             new_lines = [lines[0]]
             for k in order:
                 if k in ("host", "content-length", "expect", "transfer-encoding"):
@@ -958,31 +917,25 @@ class ProxyHandler:
         _elapsed = time.time() - _t0
         if _elapsed > 0.1:
             print(f"[proxy] completed in {_elapsed:.2f}s", file=sys.stderr)
-        # R3: thinking-bottom-line (CLI) — emit divider + reflection via stderr
-        # so a CLI front-end can render "_ divider / ▎ thinking: ..." as a
-        # bottom task bar. Skipped for non-streaming clients; only meaningful
-        # when the call path is interactive.
+
+
+
+
         if os.isatty(sys.stderr.fileno()) if hasattr(sys.stderr, "fileno") else False:
             print("\n_\n▎ thinking: completion in {:.2f}s\n".format(_elapsed), file=sys.stderr)
-        # Tray dashboard state: emit a small JSON file with step counters
-        # so the popout overseer dashboard can show "Step N of M" + progress
-        # bar. We approximate step count by the number of distinct tool
-        # calls (rough heuristic — the big model emits a tool call per
-        # reasoning step), then mark the request as complete. No-op if the
-        # file path isn't writable. See lib/tray_dashboard.py.
+
+
+
+
+
+
         try:
             _emit_dashboard_step(body, _elapsed)
         except Exception:
             pass
 
     def _forward_chunked(self, head_bytes, body):
-        """Buffer a chunked request, de-chunk, minify, re-send with Content-Length.
 
-        Falls back to raw passthrough (``_forward_raw``) if the chunked body
-        can't be fully read within the size cap or fails to de-chunk/parse.
-        The request body is one JSON object (only the *response* is streamed),
-        so buffering it fully is safe and lets us minify + strip grammar.
-        """
         cap = int(os.environ.get("CORTEXAGENT_MINIFY_CHUNKED_MAX", str(16 * 1024 * 1024)))
         buf = body
         terminator = b"\r\n0\r\n\r\n"
@@ -992,7 +945,7 @@ class ProxyHandler:
                 break
             buf += chunk
             if len(buf) > cap:
-                # Too large to buffer safely → give up on minify, raw-passthrough.
+
                 self._forward_raw(head_bytes, buf)
                 return
         dechunked = _dechunk(buf)
@@ -1013,7 +966,7 @@ class ProxyHandler:
             print(f"[proxy] chunked minify skipped: {e}", file=sys.stderr)
             self._forward_raw(head_bytes, buf)
             return
-        # Rebuild headers: drop TE/CL/expect/host, set a fresh Content-Length.
+
         headers_text = head_bytes.decode("utf-8", errors="replace")
         lines = headers_text.split("\r\n")
         new_lines = [lines[0]]
@@ -1033,12 +986,7 @@ class ProxyHandler:
         self._send_and_pipe(head + b"\r\n\r\n" + dechunked)
 
     def _forward_chunked_strip_only(self, head_bytes, body):
-        """De-chunk + strip `grammar` field, then forward with Content-Length.
 
-        Mirrors `_forward_chunked` but skips minify. Used when minify is
-        disabled but the client still sent chunked (which would otherwise
-        passthrough the unsupported `grammar` field to llama-server).
-        """
         cap = int(os.environ.get("CORTEXAGENT_MINIFY_CHUNKED_MAX", str(16 * 1024 * 1024)))
         buf = body
         terminator = b"\r\n0\r\n\r\n"
@@ -1063,7 +1011,7 @@ class ProxyHandler:
             print(f"[proxy] chunked strip skipped: {e}", file=sys.stderr)
             self._forward_raw(head_bytes, buf)
             return
-        # Rebuild headers — drop TE/CL/expect/host, set fresh Content-Length.
+
         headers_text = head_bytes.decode("utf-8", errors="replace")
         lines = headers_text.split("\r\n")
         new_lines = [lines[0]]
@@ -1083,11 +1031,11 @@ class ProxyHandler:
         self._send_and_pipe(head + b"\r\n\r\n" + dechunked)
 
     def _forward_raw(self, head_bytes, body):
-        """Forward headers + body and stream any further client bytes, then pipe response."""
+
         data = head_bytes + b"\r\n\r\n" + body
-        # Upstream (llama-server) read timeout: 90s. Big-context responses
-        # at 128k can take longer than 30s to stream; 90s is the longest
-        # tolerable latency before the client should retry.
+
+
+
         dst = self._connect_with_reload(timeout=90)
         if dst is None:
             self._respond_502()
@@ -1113,7 +1061,13 @@ class ProxyHandler:
                     _idle_since = time.monotonic()
                     dst.sendall(chunk)
                 except socket.timeout:
-                    if time.monotonic() - _idle_since > 30:
+
+
+
+
+
+
+                    if not t1.is_alive() and time.monotonic() - _idle_since > 30:
                         break
                     continue
         except Exception:
@@ -1131,17 +1085,7 @@ class ProxyHandler:
                 pass
 
     def _send_and_pipe(self, data):
-        """Send the full (already-stripped) request, then relay the response.
 
-        Tears down when either the client or the server closes — matching the
-        pre-strip behavior so streaming and keep-alive responses both drain.
-
-        Idle timeout (5s) prevents CLOSE-WAIT accumulation: if the client
-        stops sending data after the backend has closed, the loop exits and
-        the socket is cleaned up. Lower than the request timeout because
-        this is the drain-only path — the heavy lifting already happened
-        upstream.
-        """
         dst = self._connect_with_reload(timeout=5)
         _t0 = time.time()
         if dst is None:
@@ -1169,27 +1113,29 @@ class ProxyHandler:
                     _idle_since = time.monotonic()
                     dst.sendall(chunk)
                 except socket.timeout:
-                    if time.monotonic() - _idle_since > 30:
+
+
+                    if not t1.is_alive() and time.monotonic() - _idle_since > 30:
                         break
                     continue
         except Exception:
             pass
         finally:
             stop.set()
-            # ── Token extraction (must NEVER crash the proxy) ────────────────
-            # The model returns a full HTTP response (headers + body) in resp_buf.
-            # We strip the headers, then try multiple body shapes to recover
-            # prompt/completion token counts for `_record_tokens`. Anything that
-            # fails (parse error, missing key, weird encoding) is silently
-            # swallowed — token accounting is a side concern, not worth killing
-            # the connection for.
+
+
+
+
+
+
+
             try:
                 pt, ct, _elapsed = 0, 0, time.time() - _t0
                 if resp_buf:
                     full = b"".join(resp_buf)
-                    # minify_response is the existing pass (strips grammar field
-                    # llama-server can't parse) — keep it. It returns the same
-                    # bytes if nothing matched, so identity-check is safe.
+
+
+
                     minified = minify_response(full)
                     if minified is not full:
                         resp_buf.clear()
@@ -1197,25 +1143,25 @@ class ProxyHandler:
                     body_bytes = minified if minified is not full else full
                     full_text = body_bytes.decode("utf-8", errors="replace")
 
-                    # ── 1. Strip HTTP response headers (llama-server sends them
-                    #       when the proxy connects raw; split on the blank line
-                    #       that separates headers from body) ───────────────
+
+
+
                     if "\r\n\r\n" in full_text:
                         full_text = full_text.split("\r\n\r\n", 1)[1]
-                    # Some proxies return \n\n (no \r); handle that too.
+
                     if not full_text and "\n\n" in (body_bytes.decode("utf-8", errors="replace")):
                         full_text = body_bytes.decode("utf-8", errors="replace").split("\n\n", 1)[1]
                     stripped_text = full_text.strip()
 
-                    # ── 2. Collect candidate JSON payloads ────────────────
-                    # Shape A: body IS a single raw JSON object (non-streaming
-                    #          chat completion, /v1/models, /health, etc).
-                    # Shape B: SSE — multiple `data: {...}` lines, possibly
-                    #          wrapping usage across message_start + message_delta.
+
+
+
+
+
                     payloads: list[str] = []
                     try:
-                        json.loads(stripped_text)  # validates
-                        payloads.append(stripped_text)  # raw JSON wins
+                        json.loads(stripped_text)
+                        payloads.append(stripped_text)
                     except Exception:
                         for line in full_text.split("\n"):
                             ln = line.strip()
@@ -1226,7 +1172,7 @@ class ProxyHandler:
                                 continue
                             payloads.append(payload)
 
-                    # ── 3. Walk payloads, pull usage + timings ────────────
+
                     for payload in payloads:
                         try:
                             obj = json.loads(payload)
@@ -1235,12 +1181,12 @@ class ProxyHandler:
                         if not isinstance(obj, dict):
                             continue
 
-                        # OpenAI shape (preferred): {"usage":{"prompt_tokens":N,
-                        #   "completion_tokens":N}}. llama-server's /v1/chat
-                        #   returns this on the final streaming chunk.
+
+
+
                         usage = obj.get("usage")
-                        # Anthropic beta shape: usage nests under "message"
-                        #   {"type":"message_start","message":{"usage":{...}}}.
+
+
                         if not isinstance(usage, dict):
                             msg = obj.get("message")
                             if isinstance(msg, dict):
@@ -1248,7 +1194,7 @@ class ProxyHandler:
                         if isinstance(usage, dict):
                             u_pt = int(usage.get("prompt_tokens", 0) or 0)
                             u_ct = int(usage.get("completion_tokens", 0) or 0)
-                            # Anthropic uses input_tokens / output_tokens.
+
                             if not u_pt:
                                 u_pt = int(usage.get("input_tokens", 0) or 0)
                             if not u_ct:
@@ -1258,11 +1204,11 @@ class ProxyHandler:
                             if u_ct:
                                 ct = u_ct
 
-                        # ── 4. Fallback: llama-server timings block ─────
-                        # When usage is absent (non-streaming or older builds),
-                        # the `timings` object carries prompt_n / predicted_n.
-                        # Only consult this if OpenAI usage was empty so we
-                        # don't double-count on the same response.
+
+
+
+
+
                         if not pt and not ct:
                             timings = obj.get("timings")
                             if isinstance(timings, dict):
@@ -1273,21 +1219,21 @@ class ProxyHandler:
                                 if prn:
                                     ct = prn
             except Exception:
-                # Swallow ALL errors here — token extraction is best-effort.
-                # The response was already piped to the client; the proxy
-                # staying up is more important than the metrics.
+
+
+
                 pt, ct, _elapsed = 0, 0, 0.0
 
-            # ── 5. Record metrics if we got a completion count ────────────
+
             if ct:
                 try:
                     _record_tokens(pt, ct, _elapsed)
                     tok_s = round(ct / _elapsed, 1) if _elapsed > 0 else 0
                     print(f"[proxy] tokens: {pt} in → {ct} out ({tok_s} tok/s, {_elapsed:.1f}s)", file=sys.stderr)
                 except Exception:
-                    pass  # metrics must never break the proxy
+                    pass
 
-            # ── 6. Socket cleanup (keep t1.join and closes from before) ───
+
             t1.join(timeout=3)
             try:
                 dst.close()
@@ -1300,7 +1246,7 @@ class ProxyHandler:
 
 
 def main():
-    _load_minify_stats()  # continue from persisted stats, don't reset on restart
+    _load_minify_stats()
     port = int(os.environ.get("CORTEXAGENT_PROXY_PORT", sys.argv[1] if len(sys.argv) > 1 else "8081"))
     target_url = os.environ.get("CORTEXAGENT_PROXY_TARGET", sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:8080")
     host = target_url.split("://")[-1].split(":")[0]
@@ -1309,8 +1255,8 @@ def main():
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # Retry bind with backoff: a freshly-killed predecessor may still hold the
-    # port for a moment even with SO_REUSEADDR (live process, not TIME_WAIT).
+
+
     bound = False
     for attempt in range(20):
         try:
@@ -1330,7 +1276,7 @@ def main():
     while True:
         conn, addr = server.accept()
         conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        # TCP keepalive: 10s idle → 3 probes at 3s intervals → drop
+
         if hasattr(socket, "TCP_KEEPIDLE"):
             try:
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10)

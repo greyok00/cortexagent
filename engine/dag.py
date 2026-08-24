@@ -1,16 +1,16 @@
-"""CortexAgent Workflow Engine — DAG Scheduler with Topological Sort"""
+
 from collections import defaultdict, deque
 from typing import Optional
 from .types import Task, TaskStatus, EngineType, BatchGroup
 
 
 class DAGScheduler:
-    """Directed Acyclic Graph scheduler for task execution planning."""
+
 
     def __init__(self):
         self.tasks: dict[str, Task] = {}
-        self.dependencies: dict[str, list[str]] = {}  # task_id -> [dependency_ids]
-        self.dependents: dict[str, list[str]] = {}    # task_id -> [dependent_ids]
+        self.dependencies: dict[str, list[str]] = {}
+        self.dependents: dict[str, list[str]] = {}
 
     def add_task(self, task: Task) -> None:
         self.tasks[task.id] = task
@@ -21,7 +21,7 @@ class DAGScheduler:
             self.dependents[dep_id].append(task.id)
 
     def _topological_sort(self) -> list[str]:
-        """Kahn's algorithm for topological sort. Returns task IDs in execution order."""
+
         in_degree = {tid: len(deps) for tid, deps in self.dependencies.items()}
         queue = deque([tid for tid, deg in in_degree.items() if deg == 0])
         result = []
@@ -40,7 +40,7 @@ class DAGScheduler:
         return result
 
     def detect_cycles(self) -> Optional[list[str]]:
-        """Detect if there are cycles. Returns cycle nodes or None."""
+
         try:
             self._topological_sort()
             return None
@@ -48,7 +48,7 @@ class DAGScheduler:
             return list(e.args[0].split(": ")[1].strip("{}").split(", "))
 
     def get_ready_tasks(self, completed: set[str]) -> list[Task]:
-        """Get tasks whose dependencies are all completed."""
+
         ready = []
         for tid, task in self.tasks.items():
             if task.status == TaskStatus.PENDING:
@@ -58,7 +58,7 @@ class DAGScheduler:
         return ready
 
     def batch_by_engine(self, tasks: list[Task]) -> list[BatchGroup]:
-        """Group ready tasks by engine type for batch execution."""
+
         groups: dict[EngineType, list[Task]] = defaultdict(list)
         for task in tasks:
             groups[task.engine].append(task)
@@ -69,9 +69,9 @@ class DAGScheduler:
         ]
 
     def optimize_schedule(self) -> list[BatchGroup]:
-        """Full schedule optimization: topological sort + engine batching."""
+
         order = self._topological_sort()
-        # Group consecutive tasks by engine type where possible
+
         scheduled: list[BatchGroup] = []
         current_engine: Optional[EngineType] = None
         current_batch: list[Task] = []

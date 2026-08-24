@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
-"""lib/vram.py — VRAM budget: locked buffer + free-for-adapters.
 
-The GPU is shared. Required residents (never evicted): the big model, the
-overseer, and faster-whisper. Everything else — multimodal adapters (Moondream,
-whisper) and the RAG embedding model — may use the remaining free VRAM minus a
-locked buffer that is never touched. The buffer is crash protection: the
-desktop must never OOM, so a fixed slice of VRAM stays reserved no matter what.
-
-Adapters and the embedder call `can_fit(mb)` before loading on GPU and fall
-back to CPU when the budget is too small. `budget_mib()` is the free VRAM
-reported by nvidia-smi minus the locked buffer; when the big model is loaded
-the budget is near zero and everything runs on CPU, when it is down the budget
-is ~14 GB and Moondream can load on GPU.
-
-Usage:
-  python3 lib/vram.py --smoke
-"""
 from __future__ import annotations
 
 import subprocess
@@ -26,7 +10,7 @@ from lib.config import CFG
 
 
 def free_mib() -> Optional[int]:
-    """Free VRAM in MiB via nvidia-smi, or None if no GPU / query fails."""
+
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=memory.free",
@@ -39,11 +23,7 @@ def free_mib() -> Optional[int]:
 
 
 def budget_mib() -> Optional[int]:
-    """VRAM available for adapters/RAG = free VRAM - locked buffer.
 
-    Returns None when the GPU is unavailable (callers treat that as "no GPU,
-    stay on CPU"). Never negative: the buffer is clamped to the free VRAM.
-    """
     f = free_mib()
     if f is None:
         return None
@@ -51,7 +31,7 @@ def budget_mib() -> Optional[int]:
 
 
 def can_fit(mb: int) -> bool:
-    """True if `mb` MiB fits in the adapter/RAG budget (GPU usable)."""
+
     b = budget_mib()
     return b is not None and mb <= b
 
@@ -69,7 +49,7 @@ def _smoke() -> int:
         if b > f:
             print("❌ budget_mib() > free_mib()")
             fails += 1
-        # can_fit must agree with the budget
+
         if can_fit(b) is not True:
             print("❌ can_fit(budget) should be True")
             fails += 1

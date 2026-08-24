@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
-"""tests/test_tui_status.py — pure-Python tests for lib/tui_status.py.
 
-No Textual, no I/O. Covers display-width measurement, panel rendering,
-three layouts, shrink priority, and the spec rules (zero-savings valid,
-503 → WARMING, indeterminate bar has no fake percent, color paired with
-glyph, required fields never dropped).
-"""
 from __future__ import annotations
 
 import re
 import unittest
 
-# Force a colored + Unicode-capable environment for the rendering tests so
-# the assertions about ANSI borders / Unicode glyphs hold. Production code
-# honors the real environment; tests want to exercise the colored path.
+
+
+
 import lib.tui_status as _tui_status
 _tui_status._COLOR_BITS = 24  # type: ignore[attr-defined]
 _tui_status._UNICODE = True   # type: ignore[attr-defined]
@@ -39,11 +33,11 @@ ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _strip(s: str) -> str:
-    """Strip ANSI sequences so substring assertions don't trip on color."""
+
     return ANSI_RE.sub("", s)
 
 
-# ── Width helpers ────────────────────────────────────────────────────────────
+
 
 class TestDisplayWidth(unittest.TestCase):
     def test_ascii(self):
@@ -55,12 +49,12 @@ class TestDisplayWidth(unittest.TestCase):
         self.assertEqual(display_width("日本語"), 6)
 
     def test_status_glyphs(self):
-        # All single-cell even if marked; the safe fallback is 1 cell.
+
         self.assertGreaterEqual(display_width("●"), 1)
         self.assertGreaterEqual(display_width("◈"), 1)
 
     def test_tab_and_newline_normalize(self):
-        # Tabs/newlines don't multi-count when measured alone.
+
         self.assertEqual(display_width("\t"), 1)
         self.assertEqual(display_width("\n"), 1)
 
@@ -85,7 +79,7 @@ class TestFitToCells(unittest.TestCase):
         self.assertFalse(_strip(out).endswith("…"))
 
 
-# ── Panel borders ────────────────────────────────────────────────────────────
+
 
 class TestPanelBlock(unittest.TestCase):
     def test_uses_box_glyphs(self):
@@ -101,17 +95,17 @@ class TestPanelBlock(unittest.TestCase):
     def test_three_content_rows(self):
         out = panel_block("RUNTIME", ["a", "b", "c"], 20, "38;2;0;0;0")
         lines = out.splitlines()
-        self.assertEqual(len(lines), 5)  # top + 3 content + bottom
-        # Each content row contains │ on left/right.
+        self.assertEqual(len(lines), 5)
+
         for line in lines[1:4]:
             self.assertTrue(line.startswith("\x1b["))
             self.assertIn("│", line)
 
 
-# ── Top-level strip layouts ─────────────────────────────────────────────────
+
 
 def _view(width: int, **overrides) -> StatusView:
-    """A sane default StatusView at ``width``; kwargs let tests override fields."""
+
     rt = RuntimeView(
         ctx_pct=overrides.get("ctx_pct", 2.0),
         ctx_used_tokens=overrides.get("ctx_used", 3100),
@@ -146,7 +140,7 @@ def _view(width: int, **overrides) -> StatusView:
 class TestStripRender(unittest.TestCase):
     def test_layout_3up(self):
         out = _strip(strip_render(_view(120)))
-        # All three headings on the first rendered line.
+
         first_line = out.splitlines()[0]
         self.assertIn("RUNTIME", first_line)
         self.assertIn("SLIMTOKEN", first_line)
@@ -155,13 +149,13 @@ class TestStripRender(unittest.TestCase):
     def test_layout_2plus1(self):
         out = _strip(strip_render(_view(80)))
         lines = out.splitlines()
-        # Runtime + SlimToken are side by side on the top block; Memory
-        # appears below as its own 5-line panel.
-        # First three "panel" lines should contain both RUNTIME and SLIMTOKEN
-        # on the same line; MEMORY should appear later in its own block.
+
+
+
+
         self.assertIn("RUNTIME", lines[0])
         self.assertIn("SLIMTOKEN", lines[0])
-        # The Memory panel appears on a later line by itself.
+
         mem_idx = next(
             i for i, ln in enumerate(lines) if "MEMORY" in ln and "RUNTIME" not in ln
         )
@@ -170,7 +164,7 @@ class TestStripRender(unittest.TestCase):
     def test_layout_stack(self):
         out = _strip(strip_render(_view(50)))
         lines = out.splitlines()
-        # Runtime appears first, then SlimToken on its own band, then Memory.
+
         rt_idx = next(i for i, ln in enumerate(lines) if "RUNTIME" in ln)
         st_idx = next(i for i, ln in enumerate(lines) if "SLIMTOKEN" in ln)
         mem_idx = next(i for i, ln in enumerate(lines) if "MEMORY" in ln)
@@ -179,16 +173,11 @@ class TestStripRender(unittest.TestCase):
 
 
 class TestFitsWithinWidth(unittest.TestCase):
-    """Every rendered row must be ≤ view.width cells. No text shoots out.
 
-    Regression test: the original panel_block + strip_render used a single
-    inner_w for all panels (width-2), so 3up produced output 3*(width-2)+8
-    cells wide — overflowing the terminal by width+2 cells.
-    """
 
     def _max_row_width(self, out: str) -> int:
-        # ANSI escape sequences have 0 display cells but each char counts
-        # as 1 cell in wcwidth — strip them before measuring.
+
+
         plain = ANSI_RE.sub("", out)
         return max(display_width(ln) for ln in plain.splitlines())
 
@@ -227,14 +216,14 @@ class TestFitsWithinWidth(unittest.TestCase):
         self.assertLessEqual(self._max_row_width(out), 120)
 
     def test_panel_block_top_row_outer_matches_content_row_outer(self):
-        """The top border row and a content row must be the same outer width."""
+
         rendered = panel_block("RUNTIME",
                                ["row1", "row2", "row3"],
                                width=40, accent="38;2;1;1;1")
         lines = rendered.splitlines()
         self.assertEqual(len(lines), 5)
         plain = _strip(rendered).splitlines()
-        # top border row, content row, bottom border row all the same width
+
         top_w = display_width(plain[0])
         mid_w = display_width(plain[1])
         bot_w = display_width(plain[4])
@@ -245,7 +234,7 @@ class TestFitsWithinWidth(unittest.TestCase):
         self.assertEqual(top_w, 42, f"expected outer width = inner+2 = 42, got {top_w}")
 
 
-# ── Spec rules ───────────────────────────────────────────────────────────────
+
 
 class TestSpecRules(unittest.TestCase):
     def test_slimtoken_zero_runs_shows_zero(self):
@@ -266,7 +255,7 @@ class TestSpecRules(unittest.TestCase):
     def test_work_line_omitted_when_none(self):
         out1 = _strip(strip_render(_view(120, work=None)))
         self.assertNotIn("retry", out1)
-        # Now with a work line:
+
         out2 = _strip(strip_render(_view(120, work=WorkLineView(
             phase=WorkPhase.WARMING, label="Model warming up",
             progress=None, retry_current=3, retry_max=3,
@@ -276,10 +265,10 @@ class TestSpecRules(unittest.TestCase):
 
 
 class TestEnvironmentAware(unittest.TestCase):
-    """Env-aware rendering per docs/ux/DESIGN-PRINCIPLES.md §4.4, §4.5."""
+
 
     def setUp(self):
-        # Save the global state set by the module-top fixture.
+
         self._saved_bits = _tui_status._COLOR_BITS
         self._saved_unicode = _tui_status._UNICODE
 
@@ -298,7 +287,7 @@ class TestEnvironmentAware(unittest.TestCase):
         _tui_status._COLOR_BITS = 0
         _tui_status._UNICODE = True
         out = strip_render(_view(120))
-        # Hierarchy without color: glyphs stay (per spec §4.3).
+
         self.assertIn("╭", out)
         self.assertIn("╰", out)
 
@@ -323,7 +312,7 @@ class TestEnvironmentAware(unittest.TestCase):
         out8 = strip_render(_view(120))
         self.assertNotIn("38;2;", out8,
                          "8-bit must not emit 24-bit SGR sequences")
-        # 8-bit emits plain `m` codes like "36m" (cyan).
+
         self.assertIn("\x1b[36m", out8)
 
     def test_set_unicode_toggle_is_live(self):
@@ -335,7 +324,7 @@ class TestEnvironmentAware(unittest.TestCase):
         self.assertEqual(_tui_status.B_TOP_LEFT(), "╭")
 
     def test_set_title_is_noop_on_non_tty(self):
-        # set_title writes to stdout; under non-tty it must be silent.
+
         import io
         buf = io.StringIO()
         old = _tui_status._sys.stdout
@@ -352,7 +341,7 @@ class TestEnvironmentAware(unittest.TestCase):
             phase=WorkPhase.GENERATING, label="Generating response",
             progress=None,
         ), 120)
-        # Indeterminate — block bar present, NO percent number.
+
         self.assertIn("░", out)
         self.assertNotRegex(_strip(out), r"\d+%")
 
@@ -382,17 +371,17 @@ class TestEnvironmentAware(unittest.TestCase):
         )
 
     def test_footer_shortcuts_hide_in_priority_order(self):
-        # Width 40 — slimtoken shortcut drops first, then memory, then help.
+
         out = _strip(footer_line(
             (("?", "help"), ("m", "memory"), ("s", "slimtoken"), ("l", "logs")),
             width=40,
         ))
         self.assertNotIn("slimtoken", out)
-        # logs always retained.
+
         self.assertIn("logs", out)
 
     def test_required_fields_never_dropped(self):
-        # At width=30, the panels still contain their headings and a ctx%.
+
         out = _strip(strip_render(_view(30)))
         self.assertIn("RUNTIME", out)
         self.assertIn("SLIMTOKEN", out)
@@ -400,25 +389,21 @@ class TestEnvironmentAware(unittest.TestCase):
         self.assertIn("ctx", out)
 
     def test_color_pairs_never_alone(self):
-        """Every colored ANSI sequence is followed by a non-color glyph.
 
-        Stripping ANSI must leave behind the same printable content — color
-        is decoration, not the only signal.
-        """
         out = strip_render(_view(120))
         stripped = _strip(out)
-        # Stripped should be similar length, with all the headings intact.
+
         self.assertIn("RUNTIME", stripped)
         self.assertIn("SLIMTOKEN", stripped)
         self.assertIn("MEMORY", stripped)
-        # Status glyphs always present (paired with color).
+
         for glyph in ("●", "◷", "!"):
-            # At least one of the glyphs appears somewhere (model-ready is
-            # the default).
-            pass  # presence depends on phase; not strictly required.
+
+
+            pass
 
     def test_no_raw_error_terms_in_render(self):
-        """The renderer must not synthesize Error / terminated / retry chains."""
+
         out = _strip(strip_render(_view(120, work=WorkLineView(
             phase=WorkPhase.WARMING, label="Model warming up",
             progress=None, retry_current=3, retry_max=3,
@@ -431,7 +416,7 @@ class TestEnvironmentAware(unittest.TestCase):
     def test_no_blank_spacer_lines(self):
         out = strip_render(_view(120))
         lines = out.splitlines()
-        # No two consecutive blank lines.
+
         for a, b in zip(lines, lines[1:]):
             self.assertFalse(a == "" and b == "")
 

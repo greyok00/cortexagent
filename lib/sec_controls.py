@@ -1,47 +1,9 @@
 #!/usr/bin/env python3
-"""lib/sec_controls.py — Security Tracker popout (v2: working + useful).
 
-A compact, phone-portrait Tk window that surfaces every alert written to
-the two local security feeds:
-
-  - ~/honeypot/alerts.log                                (NDJSON)
-  - ~/Documents/RecordRelief/webapp/data/alerts.json     (JSON array)
-
-Layout (top → bottom, single scrollable column):
-
-  ┌─ Title bar  (draggable, ✕ to close)
-  ├─ Status header  ─ severity dot + severity bar (e.g. "🔴 2 critical · 1 high")
-  ├─ Action plan banner ─ one-line recommended action (or "All clear")
-  ├─ Action row  ─ Pause · Refresh · Clear  (3 compact buttons)
-  ├─ Alert stream  ─ human-framed cards with inline Block / Investigate / Dismiss
-  └─ Footer  ─ live action feedback ("Blocked 1.2.3.4 ✓" / "Ready")
-
-What it does that the v1 did NOT:
-
-  - Each alert is a CARD showing a plain-language human frame, with working
-    Block / Investigate (audit) / Dismiss buttons right on the card — no
-    click-to-expand step. No more dead detail panel.
-  - Per-alert plain-language reframing for known kinds (port-scan,
-    canary.token.trigger, rkhunter.warning, mit.exception, etc.). The
-    reframing lives in a small table at the top of the file and is
-    easy to extend.
-  - The "Action plan" banner shows the highest-priority recommended
-    action in one line: "1 IP needs blocking (click here to see it)".
-  - The Block button writes a real entry to firewall_commands.jsonl
-    (the root helper picks it up) — works for any alert that has an
-    IP in the detail. No more "what does this button do" mystery.
-  - The 2s refresh patches cards in place, so a click on a button
-    survives the next refresh (widgets are keyed by alert id).
-  - The old stats board (count header, severity chips, count footer)
-    is gone. The footer is now a live feedback line for the last action.
-  - All the dead empty space from v1 is gone. The list IS the
-    content. Compact 820×2000 with everything visible.
-
-Dock-style, no-focus pattern copied from lib/stt_controls.py.
-"""
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -52,10 +14,13 @@ from pathlib import Path
 
 import tkinter as tk
 
-# ── Alert sources ────────────────────────────────────────────────────────────
+
 HONEYPOT_LOG = Path.home() / "security-console" / "honeypot" / "alerts.log"
-RECORDRELIEF_FEED = (
-    Path.home() / "Documents" / "RecordRelief" / "webapp" / "data" / "alerts.json"
+EXTRA_FEED = Path(
+    os.environ.get(
+        "CORTEXAGENT_ALERTS_JSON",
+        str(Path.home() / "security-console" / "alerts.json"),
+    )
 )
 FIREWALL_COMMANDS = (
     Path.home() / "security-console" / "overseer" / "firewall_commands.jsonl"
@@ -64,7 +29,7 @@ FIREWALL_STATE = (
     Path.home() / "security-console" / "overseer" / ".portscan_state.json"
 )
 
-# Severity → display color.
+
 SEV_COLOR = {
     "critical": "#ff3b30",
     "high":     "#ff9500",
@@ -81,23 +46,22 @@ SEV_ICON = {
 }
 SEV_ORDER = ("critical", "high", "medium", "low", "info")
 
-# Background palette
+
 BG_DEEP   = "#0f0f1f"
 BG_PANEL  = "#1a1a2e"
 BG_BAR    = "#3a3a5e"
 BG_ROW    = "#20203a"
-# FG_DIM bumped from #808090 (≈4.0:1) to #a8aabe (≈7.2:1) for WCAG 2.2 §1.4.3.
+
 FG_DIM    = "#a8aabe"
 FG_MUTED  = "#a0a0c0"
 FG_BRIGHT = "#e0e0e0"
 
-# RecordRelief webapp (URL kept: sec_tray.py:222 uses it for the tray's own menu)
-RECORDRELIEF_URL = "http://127.0.0.1:8787/"
 
 
-# ── Per-kind plain-language reframing ────────────────────────────────────────
-# Short, in-context explanation shown when an alert card is expanded.
-# Add a row to extend. ``template`` is ``str.format(**fields)``-d.
+
+
+
+
 REFRAMINGS: dict[str, dict] = {
     "port-scan": {
         "title": "Port scan detected",
@@ -127,7 +91,7 @@ REFRAMINGS: dict[str, dict] = {
             ("audit", "Review change details"),
         ],
     },
-    "portscan": {  # alias
+    "portscan": {
         "title": "Port scan detected",
         "summary": "An IP probed {n_ports} distinct ports in under a minute.",
         "actions": [("block", "Re-block the source IP")],
@@ -188,7 +152,7 @@ REFRAMINGS: dict[str, dict] = {
 }
 
 
-# ── Alert ingestion ──────────────────────────────────────────────────────────
+
 
 def _read_honeypot_log(limit: int = 200) -> list[dict]:
     if not HONEYPOT_LOG.exists():
@@ -210,11 +174,11 @@ def _read_honeypot_log(limit: int = 200) -> list[dict]:
     return out
 
 
-def _read_recordrelief_feed(limit: int = 200) -> list[dict]:
-    if not RECORDRELIEF_FEED.exists():
+def _read_extra_feed(limit: int = 200) -> list[dict]:
+    if not EXTRA_FEED.exists():
         return []
     try:
-        data = json.loads(RECORDRELIEF_FEED.read_text())
+        data = json.loads(EXTRA_FEED.read_text())
         if not isinstance(data, list):
             return []
         return data[-limit:]
@@ -226,20 +190,13 @@ CVE_INTEL_FILE = Path.home() / "security-console" / "cve" / "intel.jsonl"
 
 
 def _read_cve_feed(limit: int = 50) -> list[dict]:
-    """Read CVE intel NDJSON and project it into the popout's alert shape.
 
-    Each CVE entry becomes a card with severity derived from:
-    - KEV → critical, kind="cve.kev"
-    - cvss_v3 >= 9.0 → critical, kind="cve.critical"
-    - epss_score >= 0.5 → high, kind="cve.high_epss"
-    Otherwise the entry is suppressed (noise filter).
-    """
     if not CVE_INTEL_FILE.exists():
         return []
     out: list[dict] = []
     try:
         with CVE_INTEL_FILE.open(encoding="utf-8") as f:
-            lines = f.readlines()[-limit * 2:]  # overscan then filter
+            lines = f.readlines()[-limit * 2:]
         for ln in lines:
             ln = ln.strip()
             if not ln:
@@ -259,7 +216,7 @@ def _read_cve_feed(limit: int = 50) -> list[dict]:
             elif epss >= 0.5:
                 kind, severity = "cve.high_epss", "high"
             else:
-                continue  # suppress low-signal entries
+                continue
             summary = entry.get("summary") or "(no summary)"
             techniques = entry.get("mitre_techniques") or []
             tech_str = f"  TIDs: {', '.join(techniques)}" if techniques else ""
@@ -280,18 +237,18 @@ def _read_cve_feed(limit: int = 50) -> list[dict]:
 
 
 def _merge_and_sort(limit: int = 200) -> list[dict]:
-    combined = _read_honeypot_log() + _read_recordrelief_feed() + _read_cve_feed()
+    combined = _read_honeypot_log() + _read_extra_feed() + _read_cve_feed()
     combined.sort(key=lambda e: e.get("ts", ""))
     return combined[-limit:]
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 _IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
 
 def _extract_ip(text: str) -> str | None:
-    """Return the first IPv4-looking token in `text`, or None."""
+
     if not text:
         return None
     m = _IPV4.search(text)
@@ -305,16 +262,10 @@ def _format_hms(ts: str) -> str:
     return time_part.split(".", 1)[0].rsplit("-", 1)[0].rsplit("+", 1)[0]
 
 
-# ── Block command (writes to firewall_commands.jsonl) ────────────────────────
+
 
 def _queue_block(ip: str, reason: str) -> bool:
-    """Append a default-block request for the root helper to apply.
 
-    Also update the local portscan state so the popout footer immediately
-    shows the new blocked count (without waiting for the next correlate() pass
-    to write it). The state file is the same one the portscan correlation
-    engine reads, so this stays in sync.
-    """
     if not ip:
         return False
     try:
@@ -326,7 +277,7 @@ def _queue_block(ip: str, reason: str) -> bool:
             }, ensure_ascii=False) + "\n")
     except OSError:
         return False
-    # Update the local state so the popout's footer shows the new count.
+
     try:
         state = {"blocked": {}, "last_alert": {}, "processed_offset": 0}
         if FIREWALL_STATE.exists():
@@ -344,13 +295,12 @@ def _queue_block(ip: str, reason: str) -> bool:
     return True
 
 
-# ── Pure-logic helpers (Action Console) ───────────────────────────────────────
-# These take plain alert data and return strings — no tkinter — so they're
-# unit-testable headlessly. The window code calls these to build its labels.
+
+
+
 
 def _severity_bar(alerts: list[dict]) -> str:
-    """'🔴 2 critical · 1 high · 3 low' — only nonzero severities, critical
-    first. Returns 'All clear' when there are no alerts."""
+
     if not alerts:
         return "All clear"
     counts: dict[str, int] = {k: 0 for k in SEV_ORDER}
@@ -374,12 +324,7 @@ _DEFAULT_FRAME = (
 
 
 def _human_frame(alert: dict) -> tuple[str, str, list[tuple[str, str]]]:
-    """Return (title, human_body, actions) for an alert.
 
-    Uses the REFRAMINGS table when the kind is known; otherwise falls back to
-    a generic plain-language frame. `actions` is a list of (key, label) where
-    key is one of block / audit / ack / dismiss.
-    """
     kind = str(alert.get("kind", ""))
     r = REFRAMINGS.get(kind)
     if not r:
@@ -407,11 +352,7 @@ def _human_frame(alert: dict) -> tuple[str, str, list[tuple[str, str]]]:
 
 
 def _block_feedback(ip: str, reason: str) -> str:
-    """Queue a block and return a short user-facing status string.
 
-    Reads firewall_commands_result.jsonl after writing so we can report whether
-    the root helper applied the rule yet.
-    """
     if not _queue_block(ip, reason):
         return "⚠ block command write failed"
     applied = False
@@ -434,14 +375,14 @@ def _block_feedback(ip: str, reason: str) -> str:
     return f"Blocked {ip} ✓" if applied else f"Block queued for {ip} (helper applying)"
 
 
-# ── Window construction ──────────────────────────────────────────────────────
+
 
 def _make_window() -> None:
     root = tk.Tk()
     root.title("Security Tracker")
     root.configure(bg=BG_PANEL)
 
-    # ── Dock-style window (no focus theft). ──
+
     root.wm_attributes("-type", "dock")
     root.attributes("-topmost", True)
     root.attributes("-alpha", 0.99)
@@ -492,7 +433,7 @@ def _make_window() -> None:
             _stay_topmost()
     _spam_then_quiet(8)
 
-    # ── Title bar (draggable) ──
+
     _drag = {"x": 0, "y": 0, "w": 0, "h": 0}
     def _on_title_click(event: tk.Event) -> None:
         _drag["x"] = event.x_root
@@ -534,7 +475,7 @@ def _make_window() -> None:
     title.bind("<Button-1>", _on_title_click)
     title.bind("<B1-Motion>", _on_title_drag)
 
-    # ── Single big scrollable column ──
+
     outer = tk.Frame(root, bg=BG_PANEL)
     outer.pack(fill="both", expand=True)
     canvas = tk.Canvas(outer, bg=BG_PANEL, highlightthickness=0)
@@ -551,7 +492,7 @@ def _make_window() -> None:
         lambda _e: canvas.configure(scrollregion=canvas.bbox("all")),
     )
 
-    # ── Status header ──
+
     status_frame = tk.Frame(inner, bg=BG_PANEL)
     status_frame.pack(fill="x", padx=16, pady=(16, 4))
     sev_dot = tk.Label(status_frame, text="●", bg=BG_PANEL, fg="#5ac8fa",
@@ -568,7 +509,7 @@ def _make_window() -> None:
                           font=("-size", 11), anchor="w")
     status_sub.pack(fill="x")
 
-    # ── Action plan banner ──
+
     plan_frame = tk.Frame(inner, bg="#1a3050", bd=1, relief="flat",
                           highlightbackground="#2a5080", highlightthickness=1)
     plan_frame.pack(fill="x", padx=16, pady=(8, 4))
@@ -581,7 +522,7 @@ def _make_window() -> None:
     )
     plan_text.pack(fill="x")
 
-    # ── Action row (3 compact buttons) ──
+
     action_row = tk.Frame(inner, bg=BG_PANEL)
     action_row.pack(fill="x", padx=16, pady=(8, 8))
     paused: dict = {"v": False}
@@ -611,7 +552,7 @@ def _make_window() -> None:
             f"380x180+{root.winfo_x() + 80}+{root.winfo_y() + 100}")
         tk.Label(
             confirm, text="Clear BOTH alert stores?\n\n🪤 ~/honeypot/alerts.log\n"
-                          "📋 RecordRelief alerts.json",
+                          "📋 alerts.json",
             bg=BG_PANEL, fg=FG_BRIGHT, font=("-size", 12), pady=16,
             justify="center",
         ).pack(fill="x", padx=10)
@@ -619,10 +560,10 @@ def _make_window() -> None:
         row.pack(pady=(0, 10))
         def do_clear():
             cleared = []
-            for path in (HONEYPOT_LOG, RECORDRELIEF_FEED):
+            for path in (HONEYPOT_LOG, EXTRA_FEED):
                 try:
                     if path.exists():
-                        if path == RECORDRELIEF_FEED:
+                        if path == EXTRA_FEED:
                             path.write_text("[]\n")
                         else:
                             path.write_text("")
@@ -654,7 +595,7 @@ def _make_window() -> None:
         return b
 
     def _lighten(hex_color: str) -> str:
-        """Lighten a hex color for hover feedback."""
+
         try:
             h = hex_color.lstrip("#")
             r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
@@ -672,7 +613,7 @@ def _make_window() -> None:
     _small_btn(action_row, "🗑 Clear", "#b71c1c", on_clear_logs).pack(
         side="left", padx=(4, 0), fill="x", expand=True)
 
-    # ── Alert stream ──
+
     stream_label = tk.Label(inner, text="📡  Alert stream",
                             bg=BG_PANEL, fg=FG_MUTED,
                             font=("-size", 11, "-weight", "bold"), anchor="w")
@@ -708,7 +649,7 @@ def _make_window() -> None:
                              justify="left", anchor="w")
         preview_l.pack(fill="x", padx=10, pady=(6, 6))
 
-        # Action row — real buttons, visible immediately (no expand step).
+
         btn_row = tk.Frame(card, bg=BG_ROW)
         btn_row.pack(fill="x", padx=10, pady=(0, 8))
         for act_key, act_label in actions:
@@ -727,12 +668,12 @@ def _make_window() -> None:
             "all_widgets": [card, head, title_l, preview_l],
         }
 
-    # State for the current rendered list + per-session dismissals.
-    card_widgets: list = []  # list of (card, refs, body, alert)
-    dismissed_ids: set = set()  # _alert_id tuples removed from the session view
+
+    card_widgets: list = []
+    dismissed_ids: set = set()
 
     def _render_alerts(alerts, in_place=True):
-        # Nothing to show: drop every card and show the empty hint.
+
         if not alerts:
             for c in list(card_widgets):
                 c[0].destroy()
@@ -745,12 +686,12 @@ def _make_window() -> None:
             empty.pack(fill="x", padx=10)
             card_widgets.append((empty, None, None, None))
             return
-        # Clear any lingering empty-state placeholder before showing cards.
+
         for c in list(card_widgets):
             if c[3] is None:
                 c[0].destroy()
                 card_widgets.remove(c)
-        # Key existing cards by alert id so we can patch them in place.
+
         by_id = {}
         for c in list(card_widgets):
             if c[2] is not None and c[3] is not None:
@@ -774,7 +715,7 @@ def _make_window() -> None:
                 card, refs = _build_card(list_frame, a)
                 card.pack(fill="x", padx=4, pady=3)
                 card_widgets.append([card, refs, None, a])
-        # Remove cards whose alert no longer exists (dismissed / filtered out).
+
         for c in list(card_widgets):
             if c[3] is not None and _alert_id(c[3]) not in seen:
                 c[0].destroy()
@@ -795,16 +736,16 @@ def _make_window() -> None:
             _dismiss(alert)
 
     def _dismiss(alert):
-        """Remove an alert from the session view (never edits source logs)."""
+
         dismissed_ids.add(_alert_id(alert))
         _apply_filters()
 
     def _open_log(_e=None):
         log_candidates = [
-            Path.home() / ".cortexagent" / "logs" / "overseer.log",   # live overseer log
-            Path.home() / "security-console" / "overseer" / "overseer.log",  # fallback artifact
+            Path.home() / ".cortexagent" / "logs" / "overseer.log",
+            Path.home() / "security-console" / "overseer" / "overseer.log",
             HONEYPOT_LOG,
-            RECORDRELIEF_FEED,
+            EXTRA_FEED,
         ]
         target = next((p for p in log_candidates if p.exists()), None)
         if not target:
@@ -819,11 +760,11 @@ def _make_window() -> None:
         except Exception as e:
             _set_feedback(f"⚠ could not open log: {e}")
 
-    # ── Footer (live action feedback) ──
+
     last_action: list = ["Ready"]
 
     def _set_feedback(text: str) -> None:
-        """Persistent bottom line — the result of the last user action."""
+
         last_action[0] = text
         footer.configure(text=text, fg=FG_BRIGHT)
 
@@ -832,7 +773,7 @@ def _make_window() -> None:
                       font=("-size", 11), anchor="w")
     footer.pack(fill="x", padx=16, pady=(4, 12))
 
-    # Mouse wheel
+
     def _on_mousewheel(event):
         if event.num == 4:
             canvas.yview_scroll(-3, "units")
@@ -844,7 +785,7 @@ def _make_window() -> None:
         w.bind("<Button-4>", _on_mousewheel)
         w.bind("<Button-5>", _on_mousewheel)
 
-    # ── Periodic refresh ──
+
     last_poll_ts: list = [time.time()]
 
     def _update_status(alerts):
@@ -864,7 +805,7 @@ def _make_window() -> None:
         status_main.configure(text=_severity_bar(alerts), fg=FG_BRIGHT)
         status_sub.configure(
             text=f"Watching · max {max_sev.upper()} · refresh 2s")
-        # Action plan banner (keep the existing priority logic untouched):
+
         crit_n = sum(1 for a in alerts
                      if str(a.get("severity", "")).lower() == "critical")
         high_n = sum(1 for a in alerts
@@ -899,8 +840,8 @@ def _make_window() -> None:
     def _apply_filters():
         alerts = _merge_and_sort(limit=200)
         last_poll_ts[0] = time.time()
-        # Per-session dismissals only — severity filtering is gone (Dismiss is
-        # the only removal now).
+
+
         filtered = [a for a in alerts if _alert_id(a) not in dismissed_ids]
         _update_status(filtered)
         _update_footer(filtered)

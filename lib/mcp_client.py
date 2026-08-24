@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""lib/mcp_client.py — MCP client for the CortexAgent harness.
 
-Connects to MCP servers (stdio) and registers their tools in the tool
-registry so the overseer react loop can call them. Supports the standard
-``~/.mcp.json`` format (``mcpServers``) and the lazy_mcp_servers.json list
-format. Each server's tools are registered as ``mcp_<server>_<tool>``.
-
-Design:
-  - Persistent background event loop + per-server session cache — a server is
-    spawned and connected once, then reused across calls (the react loop may
-    call a tool several times; per-call spawn churn would be seconds of
-    overhead per call).
-  - Failure-tolerant: a server that fails to init is skipped with a stderr
-    note — it never breaks the react loop.
-  - Lazy: nothing is spawned until a tool is actually called; tool schemas are
-    cached at registration time.
-
-Usage:
-  python3 lib/mcp_client.py smoke          # self-test (no servers needed)
-  python3 lib/mcp_client.py list           # list configured servers + tools
-"""
 from __future__ import annotations
 
 import asyncio
@@ -41,17 +21,13 @@ MCP_CONFIG = Path(os.environ.get(
 LAZY_CONFIG = Path(os.environ.get(
     "CORTEXAGENT_LAZY_MCP_CONFIG",
     "~/.cortexagent/config/lazy_mcp_servers.json")).expanduser()
-# Comma-separated allowlist of server names; empty = all configured.
+
 _SERVER_ALLOW = {s.strip() for s in
                  os.environ.get("CORTEXAGENT_MCP_SERVERS", "").split(",") if s.strip()}
 
-# ── config loading ───────────────────────────────────────────────────────────
-def load_servers() -> List[Dict[str, Any]]:
-    """Load MCP server configs from ~/.mcp.json and the lazy config.
 
-    Returns a list of {"name", "command", "args", "env"} dicts, deduped by
-    name (first wins), filtered by CORTEXAGENT_MCP_SERVERS allowlist.
-    """
+def load_servers() -> List[Dict[str, Any]]:
+
     servers: Dict[str, Dict[str, Any]] = {}
     if MCP_CONFIG.exists():
         try:
@@ -90,10 +66,10 @@ def load_servers() -> List[Dict[str, Any]]:
     return list(servers.values())
 
 
-# ── persistent async session pool ───────────────────────────────────────────
+
 _loop: Optional[asyncio.AbstractEventLoop] = None
 _loop_thread: Optional[threading.Thread] = None
-_sessions: Dict[str, Tuple[Any, Any]] = {}  # server name -> (ctx, session)
+_sessions: Dict[str, Tuple[Any, Any]] = {}
 
 
 def _ensure_loop() -> asyncio.AbstractEventLoop:
@@ -107,7 +83,7 @@ def _ensure_loop() -> asyncio.AbstractEventLoop:
 
 
 async def _connect(server: Dict[str, Any]) -> Tuple[Any, Any]:
-    """Spawn the server and return (stdio_client_ctx, ClientSession)."""
+
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
     env = None
@@ -127,7 +103,7 @@ async def _connect(server: Dict[str, Any]) -> Tuple[Any, Any]:
 
 
 def _get_session(server: Dict[str, Any]) -> Tuple[Any, Any]:
-    """Return the cached (ctx, session) for a server, connecting on first use."""
+
     name = server["name"]
     if name in _sessions:
         return _sessions[name]
@@ -139,7 +115,7 @@ def _get_session(server: Dict[str, Any]) -> Tuple[Any, Any]:
 
 
 def _list_server_tools(server: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """List a server's tools. Returns [] on any failure (never raises)."""
+
     try:
         _, session = _get_session(server)
         loop = _ensure_loop()
@@ -156,7 +132,7 @@ def _list_server_tools(server: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _call_server_tool(server: Dict[str, Any], tool_name: str,
                       arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """Call a tool on a server. Returns {"ok", "output", "error"}."""
+
     try:
         _, session = _get_session(server)
         loop = _ensure_loop()
@@ -181,7 +157,7 @@ def _call_server_tool(server: Dict[str, Any], tool_name: str,
 
 
 def close_all() -> None:
-    """Shut down all cached sessions (best-effort)."""
+
     global _sessions
     if not _sessions:
         return
@@ -205,13 +181,9 @@ def close_all() -> None:
         _sessions.clear()
 
 
-# ── registration ────────────────────────────────────────────────────────────
-def register_mcp_tools() -> int:
-    """Register every configured server's tools in the tool registry.
 
-    Returns the number of tools registered. Idempotent (skips names already
-    present). Never raises — a broken server is skipped with a stderr note.
-    """
+def register_mcp_tools() -> int:
+
     from lib.tool_registry import TOOLS
     count = 0
     for server in load_servers():
@@ -247,7 +219,7 @@ def _make_handler(server: Dict[str, Any], tool_name: str):
     return _handler
 
 
-# ── self-test ───────────────────────────────────────────────────────────────
+
 def _smoke() -> int:
     servers = load_servers()
     print(f"configured servers: {len(servers)}")

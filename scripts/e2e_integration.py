@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/e2e_integration.py — end-to-end verification of the orchestration layer.
 
-Runs the spec's §4 scenarios against the LIVE system (overseer on :8082,
-real domain DBs). Seeds a sample source per domain first (idempotent), then
-drives the loop and scores each scenario. Model-agnostic: whatever serves
-:8082 is what gets tested. Reports per-scenario PASS/FAIL; does not hard-fail
-on a broken overseer (the react smoke area already covers that).
-
-Usage:
-  python3 scripts/e2e_integration.py            # all scenarios
-  python3 scripts/e2e_integration.py --scenario 1   # one scenario
-"""
 from __future__ import annotations
 
 import sys
@@ -36,7 +25,7 @@ SCENARIOS = [
 
 
 def _seed(domain: str, text: str) -> int:
-    """Seed a sample source into a domain DB (idempotent). Returns chunks."""
+
     return domain_ingest.ingest(domain, f"e2e-seed-{domain}.txt", text).get("chunks", 0)
 
 

@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
-"""post_response_verifier — deterministic output validation.
 
-Deterministic output validation. Stdlib only.
-
-Checks:
-  - content-safety pattern matching (banned patterns: API keys, secrets)
-  - JSON extraction + validation
-  - code-block syntax sanity (balanced brackets, JSON parse)
-  - markdown structural checks (unclosed fences, broken links)
-
-Returns a single result object; caller decides what to do with retry feedback.
-
-CLI:
-  python3 post_response_verifier.py verify --response "..." [--format json|code|markdown]
-  python3 post_response_verifier.py check-safety "..." [--security]
-  python3 post_response_verifier.py smoke
-"""
 from __future__ import annotations
 
 import json
@@ -24,9 +8,9 @@ import sys
 from typing import Dict, List, Optional
 
 
-# ── Banned patterns: secrets, PII, hardcoded credentials ──────────────────
+
 BANNED_PATTERNS: List[str] = [
-    # API keys / tokens
+
     r"sk-[a-zA-Z0-9]{20,}",
     r"sk-ant-[a-zA-Z0-9_-]{20,}",
     r"sk-or-[a-zA-Z0-9_-]{20,}",
@@ -35,25 +19,25 @@ BANNED_PATTERNS: List[str] = [
     r"github_pat_[a-zA-Z0-9_]{20,}",
     r"xai-[a-zA-Z0-9]{20,}",
     r"api[-_]?key[\"']?\s*[:=]\s*[\"'][a-zA-Z0-9]{16,}",
-    r"AKIA[0-9A-Z]{16}",  # AWS
-    r"AIza[0-9A-Za-z_-]{35}",  # GCP
-    # Hardcoded credentials
+    r"AKIA[0-9A-Z]{16}",
+    r"AIza[0-9A-Za-z_-]{35}",
+
     r"password\s*[:=]\s*[\"'][^\"']{4,}[\"']",
     r"secret\s*[:=]\s*[\"'][^\"']{4,}[\"']",
     r"bearer\s+[a-zA-Z0-9_-]{20,}",
-    # PII patterns
-    r"\b\d{3}-\d{2}-\d{4}\b",  # SSN
-    r"\b\d{16}\b",  # raw credit card
+
+    r"\b\d{3}-\d{2}-\d{4}\b",
+    r"\b\d{16}\b",
 ]
 
-# ── Result container ──────────────────────────────────────────────────────
+
 class PostVerifyResult:
     def __init__(self):
         self.passed = True
         self.warnings: List[str] = []
         self.reason: Optional[str] = None
         self.retry_feedback: Optional[str] = None
-        self.blocked: bool = False  # set when content-safety fails
+        self.blocked: bool = False
 
     def to_dict(self) -> Dict:
         return {
@@ -65,9 +49,9 @@ class PostVerifyResult:
         }
 
 
-# ── Content safety ────────────────────────────────────────────────────────
+
 def _check_content_safety(response: str) -> Dict:
-    """Scan for banned patterns. Returns {blocked: bool, reason: str?, matches: [str]}."""
+
     matches = []
     for pattern in BANNED_PATTERNS:
         m = re.search(pattern, response, re.IGNORECASE)
@@ -82,7 +66,7 @@ def _check_content_safety(response: str) -> Dict:
     return {"blocked": False, "reason": None, "matches": []}
 
 
-# ── Format validators ─────────────────────────────────────────────────────
+
 def _validate_json(response: str, required_fields: Optional[List[str]] = None,
                    schema: Optional[Dict] = None) -> Dict:
     json_str = _extract_json(response)
@@ -116,19 +100,19 @@ def _validate_json(response: str, required_fields: Optional[List[str]] = None,
 
 
 def _extract_json(text: str) -> Optional[str]:
-    """Extract JSON from text, handling code blocks and markdown."""
-    # ```json ... ``` blocks first
+
+
     for block in re.findall(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL):
         block = block.strip()
         if block.startswith(("{", "[")):
             return block
-    # Standalone JSON
+
     m = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
     return m.group(1) if m else None
 
 
 def _validate_code(response: str) -> Dict:
-    """Validate code blocks for basic syntax."""
+
     blocks = re.findall(r"```(\w+)?\s*\n?(.*?)\n?```", response, re.DOTALL)
     if not blocks:
         return {"valid": True, "warnings": ["No code blocks found in response"]}
@@ -161,7 +145,7 @@ def _validate_markdown(response: str) -> Dict:
 
 
 def _check_structure(response: str) -> Dict:
-    """Check balanced brackets outside code blocks."""
+
     stripped = re.sub(r"```.*?```", "", response, flags=re.DOTALL)
     if not _balanced_brackets(stripped, check_parens=True):
         return {"valid": False, "reason": "Unbalanced parentheses or brackets",
@@ -183,7 +167,7 @@ def _balanced_brackets(text: str, check_parens: bool = False) -> bool:
     return len(stack) == 0
 
 
-# ── Main verifier ─────────────────────────────────────────────────────────
+
 class PostResponseVerifier:
     def __init__(self):
         pass
@@ -199,7 +183,7 @@ class PostResponseVerifier:
             result.retry_feedback = "Response was empty. Please provide a non-empty answer."
             return result
 
-        # 1. Content safety
+
         safety = _check_content_safety(response)
         if safety["blocked"]:
             result.passed = False
@@ -212,7 +196,7 @@ class PostResponseVerifier:
             )
             return result
 
-        # 2. Format-specific validation
+
         if expected_format == "json":
             fmt = _validate_json(response, required_fields, schema)
         elif expected_format == "code":
@@ -230,7 +214,7 @@ class PostResponseVerifier:
             return result
         result.warnings.extend(fmt.get("warnings", []))
 
-        # 3. Structural sanity (always run)
+
         struct = _check_structure(response)
         if not struct["valid"]:
             result.passed = False
@@ -246,7 +230,7 @@ def verify(response: str, expected_format: Optional[str] = None) -> PostVerifyRe
     return PostResponseVerifier().verify(response, expected_format=expected_format)
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+
 def _cli(argv: List[str]) -> int:
     if not argv:
         print(__doc__)
@@ -279,44 +263,44 @@ def _cli(argv: List[str]) -> int:
 
 
 def _smoke() -> int:
-    # Clean response
+
     r = PostResponseVerifier().verify("All good — 42.")
     assert r.passed
     print(f"  clean text: passed={r.passed}")
 
-    # Empty
+
     r = PostResponseVerifier().verify("")
     assert not r.passed
     print(f"  empty: passed={r.passed}  reason={r.reason}")
 
-    # Secret leak
+
     r = PostResponseVerifier().verify("api_key=\"abcdefghijklmnop123456\"")
     assert r.blocked
     print(f"  secret in text: blocked={r.blocked}  reason={r.reason[:60]}…")
 
-    # AWS key
+
     r = PostResponseVerifier().verify("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE")
     assert r.blocked
     print(f"  AWS key: blocked={r.blocked}")
 
-    # SSN
+
     r = PostResponseVerifier().verify("My SSN is 123-45-6789")
     assert r.blocked
     print(f"  SSN: blocked={r.blocked}")
 
-    # JSON format
+
     r = PostResponseVerifier().verify('```json\n{"foo": 1}\n```', expected_format="json")
     assert r.passed
     print(f"  json format: passed={r.passed}")
 
-    # JSON with missing fields
+
     r = PostResponseVerifier().verify(
         '```json\n{"foo": 1}\n```', expected_format="json", required_fields=["foo", "bar"]
     )
     assert not r.passed
     print(f"  json missing fields: passed={r.passed}  reason={r.reason}")
 
-    # JSON with schema
+
     r = PostResponseVerifier().verify(
         '```json\n{"items": [1,2,3]}\n```', expected_format="json",
         schema={"items": "array"}
@@ -324,20 +308,20 @@ def _smoke() -> int:
     assert r.passed
     print(f"  json schema: passed={r.passed}")
 
-    # Code blocks
+
     r = PostResponseVerifier().verify("```python\ndef foo(): pass\n```", expected_format="code")
     assert r.passed
     print(f"  code block: passed={r.passed}")
 
-    # Unbalanced brackets
+
     r = PostResponseVerifier().verify("```python\ndef foo( ): pass\n```", expected_format="code")
-    assert r.passed  # parens are balanced
+    assert r.passed
     bad = "```python\ndef foo(): pass\n   return [1, 2\n```"
     r = PostResponseVerifier().verify(bad, expected_format="code")
     assert not r.passed
     print(f"  unbalanced brackets: passed={r.passed}")
 
-    # Markdown unclosed fence
+
     r = PostResponseVerifier().verify("Some text\n```", expected_format="markdown")
     assert "Unclosed code fence" in r.warnings
     print(f"  unclosed fence: warnings={r.warnings}")

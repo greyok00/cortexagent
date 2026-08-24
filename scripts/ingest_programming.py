@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/ingest_programming.py — ingest programming source files into the programming domain DB."""
+
 from __future__ import annotations
 
 import sys

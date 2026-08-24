@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""lib/image_adapter.py — Moondream 2 (0.5B) captioning/VQA/pointing.
 
-Converts image input to plain text so the text-only overseer model can reason
-about it. Lazy singleton: the model loads on first use (one-time ~1.7GB
-download to ~/.cache/huggingface/), never at import time. GPU when the VRAM
-budget allows (lib/vram.can_fit), else CPU — the big model, overseer, and
-faster-whisper are required residents and are never evicted; Moondream uses
-only the free VRAM minus the locked buffer.
-
-Usage:
-  python3 lib/image_adapter.py --smoke
-"""
 from __future__ import annotations
 
 import sys
@@ -24,27 +13,17 @@ if str(_REPO_ROOT) not in sys.path:
 MODEL_ID = "vikhyatk/moondream2"
 REVISION = "2025-06-21"
 DEFAULT_PROMPT = "Describe this image in detail."
-# fp32 weights + activations. The plan estimated 2048 (fp16 ~1.9GB), but the
-# patched hf_moondream.py loads fp32 (bf16-on-CPU was NaN), so the real
-# footprint is ~4x larger: measured 7.6GB loaded, 8.7GB at inference peak.
-# 9216 only fits when the big model is down (budget ~12.7GB).
+
+
+
+
 MOONDREAM_VRAM_MB = 9216
 
-_model = None  # lazy singleton
+_model = None
 
 
 def _get_model():
-    """Load (once) the Moondream 2 model. GPU when the VRAM budget allows,
-    else CPU (never evicts the big model / overseer / whisper).
 
-    Load pattern: from_pretrained to the chosen device, then .to(device) to
-    guarantee the move. Moondream's remote-code module occasionally ignores
-    device_map={"": "cuda"} under trust_remote_code=True and lands on CPU
-    when CUDA is wanted; the explicit .to() forces the placement.
-
-    Device is decided at load time from a fresh vram.budget_mib() probe — not
-    stashed at module import — so the choice reflects VRAM pressure at the
-    moment of the actual model allocation."""
     global _model
     if _model is None:
         import torch
@@ -52,22 +31,22 @@ def _get_model():
         from lib import vram
         want_cuda = vram.can_fit(MOONDREAM_VRAM_MB) if torch.cuda.is_available() else False
         device = "cuda" if want_cuda else "cpu"
-        # Load directly to the chosen device — don't rely on device_map when
-        # trust_remote_code=True (Moondream's hf_moondream.py can ignore it).
+
+
         _model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID, revision=REVISION, trust_remote_code=True,
         ).to(device)
-        # Defensive: transformers 5.13 corrupts persistent=False buffers
-        # (attn_mask, freqs_cis) during from_pretrained. The cache's
-        # hf_moondream.py patches this, but rebuild here too so the adapter
-        # works even if the HF cache is cleared.
+
+
+
+
         if hasattr(_model, "_rebuild_buffers"):
             _model._rebuild_buffers()
     return _model
 
 
 def describe(image_path: str, prompt: str = DEFAULT_PROMPT) -> str:
-    """Caption or answer a VQA prompt about the image. Returns text."""
+
     path = Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(f"image not found: {image_path}")
@@ -80,7 +59,7 @@ def describe(image_path: str, prompt: str = DEFAULT_PROMPT) -> str:
 
 
 def point(image_path: str, object: str) -> str:
-    """Return normalized coordinates of an object (Moondream pointing)."""
+
     path = Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(f"image not found: {image_path}")
@@ -102,8 +81,8 @@ def _smoke() -> int:
     from pathlib import Path
     import torch
     from lib import vram
-    # Decide the expected device BEFORE any model load — once Moondream is on
-    # GPU it consumes ~7.5GB, so a post-load can_fit() would wrongly say "no".
+
+
     want_cuda = vram.can_fit(MOONDREAM_VRAM_MB) if torch.cuda.is_available() else False
     tmp = Path(tempfile.mkdtemp())
     try:
@@ -117,12 +96,12 @@ def _smoke() -> int:
             fails += 1
         else:
             print(f"✅ caption: {cap[:80]}")
-        # device assertion — model must be on the device the VRAM budget chose
+
         if torch.cuda.is_available():
             if next(_get_model().parameters()).is_cuda != want_cuda:
                 print(f"❌ model on wrong device (expected {'cuda' if want_cuda else 'cpu'})")
                 fails += 1
-        # missing file → clean error, no model load
+
         try:
             describe(str(tmp / "nope.png"))
             print("❌ missing file did not raise")

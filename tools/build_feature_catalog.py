@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""build_feature_catalog.py — generate tools/feature_catalog.json.
 
-Walks every advertised feature:
-  - CONVERTED_TOOLS in lib/converted_mcp_tools.py
-  - Argparse subparsers in lib/* CLI entry points
-  - @app.route / route() in lib/webui.py
-  - register_tool / _MCP_TOOL_DEFS in lib/tool_registry.py
-  - daemon control socket RPCs in lib/control.py
-  - public functions/classes ^def name / ^class name (not _-prefixed) in lib/*.py
-
-Every feature gets a "verified_at" slot that the verifier fills in.
-Run:
-  python3 tools/build_feature_catalog.py
-"""
 import json
 import re
 import sys
@@ -50,14 +37,14 @@ def _walk_converted_tools() -> list[dict]:
 
 
 def _walk_argparse() -> list[dict]:
-    """Every argparse subparser in lib/ is a CLI feature."""
+
     out = []
     for path in sorted((REPO_ROOT / "lib").glob("*.py")):
         text = path.read_text(errors="replace")
         if "argparse" not in text or "add_subparsers" not in text:
             continue
         rel = path.name
-        # Find `add_parser("name")` and `ap.add_argument(...)` patterns
+
         for m in re.finditer(r'(?:add_parser|add_argument)\(\s*["\'](\w+)["\']',
                              text):
             sub = m.group(1)
@@ -74,13 +61,13 @@ def _walk_argparse() -> list[dict]:
 
 
 def _walk_routes() -> list[dict]:
-    """Every Flask route in lib/webui.py is an HTTP feature."""
+
     out = []
     path = REPO_ROOT / "lib" / "webui.py"
     if not path.exists():
         return out
     text = path.read_text(errors="replace")
-    # Match @app.route("/path", ...) or @app.route('/path', ...)
+
     for m in re.finditer(
         r'@(?:app|self)\.(?:route|get|post|put|delete)\(\s*["\']([^"\']+)["\']'
         r'(?:[^,]*(?:methods\s*=\s*\[([^\]]+)\]))?',
@@ -98,13 +85,13 @@ def _walk_routes() -> list[dict]:
 
 
 def _walk_control_socket() -> list[dict]:
-    """Daemon control socket RPCs — read from lib/daemon.py:_handle."""
+
     out = []
     path = REPO_ROOT / "lib" / "daemon.py"
     if not path.exists():
         return out
     text = path.read_text(errors="replace")
-    # `if cmd == "name":` blocks inside _handle
+
     for m in re.finditer(r'if\s+cmd\s*==\s*["\'](\w+)["\']', text):
         out.append({
             "id": f"control:{m.group(1)}",
@@ -117,13 +104,13 @@ def _walk_control_socket() -> list[dict]:
 
 
 def _walk_webui_routes() -> list[dict]:
-    """HTTP endpoints in lib/webui.py — uses parsed.path ==, not @app.route."""
+
     out = []
     path = REPO_ROOT / "lib" / "webui.py"
     if not path.exists():
         return out
     text = path.read_text(errors="replace")
-    # do_GET / do_POST handlers use `parsed.path == "/foo"` and `parsed.path.startswith("/bar/")`
+
     for m in re.finditer(r'parsed\.path\s*==\s*["\']([^"\']+)["\']', text):
         out.append({
             "id": f"webui:GET:{m.group(1)}",
@@ -136,7 +123,7 @@ def _walk_webui_routes() -> list[dict]:
 
 
 def _walk_register_tool() -> list[dict]:
-    """Registered tool names in lib/tool_registry.py."""
+
     out = []
     path = REPO_ROOT / "lib" / "tool_registry.py"
     if not path.exists():

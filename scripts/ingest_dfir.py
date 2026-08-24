@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/ingest_dfir.py — ingest DFIR source files into the dfir domain DB."""
+
 from __future__ import annotations
 
 import sys

@@ -1,31 +1,11 @@
-"""init_script — build the JS injected via CDP Page.addScriptToEvaluateOnNewDocument.
 
-This script runs at document creation, BEFORE any page script, so the overrides
-are in place before the page reads navigator.webdriver / canvas / WebGL. It:
-
-1. Strips navigator.webdriver and the HeadlessChrome markers at the driver/CDP
-   level (pre-page-script), not as a page-level override the page observes.
-2. Makes navigator.platform / hardwareConcurrency / deviceMemory / maxTouchPoints
-   coherent with the chosen device profile.
-3. Spoofs WebGL VENDOR / RENDERER (37445/37446) to the profile GPU — the real GPU
-   is the loudest fingerprint vector.
-4. Injects SESSION-STABLE canvas noise: toDataURL/toBlob/getImageData are
-   intercepted so each output pixel is perturbed by a pure function of
-   (x, y, SEED). Repeated identical renders get identical noise, so multi-render
-   consistency checks do not flag naive per-call random noise.
-5. Injects session-stable audio noise into AudioBuffer.getChannelData.
-
-The noise is deterministic in (coords, seed) only — never Math.random() per
-call — which is what makes it pass consistency checks while still breaking
-the canvas/audio fingerprint hash across profiles.
-"""
 from __future__ import annotations
 
 import json
 from typing import Any, Dict
 
-# JS template. __PROFILE_JSON__ and __SEED__ are str.replace'd in to avoid
-# Python f-string brace-escaping the entire script.
+
+
 _JS = r"""
 (() => {
   if (window.__stealth_patched__) return;   // idempotent: never double-patch a document
@@ -138,7 +118,7 @@ _JS = r"""
 
 
 def build_init_script(profile: Dict[str, Any]) -> str:
-    """Return the JS init script string for a profile (from derive_profile)."""
+
     payload = {
         "platform": profile["platform"],
         "hardwareConcurrency": profile["hardwareConcurrency"],

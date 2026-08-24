@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/ingest_business.py — ingest business source files into the business domain DB."""
+
 from __future__ import annotations
 
 import sys

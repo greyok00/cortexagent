@@ -1,36 +1,5 @@
 #!/usr/bin/env python3
-"""lib/prompt_queue.py — the default prompt-handling queue + conflict detector.
 
-Every user prompt is decomposed into one or more agenda *items* and appended
-to a persistent FIFO queue (the session's running task list). Future prompts
-append after prior ones, so a multi-part request becomes a tracked agenda
-across turns instead of a single blob the agent must juggle in its head.
-
-Conflict detection (the user's explicit ask): when a new item contradicts an
-item already on the queue, the submit is held and a question is surfaced:
-
-    "earlier you said '<X>' but you just said '<Y>', and that conflicts.
-     what do you want?"
-
-so the user resolves the contradiction before it pollutes the agenda. A new
-prompt that *revises* an earlier one ("actually", "instead", "no wait") is
-treated as a supersession (the prior item is marked superseded), not a
-conflict — changing your mind is allowed; contradicting yourself is not.
-
-This is DEFAULT behavior: it is wired into ``hooks/user-prompt-submit.sh``,
-which fires on every prompt. It is cheap (pure-Python heuristics, no LLM
-call) and non-fatal (any error → the prompt passes through unqueued).
-
-CLI (also exposed as ``cortexagent queue …``):
-  python3 -m lib.prompt_queue submit --prompt "…"   # used by the hook
-  python3 -m lib.prompt_queue list
-  python3 -m lib.prompt_queue clear
-  python3 -m lib.prompt_queue done <id>
-  python3 -m lib.prompt_queue drop <id>
-  python3 -m lib.prompt_queue context            # print compact agenda for injection
-
-No Ollama, no hardcoded home paths (all via lib.config.CFG).
-"""
 from __future__ import annotations
 
 import json
@@ -50,7 +19,7 @@ from lib.config import CFG  # noqa: E402
 
 QUEUE_FILE = CFG.state_dir / "prompt_queue.json"
 
-# ── Item / queue model ───────────────────────────────────────────────────────
+
 
 class ItemStatus:
     QUEUED = "queued"
@@ -66,7 +35,7 @@ class Item:
     text: str
     status: str = ItemStatus.QUEUED
     created_at: float = field(default_factory=time.time)
-    superseded_by: Optional[str] = None  # id of the item that replaced this one
+    superseded_by: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -104,7 +73,7 @@ def _next_id(items: list[Item]) -> str:
     return f"Q-{n + 1:03d}"
 
 
-# ── Decomposition: multi-part prompt → items ────────────────────────────────
+
 
 _NUM = re.compile(r"^\s*(\d+)[.)]\s+(.+)$")
 _BUL = re.compile(r"^\s*[-*•·▪◦]\s+(.+)$")
@@ -115,24 +84,12 @@ _SEQ_WORDS = re.compile(
 
 
 def decompose(prompt: str) -> list[str]:
-    """Break a multi-part prompt into discrete agenda items.
 
-    Strategy (in priority order — first hit wins):
-      1. Numbered list lines  ("1. ... 2. ...")        → one item each
-      2. Bulleted list lines  ("- ... * ...")          → one item each
-      3. Sequential markers   ("first ... then ...")   → split on the markers
-      4. Newline- or ;-joined imperatives that each start with a verb
-         → one item each
-      5. Otherwise            → the whole prompt is ONE item
-         (don't over-split prose, questions, or single requests)
-
-    Returns non-empty list of stripped item strings.
-    """
     text = prompt.strip()
     if not text:
         return []
 
-    # 1. Numbered list ("1. ... 2. ...") → one item each
+
     num_items = []
     for line in text.splitlines():
         m = _NUM.match(line)
@@ -141,7 +98,7 @@ def decompose(prompt: str) -> list[str]:
     if len(num_items) >= 2:
         return num_items
 
-    # 2. Bulleted list
+
     bul_items = []
     for line in text.splitlines():
         m = _BUL.match(line)
@@ -150,18 +107,18 @@ def decompose(prompt: str) -> list[str]:
     if len(bul_items) >= 2:
         return bul_items
 
-    # 3. Sequential markers ("first do X, then do Y, finally do Z")
+
     if _SEQ_WORDS.search(text):
-        # Split on the markers, keeping the text that follows each.
+
         parts = _SEQ_WORDS.split(text)
         parts = [p.strip().rstrip(",;.") for p in parts if p and p.strip()]
-        # Drop a leading preamble before the first marker if it's just connective.
+
         if len(parts) >= 2:
             return parts
 
-    # 4. Newline- or semicolon-joined imperatives (each starts with a verb)
+
     raw = re.split(r"\s*[\n;]+\s*", text)
-    verbish = re.compile(r"^\w", re.UNICODE)  # any leading word; refined below
+    verbish = re.compile(r"^\w", re.UNICODE)
     imperative = re.compile(
         r"^(?:add|build|create|make|write|fix|update|change|remove|delete|rename|"
         r"move|copy|install|run|test|deploy|refactor|implement|set|configure|"
@@ -172,22 +129,22 @@ def decompose(prompt: str) -> list[str]:
     if len(imp_items) >= 2:
         return imp_items
 
-    # 5. Single item
+
     return [text]
 
 
-# ── Conflict detection ───────────────────────────────────────────────────────
 
-# Directive = (verb, target, polarity, value). We extract a coarse signature
-# per item and compare. This is heuristic by design — false negatives just mean
-# a conflict slips through (the agent still has both items to reconcile); false
-# positives would wrongly block, so we keep the rules conservative.
+
+
+
+
+
 
 _VERB_POLARITY = {
-    # positive / additive verbs
+
     "add": +1, "create": +1, "build": +1, "make": +1, "include": +1, "keep": +1,
     "enable": +1, "start": +1, "install": +1, "use": +1, "write": +1, "implement": +1,
-    # negative / subtractive verbs
+
     "remove": -1, "delete": -1, "drop": +0, "disable": -1, "stop": -1, "exclude": -1,
     "hide": -1,
 }
@@ -198,10 +155,10 @@ _REVISION = re.compile(
     r"rather|change\s+(?:it|that|the)|update\s+(?:it|that|the)|forget\s+(?:it|that))\b",
     re.IGNORECASE)
 
-# Tokens that must never be a directive *target*. The old heuristic took the
-# word right after the verb, which is usually a stopword ("use the internet" →
-# target "the") — so any two prompts that both start "use the…" / "keep the…"
-# false-conflicted on "the". Skip these and land on the real noun.
+
+
+
+
 _STOP_TARGET = {
     "the", "a", "an", "it", "them", "this", "that", "these", "those", "to", "for",
     "and", "or", "of", "in", "on", "at", "with", "from", "by", "my", "your", "our",
@@ -216,12 +173,12 @@ _STOP_TARGET = {
     "again", "further", "once", "too", "very", "im", "youre", "that",
 }
 
-# "use/install <noun>" — same role, different choice → conflict
+
 _ROLE_CHOICE = re.compile(
     r"\b(?:use|install|switch\s+to|go\s+with|adopt)\s+([A-Za-z0-9_.\-]+)", re.IGNORECASE)
-# role = the noun after "for/as/to/in" (the thing the choice is FOR)
+
 _ROLE = re.compile(r"\b(?:for|as|to|in)\s+(?:the\s+|a\s+|an\s+)?([A-Za-z0-9_.\-]+)", re.IGNORECASE)
-# "rename X to Y" / "call it Y" — same subject, different new value
+
 _RENAME = re.compile(
     r"\brename\s+(.+?)\s+to\s+(.+)$|call\s+(?:it|them|the\s+\S+)\s+(.+)$", re.IGNORECASE)
 
@@ -232,7 +189,7 @@ def _role_of(text: str) -> Optional[str]:
 
 
 def _directive(text: str) -> dict:
-    """Extract a coarse directive signature from an item."""
+
     low = text.lower()
     words = re.findall(r"[A-Za-z']+", low)
     verb = None
@@ -243,17 +200,17 @@ def _directive(text: str) -> dict:
         if w in _VERB_POLARITY:
             verb = w
             vi = i
-            # Negation only counts when it's ADJACENT to the verb (within 3
-            # tokens). "i use the internet. i dont want to block it" must NOT
-            # negate "use" just because "dont" appears later in the sentence —
-            # that distant negation flipped polarity and false-conflicted.
+
+
+
+
             window = words[max(0, i - 3):i + 4]
             neg = any(_NEGATION.search(w2) for w2 in window)
             polarity = _VERB_POLARITY[w] * (-1 if neg else 1)
             break
-    # target = first non-stopword after the verb ("use the internet" →
-    # "internet", not "the" — stopword targets made unrelated prompts
-    # false-conflict on "the").
+
+
+
     target = None
     if verb and vi >= 0:
         for w in words[vi + 1:]:
@@ -275,9 +232,9 @@ def _directive(text: str) -> dict:
 
 
 def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) -> Optional[str]:
-    """Return a human conflict reason if new contradicts old, else None."""
-    # 1. Polarity flip on the same target ("use X" vs "don't use X",
-    #    "enable X" vs "disable X", "keep X" vs "remove X").
+
+
+
     if (new_d["target"] and new_d["target"] == old_d["target"]
             and new_d["polarity"] and old_d["polarity"]
             and new_d["polarity"] != old_d["polarity"]):
@@ -285,7 +242,7 @@ def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) ->
                 f"and that conflicts (opposite direction on '{new_d['target']}'). "
                 f"what do you want?")
 
-    # 2. Mutually-exclusive verbs on the same target (add vs remove, create vs delete).
+
     exclusive = {("add", "remove"), ("create", "delete"), ("start", "stop"),
                  ("enable", "disable"), ("include", "exclude")}
     if new_d["target"] and new_d["target"] == old_d["target"]:
@@ -295,9 +252,9 @@ def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) ->
                     f"and that conflicts ({pair[0]} vs {pair[1]} on '{new_d['target']}'). "
                     f"what do you want?")
 
-    # 3. Same role, different choice ("use React for the frontend" vs "use Vue
-    #    for the frontend"). Require a matching role so "use redis for caching"
-    #    vs "use React for the frontend" do NOT false-fire.
+
+
+
     if (new_d["choice"] and old_d["choice"]
             and new_d["choice"] != old_d["choice"]
             and new_d["verb"] == old_d["verb"]
@@ -309,7 +266,7 @@ def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) ->
                 f"and that conflicts (for '{new_d['role']}' you wanted "
                 f"'{old_d['choice']}', now '{new_d['choice']}'). what do you want?")
 
-    # 4. Rename the same thing to two different values.
+
     if (new_d["rename_subj"] and old_d["rename_subj"]
             and new_d["rename_subj"] == old_d["rename_subj"]
             and new_d["rename_val"] and old_d["rename_val"]
@@ -322,19 +279,14 @@ def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) ->
 
 
 def _supersede_target(new_text: str, new_d: dict, live: list[Item]) -> Optional[Item]:
-    """If new_text is a revision, find the prior live item it most likely replaces.
 
-    Prefer a role match (e.g. both are "for the db") since a revision usually
-    keeps the role and changes the choice. Fall back to shared significant
-    tokens. Returns the Item or None.
-    """
     role = new_d.get("role")
-    # 1. Role match: same role, most recent.
+
     if role:
         for it in reversed(live):
             if _role_of(it.text) == role:
                 return it
-    # 2. Token overlap fallback.
+
     stop = {"the", "and", "but", "for", "that", "this", "with", "into", "from",
             "actually", "instead", "wait", "never", "mind", "scratch", "rather",
             "change", "update", "forget", "please", "use", "using", "now", "want"}
@@ -350,13 +302,13 @@ def _supersede_target(new_text: str, new_d: dict, live: list[Item]) -> Optional[
     return best if best_score >= 2 else None
 
 
-# ── Submit (the core op used by the hook) ────────────────────────────────────
+
 
 @dataclass
 class SubmitResult:
     enqueued: list[Item]
-    conflicts: list[str]        # human reasons (non-empty → submit held)
-    superseded: list[str]       # ids of items marked superseded
+    conflicts: list[str]
+    superseded: list[str]
     queue_size: int
 
     def to_dict(self) -> dict:
@@ -369,17 +321,7 @@ class SubmitResult:
 
 
 def submit(prompt: str) -> SubmitResult:
-    """Decompose + enqueue a prompt. Holds conflicting items (does NOT persist them).
 
-    On conflict: the non-conflicting new items ARE persisted; the conflicting
-    ones are held out and ``conflicts`` lists the reasons. The caller (hook)
-    surfaces the conflict as a blocking question.
-
-    A revision ("actually …", "instead …") first marks the prior item it
-    replaces as superseded and excludes it from conflict comparison — changing
-    your mind is not a conflict. It can still conflict with a *different* live
-    item.
-    """
     items = _load()
     parts = decompose(prompt)
     if not parts:
@@ -387,12 +329,12 @@ def submit(prompt: str) -> SubmitResult:
 
     is_revision = bool(_REVISION.match(prompt.strip()))
 
-    # Live priors = items not done/superseded/dropped.
+
     live = [it for it in items
             if it.status not in (ItemStatus.DONE, ItemStatus.SUPERSEDED, ItemStatus.DROPPED)]
 
-    # Revision → find + mark the supersede target FIRST, then exclude it from
-    # conflict comparison so replacing an old choice isn't flagged as a conflict.
+
+
     superseded_ids: list[str] = []
     compare_set = live
     if is_revision and parts:
@@ -400,11 +342,11 @@ def submit(prompt: str) -> SubmitResult:
         target = _supersede_target(parts[0], first_d, live)
         if target:
             target.status = ItemStatus.SUPERSEDED
-            target.superseded_by = None  # filled in once we know the new id
+            target.superseded_by = None
             superseded_ids.append(target.id)
             compare_set = [it for it in live if it.id != target.id]
 
-    # Compare each new part against the (reduced) live set; collect conflicts.
+
     new_items: list[Item] = []
     conflicts: list[str] = []
     for part in parts:
@@ -417,24 +359,24 @@ def submit(prompt: str) -> SubmitResult:
                 break
         if conflict:
             conflicts.append(conflict)
-            continue  # hold this item out
+            continue
         new_items.append(Item(id=_next_id(items + new_items), text=part))
 
-    # Link the supersede target to the first enqueued new item (if any survived).
+
     if superseded_ids and new_items:
         for it in items:
             if it.id == superseded_ids[0]:
                 it.superseded_by = new_items[0].id
                 break
 
-    # Persist: prior items (with any superseded updates) + the non-conflicting new items.
+
     items.extend(new_items)
     _save(items)
 
     return SubmitResult(new_items, conflicts, superseded_ids, len(items))
 
 
-# ── Queue ops ────────────────────────────────────────────────────────────────
+
 
 def list_items() -> list[Item]:
     return _load()
@@ -467,7 +409,7 @@ def drop(item_id: str) -> bool:
 
 
 def agenda_context(max_items: int = 12) -> str:
-    """Compact agenda string for injection into the agent's context."""
+
     items = _load()
     live = [it for it in items
             if it.status not in (ItemStatus.DONE, ItemStatus.SUPERSEDED, ItemStatus.DROPPED)]
@@ -482,7 +424,7 @@ def agenda_context(max_items: int = 12) -> str:
     return "\n".join(lines)
 
 
-# ── CLI ──────────────────────────────────────────────────────────────────────
+
 
 def _print_json(obj) -> None:
     print(json.dumps(obj, indent=2, default=str))
