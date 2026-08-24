@@ -40,6 +40,15 @@ python3 -m pip install --break-system-packages --user \
   "slimtoken>=0.3.3" "orjson" "xxhash" 2>&1 | tail -2 || \
   echo "    WARN: slimtoken install failed — see README" >&2
 
+# ── Cython build (DEFAULT — compiles hot compute modules to native .so) ─────
+# tools/build_opt.py compiles a curated set of pure-Python modules (domain_db,
+# token_tracker, cold_distiller, charts) to .so with Cython. The .so shadows
+# the .py in lib/, so imports pick the native build automatically. Skipped
+# gracefully (falls back to .py) if Cython/gcc are missing.
+echo "    building native modules (Cython)…"
+python3 -m pip install --break-system-packages --user cython 2>&1 | tail -1 >/dev/null
+python3 "${REPO_ROOT}/tools/build_opt.py" 2>&1 | tail -3
+
 # ── Diffusion deps (image/video via in-process diffusers) ────────────────────
 # Optional: only installs when CORTEXAGENT_INSTALL_DIFFUSION_DEPS=1 (heavy: torch
 # + diffusers + CUDA). Otherwise just prints what's needed so a user can install

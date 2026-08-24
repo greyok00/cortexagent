@@ -48,7 +48,7 @@ def ingest(domain: str, source: str, text: str) -> dict:
     if not chunks:
         return {"ok": True, "chunks": 0, "error": ""}
     con = domain_db._connect(domain)
-    try:
+    with domain_db._CONN_LOCK:
         domain_db._init_schema(con)
         vec = domain_db._vec_available(con)
         embs = None
@@ -66,8 +66,6 @@ def ingest(domain: str, source: str, text: str) -> dict:
                 stored += 1
             except sqlite3.IntegrityError:
                 pass
-    finally:
-        con.close()
     return {"ok": True, "chunks": stored, "error": ""}
 
 
@@ -106,6 +104,7 @@ def _smoke() -> int:
             print(f"❌ unknown domain: {r3}")
             fails += 1
     finally:
+        domain_db._close_all()
         shutil.rmtree(tmp, ignore_errors=True)
         domain_db.DOMAINS_DIR = old
     print("domain_ingest smoke PASS" if fails == 0 else f"❌ {fails} failures")

@@ -6,6 +6,7 @@ import hashlib
 import json
 import sqlite3
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -22,6 +23,10 @@ RRF_K = 60
 EMBED_DIM = 384
 
 _VEC_FLAG: Dict[str, bool] = {}
+_CONN_CACHE: Dict[str, sqlite3.Connection] = {}
+
+
+_CONN_LOCK = threading.RLock()
 
 
 def _db_path(domain: str) -> Path:
@@ -32,7 +37,19 @@ def _connect(domain: str) -> sqlite3.Connection:
 
     DOMAINS_DIR.mkdir(parents=True, exist_ok=True)
     path = str(_db_path(domain))
-    con = sqlite3.connect(path)
+    con = _CONN_CACHE.get(path)
+    if con is not None:
+        try:
+            con.execute("SELECT 1").fetchone()
+            return con
+        except sqlite3.ProgrammingError:
+
+            try:
+                con.close()
+            except Exception:
+                pass
+            _CONN_CACHE.pop(path, None)
+    con = sqlite3.connect(path, check_same_thread=False)
     con.enable_load_extension(True)
     vec = False
     try:
@@ -42,7 +59,18 @@ def _connect(domain: str) -> sqlite3.Connection:
     except Exception:
         vec = False
     _VEC_FLAG[path] = vec
+    _CONN_CACHE[path] = con
     return con
+
+
+def _close_all() -> None:
+    with _CONN_LOCK:
+        for con in _CONN_CACHE.values():
+            try:
+                con.close()
+            except Exception:
+                pass
+        _CONN_CACHE.clear()
 
 
 def _vec_available(con: sqlite3.Connection) -> bool:
@@ -74,18 +102,19 @@ def _store_chunk(con: sqlite3.Connection, source: str, index: int,
                  chunk: str, emb: Optional[List[float]]) -> None:
 
     chunk_hash = hashlib.sha256(chunk.encode()).hexdigest()
-    cur = con.execute(
-        "INSERT INTO documents (source, chunk_index, chunk, chunk_hash, created_at) "
-        "VALUES (?,?,?,?,?)",
-        (source, index, chunk, chunk_hash, datetime.now().isoformat()))
-    rowid = cur.lastrowid
-    con.execute("INSERT INTO documents_fts (rowid, chunk) VALUES (?, ?)",
-                (rowid, chunk))
-    if emb is not None and _vec_available(con):
-        con.execute(
-            "INSERT INTO documents_vec (embedding, doc_id) VALUES (?, ?)",
-            (json.dumps(emb), rowid))
-    con.commit()
+    with _CONN_LOCK:
+        cur = con.execute(
+            "INSERT INTO documents (source, chunk_index, chunk, chunk_hash, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (source, index, chunk, chunk_hash, datetime.now().isoformat()))
+        rowid = cur.lastrowid
+        con.execute("INSERT INTO documents_fts (rowid, chunk) VALUES (?, ?)",
+                    (rowid, chunk))
+        if emb is not None and _vec_available(con):
+            con.execute(
+                "INSERT INTO documents_vec (embedding, doc_id) VALUES (?, ?)",
+                (json.dumps(emb), rowid))
+        con.commit()
 
 
 def search(domain: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
@@ -97,7 +126,7 @@ def search(domain: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         return []
     agg: Dict[int, Dict[str, Any]] = {}
     con = _connect(domain)
-    try:
+    with _CONN_LOCK:
         try:
             rows = con.execute(
                 "SELECT d.id, d.source, d.chunk FROM documents_fts f "
@@ -124,8 +153,6 @@ def search(domain: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
                     agg[doc_id]["score"] += 1.0 / (RRF_K + rank)
             except Exception:
                 pass
-    finally:
-        con.close()
     ranked = sorted(agg.values(), key=lambda r: -r["score"])[:limit]
     return [{"source": r["source"], "chunk": r["chunk"],
              "score": r["score"], "rank": i + 1}
@@ -137,10 +164,8 @@ def count(domain: str) -> int:
     if not db.exists():
         return 0
     con = _connect(domain)
-    try:
+    with _CONN_LOCK:
         return con.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
-    finally:
-        con.close()
 
 
 def _smoke() -> int:
@@ -175,7 +200,6 @@ def _smoke() -> int:
             fails += 1
         except sqlite3.IntegrityError:
             pass
-        con.close()
 
         r = search("osint", "blocked IP")
         if not r or r[0]["source"] != "case1.txt":
@@ -199,6 +223,7 @@ def _smoke() -> int:
             print(f"❌ count: {count('osint')}")
             fails += 1
     finally:
+        _close_all()
         shutil.rmtree(tmp, ignore_errors=True)
         globals()["DOMAINS_DIR"] = old
     print("domain_db smoke PASS" if fails == 0 else f"❌ {fails} failures")

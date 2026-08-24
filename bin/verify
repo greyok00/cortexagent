@@ -18,6 +18,10 @@ trap 'echo "=== verify ABORTED ==="; exit 1' INT TERM
 
 ANY=0
 
+# 0. Cython build state (informational — both states are valid)
+echo "── Layer 0: native build state ──"
+python3 tools/build_opt.py --check 2>/dev/null | sed 's/^/  /'
+
 # 1. Drift
 # The manifest is a regenerated baseline — if it drifts, rebuild it
 # automatically and recheck. Real drift (rebuild != clean) still fails.
