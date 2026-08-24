@@ -1,23 +1,4 @@
-"""lib/overseer_dashboard/pipeline.py — the observable request pipeline.
 
-Implements the seven stages COLLECT → COMPOSE → SLIMTOKEN → FINALIZE →
-PREFILL → DECODE → DELIVER as typed models, plus a **dry-run** engine that
-computes Compose + SlimToken token budget/result *without* sending an
-inference request.
-
-The dry-run is the testable core: it builds typed blocks, frames them with a
-policy, applies protection rules, and runs SlimToken's dedup/compact logic
-while preserving pinned content. It never sends content to a provider and
-never mutates the active CLI conversation.
-
-Protection policy (from the spec):
-  - Pinned/protected by default: system policy, current user request,
-    required tool schemas, output contract.
-  - High priority: latest turns, selected retrieval, active task instructions.
-  - Compressible: older conversation, verbose tool outputs, oversized
-    retrieval, repetitive history.
-  - Discardable: duplicates, stale/irrelevant context, empty blocks.
-"""
 from __future__ import annotations
 
 import hashlib
@@ -29,22 +10,17 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import models as M
 
-# Categories that are pinned by default.
+
 _PINNED_CATEGORIES = {"system", "user", "tool_schema", "output_contract"}
-# Categories that are high priority by default.
+
 _HIGH_CATEGORIES = {"memory", "retrieval", "attachment"}
-# Categories that are compressible by default.
+
 _COMPRESSIBLE_CATEGORIES = {"history", "tool_output", "reasoning", "other"}
 
 
-# ── Synthetic context generator (test harness) ──────────────────────────────
-def synthetic_blocks(prompt: str, preset: str = "simple") -> List[M.TokenComponent]:
-    """Build a realistic typed block set for dry-runs and the test harness.
 
-    Never contains real user content beyond the supplied prompt. Token counts
-    are deterministic estimates used only for budget math, not for live
-    telemetry.
-    """
+def synthetic_blocks(prompt: str, preset: str = "simple") -> List[M.TokenComponent]:
+
     n = len(prompt)
     blocks: List[M.TokenComponent] = []
     order = 0
@@ -86,19 +62,18 @@ def synthetic_blocks(prompt: str, preset: str = "simple") -> List[M.TokenCompone
         add("history", "conversation history", 2500, optimizable=True)
         add("tool_output", "file contents", 3500, optimizable=True)
         add("attachment", "code attachments", 1200, priority="high")
-    else:  # simple
+    else:
         add("history", "conversation history", 1200, optimizable=True)
         add("tool_output", "tool outputs", 800, optimizable=True)
 
     return blocks
 
 
-# ── Compose ─────────────────────────────────────────────────────────────────
+
 def compose(blocks: List[M.TokenComponent], context_window: int,
             max_output_tokens: int, policy: str = "coding-agent / strict-tools",
             ) -> M.ComposeResult:
-    """Frame blocks with a policy, assign priorities/protection, reserve
-    output capacity, and validate a usable request exists."""
+
     errors: List[str] = []
     if not any(b.category == "user" for b in blocks):
         errors.append("no usable user request found")
@@ -127,23 +102,18 @@ def compose(blocks: List[M.TokenComponent], context_window: int,
     )
 
 
-# ── SlimToken (dry-run) ──────────────────────────────────────────────────────
+
 def slimtoken(compose: M.ComposeResult, policy: str = "balanced",
               dedup: bool = True, history_compact_threshold: int = 500,
               retrieval_budget: int = 1500, dry_run: bool = True,
               ) -> M.SlimTokenResult:
-    """Optimize eligible blocks while preserving pinned content.
 
-    This is a deterministic dry-run model of SlimToken's behavior. It never
-    rewrites pinned/protected blocks, never touches the current user request,
-    and never sends anything to a provider.
-    """
     before = compose.total_tokens
     actions: List[M.SlimTokenAction] = []
     after = 0
     seen_hashes: set = set()
 
-    # Dedup pass over eligible blocks (content-hash based on id+category).
+
     deduped_ids: set = set()
     if dedup:
         for b in compose.blocks:
@@ -161,7 +131,7 @@ def slimtoken(compose: M.ComposeResult, policy: str = "balanced",
 
     for b in compose.blocks:
         if b.pinned or not b.optimizable:
-            # Preserved (pinned/protected) — intentionally untouched.
+
             actions.append(M.SlimTokenAction(
                 block_id=b.id, category=b.category, action="preserved",
                 reason="pinned/protected — untouched", tokens_before=b.tokens,
@@ -169,7 +139,7 @@ def slimtoken(compose: M.ComposeResult, policy: str = "balanced",
             after += b.tokens
             continue
         if b.id in deduped_ids:
-            continue  # already removed
+            continue
         if b.category == "history" and b.tokens > history_compact_threshold:
             compacted = int(b.tokens * 0.4)
             actions.append(M.SlimTokenAction(
@@ -206,13 +176,13 @@ def slimtoken(compose: M.ComposeResult, policy: str = "balanced",
     )
 
 
-# ── Finalize ────────────────────────────────────────────────────────────────
+
 def finalize(compose: M.ComposeResult, slim: M.SlimTokenResult,
              context_window: int, max_output_tokens: int,
              template_applied: bool = True, schema_valid: bool = True,
              gen_params: Optional[Dict[str, Any]] = None,
              ) -> M.FinalizeResult:
-    """Validate the optimized request fits and is provider-ready."""
+
     final_input = slim.after_tokens
     fits = final_input <= max(context_window - max_output_tokens, 0)
     errors: List[str] = []
@@ -228,9 +198,9 @@ def finalize(compose: M.ComposeResult, slim: M.SlimTokenResult,
     )
 
 
-# ── Full dry-run ────────────────────────────────────────────────────────────
+
 class DryRunResult:
-    """Result of a full Compose + SlimToken + Finalize dry-run."""
+
     def __init__(self, compose: M.ComposeResult, slim: M.SlimTokenResult,
                  finalize: M.FinalizeResult, elapsed_ms: float):
         self.compose = compose
@@ -245,11 +215,7 @@ def dry_run(prompt: str, context_window: int = 131072,
             history_compact_threshold: int = 500,
             retrieval_budget: int = 1500,
             ) -> DryRunResult:
-    """Run Compose + SlimToken + Finalize without sending an inference request.
 
-    Returns a DryRunResult with the full typed breakdown. Never sends content
-    to a provider and never modifies the active CLI conversation.
-    """
     t0 = time.time()
     blocks = synthetic_blocks(prompt, preset)
     comp = compose(blocks, context_window, max_output_tokens)
@@ -261,28 +227,24 @@ def dry_run(prompt: str, context_window: int = 131072,
     return DryRunResult(comp, slim, fin, elapsed)
 
 
-# ── Build the live pipeline from a snapshot ─────────────────────────────────
-def build_pipeline(snap: M.RuntimeSnapshot) -> List[M.PipelineStage]:
-    """Assemble the seven stages from real telemetry where available.
 
-    Stages without real data are marked ``skipped`` with a "not instrumented"
-    detail rather than fabricated numbers.
-    """
+def build_pipeline(snap: M.RuntimeSnapshot) -> List[M.PipelineStage]:
+
     inf = snap.inference
     stages: List[M.PipelineStage] = []
 
-    # COLLECT — from token components if instrumented, else not instrumented.
+
     stages.append(M.PipelineStage(
         name="COLLECT", state="skipped",
         detail="not instrumented — no typed block telemetry",
         tokens_in=inf.input_tokens))
 
-    # COMPOSE — policy framing.
+
     stages.append(M.PipelineStage(
         name="COMPOSE", state="skipped",
         detail="not instrumented — no compose telemetry"))
 
-    # SLIMTOKEN — from minify stats.
+
     minify = snap.minify or {}
     if minify.get("runs"):
         stages.append(M.PipelineStage(
@@ -294,13 +256,13 @@ def build_pipeline(snap: M.RuntimeSnapshot) -> List[M.PipelineStage]:
         stages.append(M.PipelineStage(
             name="SLIMTOKEN", state="skipped", detail="no minify runs yet"))
 
-    # FINALIZE.
+
     stages.append(M.PipelineStage(
         name="FINALIZE", state="skipped",
         detail="not instrumented — no finalize telemetry",
         tokens_in=inf.input_tokens))
 
-    # PREFILL — from input_tps.
+
     if inf.input_tps is not None:
         stages.append(M.PipelineStage(
             name="PREFILL", state="complete",
@@ -310,7 +272,7 @@ def build_pipeline(snap: M.RuntimeSnapshot) -> List[M.PipelineStage]:
         stages.append(M.PipelineStage(
             name="PREFILL", state="skipped", detail="no prefill telemetry"))
 
-    # DECODE — from output_tps.
+
     if inf.output_tps is not None:
         stages.append(M.PipelineStage(
             name="DECODE", state="complete",
@@ -320,7 +282,7 @@ def build_pipeline(snap: M.RuntimeSnapshot) -> List[M.PipelineStage]:
         stages.append(M.PipelineStage(
             name="DECODE", state="skipped", detail="no decode telemetry"))
 
-    # DELIVER — from last request status.
+
     status = inf.last_request_status
     if status:
         stages.append(M.PipelineStage(
@@ -333,16 +295,11 @@ def build_pipeline(snap: M.RuntimeSnapshot) -> List[M.PipelineStage]:
     return stages
 
 
-# ── Pathway strip (broader-scale prompt path for the bottom strip) ──────────
+
 def build_pathway(snap: M.RuntimeSnapshot,
                   stages: Optional[List[M.PipelineStage]] = None
                   ) -> Dict[str, Tuple[str, str, Optional[str], Optional[str]]]:
-    """Map the 11 pathway nodes to (state, detail, in_text, out_text).
 
-    Stages with no data render as ``("queued", "—", None, None)``. Derived
-    nodes (frame_of_ref / memory_check / tool_routing / cost_ledger) read
-    from existing snapshot fields so no new pipeline plumbing is required.
-    """
     inf = snap.inference
     minify = snap.minify or {}
     if stages is None:
@@ -360,21 +317,21 @@ def build_pathway(snap: M.RuntimeSnapshot,
 
     pathway: Dict[str, Tuple[str, str, Optional[str], Optional[str]]] = {}
 
-    # 1. prompt_intake — COLLECT
+
     pathway["prompt_intake"] = _stage("COLLECT")
 
-    # 2. frame_assemble — COMPOSE
+
     pathway["frame_assemble"] = _stage("COMPOSE")
 
-    # 3. frame_of_ref — derived from route (ModelIdentity carries no
-    # system_profile field; we just show the route itself).
+
+
     route = snap.model.route if snap.model else "—"
     pathway["frame_of_ref"] = (
         "complete" if route and route != "—" else "queued",
         f"{route}", None, None,
     )
 
-    # 4. memory_check — derived from minify runs or overseer write check.
+
     runs = int(minify.get("runs", 0) or 0)
     if runs:
         pathway["memory_check"] = (
@@ -382,29 +339,29 @@ def build_pathway(snap: M.RuntimeSnapshot,
     else:
         pathway["memory_check"] = ("queued", "no memory hits", None, None)
 
-    # 5. slimtoken_minify — SLIMTOKEN
+
     pathway["slimtoken_minify"] = _stage("SLIMTOKEN")
 
-    # 6. tool_routing — derived from inference.active_request / status.
+
     if inf.active:
         pathway["tool_routing"] = (
             "active", inf.active_request or "routing", None, None)
     else:
         pathway["tool_routing"] = ("skipped", "idle", None, None)
 
-    # 7. context_fit — FINALIZE
+
     pathway["context_fit"] = _stage("FINALIZE")
 
-    # 8. prefill — PREFILL
+
     pathway["prefill"] = _stage("PREFILL")
 
-    # 9. decode — DECODE
+
     pathway["decode"] = _stage("DECODE")
 
-    # 10. stream_out — DELIVER
+
     pathway["stream_out"] = _stage("DELIVER")
 
-    # 11. cost_ledger — derived total tokens.
+
     total_in = inf.input_tokens or 0
     total_out = inf.output_tokens or 0
     if total_in or total_out:
@@ -420,7 +377,7 @@ def build_pathway(snap: M.RuntimeSnapshot,
     return pathway
 
 
-# ── Hot-memory last prompts ─────────────────────────────────────────────────
+
 HOT_MEMORY_CANDIDATES = (
     Path.home() / ".config" / "cortexllm" / "memory" / "hot" / "cortexagent.jsonl",
     Path.home() / ".cortexagent" / "memory" / "hot" / "cortexagent.jsonl",
@@ -428,7 +385,7 @@ HOT_MEMORY_CANDIDATES = (
 
 
 def _read_hot_memory_lines() -> List[Dict[str, Any]]:
-    """Best-effort read of the cortexagent hot-memory JSONL file."""
+
     for path in HOT_MEMORY_CANDIDATES:
         try:
             if not path.exists():
@@ -436,7 +393,7 @@ def _read_hot_memory_lines() -> List[Dict[str, Any]]:
             with path.open("r", encoding="utf-8", errors="replace") as f:
                 lines = [ln for ln in f if ln.strip()]
             entries: List[Dict[str, Any]] = []
-            for ln in lines[-200:]:  # only tail to keep this cheap
+            for ln in lines[-200:]:
                 try:
                     obj = json.loads(ln)
                 except (ValueError, TypeError):
@@ -450,13 +407,7 @@ def _read_hot_memory_lines() -> List[Dict[str, Any]]:
 
 
 def load_last_prompts(limit: int = 20) -> List[Dict[str, Any]]:
-    """Return the most recent ``user``-role prompts from hot memory.
 
-    Each entry: ``{"ts": str, "role": str, "preview": str, "content": str}``.
-    Older entries come first if their timestamp is older; we sort by file
-    position (which matches write order under O_APPEND). Falls back to an
-    empty list if the file is missing or unreadable.
-    """
     entries = _read_hot_memory_lines()
     out: List[Dict[str, Any]] = []
     for obj in entries:
@@ -469,4 +420,4 @@ def load_last_prompts(limit: int = 20) -> List[Dict[str, Any]]:
         preview = content[:80].replace("\n", " ")
         out.append({"ts": ts, "role": "user", "preview": preview,
                     "content": content})
-    return out[-limit:][::-1]  # most recent first
+    return out[-limit:][::-1]

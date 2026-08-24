@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""memory/mcp_server.py — stdio MCP server for CortexAgent memory.
 
-Tools:
-  memory_read   — read hot/warm/cold memory
-  memory_write  — write a message or fact
-  memory_search — search warm memory
-  memory_stats  — show memory counts
-  memory_clear  — clear a tier (warm/hot) for the platform
-"""
 from __future__ import annotations
 
 import json
@@ -176,7 +168,7 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _smoke() -> int:
-    # Write then read
+
     db.initialize()
     manager.add_to_hot(PLATFORM, "smoke test prompt", role="user")
     rows = manager.get_hot_messages(PLATFORM, limit=5)

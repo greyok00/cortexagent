@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/tool_bridge.py — the tool surface the cortex CLI (Pi fork) calls.
 
-The cortex CLI's extensions shell out to this script to list and execute the
-full CortexAgent tool registry (core + browser + skills). It is the single
-stable interface between the TypeScript harness and the Python backend:
-
-  python3 scripts/tool_bridge.py list [--stub] [--limit N]
-  python3 scripts/tool_bridge.py run <name> <json-args>
-  python3 scripts/tool_bridge.py --smoke
-
-Output is always one JSON document on stdout (machine-readable for the
-harness). Exit code 0 on success, 1 on error (error JSON on stdout).
-
-Design rules:
-  - Idempotent: ensure_registered() is safe to call every time.
-  - Fast: no heavy imports beyond the registry + harness.
-  - Full mode is the default: name + description + JSON-schema parameters.
-    Stub mode (--stub or CORTEXAGENT_TOOL_STUBS=1) returns name + short
-    description only (~35 tokens/tool) for callers with tight context windows;
-    the full schema is resolved on run (missing args → helpful error naming
-    the params).
-"""
 from __future__ import annotations
 
 import json
@@ -47,8 +26,8 @@ def _list_tools(stub: bool, limit: Optional[int]) -> List[Dict[str, Any]]:
     from lib.tool_registry import list_tools
     ensure_registered()
     tools = list_tools(limit=limit, stub=stub)
-    # Normalize to a flat, harness-friendly shape: name + description always,
-    # parameters only in full mode.
+
+
     out: List[Dict[str, Any]] = []
     for t in tools:
         fn = t.get("function", t)

@@ -15,8 +15,16 @@ config/settings.json
 memory.db
 memory/**/*.db
 memory/**/*.jsonl
+memory/USER.md
+memory/cold/
 logs/
 **/logs/
+
+# ── Personal automation scripts — local-only, never published ───────────────
+scripts/coursera_*.py
+scripts/find_captcha_host.py
+scripts/watch_tab_spawner.py
+bin/gpu-mode
 
 # ── CortexLLM vendored runtime artifacts (code is committed, data is not) ──
 cortexllm/*.db
@@ -60,3 +68,4 @@ __pycache__/
 docs/
 prompts/pca_agent.md
 *.bak-merged
+cortex/

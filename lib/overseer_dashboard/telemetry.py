@@ -1,18 +1,4 @@
-"""lib/overseer_dashboard/telemetry.py — read live state into typed models.
 
-Reads the same backing data as the old tray popout (overseer state, daemon
-control socket, proxy /metrics, minify stats, plan, queue, schedule) but
-normalizes it into the typed ``RuntimeSnapshot`` model. This module is the
-only place that touches raw JSON; the UI consumes models only.
-
-Model-name resolution follows the spec's priority order:
-  1. response.model
-  2. response.model_id
-  3. response.metadata.model
-  4. request.model
-  5. active backend runtime model identifier
-  6. configured route/profile alias (explicit fallback only)
-"""
 from __future__ import annotations
 
 import json
@@ -34,7 +20,7 @@ STATE_DIR = Path(os.environ.get(
 PROXY_PORT = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
 PROXY_METRICS = f"http://127.0.0.1:{PROXY_PORT}/metrics"
 
-# How old a snapshot may be before we call it stale.
+
 STALE_AFTER_S = 5.0
 
 
@@ -65,7 +51,7 @@ def _proxy_metrics() -> Dict[str, Any]:
         return {}
 
 
-# ── Model-name resolution ───────────────────────────────────────────────────
+
 def _first(*candidates: Any) -> str:
     for c in candidates:
         if isinstance(c, str) and c.strip():
@@ -75,24 +61,24 @@ def _first(*candidates: Any) -> str:
 
 def _resolve_model(daemon: Dict[str, Any], proxy: Dict[str, Any],
                    active_model: Dict[str, Any]) -> M.ModelIdentity:
-    """Resolve the concrete serving model per the spec's priority order."""
+
     big = daemon.get("big") if isinstance(daemon.get("big"), dict) else {}
-    # 1-3. response.* fields (proxy may carry a last-response model).
+
     resp = proxy.get("response") if isinstance(proxy.get("response"), dict) else {}
     resp_model = _first(
         resp.get("model"), resp.get("model_id"),
         (resp.get("metadata") or {}).get("model") if isinstance(resp.get("metadata"), dict) else None,
     )
-    # 4. request.model
+
     req_model = _first(proxy.get("request_model"))
-    # 5. active backend runtime model identifier (daemon big.model basename).
+
     backend_model = ""
     path = _first(big.get("model"), big.get("model_path"))
     if path and "/" in path:
         backend_model = path.rsplit("/", 1)[-1]
     elif path:
         backend_model = path
-    # 6. route/profile alias (explicit fallback).
+
     alias = _first(big.get("alias"), big.get("name"))
 
     model = _first(resp_model, req_model, backend_model, alias)
@@ -103,18 +89,18 @@ def _resolve_model(daemon: Dict[str, Any], proxy: Dict[str, Any],
         model = "unknown"
         source = "none"
 
-    # Backend/provider.
+
     backend = _first(proxy.get("backend"), big.get("backend"), "unknown")
     route = _first(big.get("alias"), "cortex-big")
 
     return M.ModelIdentity(model=model, route=route, backend=backend, source=source)
 
 
-# ── Inference telemetry ─────────────────────────────────────────────────────
+
 def _build_inference(daemon: Dict[str, Any], proxy: Dict[str, Any],
                      big: Dict[str, Any]) -> M.InferenceTelemetry:
     ctx = int(big.get("ctx", 0) or 0) or None
-    # Context used: prefer a real value; else None (never fabricate).
+
     context_used = None
     for key in ("context_used", "ctx_used", "prompt_tokens"):
         v = proxy.get(key)
@@ -125,14 +111,14 @@ def _build_inference(daemon: Dict[str, Any], proxy: Dict[str, Any],
     in_tps = proxy.get("current_in_tps")
     out_tps = proxy.get("current_out_tps")
     if in_tps is None:
-        in_tps = proxy.get("current_tok_s")  # legacy single-rate
+        in_tps = proxy.get("current_tok_s")
     in_tps = float(in_tps) if isinstance(in_tps, (int, float)) else None
     out_tps = float(out_tps) if isinstance(out_tps, (int, float)) else None
 
     vram_used = proxy.get("vram_used_mib")
     vram_total = proxy.get("vram_total_mib")
 
-    # Cache/reuse only when genuinely present.
+
     cache_pct = proxy.get("cache_pct")
     cache_pct = float(cache_pct) if isinstance(cache_pct, (int, float)) else None
     reused_pct = proxy.get("reused_pct")
@@ -164,7 +150,7 @@ def _build_inference(daemon: Dict[str, Any], proxy: Dict[str, Any],
     )
 
 
-# ── Scheduler ────────────────────────────────────────────────────────────────
+
 def _build_scheduler(schedule: List[Dict[str, Any]]) -> M.SchedulerState:
     from .scheduler import normalize_cron, humanize_cron
     tasks: List[M.SchedulerTask] = []
@@ -198,9 +184,9 @@ def _build_scheduler(schedule: List[Dict[str, Any]]) -> M.SchedulerState:
     )
 
 
-# ── Top-level snapshot ───────────────────────────────────────────────────────
+
 def read_snapshot() -> M.RuntimeSnapshot:
-    """Read every source once and build a typed RuntimeSnapshot."""
+
     daemon = _daemon_status()
     proxy = _proxy_metrics()
     ov = _read_json(STATE_DIR / "overseer_state.json", {}) or {}
@@ -222,7 +208,7 @@ def read_snapshot() -> M.RuntimeSnapshot:
     data_age = 0.0
     stale = False
     stale_detail = ""
-    # Data age from the proxy's last_request_ts or the overseer state mtime.
+
     last_ts = proxy.get("last_request_ts")
     if isinstance(last_ts, (int, float)) and last_ts:
         data_age = time.time() - last_ts
@@ -234,7 +220,7 @@ def read_snapshot() -> M.RuntimeSnapshot:
     inference = _build_inference(daemon, proxy, big)
     scheduler = _build_scheduler(schedule)
 
-    # Alerts from overseer health events (last few).
+
     alerts: List[str] = []
     for ev in (ov.get("health_events") or [])[-5:]:
         if isinstance(ev, dict) and ev.get("level") in ("warn", "error", "critical"):

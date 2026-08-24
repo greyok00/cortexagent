@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""memory/manager.py — CortexAgent memory manager (hot/warm/cold).
 
-- Hot: per-platform FIFO cap 300
-- Warm: per-platform buffer, 70% recent + 30% preserved, deduped
-- Cold: distilled facts by category
-"""
 from __future__ import annotations
 
 import json

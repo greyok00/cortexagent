@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""observability.py — End-to-end observability layer for CortexAgent.
 
-Implements:
-1. Trace spans for every agent run (routing → framing → LLM → beautify → output)
-2. Token/cost/latency/error metrics per span
-3. Prompt injection detection and safety scoring
-4. Continuous evaluation hooks (groundedness, hallucination, safety)
-5. Structured logging with stable session IDs and workflow tags
-
-Architecture:
-  - Each user-visible conversation = one "trace"
-  - Each LLM call, tool call, memory op = one "span"
-  - Spans carry: session_id, span_id, parent_id, timing, metrics, tags
-  - All data written atomically to ~/.cortexagent/observability/
-
-Usage:
-  python3 lib/observability.py smoke          # self-test
-  python3 lib/observability.py traces          # list traces
-  python3 lib/observability.py metrics         # display metrics
-  python3 lib/observability.py eval --trace=T  # evaluate a trace
-"""
 import json
 import os
 import re
@@ -35,7 +15,7 @@ from collections import defaultdict
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
-# ── Directory Setup ──────────────────────────────────────────────────────────
+
 _OBS_DIR = Path.home() / ".cortexagent" / "observability"
 _OBS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -45,7 +25,7 @@ _EVALS_FILE = _OBS_DIR / "evals.ndjson"
 _LOGS_DIR = _OBS_DIR / "logs"
 _LOGS_DIR.mkdir(exist_ok=True)
 
-# ── Constants ────────────────────────────────────────────────────────────────
+
 SPAN_TYPES = {
     "routing": "Intent classification + route decision",
     "framing": "Prompt framing + domain analysis",
@@ -67,19 +47,17 @@ SAFETY_KEYWORDS = [
 ]
 
 
-# ── In-Memory Trace Registry ────────────────────────────────────────────────
-# Spans attach themselves to a live Trace in memory. Without this registry the
-# `span()` factory / `Span(...)` returned objects that never belonged to a
-# Trace, so consumers calling save_trace(trace) wrote `spans: []` and
-# evaluate_trace() evaluated empty output. Bounded to the most recent N traces.
+
+
+
+
+
 _TRACES: Dict[str, "Trace"] = {}
 _TRACES_MAX = 200
 
 
 def _get_trace(trace_id: str, session_id: str = None) -> "Trace":
-    """Return the live in-memory Trace for trace_id, creating + registering a
-    fresh one if absent. The Trace class is defined below; this is only called
-    at runtime, after the module is fully loaded."""
+
     trace = _TRACES.get(trace_id)
     if trace is None:
         trace = Trace(trace_id=trace_id, session_id=session_id or str(trace_id))
@@ -90,9 +68,9 @@ def _get_trace(trace_id: str, session_id: str = None) -> "Trace":
     return trace
 
 
-# ── Trace/Span Data Structures ──────────────────────────────────────────────
+
 class Span:
-    """A single span in a trace."""
+
     __slots__ = ['span_id', 'trace_id', 'parent_id', 'span_type', 'name',
                  'start_time', 'end_time', 'duration_ms', 'tags', 'metrics',
                  'status', 'error', 'payload', 'children']
@@ -113,8 +91,8 @@ class Span:
         self.error = ""
         self.payload = {}
         self.children = []
-        # Attach this span to the live in-memory trace so it is actually part
-        # of a Trace (was previously orphaned → save_trace wrote spans: []).
+
+
         _get_trace(trace_id).add_span(self)
 
     def __enter__(self):
@@ -123,7 +101,7 @@ class Span:
     def __exit__(self, *args):
         self.end_time = time.time()
         self.duration_ms = round((self.end_time - self.start_time) * 1000, 2)
-        # Record metrics at completion (duration is now known), not at creation.
+
         metrics.record_span(self)
         if self.parent_id:
             parent = _get_span(self.trace_id, self.parent_id)
@@ -160,7 +138,7 @@ class Span:
 
 
 class Trace:
-    """A complete trace with all spans."""
+
     def __init__(self, trace_id: str = None, session_id: str = None,
                  user_input: str = None, workflow: str = "default"):
         self.trace_id = trace_id or str(uuid.uuid4())[:12]
@@ -185,9 +163,9 @@ class Trace:
         }
 
 
-# ── Trace/Span Storage ──────────────────────────────────────────────────────
+
 def _append_ndjson(path: Path, data: Dict) -> None:
-    """Atomically append a JSON line to an NDJSON file."""
+
     try:
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(data, default=str) + "\n")
@@ -197,13 +175,7 @@ def _append_ndjson(path: Path, data: Dict) -> None:
 
 
 def save_trace(trace: Trace) -> None:
-    """Save a trace to disk.
 
-    Persists the registry copy (which owns the spans attached via the span
-    factory / Span.__init__), carrying over caller-supplied metadata — the
-    caller's Trace object may only be a header, with the spans living on the
-    registry trace. A passed-in trace that isn't registered is saved directly.
-    """
     reg = _TRACES.get(trace.trace_id)
     if reg is None:
         _append_ndjson(_TRACES_FILE, trace.to_dict())
@@ -218,8 +190,7 @@ def save_trace(trace: Trace) -> None:
 
 
 def _get_span(trace_id: str, span_id: str) -> Optional[Span]:
-    """Retrieve a span, preferring the live in-memory registry before falling
-    back to the most recent trace on disk."""
+
     trace = _TRACES.get(trace_id)
     if trace:
         for s in trace.spans:
@@ -240,9 +211,9 @@ def _get_span(trace_id: str, span_id: str) -> Optional[Span]:
     return None
 
 
-# ── Metrics Tracking ────────────────────────────────────────────────────────
+
 class MetricsCollector:
-    """Collect and aggregate metrics across all traces."""
+
 
     def __init__(self):
         self.metrics = defaultdict(lambda: {
@@ -255,7 +226,7 @@ class MetricsCollector:
         })
 
     def record_span(self, span: Span) -> None:
-        """Record metrics from a span."""
+
         key = span.span_type
         m = self.metrics[key]
         m["total_runs"] += 1
@@ -264,12 +235,12 @@ class MetricsCollector:
         m["total_latency_ms"] += span.duration_ms
         if span.status == "error":
             m["total_errors"] += 1
-        # Update p95 (simple approximation)
+
         if span.duration_ms > m["p95_latency_ms"] * 0.9:
             m["p95_latency_ms"] = span.duration_ms
 
     def get_summary(self) -> Dict:
-        """Get metrics summary."""
+
         summary = {}
         for key, m in self.metrics.items():
             if m["total_runs"] > 0:
@@ -284,27 +255,24 @@ class MetricsCollector:
         return dict(summary)
 
     def save(self) -> None:
-        """Persist metrics to disk."""
+
         _append_ndjson(_METRICS_FILE, {
             "timestamp": time.time(),
             "metrics": self.get_summary(),
         })
 
 
-# ── Safety/Injection Detection ──────────────────────────────────────────────
-def detect_injection(text: str) -> Tuple[bool, float]:
-    """Detect potential prompt injection attempts.
 
-    Returns: (is_injection, confidence_score)
-    """
+def detect_injection(text: str) -> Tuple[bool, float]:
+
     if not text:
         return False, 0.0
 
     text_lower = text.lower()
     hits = sum(1 for kw in SAFETY_KEYWORDS if kw in text_lower)
-    confidence = min(hits * 0.2, 1.0)  # Each keyword adds 0.2 confidence
+    confidence = min(hits * 0.2, 1.0)
 
-    # Check for common injection patterns
+
     injection_patterns = [
         r"(?i)ignore\s+previous\s+(instructions|prompts|system)",
         r"(?i)new\s+role:?\s*(developer|admin|assistant)",
@@ -324,15 +292,7 @@ def detect_injection(text: str) -> Tuple[bool, float]:
 
 
 def assess_safety(text: str) -> Dict:
-    """Assess text for safety concerns.
 
-    Returns: {
-        "is_safe": bool,
-        "safety_score": float,  # 0-1, higher is safer
-        "flags": List[str],
-        "confidence": float,
-    }
-    """
     is_injection, confidence = detect_injection(text)
     flags = []
     if is_injection:
@@ -346,19 +306,10 @@ def assess_safety(text: str) -> Dict:
     }
 
 
-# ── Evaluation Hooks ────────────────────────────────────────────────────────
-def evaluate_trace(trace: Trace) -> Dict:
-    """Evaluate a trace for quality, safety, and performance.
 
-    Returns: {
-        "groundedness": float,  # 0-1, how grounded is the output
-        "hallucination_rate": float,  # 0-1, how much hallucination
-        "safety_score": float,  # 0-1, how safe is the output
-        "performance_score": float,  # 0-1, how efficient was the run
-        "overall_score": float,  # weighted average
-    }
-    """
-    # Collect all output from spans
+def evaluate_trace(trace: Trace) -> Dict:
+
+
     outputs = []
     for span in trace.spans:
         if span.span_type in ("llm", "output"):
@@ -366,35 +317,35 @@ def evaluate_trace(trace: Trace) -> Dict:
 
     combined = " ".join(outputs)
 
-    # Evaluate groundedness (check for hedging language, citations)
-    groundedness = 0.5  # default
+
+    groundedness = 0.5
     if combined:
-        # Check for specific claims, citations, evidence
+
         has_citations = bool(re.search(r'(?:source|citation|reference|link|url)\s*[:=]', combined.lower()))
         has_hedging = bool(re.search(r'(?:according to|based on|reports|suggests|indicates)', combined.lower()))
         if has_citations or has_hedging:
             groundedness = 0.8
 
-    # Evaluate hallucination (check for uncertainty, contradictions)
-    hallucination_rate = 0.1  # default
+
+    hallucination_rate = 0.1
     if combined:
         uncertain_terms = sum(1 for word in ["possibly", "maybe", "could be", "might be", "unclear"] if word in combined.lower())
         hallucination_rate = min(uncertain_terms * 0.1, 0.5)
 
-    # Evaluate safety
+
     safety = assess_safety(combined)
 
-    # Evaluate performance (tokens per second, step efficiency)
-    performance = 0.5  # default
+
+    performance = 0.5
     llm_spans = [s for s in trace.spans if s.span_type == "llm"]
     if llm_spans:
         total_tokens = sum(s.metrics.get("tokens_out", 0) for s in llm_spans)
         total_time = sum(s.duration_ms for s in llm_spans)
         if total_time > 0:
             tps = total_tokens / (total_time / 1000)
-            performance = min(tps / 50, 1.0)  # 50 tps = perfect
+            performance = min(tps / 50, 1.0)
 
-    # Overall score (weighted average)
+
     overall = (
         groundedness * 0.3 +
         (1 - hallucination_rate) * 0.3 +
@@ -412,51 +363,50 @@ def evaluate_trace(trace: Trace) -> Dict:
     }
 
 
-# ── Structured Logging ──────────────────────────────────────────────────────
+
 def log_event(trace_id: str, event: Dict) -> None:
-    """Log an event to the observability logs."""
+
     log_file = _LOGS_DIR / f"{trace_id}.log"
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(event, default=str) + "\n")
 
 
-# ── Metrics Collector Instance ──────────────────────────────────────────────
+
 metrics = MetricsCollector()
 
 
-# ── Context Manager for Spans ───────────────────────────────────────────────
+
 def span(trace_id: str, span_type: str, name: str, parent_id: str = None,
          tags: Dict = None) -> Span:
-    """Create a span and attach it to the trace. Metrics are recorded at
-    span exit (__exit__) so duration_ms is known, not at creation."""
+
     return Span(trace_id, span_type, name, parent_id, tags)
 
 
-# ── CLI Interface ───────────────────────────────────────────────────────────
+
 def main():
-    """CLI interface for observability."""
+
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         print("Observability smoke test:")
-        # Create a test trace
+
         trace = Trace(trace_id="test", session_id="test",
                       user_input="test prompt", workflow="test")
-        
-        # Add some spans
+
+
         with span(trace.trace_id, "framing", "domain_classification") as s1:
             s1.set_metric("domain", "professional")
             time.sleep(0.01)
-        
+
         with span(trace.trace_id, "llm", "tiny_model_query") as s2:
             s1.children.append(s2.span_id)
             s2.set_metric("tokens_in", 50)
             s2.set_metric("tokens_out", 100)
             time.sleep(0.01)
-        
+
         with span(trace.trace_id, "beautify", "format_output") as s3:
             s1.children.append(s3.span_id)
             time.sleep(0.01)
-        
-        # Evaluate
+
+
         eval_result = evaluate_trace(trace)
         print(f"  Trace saved: {trace.trace_id}")
         print(f"  Evaluation: {json.dumps(eval_result, indent=2)}")
@@ -464,7 +414,7 @@ def main():
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "traces":
-        # List recent traces
+
         if not _TRACES_FILE.exists():
             print("No traces found.")
             return
@@ -478,7 +428,7 @@ def main():
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "metrics":
-        # Display metrics summary
+
         print("Metrics Summary:")
         summary = metrics.get_summary()
         for key, m in summary.items():
@@ -488,12 +438,12 @@ def main():
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "eval":
-        # Evaluate a trace
+
         if len(sys.argv) < 3 or sys.argv[2] != "--trace":
             print("Usage: observability.py eval --trace=<trace_id>")
             return
         trace_id = sys.argv[3]
-        # Load the trace
+
         if not _TRACES_FILE.exists():
             print("No traces found.")
             return
@@ -501,7 +451,7 @@ def main():
             for line in f.readlines():
                 trace = json.loads(line)
                 if trace["trace_id"] == trace_id:
-                    # Reconstruct trace
+
                     t = Trace(trace_id=trace_id, session_id=trace.get("session_id"))
                     for span_data in trace.get("spans", []):
                         s = Span(trace_id, span_data["span_type"], span_data["name"])
@@ -515,7 +465,7 @@ def main():
                         s.payload = span_data.get("payload", {})
                         s.children = span_data.get("children", [])
                         t.spans.append(s)
-                    
+
                     eval_result = evaluate_trace(t)
                     print(f"Trace {trace_id} Evaluation:")
                     print(json.dumps(eval_result, indent=2))

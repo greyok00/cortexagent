@@ -1,23 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_overseer_dashboard.py — unit tests for the Overseer dashboard.
 
-Covers the spec's required test areas:
-  - Fixed 1440×900 + fallback 1280×800 layouts
-  - Model-name resolution vs route alias
-  - Collect/Compose/SlimToken/Finalize pipeline integrity
-  - Pinned-content protection
-  - Token-budget reservation and final context validation
-  - Unavailable telemetry behavior
-  - SlimToken dry-run and optimization diff
-  - Pending / apply / revert / save-default flows
-  - Confirmation gates for disruptive changes
-  - Isolated test-run sessions
-  - Scheduler cron normalization and task dedup
-  - Stale snapshot rendering
-
-Tests are headless; they exercise the typed models and pipeline logic.
-UI-only assertions run under ``xvfb-run`` so they don't require a display.
-"""
 from __future__ import annotations
 
 import os
@@ -37,7 +19,7 @@ from lib.overseer_dashboard import (  # noqa: E402
 
 
 class TestLayouts(unittest.TestCase):
-    """Fixed 1440×900 and fallback 1280×800 layout constraints."""
+
 
     def test_default_dimensions(self) -> None:
         from lib.overseer_dashboard.ui import DEFAULT_W, DEFAULT_H
@@ -48,22 +30,22 @@ class TestLayouts(unittest.TestCase):
         self.assertEqual((FALLBACK_W, FALLBACK_H), (1280, 800))
 
     def test_window_non_resizable(self) -> None:
-        # The Tk instance should call resizable(False, False). We assert
-        # the layout decision without spinning up Tk by checking the code path.
+
+
         import inspect
         from lib.overseer_dashboard.ui import Dashboard
         src = inspect.getsource(Dashboard.__init__)
         self.assertIn("resizable(False, False)", src)
 
     def test_4k_scaling_factor_clamped(self) -> None:
-        """Scaling factor should be in [1.0, 2.0] and increase for big displays."""
+
         from lib.overseer_dashboard.ui import _detect_scale
         import os
-        # Force env override to a known high value to confirm parse + clamp.
+
         old = os.environ.get("CORTEXAGENT_DASHBOARD_SCALING")
         try:
             os.environ["CORTEXAGENT_DASHBOARD_SCALING"] = "1.75"
-            # We need a real Tk root to call _detect_scale. Skip if no display.
+
             import tkinter as tk
             try:
                 root = tk.Tk()
@@ -81,7 +63,7 @@ class TestLayouts(unittest.TestCase):
 
 
 class TestModelResolution(unittest.TestCase):
-    """Model-name resolution priority."""
+
 
     def test_concrete_model_wins_over_route_alias(self) -> None:
         daemon = {"big": {"model": "/models/Qwen3.6-35B-A3B-UD-IQ3_S.gguf",
@@ -120,7 +102,7 @@ class TestModelResolution(unittest.TestCase):
 
 
 class TestPipelineIntegrity(unittest.TestCase):
-    """Collect/Compose/SlimToken/Finalize pipeline integrity."""
+
 
     def test_compose_reserves_output_capacity(self) -> None:
         blocks = P.synthetic_blocks("hi", preset="simple")
@@ -132,12 +114,12 @@ class TestPipelineIntegrity(unittest.TestCase):
         blocks = P.synthetic_blocks("hi", preset="long_context")
         c = P.compose(blocks, context_window=156000, max_output_tokens=3431)
         slim = P.slimtoken(c, dedup=True)
-        # The 4 pinned blocks must appear with action='preserved' unchanged.
+
         pinned_ids = {b.id for b in c.pinned}
         preserved = [a for a in slim.actions
                      if a.action == "preserved" and a.block_id in pinned_ids]
         self.assertEqual(len(preserved), len(pinned_ids))
-        # And their tokens_before == tokens_after.
+
         for a in preserved:
             self.assertEqual(a.tokens_before, a.tokens_after)
 
@@ -146,8 +128,8 @@ class TestPipelineIntegrity(unittest.TestCase):
         c = P.compose(blocks, context_window=156000, max_output_tokens=3431)
         slim = P.slimtoken(c)
         pinned_ids = {b.id for b in c.pinned}
-        # Every action on a pinned block must be 'preserved' with equal
-        # tokens before and after — never removed/compacted/deduplicated.
+
+
         for a in slim.actions:
             if a.block_id in pinned_ids:
                 self.assertEqual(a.action, "preserved",
@@ -157,13 +139,13 @@ class TestPipelineIntegrity(unittest.TestCase):
     def test_finalize_validates_budget(self) -> None:
         dr = P.dry_run("test", preset="long_context",
                        context_window=20000, max_output_tokens=1000)
-        # 20000-1000 = 19000 budget. SlimToken output must fit.
+
         self.assertTrue(dr.finalize.fits)
 
     def test_finalize_rejects_overflow(self) -> None:
         dr = P.dry_run("test", preset="long_context",
                        context_window=1000, max_output_tokens=500)
-        # 500 budget. After SlimToken it's 11181 — does not fit.
+
         self.assertFalse(dr.finalize.fits)
 
     def test_dry_run_never_sends_to_provider(self) -> None:
@@ -180,7 +162,7 @@ class TestPipelineIntegrity(unittest.TestCase):
 
 
 class TestUnavailableTelemetry(unittest.TestCase):
-    """Unavailable telemetry renders as None / '—', never fabricated."""
+
 
     def test_inference_telemetry_defaults_to_none(self) -> None:
         inf = M.InferenceTelemetry()
@@ -204,7 +186,7 @@ class TestUnavailableTelemetry(unittest.TestCase):
 
 
 class TestSettingsFlows(unittest.TestCase):
-    """Pending / apply / revert / save-default."""
+
 
     def test_pending_differs_from_active(self) -> None:
         cap = M.BackendCapabilities()
@@ -243,7 +225,7 @@ class TestSettingsFlows(unittest.TestCase):
 
 
 class TestSchedulerCron(unittest.TestCase):
-    """Cron normalization, humanization, task dedup."""
+
 
     def test_normalize_strips_brackets_and_commas(self) -> None:
         self.assertEqual(S.normalize_cron("(9,0,*,*,*)"), "9 0 * * *")
@@ -251,8 +233,8 @@ class TestSchedulerCron(unittest.TestCase):
         self.assertEqual(S.normalize_cron("0,9,*,*,*"), "0 9 * * *")
 
     def test_normalize_rejects_malformed(self) -> None:
-        self.assertEqual(S.normalize_cron("0 9 * *"), "")        # 4 fields
-        self.assertEqual(S.normalize_cron("0 9 * * X"), "")      # bad token
+        self.assertEqual(S.normalize_cron("0 9 * *"), "")
+        self.assertEqual(S.normalize_cron("0 9 * * X"), "")
         self.assertEqual(S.normalize_cron("not a cron"), "")
 
     def test_humanize_daily(self) -> None:
@@ -272,7 +254,7 @@ class TestSchedulerCron(unittest.TestCase):
 
 
 class TestTestHarness(unittest.TestCase):
-    """Isolated test runs."""
+
 
     def test_runs_get_independent_ids(self) -> None:
         th = T.TestHarness()
@@ -295,7 +277,7 @@ class TestTestHarness(unittest.TestCase):
         th.run_dry("one", preset="simple")
         self.assertIsNone(th.comparison())
         th.run_dry("two", preset="simple")
-        # Select them.
+
         for r in th.runs:
             th.toggle_select(r.id)
         comp = th.comparison()
@@ -311,7 +293,7 @@ class TestTestHarness(unittest.TestCase):
 
 
 class TestStaleSnapshot(unittest.TestCase):
-    """Stale / error rendering fields."""
+
 
     def test_stale_detail_set(self) -> None:
         snap = M.RuntimeSnapshot(stale=True, stale_detail="data current 18s",

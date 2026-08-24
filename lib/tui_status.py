@@ -1,46 +1,5 @@
 #!/usr/bin/env python3
-"""lib/tui_status.py — Codex-style 3-panel status strip for the CortexAgent TUI.
 
-Pure-Python view-model + render layer. **No Textual imports. No I/O.**
-
-This module owns:
-  - the boxed 3-panel rendering (Runtime / SlimToken / Memory)
-  - the optional 1-line active-work indicator
-  - the 1-line footer with shortcuts
-  - width-aware layout (3-up → 2+1 → vertical stack)
-  - width-aware shrink priority
-  - ANSI 24-bit color sequences paired with glyphs (never color alone)
-
-Inputs are typed ``StatusView`` / ``RuntimeView`` / ``SlimTokenView`` /
-``MemoryView`` / ``WorkLineView`` dataclasses so the TUI's ``_tick`` can
-build them from live data without leaking raw memory rows / proxy JSON /
-tool errors / prompts into the renderer.
-
-Why this lives separately from ``lib/tui.py``
-``:
-    The strip is pure-Python and testable WITHOUT spinning up a Textual
-    App. The TUI is untracked local-only and has no committed tests, so
-    keeping the renderer separate lets ``tests/test_tui_status.py`` and the
-    ``tests/run_smoke.py`` gate cover every layout/shrink/colour pairing
-    without Textual in the loop.
-
-Data boundary (the only fields that cross into the renderer)
-``:
-    RuntimeView   — ctx_pct, ctx_used_tokens, ctx_total_tokens, in_tps,
-                    out_tps, model_label, phase (WorkPhase)
-    SlimTokenView — saved_pct, tokens_saved, last_in_tokens, last_out_tokens,
-                    policy, ran
-    MemoryView    — available, groups_total, groups_active, category_labels
-                    (max 2, sanitized), detail_hint
-    WorkLineView  — phase, label, progress (None for indeterminate),
-                    retry_current, retry_max, retry_in_seconds
-
-Rendered glyphs (Unicode box drawing + status markers)
-``:
-    Borders: ╭ ╮ ╰ ╯ │ ─
-    Status :  ● ready · ◷ warming · ! unavailable · ◈ working
-    Bar    :  ░ ▒ ▓ █ (10-cell progress, indeterminate alternates ░▒▓▒░░)
-"""
 from __future__ import annotations
 
 import re
@@ -54,17 +13,17 @@ except ImportError:  # pragma: no cover - venv ships wcwidth
     _wcswidth = None
 
 
-# ── Terminal capability detection ──────────────────────────────────────────────
-# Respect NO_COLOR, TERM=dumb, and non-TTY. Honor a `--unicode` flag (set via
-# ``set_unicode(True)`` at startup) so users on width-unsafe terminals can
-# opt out of box-drawing. See docs/ux/DESIGN-PRINCIPLES.md §4.4, §4.5.
+
+
+
+
 
 import os
 import sys as _sys
 
 
 def _detect_color() -> int:
-    """Return color capability in bits (0/8/24). Honors NO_COLOR + TERM=dumb."""
+
     if os.environ.get("NO_COLOR"):
         return 0
     if not _sys.stdout.isatty():
@@ -76,63 +35,48 @@ def _detect_color() -> int:
         return 24
     if term.endswith("-256color"):
         return 8
-    return 8  # safe default
+    return 8
 
 
 _COLOR_BITS: int = _detect_color()
-_UNICODE: bool = True  # flipped by set_unicode(); default to Unicode for modern terminals
+_UNICODE: bool = True
 
 
 def set_unicode(enabled: bool) -> None:
-    """Toggle Unicode box-drawing. ASCII fallback is always rendered if False.
 
-    Call at startup based on a --unicode CLI flag or env knob
-    (CORTEXAGENT_TUI_UNICODE=0 to disable). Default True.
-    """
     global _UNICODE
     _UNICODE = bool(enabled)
 
 
 def color_bits() -> int:
-    """Read-only view of detected color capability."""
+
     return _COLOR_BITS
 
 
 def is_unicode() -> bool:
-    """Read-only view of Unicode box-drawing state."""
+
     return _UNICODE
 
 
 def set_title(title: str) -> None:
-    """Update the terminal window title via OSC 0.
 
-    Honors the same env checks: skipped if non-TTY or TERM=dumb or NO_COLOR
-    (NO_COLOR doesn't strictly apply, but a NO_COLOR user wants minimal
-    terminal side-effects anyway). Safe to call on every render tick.
-    """
     if not _sys.stdout.isatty():
         return
     if os.environ.get("TERM", "") in ("dumb", ""):
         return
-    # OSC 0 ; <title> ST — terminator is BEL (\x07) for max compatibility.
+
     safe = title.replace("\x1b", "").replace("\x07", "")
     _sys.stdout.write(f"\x1b]0;{safe}\x07")
     _sys.stdout.flush()
 
 
-# ── ANSI color ───────────────────────────────────────────────────────────────
-# 24-bit truecolor via OSC-equivalent SGR. Pairs every color with a glyph
-# so colorblind users and forced-colors terminals still read the state.
-# When _COLOR_BITS == 0, all color escapes collapse to no-ops (RESET only).
+
+
+
+
 
 def _sgr(code: str) -> str:
-    """Wrap ``text`` `` in an ANSI SGR sequence. Caller must pair with reset.
 
-    Returns empty string when color is suppressed (NO_COLOR / non-TTY /
-    TERM=dumb). Callers that previously wrote ``_sgr(code) + glyph + RESET``
-    become ``glyph`` automatically in that mode — callers don't need to
-    branch themselves.
-    """
     if _COLOR_BITS == 0:
         return ""
     return f"\x1b[{code}m"
@@ -142,17 +86,17 @@ RESET = "\x1b[0m" if _COLOR_BITS > 0 else ""
 DIM = "\x1b[2m" if _COLOR_BITS > 0 else ""
 BOLD = "\x1b[1m" if _COLOR_BITS > 0 else ""
 
-# Palette — green / cyan / purple / yellow / red. Hex matches the constants
-# already used by lib/tui.py (BG, BG2, TEXT, …). Do not duplicate numbers;
-# import from lib.tui if needed.
-GREEN_24 = "38;2;74;139;92"      # ready / success
-CYAN_24 = "38;2;150;220;255"     # runtime panel accent
-PURPLE_24 = "38;2;180;140;200"   # SlimToken panel accent
-YELLOW_24 = "38;2;220;180;80"    # warming / stale
-RED_24 = "38;2;196;85;77"        # unavailable / failure
-DIM_GREY_24 = "38;2;136;136;136"  # hint rows
 
-# 8-color fallback palette (works on every vt100-compatible terminal).
+
+
+GREEN_24 = "38;2;74;139;92"
+CYAN_24 = "38;2;150;220;255"
+PURPLE_24 = "38;2;180;140;200"
+YELLOW_24 = "38;2;220;180;80"
+RED_24 = "38;2;196;85;77"
+DIM_GREY_24 = "38;2;136;136;136"
+
+
 GREEN_8 = "32"
 CYAN_8 = "36"
 PURPLE_8 = "35"
@@ -162,7 +106,7 @@ DIM_GREY_8 = "90"
 
 
 def _pick(bit24: str, bit8: str) -> str:
-    """Pick a color SGR code based on the live _COLOR_BITS."""
+
     return bit24 if _COLOR_BITS >= 24 else bit8
 
 
@@ -174,8 +118,8 @@ def RED() -> str: return _pick(RED_24, RED_8)
 def DIM_GREY() -> str: return _pick(DIM_GREY_24, DIM_GREY_8)
 
 
-# Glyph table uses the live pickers so a test that toggles bits gets the
-# right code.
+
+
 def _STATUS_GLYPH() -> dict:
     return {
         "ready": ("●", GREEN()),
@@ -190,19 +134,14 @@ def _STATUS_GLYPH() -> dict:
 
 
 def _color(text: str, code: str) -> str:
-    """Apply a 24-bit color to text. Caller is responsible for pairing."""
+
     if _COLOR_BITS == 0:
         return text
     return f"{_sgr(code)}{text}{RESET}"
 
 
 def _pair_with_glyph(text: str, glyph: str, code: str) -> str:
-    """Render a text segment with a colored glyph + a same-cell text label.
 
-    The glyph always carries the color so a user with forced-colors / mono
-    terminal still sees the marker. The text is bolded but stays default
-    foreground for max readability.
-    """
     if _COLOR_BITS == 0:
         return f"{glyph} {BOLD}{text}{RESET}"
     return f"{_sgr(code)}{glyph}{RESET} {BOLD}{text}{RESET}"
@@ -214,13 +153,13 @@ def _dim(text: str) -> str:
     return f"{DIM}{text}{RESET}"
 
 
-# ── Box-drawing characters (Unicode default; ASCII fallback) ────────────────
-# Per DESIGN-PRINCIPLES.md §4.5: never mix Unicode and ASCII on the same
-# line; default to ASCII on terminals with known width bugs.
 
-# Source-of-truth pairs: ASCII first, Unicode second. Live selection
-# happens via the B_* accessors below (they read _UNICODE at call time so
-# ``set_unicode(False)`` takes effect immediately).
+
+
+
+
+
+
 _BOX_PAIRS = {
     "TL": ("+", "╭"),
     "TR": ("+", "╮"),
@@ -255,18 +194,13 @@ def B_VERTICAL() -> str:
     return _BOX_PAIRS["V"][1] if _UNICODE else _BOX_PAIRS["V"][0]
 
 
-# ── Cell-aware width measurement ─────────────────────────────────────────────
+
 
 def display_width(text: str) -> int:
-    """Return the terminal display-cell count of ``text````.
 
-    Falls back to ``len(text)`` if wcwidth is unavailable or returns -1
-    (unknown / control chars). Newlines and tabs are normalized to 1 cell
-    each so multi-line strings round-trip sensibly through the renderer.
-    """
     if not text:
         return 0
-    # Newlines and tabs occupy one cell each; replace before measuring.
+
     flat = text.replace("\t", " ").replace("\n", " ")
     if _wcswidth is None:
         return len(flat)
@@ -278,20 +212,15 @@ def display_width(text: str) -> int:
 
 
 def fit_to_cells(text: str, width: int, side: str = "left") -> str:
-    """Truncate or pad ``text`` to exactly ``width`` display cells.
 
-    ``side`` is the side that gets padding (``"left"`` / ``"right"``).
-    Truncation appends ``…`` (1 cell) when the trimmed content overflowed.
-    The function never returns more than ``width`` cells.
-    """
     if width <= 0:
         return ""
-    # Strip color for measurement; ANSI escapes have 0 cells.
+
     plain = re.sub(r"\x1b\[[0-9;]*m", "", text or "")
     if display_width(plain) <= width:
         pad = " " * (width - display_width(plain))
         return plain + pad if side == "left" else pad + plain
-    # Truncate. Reserve 1 cell for the ellipsis.
+
     target = width - 1
     out = []
     used = 0
@@ -302,14 +231,14 @@ def fit_to_cells(text: str, width: int, side: str = "left") -> str:
         out.append(ch)
         used += cw
     s = "".join(out) + "…"
-    # Pad to width (defensive — should be exact).
+
     if display_width(s) < width:
         s += " " * (width - display_width(s))
     return s
 
 
 def _is_wide(ch: str) -> bool:
-    """Rough wide-char check when wcwidth is unavailable."""
+
     o = ord(ch)
     return (
         0x1100 <= o <= 0x115F
@@ -328,25 +257,25 @@ def _is_wide(ch: str) -> bool:
     )
 
 
-# ── Work phase enum ──────────────────────────────────────────────────────────
+
 
 class WorkPhase(str, Enum):
-    """Discrete operational phase. Drives glyph + colour + verb label."""
+
     IDLE = "idle"
-    PREPARING = "preparing"           # indeterminate progress allowed
-    WARMING = "warming"               # 503 Loading model → WARMING
-    GENERATING = "generating"         # indeterminate — no fake percent
-    WAITING_TOOL = "waiting_tool"     # indeterminate
-    RETRYING = "retrying"             # indeterminate
-    UNAVAILABLE = "unavailable"       # backend down
-    READY = "ready"                   # model ready, not generating
+    PREPARING = "preparing"
+    WARMING = "warming"
+    GENERATING = "generating"
+    WAITING_TOOL = "waiting_tool"
+    RETRYING = "retrying"
+    UNAVAILABLE = "unavailable"
+    READY = "ready"
 
 
-# ── View model ───────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class RuntimeView:
-    """Runtime panel: context %, in/out tok/s, model state."""
+
     ctx_pct: Optional[float]
     ctx_used_tokens: Optional[int]
     ctx_total_tokens: Optional[int]
@@ -356,11 +285,7 @@ class RuntimeView:
     phase: WorkPhase
 
     def is_valid(self) -> bool:
-        """True iff at least one displayable field is non-None.
 
-        A fully-None RuntimeView is treated as 'model —' (no fabricated
-        values).
-        """
         return any(
             v is not None
             for v in (self.ctx_pct, self.in_tps, self.out_tps, self.model_label)
@@ -369,22 +294,18 @@ class RuntimeView:
 
 @dataclass(frozen=True)
 class SlimTokenView:
-    """SlimToken panel: saved %, tokens saved, last before→after, policy."""
-    saved_pct: Optional[float]      # 0 is a valid value
+
+    saved_pct: Optional[float]
     tokens_saved: Optional[int]
     last_in_tokens: Optional[int]
     last_out_tokens: Optional[int]
-    policy: str                     # conservative / balanced / aggressive / custom
-    ran: bool                       # False → renders "not used"
+    policy: str
+    ran: bool
 
 
 @dataclass(frozen=True)
 class MemoryView:
-    """Memory panel: groups / active / category labels.
 
-    No raw memory content crosses this boundary — only aggregate counts
-    and pre-approved category labels.
-    """
     available: bool
     groups_total: Optional[int]
     groups_active: Optional[int]
@@ -394,10 +315,10 @@ class MemoryView:
 
 @dataclass(frozen=True)
 class WorkLineView:
-    """Active-work indicator (one terminal row above the panels)."""
+
     phase: WorkPhase
     label: str
-    progress: Optional[float] = None        # None = indeterminate
+    progress: Optional[float] = None
     retry_current: Optional[int] = None
     retry_max: Optional[int] = None
     retry_in_seconds: Optional[float] = None
@@ -405,7 +326,7 @@ class WorkLineView:
 
 @dataclass(frozen=True)
 class StatusView:
-    """Top-level container. The renderer is given one of these."""
+
     runtime: RuntimeView
     slimtoken: SlimTokenView
     memory: MemoryView
@@ -416,11 +337,11 @@ class StatusView:
     )
 
 
-# ── Format helpers for each row ─────────────────────────────────────────────
+
 
 def _format_int(n: int) -> str:
     if n >= 1000:
-        # 3100 → 3.1k · 156000 → 156k · 2700000 → 2.7M
+
         if n >= 1_000_000:
             return f"{n / 1_000_000:.1f}M"
         if n >= 10_000:
@@ -436,12 +357,12 @@ def _format_tps(n: Optional[float]) -> str:
 
 
 def runtime_rows(rt: RuntimeView, drop: set) -> List[str]:
-    """Return the three Runtime panel content rows (no borders)."""
+
     show_model = "model_name" not in drop and rt.model_label
     show_max = "used_max_ctx" not in drop
     show_rates = "token_rates" not in drop
 
-    # Row 1: percentage + (used/max when room)
+
     pct = f"{rt.ctx_pct:.1f}%" if rt.ctx_pct is not None else "—%"
     if rt.ctx_used_tokens is not None:
         if show_max and rt.ctx_total_tokens:
@@ -453,13 +374,13 @@ def runtime_rows(rt: RuntimeView, drop: set) -> List[str]:
     else:
         r1 = f"ctx {pct}"
 
-    # Row 2: in/out tok/s
+
     if show_rates:
         r2 = f"in {_format_tps(rt.in_tps)} · out {_format_tps(rt.out_tps)}"
     else:
         r2 = ""
 
-    # Row 3: model + phase
+
     glyph, color = _STATUS_GLYPH().get(rt.phase.value, ("·", DIM_GREY()))
     state_word = {
         WorkPhase.READY: "model ready",
@@ -476,13 +397,13 @@ def runtime_rows(rt: RuntimeView, drop: set) -> List[str]:
     else:
         r3 = state_word
 
-    # Color the phase glyph for row 3
+
     r3_colored = f"{_sgr(color)}{glyph}{RESET} {_dim(r3)}"
     return [r1, r2, r3_colored]
 
 
 def slimtoken_rows(st: SlimTokenView, drop: set) -> List[str]:
-    """Return the three SlimToken panel content rows (no borders)."""
+
     show_last = "last_before_after" not in drop
     if not st.ran:
         r1 = "not used"
@@ -506,12 +427,12 @@ def slimtoken_rows(st: SlimTokenView, drop: set) -> List[str]:
 
 
 def memory_rows(mem: MemoryView, drop: set) -> List[str]:
-    """Return the three Memory panel content rows (no borders)."""
+
     if not mem.available:
         r1 = "memory unavailable !"
         r2 = "last good snapshot"
         r3 = mem.detail_hint or "m for details"
-        # The trailing ! is itself the red signal; we still color the word.
+
         return [
             f"{_sgr(RED())}!{RESET} {_dim('memory unavailable')}",
             _dim(r2),
@@ -537,26 +458,21 @@ def memory_rows(mem: MemoryView, drop: set) -> List[str]:
     return [r1, _dim(r2), _dim(r3)]
 
 
-# ── Panel renderer (borders + content) ───────────────────────────────────────
+
 
 def panel_block(title: str, rows: List[str], width: int, accent: str) -> str:
-    """Render one bordered panel as a multi-line string.
 
-    ``rows`` is the list of 3 content strings (already cell-fit if needed).
-    ``width`` is the *inner* width; the output adds 2 cells of borders.
-    Returns 5 lines total: top border · 3 content · bottom border.
-    """
     if width < 6:
         width = 6
     title_part = f" {title} "
-    # Top border: corner-glyph + TITLE + dashes + corner-glyph
-    # Outer width = inner + 2 (matches content rows).
-    # Border row cells: corner(1) + dash(1) + title(T) + dashes(N) + corner(1)
-    #   = T + N + 3. We need T + N + 3 = inner + 2, so N = inner - T - 1.
+
+
+
+
     top_inner = width
     title_cells = display_width(title_part)
     if title_cells + 2 > top_inner:
-        # Title too long — truncate to leave room for the corner glyphs.
+
         title_part = fit_to_cells(title_part, max(1, top_inner - 2), "left")
         title_cells = display_width(title_part)
     dash_count = max(0, top_inner - title_cells - 1)
@@ -568,10 +484,10 @@ def panel_block(title: str, rows: List[str], width: int, accent: str) -> str:
     )
     mid: List[str] = []
     for r in rows:
-        # Each content row gets vbar + content + vbar, content fit/padded to width.
+
         content = fit_to_cells(r, width, "left")
-        # The leading/trailing border glyphs use the accent color so the
-        # whole panel reads as a single bordered region.
+
+
         mid.append(
             _sgr(accent) + B_VERTICAL() + RESET
             + content
@@ -583,19 +499,14 @@ def panel_block(title: str, rows: List[str], width: int, accent: str) -> str:
     return "\n".join([top] + mid + [bot])
 
 
-# ── Active-work line renderer ────────────────────────────────────────────────
+
 
 def work_line(work: WorkLineView, width: int) -> str:
-    """Render the single-row active-work indicator.
 
-    Indeterminate phases (WARMING, GENERATING, WAITING_TOOL, RETRYING) get
-    a Unicode block bar with **no** fake percent. Determinate phases
-    (PREPARING with a measured progress) get a percent + bar.
-    """
     glyph, color = _STATUS_GLYPH().get(work.phase.value, ("·", DIM_GREY()))
     label = work.label
     parts = [_pair_with_glyph("", glyph, color) + " " + _dim(label)]
-    # Retry block
+
     if work.retry_current and work.retry_max and work.retry_in_seconds is not None:
         parts.append(_dim(
             f"retry {work.retry_current}/{work.retry_max} in "
@@ -603,14 +514,14 @@ def work_line(work: WorkLineView, width: int) -> str:
     parts.append(_dim("Esc cancel"))
     bar = ""
     if work.progress is not None:
-        # Determinate
+
         pct = max(0, min(100, work.progress))
         bar_chars = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
         bar = f" [{bar_chars}] {pct:.0f}%"
         parts.insert(1, _sgr(color) + bar + RESET)
     elif work.phase in (WorkPhase.WARMING, WorkPhase.GENERATING,
                         WorkPhase.WAITING_TOOL, WorkPhase.RETRYING):
-        # Indeterminate — alternating blocks. No percent.
+
         bar = " [░░▒▒▓▓▒▒░░▒▒]"
         parts.insert(1, _sgr(color) + bar + RESET)
     elif work.phase == WorkPhase.PREPARING and work.progress is None:
@@ -618,39 +529,32 @@ def work_line(work: WorkLineView, width: int) -> str:
         parts.insert(1, _sgr(color) + bar + RESET)
 
     out = " · ".join(parts)
-    # Fit to width (defensive — usually already fits).
+
     return fit_to_cells(out, width, "left")
 
 
-# ── Footer renderer ──────────────────────────────────────────────────────────
+
 
 def footer_line(shortcuts: Sequence[Tuple[str, str]], width: int) -> str:
-    """Render the unbordered footer with width-aware shortcut shrink.
 
-    Drop order (per spec):
-        1. SlimToken shortcut
-        2. Memory shortcut
-        3. Help shortcut
-        4. Keep logs and cancel/retry (last)
-    """
-    # Always keep logs (and Esc cancel / r retry if present) — they aren't in
-    # the drop list.
+
+
     keep = ("l",)
     keep_verbs = ("logs", "cancel", "retry")
-    # Build the full list, then drop until it fits.
+
     items = list(shortcuts)
     for drop_key in ("s", "m", "?"):
         while True:
             rendered = _join_footer(items)
             if display_width(rendered) <= width:
                 break
-            # Drop the first item whose key matches drop_key.
+
             new_items = [it for it in items if it[0] != drop_key]
             if len(new_items) == len(items):
-                # Already gone; can't drop more of this key.
+
                 break
             items = new_items
-    # Always retain at least one shortcut.
+
     if not items:
         items = [("l", "logs")]
     return _join_footer(items)
@@ -666,25 +570,10 @@ def _join_footer(items: Sequence[Tuple[str, str]]) -> str:
     return " · ".join(parts)
 
 
-# ── Top-level strip renderer ─────────────────────────────────────────────────
+
 
 def _inner_widths(width: int) -> Tuple[str, int, int]:
-    """Compute the layout + (inner_width for top panels, inner_width for bottom).
 
-    Returns:
-        (layout, top_inner, mem_inner)
-
-    Width math (inner = content cells between `│`; outer = inner + 2 for borders):
-      3up   — total outer = 3*(inner + 2) + 2*gap = 3*inner + 8
-              ⇒ inner = floor((width - 8) / 3), capped at 90 (no min — width is the floor)
-      2+1   — top outer = 2*(inner + 2) + gap = 2*inner + 5
-              ⇒ inner = floor((width - 5) / 2), capped at 90
-              bottom inner = width - 2 (memory gets the full width)
-      stack — inner = width - 2 (each panel on its own row band)
-
-    At very small widths (<20), panel_block clamps to its 6-cell minimum and
-    the terminal clips the excess. We never inflate a panel wider than width.
-    """
     if width >= 96:
         layout = "3up"
         inner = min(90, max(6, (width - 8) // 3))
@@ -700,16 +589,7 @@ def _inner_widths(width: int) -> Tuple[str, int, int]:
 
 
 def strip_render(view: StatusView) -> str:
-    """Render the full bottom region: optional work line + 3-panel strip + footer.
 
-    Layout selection by terminal width:
-      >= 96  : 3-up (Runtime | SlimToken | Memory side by side)
-      >= 64  : 2+1 (Runtime | SlimToken on top, Memory full-width below)
-      else   : vertical stack (Runtime, then SlimToken, then Memory)
-
-    Returns a multi-line string ready to ``Static.update()``. Every rendered
-    row is width-aware so nothing shoots out the side of the terminal.
-    """
     width = max(20, view.width)
     layout, top_inner, mem_inner = _inner_widths(width)
     gap = " "
@@ -718,7 +598,7 @@ def strip_render(view: StatusView) -> str:
     st_drop: set = set()
     mem_drop: set = set()
 
-    # Aggressive shrink: as width shrinks past 96, start dropping fields.
+
     if width < 96:
         rt_drop.add("model_name")
     if width < 80:
@@ -736,10 +616,10 @@ def strip_render(view: StatusView) -> str:
 
     out_lines: List[str] = []
 
-    # Active-work line.
+
     if view.work is not None:
         out_lines.append(work_line(view.work, width))
-    # Top spacer removed by spec rule: no blank spacer lines.
+
 
     if layout == "3up":
         rt_panel = panel_block("RUNTIME", rt_rows, top_inner, CYAN()).splitlines()
@@ -748,8 +628,8 @@ def strip_render(view: StatusView) -> str:
         for a, b, c in zip(rt_panel, st_panel, mem_panel):
             out_lines.append(a + gap + b + gap + c)
     elif layout == "2plus1":
-        # Runtime + SlimToken side-by-side on the top block; Memory full-width
-        # below. Top inner is computed to keep the top row at ≤ width cells.
+
+
         rt_panel = panel_block("RUNTIME", rt_rows, top_inner, CYAN()).splitlines()
         st_panel = panel_block("SLIMTOKEN", st_rows, top_inner, PURPLE()).splitlines()
         for a, b in zip(rt_panel, st_panel):
@@ -757,29 +637,24 @@ def strip_render(view: StatusView) -> str:
         mem_panel = panel_block("MEMORY", mem_rows, mem_inner, GREEN()).splitlines()
         out_lines.extend(mem_panel)
     else:
-        # Stack — each panel on its own row band.
+
         out_lines.extend(panel_block("RUNTIME", rt_rows, top_inner, CYAN()).splitlines())
         out_lines.extend(panel_block("SLIMTOKEN", st_rows, top_inner, PURPLE()).splitlines())
         out_lines.extend(panel_block("MEMORY", mem_rows, mem_inner, GREEN()).splitlines())
 
-    # Footer (unbordered, one line).
+
     out_lines.append(footer_line(view.shortcuts, width))
 
     return "\n".join(out_lines)
 
 
-# ── 503 → WARMING mapping ────────────────────────────────────────────────────
+
 
 def phase_from_proxy_signal(
     stderr_text: Optional[str],
     http_status: Optional[int] = None,
 ) -> WorkPhase:
-    """Map a (stderr_text, http_status) pair from the grammar proxy into a phase.
 
-    Per spec: HTTP 503 with backend message ``Loading model`` maps to
-    ``WARMING``. Any other 503 / connection error maps to ``UNAVAILABLE``.
-    Cancelled → IDLE (the TUI handles that via TurnPanel.finished_cancelled).
-    """
     msg = (stderr_text or "").lower()
     if http_status == 503 and "loading model" in msg:
         return WorkPhase.WARMING
@@ -792,10 +667,10 @@ def phase_from_proxy_signal(
     return WorkPhase.IDLE
 
 
-# ── Public convenience: a sane empty StatusView ──────────────────────────────
+
 
 def empty_view(width: int = 100) -> StatusView:
-    """A status view with everything unknown — used at boot / first tick."""
+
     return StatusView(
         runtime=RuntimeView(None, None, None, None, None, None, WorkPhase.IDLE),
         slimtoken=SlimTokenView(0, 0, None, None, "balanced", False),

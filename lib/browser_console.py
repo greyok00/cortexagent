@@ -1,40 +1,5 @@
 #!/usr/bin/env python3
-"""lib/browser_console.py — Integrated bottom-right CortexAgent console.
 
-ONE window (1280x720, bottom-right, always-on-top, dock-pinned, draggable).
-No separate STT window, no separate chat input here —
-this widget is the ONLY chat surface. Everything in this file folds into a
-single Gtk.Window:
-
-  • VTE 2.91 terminal — embedded `bin/cortexagent` PTY (full REPL).
-    Typing in the entry box below feeds the PTY bytes directly. NO one-shot
-    daemon calls, NO proxy shortcuts. The real subprocess owns memory,
-    slimtoken, browser_control, overseer — all of it.
-
-  STT/voice control is in the tray submenu only — NOT here.
-
-  • ATTACH 📎     — Tk-less file dialog (Gtk.FileChooserNative); injects
-                    the quoted path into the focused REPL via
-                    `xdotool type --delay 1`. Image guard: refuses if
-                    lib.check_image_model says the active model is not
-                    multimodal.
-
-  • COMPRESSION   — slimtoken stats (runs, tokens in/out, saved, ratio%).
-  • MEMORY        — hot + cold counts + top platforms.
-
-There is NO scheduled-tasks panel — cron/systemd belong in a system admin
-tool, not here. (Removed per user instruction 2026-08-19.)
-
-Lifecycle tracking:
-  ~/.cortexagent/overlay_state.json holds {pid, vte_child_pid, window_id,
-  opened_at, closed_at, state}. Written on every open/close event. Read
-  by `cortexagent overlay-status` and tray inspectors.
-
-Usage:
-    python3 lib/browser_console.py        # run the window directly
-    python3 -m lib.browser_console        # same thing
-    tray → "CortexAgent Console" (window title) — calls open_in_thread()
-"""
 from __future__ import annotations
 
 import json
@@ -45,7 +10,7 @@ import threading
 import time
 from pathlib import Path
 
-# ── Paths ────────────────────────────────────────────────────────────────────
+
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 CORTEXAGENT_BIN = str(_REPO_ROOT / "bin" / "cortexagent")
@@ -54,28 +19,28 @@ _OVERLAY_STATE = Path.home() / ".cortexagent" / "overlay_state.json"
 _SCHED_STATE_DIR = Path.home() / ".cortexagent"
 MINIFY_STATS = Path.home() / ".cortexagent" / "minify_stats.json"
 
-# Window geometry — derived from screen size (62.5% wide, 41.7% tall).
-# HiDPI 2× is handled by xdotool (physical px = css × 2).
+
+
 WIN_W_PCT, WIN_H_PCT = 0.625, 0.25
-WIN_W, WIN_H = 0, 0  # filled in at runtime from monitor geometry
+WIN_W, WIN_H = 0, 0
 MARGIN = 16
 
-# Sidebar width (AGENT/BROWSER/PAGE essentials).
+
 SIDEBAR_W = 280
 
-# 2026-08-21 user feedback: "change it towards 800 pixels tall so each of
-# those keys will be like 390... two huge keys and when you click them they
-# indent so it looks like a key press." Strip width bumped from 56→120 so
-# the bezeled keys breathe; KEY_BTN_W is the button's *width*; the button's
-# *height* is computed at runtime as (strip_height / 2 - spacing) so each
-# key fills exactly 50% of the visible strip area.
+
+
+
+
+
+
 KEY_STRIP_W = 120
 KEY_BTN_W = 110
 
 REFRESH_SECS = 3
 
 
-# ── Image guard (lib.check_image_model.py) ────────────────────────────────────
+
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp",
                ".bmp", ".tif", ".tiff", ".avif"}
@@ -85,7 +50,7 @@ def _is_image(path: str) -> bool:
     return Path(path).suffix.lower() in _IMAGE_EXTS
 
 
-# ── Lifecycle registry ───────────────────────────────────────────────────────
+
 
 def _write_state(state: dict) -> None:
     try:
@@ -121,7 +86,7 @@ def _record_close() -> None:
     _write_state(cur)
 
 
-# ── Data: compression, memory, agent status ──────────────────────────────────
+
 
 def _human_bytes(n: int | float) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -196,11 +161,7 @@ def _memory_stats() -> str:
 
 
 def _agent_status() -> str:
-    """Resolve the active big-model + overseer. Reads active_model.json
-    (daemon-written), falls back to probing :8080 for the big model name
-    and :8082 for the overseer. Always renders a non-empty value.
-    Returns Pango markup so ports/age are colour-highlighted.
-    """
+
     s = _safe_read_json(
         Path.home() / ".cortexagent" / "active_model.json", {})
     model = s.get("model") or s.get("name") or ""
@@ -248,12 +209,7 @@ def _agent_status() -> str:
 
 
 def _plan_tasks() -> str:
-    """Sidebar TASKS panel header.
 
-    Combined view (user feedback 2026-08-20): show the REPL plan if it
-    exists, otherwise fall back to the scheduler's queued tasks. The
-    panel never renders "empty" because cron is always running.
-    """
     plan_path = Path.home() / ".cortexagent" / "overseer_plan.json"
     p = _safe_read_json(plan_path, {})
     if p:
@@ -261,7 +217,7 @@ def _plan_tasks() -> str:
         total = p.get("total_steps", 0)
         current = p.get("current_step", 0)
         return f"{name}  ·  step {current}/{total}"
-    # Fallback: scheduler queue
+
     sched = _scheduler_summary()
     if sched:
         return sched
@@ -269,14 +225,14 @@ def _plan_tasks() -> str:
 
 
 def _scheduler_summary() -> str:
-    """Compact one-liner about the scheduler's queued + running tasks."""
+
     sched_path = Path.home() / ".cortexagent" / "scheduler" / "tasks.json"
     p = _safe_read_json(sched_path, None)
     if p is None:
-        return ""  # scheduler file doesn't exist — REPL status bar will say so
+        return ""
     tasks = p.get("tasks") if isinstance(p, dict) else None
     if not isinstance(tasks, list) or not tasks:
-        return ""  # exists but empty — REPL status bar already says "✓ idle"
+        return ""
     running = [t for t in tasks if (t.get("state") or t.get("status")) == "running"]
     queued = [t for t in tasks
               if (t.get("state") or t.get("status")) not in ("completed", "failed", "running")]
@@ -287,15 +243,7 @@ def _scheduler_summary() -> str:
 
 
 def _plan_steps() -> list:
-    """Return [(idx, text, status)] for the plan — used by sidebar.
 
-    Reads `~/.cortexagent/overseer_plan.json` written by lib.overseer.plan_set
-    / plan_step. The plan file holds two parallel arrays:
-        steps:       ["step1 text", "step2 text", ...]
-        step_status: ["done", "current", "pending", ...]
-    If step_status is absent (older format), fall back to deriving status
-    from current_step.
-    """
     plan_path = Path.home() / ".cortexagent" / "overseer_plan.json"
     p = _safe_read_json(plan_path, {})
     if not p:
@@ -305,7 +253,7 @@ def _plan_steps() -> list:
     current = p.get("current_step", 0)
     out = []
     for i, s in enumerate(steps, start=1):
-        # Prefer the explicit step_status array; fall back to current_step.
+
         if i - 1 < len(step_status):
             raw = str(step_status[i - 1]).lower()
             if raw in ("done", "completed", "finished"):
@@ -322,7 +270,7 @@ def _plan_steps() -> list:
             status = "current"
         else:
             status = "pending"
-        # steps can be either a string or a dict {"text": "..."}.
+
         if isinstance(s, dict):
             text = str(s.get("text") or s.get("name") or s.get("step") or
                        s.get("description") or "")
@@ -333,27 +281,14 @@ def _plan_steps() -> list:
 
 
 def _live_primary_task() -> dict | None:
-    """Return the most-relevant live scheduler task as {id, title, state,
-    ts}, or None if the scheduler is genuinely idle.
 
-    Used by the sidebar TASKS pane when there is no active REPL plan.
-    Mirrors the logic in
-    `cortex/.../modes/interactive/components/status-panels.ts:readLiveActivity()`
-    but in Python — same flat-dict / events-log merge + last-write-wins.
-    Returns the top task by `state ∈ {running, queued}` priority, falling
-    back to the most-recent event overall if nothing is actually active.
-
-    2026-08-21: added so the sidebar shows detail (title + state + ts +
-    id) instead of just "· no active plan" when the agent isn't running
-    a REPL plan but the scheduler has queued/running work.
-    """
     try:
         sched_path = Path.home() / ".cortexagent" / "scheduler" / "tasks.json"
         events_path = Path.home() / ".cortexagent" / "scheduler" / "tasks.events.jsonl"
         by_id: dict[str, dict] = {}
 
-        # Snapshot first (accepts both {tasks: [...]} envelope and flat
-        # dict keyed by id — matches the TUI fix from 2026-08-21).
+
+
         snap = _safe_read_json(sched_path, None)
         if isinstance(snap, dict):
             if isinstance(snap.get("tasks"), list):
@@ -377,7 +312,7 @@ def _live_primary_task() -> dict | None:
                               or t.get("updated_at") or ""),
                 }
 
-        # Events overlay (last-write-wins per task_id).
+
         try:
             if events_path.exists():
                 for raw in events_path.read_text(errors="replace").split("\n"):
@@ -395,7 +330,7 @@ def _live_primary_task() -> dict | None:
                     cur = by_id.get(tid)
                     if cur and cur["ts"] and ts and cur["ts"] >= ts:
                         continue
-                    # Map event type → state.
+
                     state = cur["state"] if cur else "scheduled"
                     et = str(ev.get("type") or "").lower()
                     if et in ("create",):
@@ -424,21 +359,21 @@ def _live_primary_task() -> dict | None:
         if not by_id:
             return None
 
-        # Prefer running → queued → most-recent.
+
         running = [t for t in by_id.values() if t["state"] == "running"]
         if running:
             return max(running, key=lambda t: t["ts"])
         queued = [t for t in by_id.values() if t["state"] == "queued"]
         if queued:
             return max(queued, key=lambda t: t["ts"])
-        # Fallback: most-recent of anything.
+
         return max(by_id.values(), key=lambda t: t["ts"])
     except Exception:
         return None
 
 
 def _browser_state() -> str:
-    """Returns short status string for the BROWSER panel header."""
+
     tabs = _fetch_cdp_tabs()
     if not tabs:
         return "— :9222 offline —"
@@ -451,31 +386,16 @@ _SCHED_EVENTS = Path.home() / ".cortexagent" / "scheduler" / "tasks.events.jsonl
 
 
 def _active_task_for_browser() -> str:
-    """One-line summary of the most-recent scheduler task.
 
-    Used as the BROWSER section header so the user can see what the
-    system is working on without opening the TUI. Reads
-    ~/.cortexagent/scheduler/tasks.events.jsonl (same source the TUI's
-    left strip uses). Returns "✓ idle" when nothing's running and no
-    task has ever been created.
-
-    User feedback 2026-08-20: "its still showing the 10 lines of the
-    scheduler." This function only returns ONE line, but the BROWSER
-    tab rows below can stack to many visible lines on a narrow sidebar.
-    The fix is twofold: (1) this header must only surface tasks whose
-    most-recent event is `running`/`start`/`done`/`failed`/`cancel` —
-    NOT `create` — so seeded tasks don't appear forever. (2) The CDP
-    tab rows are capped at 5 (already done).
-    """
     try:
         if not _SCHED_EVENTS.exists():
             return "✓ idle"
         lines = _SCHED_EVENTS.read_text(errors="ignore").splitlines()
-        # Walk tail → head; capture last ACTIONABLE event per task_id.
-        # `create` events are filtered out — a task that was only ever
-        # created (never run, done, or cancelled) is not "active" and
-        # should not appear here. Without this filter, every historical
-        # seed task surfaces as its own row.
+
+
+
+
+
         ACTIONABLE = {"running", "start", "done", "completed",
                       "failed", "cancel", "cancelled"}
         last_by_id: dict[str, dict] = {}
@@ -500,7 +420,7 @@ def _active_task_for_browser() -> str:
             }
         if not last_by_id:
             return "✓ idle"
-        # Prefer a running task if any.
+
         running = next(
             (v for v in last_by_id.values()
              if v["type"] in ("running", "start")),
@@ -509,12 +429,12 @@ def _active_task_for_browser() -> str:
         if running:
             title = (running["title"] or "running").strip() or "running"
             return f"▶ {title[:38]}"
-        # Otherwise most recent actionable event.
+
         top = max(last_by_id.values(), key=lambda v: v["ts"])
-        # If the most-recent actionable task has no title (test/internal
-        # cron), prefer "✓ idle" over "(untitled)" so the BROWSER header
-        # never looks broken. User feedback 2026-08-20: "it's literally
-        # one line because it's flooded full of fucking schedule".
+
+
+
+
         title = (top.get("title") or "").strip()
         if not title:
             return "✓ idle"
@@ -531,10 +451,7 @@ def _active_task_for_browser() -> str:
 
 
 def _markup_escape(text: str) -> str:
-    """Escape Pango/XML markup — & < > " ' — so user-provided strings
-    can be safely interpolated into set_markup templates. Without this,
-    a tab title like "what's up" produces a Gtk-WARNING every refresh.
-    """
+
     return (text.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
@@ -542,21 +459,13 @@ def _markup_escape(text: str) -> str:
 
 
 def _html_decode(text: str) -> str:
-    """Decode the most common HTML entities that appear in CDP tab
-    titles (named + numeric). CDP returns titles like "what&#39;s up"
-    because Chromium internally HTML-encodes them. Pango is XML so
-    decoded ' still needs markup escaping via _markup_escape.
-    """
+
     import html as _html
     return _html.unescape(text)
 
 
 def _fetch_cdp_tabs() -> list:
-    """Raw tab list from Chrome DevTools Protocol on :9222.
 
-    Only top-level pages: filters out iframes, workers, service workers.
-    Newest-attached first (CDP returns in attach order, so we reverse).
-    """
     try:
         r = subprocess.run(
             ["curl", "-s", "--max-time", "1",
@@ -567,15 +476,12 @@ def _fetch_cdp_tabs() -> list:
     except Exception:
         return []
     pages = [t for t in all_tabs if t.get("type") == "page"]
-    pages.reverse()  # newest first
+    pages.reverse()
     return pages
 
 
 def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
-    """Send Page.bringToFront over the tab's WebSocket. Returns True iff
-    the browser acknowledged the command. This is the canonical way to
-    activate a CDP tab.
-    """
+
     ws_url = tab.get("webSocketDebuggerUrl")
     if not ws_url:
         return False
@@ -591,7 +497,7 @@ def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
                 "method": "Page.bringToFront",
                 "params": {},
             }))
-            # Read until we get our response or timeout.
+
             ws.settimeout(1.5)
             try:
                 while True:
@@ -605,8 +511,8 @@ def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
                     if msg.get("id") == 1:
                         return True
             except Exception:
-                # Timed out waiting — but the command may still have been
-                # delivered. Treat as success.
+
+
                 return True
         finally:
             try:
@@ -618,13 +524,10 @@ def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
 
 
 def _raise_brave_window() -> bool:
-    """Bring the running Brave window to the foreground. Brave uses a
-    single root window for all tabs, so we raise by app class / generic
-    name rather than per-tab.
-    """
-    # Try wmctrl with -x for the app class first (most reliable). This
-    # box has no wmctrl (user feedback 2026-08-20), so on FileNotFoundError
-    # we fall through to an xdotool name search instead of bailing.
+
+
+
+
     for pattern in ("Brave-browser", "brave-browser.Brave-browser",
                     "google-chrome.Google-chrome", "Chromium"):
         try:
@@ -643,9 +546,9 @@ def _raise_brave_window() -> bool:
             return True
     except FileNotFoundError:
         pass
-    # xdotool fallback — the reliable path on this machine. Search any
-    # Brave/Chromium window and activate+raise it, ignoring the one we're
-    # sitting in (the console window has a different title).
+
+
+
     try:
         for pat in ("Brave", "brave", "google-chrome", "Chromium"):
             r = subprocess.run(
@@ -669,70 +572,41 @@ def _raise_brave_window() -> bool:
 
 
 def _focus_tab(tab: dict) -> bool:
-    """Activate a CDP tab and raise the browser window.
 
-    Strategy:
-      0. NEW: Prefer CDP Page.bringToFront over the tab's own
-         WebSocket. This is what Chromium actually keys activation by
-         — the WM_NAME heuristic below misfires when multiple Brave
-         windows are open or titles are CDP-truncated.
-      1. PRIMARY: xdotool search against the WM_NAME. Brave appends
-         " - Brave" to the document title in WM_NAME, and only currently-
-         loaded foreground/active tabs have X11 windows — background
-         tabs do NOT. So we try the title with the suffix appended
-         first (most reliable on this box, verified 2026-08-20), then
-         fall back to the bare title (works for non-Brave Chromium
-         forks like google-chrome that don't add a suffix).
-      2. FALLBACK: substring search on the leading N chars — when the
-         CDP title is truncated to 80 chars (the case the user actually
-         hit, per "I'm building cortex agent..." tab) the suffix never
-         matches because the trailing " - Brave" was chopped off.
-         Take the first 24 chars of the title and substring-search.
-      3. FALLBACK: enumerate --classname "brave-browser" windows and
-         pick the one whose WM_NAME starts with the CDP title prefix.
-      4. FALLBACK: raise any Brave window (better than nothing).
 
-    The console ALSO needs to release focus before xdotool can raise
-    another window — otherwise the WM may refuse to focus-bridge to
-    a window belonging to a different X11 client. We call
-    xdotool windowminimize on ourselves as a hint.
-
-    Returns True if any xdotool path succeeded.
-    """
-    # Debug gate — `[focus_tab] …` prints only when explicitly enabled.
     _ft_dprint = (lambda *a, **k:
                   print(*a, file=sys.stderr, **k)
                   if os.environ.get("CORTEXAGENT_CONSOLE_DEBUG") == "1"
                   else None)
-    # CDP-direct: ask the tab itself to come to the front. This is the
-    # canonical Chromium-side activation. The tab's webSocketDebuggerUrl
-    # uniquely identifies it, so this avoids the title-matching
-    # ambiguity when multiple tabs are open.
+
+
+
+
     cdp_ok = _bring_tab_to_front_via_cdp(tab)
     _ft_dprint(f"[focus_tab] CDP bringToFront: {cdp_ok}")
     if cdp_ok:
-        # CDP activated the tab — now we just need to raise the Brave
-        # window. The active tab inside Brave will be the one we asked
-        # for, not whatever happens to be most-recent.
+
+
+
         try:
             win.set_keep_above(False)
         except Exception:
             pass
         if _raise_brave_window():
             return True
-        # If raising didn't work, fall through to the title-search path
-        # anyway so the user gets *something*.
+
+
 
     title = (tab.get("title") or "").strip()
     if title:
         decoded = _html_decode(title)
-        # Build the candidate list: full title + common suffixes.
+
         candidates = [decoded, f"{decoded} - Brave", f"{decoded} – Brave"]
-        # Drop empty / dup candidates while preserving order.
+
         seen = set()
         candidates = [c for c in candidates
                       if c and not (c in seen or seen.add(c))]
-        # Also try a 24-char prefix (handles CDP-truncated titles).
+
         prefix = decoded[:24].strip()
         if prefix:
             candidates.append(prefix)
@@ -751,18 +625,18 @@ def _focus_tab(tab: dict) -> bool:
                     f"[focus_tab]   search {cand[:40]!r:44} → {len(wids)} wid(s)")
                 if not wids:
                     continue
-                # Prefer the WID whose WM_NAME most-closely matches.
+
                 best = _pick_best_wid(wids, decoded)
                 if best:
-                    # 2026-08-21 user feedback: "the browser links still do
-                    # not work when you click them." The prior version used
-                    # `--sync` which BLOCKS on the WM — if X server is
-                    # busy (other windows mid-animation, focus-stealing-
-                    # prevention in effect), the call can hang or no-op
-                    # silently. Drop --sync and explicitly raise after.
-                    # Also remove the console's always-on-top flag
-                    # transiently so the WM will actually raise Brave
-                    # on top of us.
+
+
+
+
+
+
+
+
+
                     try:
                         win.set_keep_above(False)
                     except Exception:
@@ -783,7 +657,7 @@ def _focus_tab(tab: dict) -> bool:
                 _ft_dprint(f"[focus_tab]   xdotool error: {e}")
                 continue
 
-        # Enumerate brave-browser windows and pick by prefix-match.
+
         try:
             r = subprocess.run(
                 ["xdotool", "search", "--classname", "brave-browser"],
@@ -810,20 +684,18 @@ def _focus_tab(tab: dict) -> bool:
         except Exception:
             pass
 
-    # Last-resort: CDP bringToFront (no-op if origin blocked, harmless).
+
     cdp_ok = _bring_tab_to_front_via_cdp(tab)
-    # ALWAYS surface SOME Brave window on a tab click, even when the
-    # per-title xdotool path already reported success (windowactivate can
-    # no-op silently under some WMs). Since all Brave tabs share one root
-    # window, raising it guarantees the active browser surfaces.
+
+
+
+
     _raise_brave_window()
     return cdp_ok or True
 
 
 def _pick_best_wid(wids: list[str], title: str) -> str | None:
-    """From a list of X11 window IDs, pick the one whose WM_NAME most
-    closely matches `title`. Returns the first WID if no name lookup
-    succeeds (better than nothing)."""
+
     if not wids:
         return None
     if len(wids) == 1:
@@ -842,8 +714,8 @@ def _pick_best_wid(wids: list[str], title: str) -> str | None:
             continue
         if not name:
             continue
-        # Score: longest common substring length between title prefix
-        # and the window name. Cheap and good enough for tab matching.
+
+
         score = 0
         for n in range(min(len(needle), len(name)), 0, -1):
             if needle[:n] in name:
@@ -856,19 +728,15 @@ def _pick_best_wid(wids: list[str], title: str) -> str | None:
 
 
 def _page_snapshot() -> str:
-    """Focused CDP tab URL + title.
 
-    Returns a single line. Falls back to 'no focused tab' when CDP is
-    offline. Length-capped so the sidebar stays readable.
-    """
     tabs = _fetch_cdp_tabs()
     if not tabs:
         return "PAGE  ·  — :9222 offline —"
-    # CDP /json does NOT carry an `active` flag on this Brave build — the
-    # previous filter (`t.get("active")`) matched nothing and the panel
-    # always rendered "offline". Use the first tab (MRU order from /json)
-    # as the focused one, falling back to the actively-flagged tab if
-    # Brave ever starts emitting it.
+
+
+
+
+
     focused = next((t for t in tabs if t.get("active")), tabs[0])
     title = (focused.get("title") or "?")[:40]
     url = focused.get("url") or "?"
@@ -877,16 +745,11 @@ def _page_snapshot() -> str:
     return f"PAGE  ·  {title}  ·  {url}"
 
 
-# ── Main window builder ──────────────────────────────────────────────────────
+
 
 def _metrics_line() -> str:
-    """Compact live-metrics row for the SETTINGS panel.
 
-    Same data sources the TUI's API Health section uses (no new
-    modules). Re-read every REFRESH_SECS=3s. Always renders a non-
-    empty value so the panel never blanks out.
-    """
-    # Big / proxy / overseer health
+
     big_ok = _port_open(8080)
     proxy_ok = _port_open(8081)
     ovsr_ok = _port_open(8082)
@@ -895,7 +758,7 @@ def _metrics_line() -> str:
         f"{'●' if proxy_ok else '○'} proxy :8081   "
         f"{'●' if ovsr_ok else '○'} ovsr :8082"
     )
-    # Compression + memory
+
     try:
         s = _safe_read_json(MINIFY_STATS, {})
         runs = int(s.get("runs", 0))
@@ -920,10 +783,7 @@ def _metrics_line() -> str:
 
 
 def _port_open(port: int) -> bool:
-    """Cheap TCP probe for service-health dots in the metrics row.
 
-    No exception spew on shutdown when services are down — return False.
-    """
     import socket
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=0.3):
@@ -933,12 +793,7 @@ def _port_open(port: int) -> bool:
 
 
 def _apply_theme(name: str) -> None:
-    """Rebuild the popup's CSS provider from the picked palette.
 
-    Reads the palette from lib.popup_themes and writes a fresh CSS
-    blob. GTK caches providers, so we drop the prior one and install a
-    new one. Used by the Settings' Apply button.
-    """
     try:
         from lib.popup_themes import get_palette
         pal = get_palette(name)
@@ -1034,28 +889,28 @@ def build_window() -> int:
     win.set_title("CortexAgent Console")
     win.set_keep_above(True)
 
-    # Resolve window dimensions BEFORE any size hints so the WM honors
-    # them. Order of precedence (2026-08-21 user feedback: "the window is
-    # still not that tall, i mean what are you changing"):
-    #   1. popup_settings.json `resolution: [w, h]` — explicit user pick.
-    #      Read FIRST and use it verbatim if both axes are present.
-    #   2. Else derive from primary monitor at WIN_W_PCT × WIN_H_PCT.
-    #   3. Else 1200x500 fallback.
-    # The previous code only knew about #2, so any value the user wrote
-    # into popup_settings.json was silently ignored — the monitor on this
-    # HiDPI box is 3840×2400, so 0.625 × 3840 = 2400 wide and 0.25 × 2400
-    # = 600 tall, which is way too big horizontally and ignored the
-    # user's 760px request entirely.
+
+
+
+
+
+
+
+
+
+
+
+
     global WIN_W, WIN_H
     explicit_size = None
     try:
-        # 2026-08-21 user feedback: "the window is still not that tall".
-        # Root cause: launched via systemd-run the working dir was NOT
-        # the repo root, so `from lib.popup_themes import …`
-        # raised ModuleNotFoundError. The except block silently fell
-        # through to the monitor-derived size (3840×2400 × 0.625×0.25
-        # = 2400×600 — way too big and ignored the user's 760px pick).
-        # Always prepend the repo root to sys.path before importing.
+
+
+
+
+
+
+
         _REPO = str(Path(__file__).resolve().parent.parent)
         if _REPO not in sys.path:
             sys.path.insert(0, _REPO)
@@ -1065,11 +920,11 @@ def build_window() -> int:
         if isinstance(res, (list, tuple)) and len(res) == 2:
             try:
                 w, h = int(res[0]), int(res[1])
-                # 2026-08-21 user feedback: "30% screen height" → 180 CSS
-                # on a 600-CSS-tall monitor. The previous 200 floor
-                # rejected valid small values and fell through to the
-                # monitor math (1500×375), which ignored the user's pick.
-                # Just require positive values.
+
+
+
+
+
                 if w >= 100 and h >= 80:
                     explicit_size = (w, h)
             except (TypeError, ValueError):
@@ -1079,6 +934,8 @@ def build_window() -> int:
             import traceback
             print(f"[browser_console] load_settings FAILED: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
+
+
 
     if explicit_size is not None:
         WIN_W, WIN_H = explicit_size
@@ -1094,9 +951,8 @@ def build_window() -> int:
                 import traceback
                 print(f"[browser_console] monitor FAILED: {e}", file=sys.stderr)
             WIN_W, WIN_H = 1200, 500
-    # 2026-08-21 user feedback: "the window is still not that tall".
-    # Belt-and-braces: log to stderr so the next launch shows what we
-    # actually picked. Run with CORTEXAGENT_CONSOLE_DEBUG=1 to see.
+
+
     try:
         if os.environ.get("CORTEXAGENT_CONSOLE_DEBUG") == "1":
             print(f"[browser_console] WIN_W={WIN_W} WIN_H={WIN_H}", file=sys.stderr)
@@ -1105,14 +961,14 @@ def build_window() -> int:
 
     win.set_default_size(WIN_W, WIN_H)
     win.set_size_request(WIN_W, WIN_H)
-    # No GTK HeaderBar — we draw our own thin draggable strip as the
-    # window's titlebar surrogate (24 px tall, click-drag to move,
-    # minimize + close inline). Suppress the WM's own decorations so
-    # we don't get the thick rounded chunk. set_titlebar(None) tells
-    # the WM "we're handling it". User feedback 2026-08-20: "the whole
-    # top bar with the black curved part with the X, terrible, it
-    # does need a minimize as well. I like it more like the STT.
-    # click drag to move. And it's much thinner."
+
+
+
+
+
+
+
+
     try:
         win.set_titlebar(None)
     except Exception:
@@ -1121,17 +977,17 @@ def build_window() -> int:
         win.set_decorated(False)
     except Exception:
         pass
-    # Allow resize so Settings can re-flow the window. The draggable
-    # strip stays in place; the resize grip is at the bottom-right
-    # corner of the window.
+
+
+
     win.set_resizable(True)
 
-    # Single-instance: search X for any existing "CortexAgent Console"
-    # window that isn't us. If found, raise it and exit so we don't open
-    # a duplicate. User feedback 2026-08-19: "we have the daemon going…
-    # if the CLI version is already running, we don't want to duplicate it".
-    # Single-instance search by the actual window title set above.
-    # Use `--name` (regex) with escaped dots; the title is "CortexAgent Console".
+
+
+
+
+
+
     existing = []
     try:
         r = subprocess.run(
@@ -1141,9 +997,9 @@ def build_window() -> int:
         existing = [w for w in (r.stdout or "").split() if w.strip().isdigit()]
     except Exception:
         existing = []
-    # Filter out our own window (we may have just been realized if this
-    # is a re-entry). xdotool doesn't include the searching process's
-    # own windows, but be safe by excluding any XID we already wrote.
+
+
+
     try:
         state = _safe_read_json(_OVERLAY_STATE, {})
         own_wid = str(state.get("window_id") or "")
@@ -1151,58 +1007,58 @@ def build_window() -> int:
         own_wid = ""
     existing = [w for w in existing if w != own_wid]
     if existing:
-        # A live instance is already up. Raise it and bail.
+
         for wid in existing:
             try:
                 subprocess.run(
                     ["xdotool", "windowactivate", "--sync", wid],
                     capture_output=True, timeout=2)
-                # Also un-minimize / make sure it's mapped.
+
                 subprocess.run(
                     ["wmctrl", "-i", "-a", wid],
                     capture_output=True, timeout=2)
             except Exception:
                 continue
-        return 0  # Don't build a duplicate window.
+        return 0
 
-    # Initial CSS is installed by _apply_theme(...) right before
-    # win.show_all() — see end of build_window. We don't install a
-    # bootstrap provider here because the old CSS block used non-ASCII
-    # characters in a bytes literal and the new theme-aware provider
-    # covers every class anyway.
 
-    # ── Window-level overlay wrapper so the corner strip can extend ─────
-    # past the body's right edge. An Overlay is the only container that
-    # supports `add_overlay(...)` and lets a child bleed outside the
-    # main-widget allocation. We wrap `outer` (a Box) with `window_ovl`
-    # (an Overlay) and let the corner strip be an overlay child of the
-    # window rather than the VTE.
+
+
+
+
+
+
+
+
+
+
+
     window_ovl = Gtk.Overlay()
     win.add(window_ovl)
 
-    # ── Outer vertical box ─────────────────────────────────────────────────
+
     outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
     window_ovl.add(outer)
 
-    # ── Thin draggable top strip (24 px) ────────────────────────────────────────────────────────
-    # ⠿  CortexAgent Console          _  ✕
-    # The whole strip is an EventBox so button-press anywhere on it (not
-    # just on the grip glyph) starts a window move. The two action
-    # buttons consume the press first so they don't trigger drag.
+
+
+
+
+
     top_strip = Gtk.EventBox()
     top_strip.get_style_context().add_class("top-strip")
     top_strip.set_size_request(-1, 24)
     top_strip.set_above_child(False)
     outer.pack_start(top_strip, False, False, 0)
 
-    # Capture click positions for begin_move_drag.
+
     _drag_state = {"x": 0, "y": 0, "button": 0}
 
     def _on_strip_press(_eb, event):
         _drag_state["x"] = event.x_root
         _drag_state["y"] = event.y_root
         _drag_state["button"] = event.button
-        return False  # let buttons consume their own clicks first
+        return False
 
     def _on_strip_release(_eb, event):
         if _drag_state["button"] != 1:
@@ -1219,7 +1075,7 @@ def build_window() -> int:
     top_strip.connect("button-press-event", _on_strip_press)
     top_strip.connect("button-release-event", _on_strip_release)
 
-    # Inner horizontal row inside the strip.
+
     strip_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
     strip_row.set_border_width(2)
     top_strip.add(strip_row)
@@ -1237,10 +1093,10 @@ def build_window() -> int:
     title_lbl.set_xalign(0.0)
     strip_row.pack_start(title_lbl, True, True, 0)
 
-    # Spacer pushes the minimize + close to the right edge.
+
     strip_row.pack_start(Gtk.Box(), True, True, 0)
 
-    # Minimize — pure iconify.
+
     def _on_minimize(_btn):
         try:
             win.iconify()
@@ -1254,7 +1110,7 @@ def build_window() -> int:
     min_btn.connect("clicked", _on_minimize)
     strip_row.pack_start(min_btn, False, False, 0)
 
-    # Close — belt-and-suspenders so a stuck thread can't trap the X.
+
     def _on_close_x(_btn):
         _record_close()
         try:
@@ -1273,21 +1129,20 @@ def build_window() -> int:
     close_btn.connect("clicked", _on_close_x)
     strip_row.pack_start(close_btn, False, False, 0)
 
-    # ── Body: sidebar (narrow) | VTE (fills rest) ─────────────────────────
+
     body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
     body.set_border_width(0)
     outer.pack_start(body, True, True, 0)
 
-    # ── Bottom brown strip (theme header color) ──────────────────────────
+
     bottom_strip = Gtk.Box()
     bottom_strip.set_size_request(-1, 4)
     bottom_strip.get_style_context().add_class("body-strip")
     outer.pack_start(bottom_strip, False, False, 0)
 
-    # (expand-strip removed 2026-08-21 — collapse feature was breaking
-    # the popup. User removed the request.)
 
-    # ── Sidebar — scrollable so many tabs/tasks don't blow up the window ─
+
+
     sidebar_scroll = Gtk.ScrolledWindow()
     sidebar_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
     sidebar_scroll.set_size_request(SIDEBAR_W, -1)
@@ -1300,10 +1155,10 @@ def build_window() -> int:
     sidebar_scroll.add(sidebar)
 
     _sidebar_labels: dict[str, Gtk.Label] = {}
-    _browser_rows: list[Gtk.Button] = []  # clickable tab rows
+    _browser_rows: list[Gtk.Button] = []
 
     def _add_panel(name: str, title_text: str):
-        # Section header
+
         header = Gtk.Label()
         header.set_markup(f"<b>{title_text}</b>")
         header.set_xalign(0.0)
@@ -1311,7 +1166,7 @@ def build_window() -> int:
         header.set_margin_top(6)
         header.set_margin_bottom(2)
         sidebar.pack_start(header, False, False, 0)
-        # Body label (one-line status)
+
         body_lbl = Gtk.Label()
         body_lbl.set_xalign(0.0)
         body_lbl.set_line_wrap(True)
@@ -1322,7 +1177,7 @@ def build_window() -> int:
         return body_lbl
 
     def _add_panel_box(name: str, title_text: str):
-        """Section with a list box beneath (used for BROWSER tabs)."""
+
         header = Gtk.Label()
         header.set_markup(f"<b>{title_text}</b>")
         header.set_xalign(0.0)
@@ -1336,10 +1191,10 @@ def build_window() -> int:
         body_lbl.get_style_context().add_class("sidebar-body")
         body_lbl.set_margin_bottom(2)
         sidebar.pack_start(body_lbl, False, False, 0)
-        # BROWSER panel also gets an active-task header above the tabs
-        # so the user can see what's running without expanding the TUI
-        # strip. User feedback 2026-08-20: "if it worked and showed the
-        # active task, that would be fine to keep there."
+
+
+
+
         active_lbl = None
         if name == "browser":
             active_lbl = Gtk.Label()
@@ -1350,7 +1205,7 @@ def build_window() -> int:
             active_lbl.get_style_context().add_class("active-task-row")
             sidebar.pack_start(active_lbl, False, False, 0)
             _sidebar_labels["browser_active"] = active_lbl
-        # List container for clickable rows
+
         list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         list_box.get_style_context().add_class("sidebar-list")
         list_box.set_margin_bottom(4)
@@ -1359,37 +1214,37 @@ def build_window() -> int:
         _sidebar_labels[name + "_list"] = list_box  # type: ignore[assignment]
         return body_lbl, list_box
 
-    # Settings panel removed 2026-08-20 per user feedback:
-    # "i don't any settings because he keeps breaking and he's backing up
-    # and you won't bucket fix it so just stop it." Theme is now applied
-    # directly in _apply_theme() on window show, with no UI affordance.
+
+
+
+
 
     _browser_lbl, _browser_list = _add_panel_box("browser", "BROWSER")
     _tasks_lbl, _tasks_list = _add_panel_box("tasks", "TASKS")
 
-    # ── VTE — the REAL embedded terminal fills the rest ──────────────────
+
     vte = Vte.Terminal()
     vte.set_scrollback_lines(2000)
     vte.set_audible_bell(False)
     vte.set_mouse_autohide(True)
-    # Right-click menu (Copy / Paste) requires Vte's own IM.
-    # Older API: vte.set_input_enabled(True). Newer VTE ignores that but
-    # auto-enables input when a PTY is spawned. Ensure IM is on explicitly.
+
+
+
     try:
         vte.set_input_enabled(True)
     except Exception:
         pass
-    # Right-click → Paste from PRIMARY selection (middle-click on X11).
-    # Also wire Ctrl+Shift+V as an explicit keyboard fallback so paste
-    # works regardless of whether the context menu appears.
+
+
+
     try:
         vte.connect("button-press-event", _on_vte_button)
     except Exception:
         pass
-    # Don't connect key-press-event on the VTE — let VTE handle its own
-    # clipboard shortcuts (Ctrl+V, Ctrl+Shift+V, Ctrl+C, Shift+Insert).
-    # User feedback 2026-08-20: custom keypress handlers were breaking the
-    # default, working behavior. Only the window-level Escape handler stays.
+
+
+
+
     font = Pango.FontDescription("Mono 11")
     vte.set_font(font)
 
@@ -1398,31 +1253,19 @@ def build_window() -> int:
     vte_frame.get_style_context().add_class("terminal-frame")
     vte_frame.add(vte)
 
-    # ── Floating corner buttons (overlaid on VTE) ────────────────────────
-    # User feedback 2026-08-19:
-    #   • Paperclip + Enter — bottom-right corner, no background, icons only
-    #   • No text labels on any of these
-    # An Overlay lets the buttons float in window corners without
-    # consuming layout space from the VTE.
+
+
+
+
+
+
     vte_overlay = Gtk.Overlay()
     vte_overlay.add(vte_frame)
     body.pack_start(vte_overlay, True, True, 0)
 
     def _make_corner_btn(icon_char: str, css_class: str | None,
                          on_click, size: int = 36) -> Gtk.Button:
-        """Big keyboard-key button — looks like a real keycap, indents on press.
 
-        2026-08-21 user feedback: "change it towards 800 pixels tall so
-        each of those keys will be like 390." Each button renders as a
-        bezeled rectangle with the label centered. CSS class
-        `.keyboard-key` carries the bezel + indent-on-active animation;
-        the optional 2nd `css_class` arg lets callers tint the background.
-
-        Both axes are explicitly set to `size` and expand flags are off so
-        GTK cannot grow the button past the requested dimensions. The CSS
-        class (when given) carries the background; otherwise the button
-        is flat (no background) to match the icons in the bottom-right.
-        """
         btn = Gtk.Button()
         btn.set_relief(Gtk.ReliefStyle.NONE)
         btn.set_size_request(size, size)
@@ -1438,12 +1281,12 @@ def build_window() -> int:
         btn.connect("clicked", on_click)
         return btn
 
-    # ── ENTER (bottom-right, no background) ─────────────────────────────
-    # 2026-08-21 user feedback: keys didn't work — xdotool was firing
-    # into whatever window happened to have focus, not the embedded VTE.
-    # Switch to vte.feed_child() which injects the keystroke directly
-    # into the VTE's PTY. Always reaches the running program; doesn't
-    # require focus on the console window.
+
+
+
+
+
+
     def _on_enter(_btn):
         try:
             vte.feed_child(b"\r")
@@ -1452,32 +1295,32 @@ def build_window() -> int:
 
     enter_btn = _make_corner_btn("↵", None, _on_enter)
 
-    # ── ESC (HARD) — kills the focused terminal. User feedback
-    # 2026-08-20: "I spawned. Capital E lowercase SC period" — the
-    # button label should literally read "ESC." (capital E, lowercase
-    # SC, period). Keep it as a real GTK label so the period and case
-    # survive without being eaten by Pango's markup rules.
+
+
+
+
+
     def _on_escape(_btn):
         try:
             vte.feed_child(b"\x1b")
         except Exception:
             pass
 
-    # 2026-08-21 user feedback: "Make it say Esc. instead of ESC" — the
-    # label is the literal string the user sees; period + lowercase 'sc'.
+
+
     esc_btn = _make_corner_btn("Esc.", None, _on_escape, size=KEY_BTN_W)
 
-    # ── Right side strip — full-height, OUTSIDE the terminal so it never
-    # overlaps the VTE. TWO buttons at the bottom: ESC (top) → ENTER
-    # (bottom). User feedback 2026-08-20: "All the buttons are just for
-    # the terminal... Remove the paperclip. going to be enter and
-    # escape." The strip is a terminal-control strip, not a file-picker
-    # surface — paperclip doesn't belong here.
-    #
-    # 2026-08-21 user feedback: bump window to ~800px tall so each button
-    # renders ~390px (half the window minus chrome). The strip's width
-    # widens to 120 so the bezeled keys breathe; each button is sized at
-    # runtime so two keys exactly fill the visible strip height.
+
+
+
+
+
+
+
+
+
+
+
     ctrl_strip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
     ctrl_strip.set_size_request(KEY_STRIP_W, -1)
     ctrl_strip.set_halign(Gtk.Align.CENTER)
@@ -1486,61 +1329,54 @@ def build_window() -> int:
     ctrl_strip.set_margin_bottom(6)
     ctrl_strip.set_margin_end(6)
 
-    # Spacer pushes the action cluster down to the bottom of the strip.
+
     spacer = Gtk.Box()
     ctrl_strip.pack_start(spacer, True, True, 0)
-    # Cluster order, top → bottom:
-    #   1. Esc. (hard Escape into the focused terminal)
-    #   2. ↵ enter (hard Return)
+
+
+
     esc_btn.set_halign(Gtk.Align.CENTER)
     ctrl_strip.pack_start(esc_btn, False, False, 0)
-    enter_btn.set_size_request(KEY_BTN_W, KEY_BTN_W)  # default height
+    enter_btn.set_size_request(KEY_BTN_W, KEY_BTN_W)
     enter_btn.set_halign(Gtk.Align.CENTER)
     ctrl_strip.pack_start(enter_btn, False, False, 0)
-
     body.pack_start(ctrl_strip, False, False, 0)
 
-    # 2026-08-21 user feedback: "50% of that area" — each key fills exactly
-    # half the strip's height. Recomputed on window resize so they track
-    # the user's height changes (560/640/660/700 → ~250/300/315/325px).
+
+
+
     def _resize_keys(_win=None, _alloc=None):
         alloc_h = ctrl_strip.get_allocated_height()
         if alloc_h <= 0:
             return
-        # Strip internal padding ≈ 12 (top+bottom margin); spacing=6 between
-        # the two buttons. Each key = (strip_h - padding - spacing) / 2.
+
+
         key_h = max(40, (alloc_h - 12 - 6) // 2)
         esc_btn.set_size_request(KEY_BTN_W, key_h)
         enter_btn.set_size_request(KEY_BTN_W, key_h)
     win.connect("size-allocate", _resize_keys)
 
-    # ── Refresh sidebar panels every REFRESH_SECS seconds ────────────────
-    def _refresh_browser_rows():
-        """Rebuild the clickable tab list under BROWSER.
 
-        Smart cap: when the user has active plan steps OR a focused CDP
-        tab to show in PAGE, only the 5 most-recently-attached browser
-        rows make sense. When both are empty (nothing else competing for
-        attention), surface up to 10.
-        """
+    def _refresh_browser_rows():
+
         tabs = _fetch_cdp_tabs()
-        # Clear existing rows.
+
         for row in _browser_rows:
             _browser_list.remove(row)
         _browser_rows.clear()
         has_tasks = bool(_plan_steps())
         has_page_info = any(t.get("active") for t in tabs)
-        # User feedback 2026-08-19: only the relevant tabs. Cap at 5 in
-        # both branches so the sidebar never blows up with stale tabs.
+
+
         cap = 5
         for t in tabs[:cap]:
             title = (t.get("title") or "?")[:42]
             url = (t.get("url") or "?")
             if len(url) > 42:
                 url = url[:39] + "…"
-            # Pango markup is XML — escape & < > AND decode HTML entities
-            # (CDP tab titles carry entities like &#39; for ' that break
-            # the parser and spam Gtk-WARNING every refresh tick).
+
+
+
             title = _markup_escape(_html_decode(title))
             url = _markup_escape(_html_decode(url))
             label = Gtk.Label()
@@ -1557,18 +1393,18 @@ def build_window() -> int:
             if t.get("active"):
                 btn.get_style_context().add_class("sidebar-tab-active")
             def _on_tab_click(_b, tab=t):
-                # 2026-08-21 user feedback: "the browser links still do
-                # not work when you click them." Earlier attempt cleared
-                # keep_above, focused Brave, then 350 ms later called
-                # vte.grab_focus() + re-armed keep_above. The grab_focus()
-                # pulled X focus right back to the console — the user
-                # never saw Brave come to the front.
-                #
-                # Fix: drop keep_above, focus Brave, and leave the popup
-                # BEHIND Brave in z-order. The user clicks the tray icon
-                # (or any empty area) to bring the console back. No more
-                # focus-stealing back to the REPL — that's what was
-                # breaking the click.
+
+
+
+
+
+
+
+
+
+
+
+
                 try:
                     win.unfocus()
                 except Exception:
@@ -1578,56 +1414,40 @@ def build_window() -> int:
                 except Exception:
                     pass
                 _focus_tab(tab)
-                # NO grab_focus() here — that would yank X focus back.
-                # NO re-arm of keep_above — the popup stays below Brave
-                # until the user explicitly brings it back.
+
+
+
             btn.connect("clicked", _on_tab_click)
             _browser_list.pack_start(btn, False, False, 0)
             _browser_rows.append(btn)
         _browser_list.show_all()
 
     def _refresh_tasks_rows():
-        """Rebuild the TASKS list under the tasks panel.
 
-        Active REPL plan FIRST (the agent's own to-do list), then fall
-        back to the live primary scheduler task if there's no REPL plan.
-        The scheduler/cron list (every queued/running entry) is owned by
-        the TUI's status panel + left strip — NOT the popup sidebar.
-        User feedback 2026-08-20: cron rows flooding the sidebar was
-        "like 10 of them in a plug the screen. That's what I'm talking
-        about." Drop them here entirely.
-
-        2026-08-21 user feedback: "tasks screen. And then the browser
-        tabs still aren't working... it should actually list what it is.
-        Like the actual active task, it should actually have more
-        information." When REPL plan is empty, surface the most-recent
-        live scheduler task WITH DETAIL (title, state, timestamp, id)
-        rather than just a count.
-        """
         tasks_list = _sidebar_labels.get("tasks_list")
         if tasks_list is None:
             return
-        # Clear.
+
         for child in tasks_list.get_children():
             tasks_list.remove(child)
 
         rows = []
-        # Source 1: REPL plan steps ONLY. The scheduler/cron rows are
-        # NOT included here — user feedback 2026-08-20: "The scheduler
-        # lists are back into the text output, so you've got to remove
-        # all those." The TUI's status panel + left strip own the global
-        # scheduler view; the popup sidebar is for the active plan only.
+
+
+
+
+
         for idx, text, status in _plan_steps()[:8]:
             rows.append((idx, text, status))
 
         if not rows:
-            # No active plan. 2026-08-21 user feedback: "tasks screen.
-            # And then the browser tabs still aren't working. The
-            # browser tabs... it should actually list what it is. Like
-            # the actual active task, it should actually have more
-            # information." Surface the most-recent live scheduler
-            # task with title + state + timestamp + id. Falls back to
-            # "no active plan" only if the scheduler is genuinely empty.
+
+
+
+
+
+
+
             live_task = _live_primary_task()
             if live_task:
                 title = _markup_escape(live_task.get("title") or "(untitled)")
@@ -1641,12 +1461,12 @@ def build_window() -> int:
                     "succeeded":"#7fb069",
                     "cancelled":"#8a7d68",
                 }.get(state, "#8a7d68")
-                # Line 1: state bullet + title (bold).
-                # Line 2: state label + short id + timestamp.
+
+
                 if len(title) > 38:
                     title = title[:35] + "…"
                 short_id = tid[:8] if tid else "—"
-                ts_short = ts[11:16] if len(ts) >= 16 else ""  # HH:MM
+                ts_short = ts[11:16] if len(ts) >= 16 else ""
                 line1 = Gtk.Label()
                 line1.set_xalign(0.0)
                 line1.set_markup(
@@ -1669,7 +1489,7 @@ def build_window() -> int:
                 tasks_list.pack_start(line2, False, False, 0)
                 tasks_list.show_all()
                 return
-            # Truly nothing — single idle marker.
+
             label = Gtk.Label()
             label.set_xalign(0.0)
             label.set_markup(
@@ -1692,8 +1512,8 @@ def build_window() -> int:
             label = Gtk.Label()
             label.set_xalign(0.0)
             prefix = f"{idx}." if idx is not None else "·"
-            # Escape user-supplied text before injecting into Pango markup
-            # (task names from the plan/scheduler can contain & < >).
+
+
             safe_text = _markup_escape(text[:48])
             label.set_markup(
                 f"<span foreground='{color}' font_weight='bold'>{mark}</span> "
@@ -1705,13 +1525,13 @@ def build_window() -> int:
         tasks_list.show_all()
 
     def _refresh_sidebar():
-        # BROWSER header line: tab count + active-tab count.
+
         _sidebar_labels["browser"].set_text(_browser_state())
-        # BROWSER active-task line: most-recent scheduler task.
+
         active_lbl = _sidebar_labels.get("browser_active")
         if active_lbl is not None:
             active_lbl.set_text(_active_task_for_browser())
-        # TASKS panel: short label + build list
+
         _sidebar_labels["tasks"].set_text(_plan_tasks())
         _refresh_browser_rows()
         _refresh_tasks_rows()
@@ -1720,12 +1540,12 @@ def build_window() -> int:
     GLib.timeout_add_seconds(REFRESH_SECS, _refresh_sidebar)
     GLib.idle_add(_refresh_sidebar)
 
-    # ── VTE input helpers ─────────────────────────────────────────────────
-    # Right-click + cursor-paste + copy wiring.
-    # VTE 2.91 in GTK3 disables the built-in popup menu by default; we
-    # build a plain Gtk.Menu ourselves and pop it on right-click.
+
+
+
+
     def _on_vte_button(widget, event):
-        if event.button == 2:  # middle-click → PRIMARY selection
+        if event.button == 2:
             try:
                 sel = Gtk.Clipboard.get(Gdk.SELECTION_PRIMARY)
                 text = sel.wait_for_text()
@@ -1734,13 +1554,13 @@ def build_window() -> int:
                     return True
             except Exception:
                 pass
-        if event.button == 3:  # right-click → custom Copy/Paste menu
+        if event.button == 3:
             try:
-                # Build the menu and attach it to the VTE's top-level window
-                # so the WM can position it correctly. Guard each menu op
-                # so a partial failure does not eat the click.
+
+
+
                 menu = Gtk.Menu()
-                # Copy
+
                 mi_copy = Gtk.MenuItem(label="Copy")
                 mi_copy.show()
                 def _do_copy(_i):
@@ -1750,7 +1570,7 @@ def build_window() -> int:
                         pass
                 mi_copy.connect("activate", _do_copy)
                 menu.append(mi_copy)
-                # Paste from clipboard
+
                 mi_paste = Gtk.MenuItem(label="Paste")
                 mi_paste.show()
                 def _do_paste_cb(_i):
@@ -1760,7 +1580,7 @@ def build_window() -> int:
                         pass
                 mi_paste.connect("activate", _do_paste_cb)
                 menu.append(mi_paste)
-                # Paste raw PRIMARY selection (middle-click fallback)
+
                 mi_paste_prim = Gtk.MenuItem(label="Paste Selection")
                 mi_paste_prim.show()
                 def _do_paste_prim(_i):
@@ -1773,16 +1593,16 @@ def build_window() -> int:
                         pass
                 mi_paste_prim.connect("activate", _do_paste_prim)
                 menu.append(mi_paste_prim)
-                # Attach + popup. Use the top-level window's screen so the
-                # menu lives on the same display as the VTE.
+
+
                 toplevel = widget.get_toplevel()
                 if toplevel is not None:
                     menu.attach_to_widget(toplevel, None)
                 menu.popup(None, None, None, None, event.button, event.time)
                 return True
             except Exception:
-                # Fallback: if building the menu fails, do the right-click
-                # equivalent (paste from PRIMARY) so the user can still work.
+
+
                 try:
                     sel = Gtk.Clipboard.get(Gdk.SELECTION_PRIMARY)
                     text = sel.wait_for_text()
@@ -1793,10 +1613,10 @@ def build_window() -> int:
                     pass
         return False
 
-    # ── Window-level keypress (Escape) ─────────────────────────────────────
-    # Bound at the window level so Escape works regardless of which
-    # sub-widget has focus — VTE, sidebar, header, anywhere. Returns True
-    # when the event is consumed so GTK doesn't propagate it further.
+
+
+
+
     def _on_win_keypress(_widget, event):
         try:
             if event.keyval == Gdk.KEY_Escape:
@@ -1806,11 +1626,11 @@ def build_window() -> int:
             pass
         return False
 
-    # ── Spawn bin/cortexagent as a PTY child of VTE ───────────────────────
-    # Expand PATH so the spawned `bin/cortexagent` shell can find BOTH
-    # python3 (system) AND the `cortex` node symlink (user-installed via
-    # nvm). The systemd user daemon's default PATH is minimal and does
-    # not include ~/.nvm/versions/node/*/bin, where `cortex` lives.
+
+
+
+
+
     import shlex
     base_path = os.environ.get("PATH") or ":".join([
         "/usr/local/sbin", "/usr/local/bin", "/usr/sbin",
@@ -1825,14 +1645,14 @@ def build_window() -> int:
         os.path.expanduser("~/.npm-global/bin"),
         os.path.expanduser("~/.bun/bin"),
     ]
-    # Add any nvm-managed node bin dirs.
+
     nvm_root = os.path.expanduser("~/.nvm/versions/node")
     if os.path.isdir(nvm_root):
         for entry in sorted(os.listdir(nvm_root), reverse=True):
             candidate = os.path.join(nvm_root, entry, "bin")
             if os.path.isdir(candidate):
                 user_path_dirs.append(candidate)
-    # Prepend user dirs (they are searched first).
+
     safe_path = ":".join(user_path_dirs + [base_path])
     env_overrides = {
         "TERM": "xterm-256color",
@@ -1855,15 +1675,15 @@ def build_window() -> int:
         except Exception:
             pass
 
-    # ── Escape key → interrupt the running REPL ──────────────────────────
-    # Bound at the WINDOW level so Escape works regardless of focus (VTE,
-    # sidebar, header, anywhere). Sends SIGINT to the embedded REPL child
-    # — same as Ctrl+C in a real terminal — so the running inference /
-    # request can be cancelled without closing the window.
+
+
+
+
+
     def _on_escape():
         pid = vte_pid_holder[0]
         if pid is None:
-            # Spawn callback hasn't fired yet — try the synchronous lookup.
+
             try:
                 pid = vte.get_pty().get_pid()
             except Exception:
@@ -1874,7 +1694,7 @@ def build_window() -> int:
             import signal as _sig
             os.kill(pid, _sig.SIGINT)
         except (ProcessLookupError, PermissionError):
-            # Child already exited — nothing to interrupt.
+
             pass
         except Exception:
             pass
@@ -1892,15 +1712,15 @@ def build_window() -> int:
     except Exception as e:
         vte.feed(b"\x1b[1;31mPTY spawn failed:\x1b[0m " + str(e).encode() + b"\r\n")
 
-    # ── SIGTERM / SIGINT also writes `closed_at` ──────────────────────────
-    # The GTK `destroy` signal only fires on user close / window-manager
-    # close. SIGTERM (kill) skips that path. Install atexit + signal
-    # handlers so the lifecycle file always reflects reality.
-    # NOTE: signal.signal() only works in the main thread of the main
-    # interpreter. When the tray daemon launches this console via
-    # open_in_thread(), the thread is a worker thread, so signal() raises
-    # ValueError. Guard both signal() and atexit.register() so the thread
-    # can still run Gtk.main() and the window opens.
+
+
+
+
+
+
+
+
+
     import atexit as _atexit
     import signal as _signal
 
@@ -1916,15 +1736,15 @@ def build_window() -> int:
         _signal.signal(_signal.SIGTERM, _on_term)
         _signal.signal(_signal.SIGINT, _on_term)
     except (ValueError, OSError):
-        pass  # worker thread — signal handlers must be installed in main thread
+        pass
     try:
         _atexit.register(_record_close)
     except Exception:
         pass
 
-    # ── Record lifecycle now that the window is built. Geometry is enforced
-    # once by _enforce_once after show_all (no win.move here — single source
-    # of truth for window position).
+
+
+
     def _record_lifecycle():
         try:
             wid = win.get_window().get_xid() if win.get_window() else 0
@@ -1935,7 +1755,7 @@ def build_window() -> int:
 
     GLib.idle_add(_record_lifecycle)
 
-    # ── Clean-up on destroy ────────────────────────────────────────────────
+
     def _on_destroy(*_a):
         _record_close()
         try:
@@ -1946,20 +1766,20 @@ def build_window() -> int:
     win.connect("destroy", _on_destroy)
     win.connect("key-press-event", _on_win_keypress)
 
-    # Re-arm keep_above whenever the user clicks back into the console.
-    # After a tab click we drop keep_above so Brave can come to the front;
-    # clicking the popup should bring it back on top. Button-press-event
-    # on the window is the cleanest hook — fires once per click.
+
+
+
+
     def _on_window_click(_w, _event):
         try:
             win.set_keep_above(True)
         except Exception:
             pass
-        return False  # don't swallow the event
+        return False
     win.connect("button-press-event", _on_window_click)
-    # Apply the persisted theme on first show so the picked palette is
-    # in effect before the user sees the window. Uses the same path
-    # Settings' Apply button takes.
+
+
+
     try:
         from lib.popup_themes import load_settings
         _apply_theme(load_settings().get("theme", "amber"))
@@ -1967,12 +1787,12 @@ def build_window() -> int:
         pass
     win.show_all()
 
-    # ONE-TIME geometry enforcement after show_all, then never again. The
-    # flashing was caused by a retry loop running xdotool windowsize/move
-    # 6× in 720 ms — WM was fighting itself between GTK hints and xdotool.
+
+
+
     def _dprint(*a):
-        # Single-gate debug logger. Only emits when CORTEXAGENT_CONSOLE_DEBUG=1
-        # so the tray daemon's journalctl does not get spammed.
+
+
         if os.environ.get("CORTEXAGENT_CONSOLE_DEBUG") == "1":
             print("[browser_console]", *a, file=sys.stderr)
 
@@ -2010,9 +1830,9 @@ def build_window() -> int:
                 _dprint(f"move err {e}")
         except Exception as e:
             _dprint(f"enforce err {e}")
-        return False  # run once, never again
+        return False
 
-    GLib.timeout_add(400, _enforce_once)  # give WM 400ms to map first
+    GLib.timeout_add(400, _enforce_once)
     vte.grab_focus()
     Gtk.main()
     return 0

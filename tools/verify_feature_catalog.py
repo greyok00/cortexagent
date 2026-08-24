@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""verify_feature_catalog.py — verify tools/feature_catalog.json.
 
-For each feature, checks:
-  - It has a reachable implementation (function/class exists)
-  - The smoke harness can run it (if a smoke is recorded)
-  - The advertised schema matches the implementation signature
-
-Run:
-  python3 tools/verify_feature_catalog.py [--json] [--fix]
-
-Exit codes:
-  0  all features verified
-  1  one or more features failed
-  2  catastrophic (catalog missing)
-"""
 import argparse
 import importlib
 import json
@@ -29,7 +15,7 @@ CATALOG = REPO_ROOT / "tools" / "feature_catalog.json"
 
 
 def _check_mcp_tool(f: Dict) -> Tuple[bool, str]:
-    """Verify a CONVERTED_TOOLS entry exists in TOOL_MAP and the function is callable."""
+
     try:
         from lib.converted_mcp_tools import TOOL_MAP
         name = f["id"]
@@ -44,7 +30,7 @@ def _check_mcp_tool(f: Dict) -> Tuple[bool, str]:
 
 
 def _check_registered_tool(f: Dict) -> Tuple[bool, str]:
-    """Verify a register_tool('name') lookup in lib.tool_registry."""
+
     name = f["schema"]["name"]
     try:
         import lib.tool_registry as tr
@@ -57,7 +43,7 @@ def _check_registered_tool(f: Dict) -> Tuple[bool, str]:
                     names.add(t["function"].get("name"))
         if name in names:
             return True, "registered"
-        # Fallback: search the source for register_tool("name", ...)
+
         text = (REPO_ROOT / "lib" / "tool_registry.py").read_text(errors="replace")
         if f'register_tool("{name}"' in text or f"register_tool('{name}'" in text:
             return True, "in source"
@@ -67,7 +53,7 @@ def _check_registered_tool(f: Dict) -> Tuple[bool, str]:
 
 
 def _check_cli(f: Dict) -> Tuple[bool, str]:
-    """Verify a CLI subcommand parses + has a --help."""
+
     rel, sub = f["id"].split(":", 1)
     try:
         import subprocess
@@ -86,12 +72,7 @@ def _check_cli(f: Dict) -> Tuple[bool, str]:
 
 
 def _check_http(f: Dict) -> Tuple[bool, str]:
-    """Verify a webui HTTP endpoint exists in one of the webui sources.
 
-    Wave 9 split: endpoints live in either ``lib/webui.py`` (pipeline-only,
-    port 8090) or ``lib/sec_webui.py`` (security + dashboard + chat, port
-    8093). Scan both so the catalog stays green across the split.
-    """
     endpoint = f["schema"]["endpoint"]
     candidates = [REPO_ROOT / "lib" / "webui.py", REPO_ROOT / "lib" / "sec_webui.py"]
     for path in candidates:
@@ -104,7 +85,7 @@ def _check_http(f: Dict) -> Tuple[bool, str]:
 
 
 def _check_control(f: Dict) -> Tuple[bool, str]:
-    """Verify a daemon control RPC has a handler."""
+
     cmd = f["schema"]["cmd"]
     path = REPO_ROOT / "lib" / "daemon.py"
     text = path.read_text(errors="replace")

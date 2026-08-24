@@ -1,14 +1,4 @@
-"""lib/overseer_dashboard/settings.py — active/pending settings engine.
 
-Maintains ``activeSettings`` and ``pendingSettings`` separately. Changed
-fields are marked Pending; Apply is enabled only when pending differs from
-active; Revert restores active values; Save-as-default persists only after
-confirmation. Disruptive changes (model, backend, context-window, service)
-require explicit confirmation and identify the affected active work.
-
-Controls are gated by backend capabilities — unsupported controls are not
-shown.
-"""
 from __future__ import annotations
 
 import json
@@ -22,13 +12,13 @@ STATE_DIR = Path(os.environ.get(
     "CORTEXAGENT_STATE_DIR", str(Path.home() / ".cortexagent")))
 DEFAULTS_FILE = STATE_DIR / "overseer_dashboard_defaults.json"
 
-# Disruptive keys: changing these interrupts/resets active work.
+
 _DISRUPTIVE = {"model", "backend", "context_window", "route", "scheduler_enabled"}
 
 
 def _default_definitions() -> Dict[str, M.SettingValue]:
     return {
-        # ── Runtime ────────────────────────────────────────────────────
+
         "model": M.SettingValue("model", "Model", "", kind="select",
                                 group="runtime", disruptive=True,
                                 tooltip="Concrete serving model. Changing interrupts active work."),
@@ -63,7 +53,7 @@ def _default_definitions() -> Dict[str, M.SettingValue]:
         "system_profile": M.SettingValue("system_profile", "System profile", "coding-agent",
                                          kind="select", group="runtime",
                                          options=["coding-agent", "strict-tools", "general"]),
-        # ── SlimToken ───────────────────────────────────────────────────
+
         "slimtoken_enabled": M.SettingValue("slimtoken_enabled", "Enable SlimToken", True,
                                             kind="toggle", group="slimtoken",
                                             tooltip="Optimize eligible context before inference."),
@@ -84,7 +74,7 @@ def _default_definitions() -> Dict[str, M.SettingValue]:
         "cache_reuse": M.SettingValue("cache_reuse", "Cache reuse", False, kind="toggle",
                                       group="slimtoken", supported=False,
                                       tooltip="Only when the backend supports it."),
-        # ── Service / scheduler ─────────────────────────────────────────
+
         "scheduler_enabled": M.SettingValue("scheduler_enabled", "Scheduler enabled", True,
                                             kind="toggle", group="service", disruptive=True),
         "scheduler_timezone": M.SettingValue("scheduler_timezone", "Scheduler timezone", "local",
@@ -127,12 +117,12 @@ def _save_defaults(defaults: Dict[str, Any]) -> None:
 def build_settings(capabilities: M.BackendCapabilities,
                    model: Optional[M.ModelIdentity] = None,
                    ) -> M.SettingsState:
-    """Build a SettingsState from definitions, defaults, and capabilities."""
+
     defs = _default_definitions()
     defaults = _load_defaults()
     active: Dict[str, Any] = {}
     for key, d in defs.items():
-        # Capability gating: unsupported controls are hidden.
+
         if not d.supported:
             continue
         if key == "cache_reuse" and not capabilities.supports_cache_reuse:
@@ -153,7 +143,7 @@ def build_settings(capabilities: M.BackendCapabilities,
 
 
 def set_pending(state: M.SettingsState, key: str, value: Any) -> None:
-    """Set a pending value. No-op if the key is unsupported."""
+
     d = state.definitions.get(key)
     if d is None or not d.supported:
         return
@@ -161,7 +151,7 @@ def set_pending(state: M.SettingsState, key: str, value: Any) -> None:
 
 
 def apply_pending(state: M.SettingsState) -> List[str]:
-    """Apply pending → active. Returns the list of keys that changed."""
+
     changed = state.changed_keys
     for k in changed:
         state.active[k] = state.pending[k]
@@ -169,12 +159,12 @@ def apply_pending(state: M.SettingsState) -> List[str]:
 
 
 def revert_pending(state: M.SettingsState) -> None:
-    """Restore pending to active values."""
+
     state.pending = dict(state.active)
 
 
 def save_as_default(state: M.SettingsState) -> None:
-    """Persist active values as defaults (after confirmation)."""
+
     defaults = {k: v for k, v in state.active.items()
                 if k not in ("model", "route", "backend")}
     _save_defaults(defaults)
@@ -182,6 +172,6 @@ def save_as_default(state: M.SettingsState) -> None:
 
 
 def disruptive_keys(state: M.SettingsState) -> List[str]:
-    """Keys among the pending changes that are disruptive (interrupt work)."""
+
     return [k for k in state.changed_keys
             if state.definitions.get(k) and state.definitions[k].disruptive]

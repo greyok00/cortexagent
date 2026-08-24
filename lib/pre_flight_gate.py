@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
-"""pre_flight_gate — pre-LLM gate (capability, iteration, cache, intent).
 
-Pre-LLM gate (capability, iteration, cache, intent). Stdlib only.
-
-  - rule-based intent classifier
-  - cached-response check (reads in-repo SQLite hot memory)
-  - model-capability override table (env-driven)
-  - budget check (token budget counter, advisory)
-
-Claude Code handles its own schema, iteration control, and file-type routing.
-
-CLI:
-  python3 pre_flight_gate.py check --prompt "..." [--profile NAME]
-  python3 pre_flight_gate.py intent --prompt "..."
-  python3 pre_flight_gate.py cached --prompt "..." [--profile NAME]
-  python3 pre_flight_gate.py smoke
-"""
 from __future__ import annotations
 
 import json
@@ -36,9 +20,9 @@ except Exception:
     _manager = None
 
 
-# ── Capability tables (env-overridable) ───────────────────────────────────
+
 def _load_capabilities() -> Dict:
-    """Load model capability table from env or fall back to defaults."""
+
     raw = os.environ.get("CORTEXAGENT_MODEL_CAPABILITIES", "")
     if raw:
         try:
@@ -48,9 +32,9 @@ def _load_capabilities() -> Dict:
     return {}
 
 
-# ── Cached-response check ─────────────────────────────────────────────────
+
 def _read_hot(profile: str) -> List[Dict]:
-    """Read hot memory messages for a profile from the local SQLite store."""
+
     if _manager is None:
         return []
     try:
@@ -61,11 +45,11 @@ def _read_hot(profile: str) -> List[Dict]:
 
 
 def _check_cache(profile: str, prompt: str) -> Dict:
-    """Look for an exact-match prompt in the most recent 50 hot messages."""
+
     msgs = _read_hot(profile)
     for m in msgs[-50:]:
         if m.get("role") == "user" and m.get("content") == prompt:
-            # Find next assistant response
+
             try:
                 idx = msgs.index(m)
                 if idx + 1 < len(msgs) and msgs[idx + 1].get("role") == "assistant":
@@ -75,9 +59,9 @@ def _check_cache(profile: str, prompt: str) -> Dict:
     return {"cached": False, "response": None}
 
 
-# ── Intent classification ────────────────────────────────────────────────
+
 def classify_intent(prompt: str) -> str:
-    """Rule-based intent classification. Cheap, deterministic, no LLM call."""
+
     p = prompt.lower().strip()
     if p.startswith(("run ", "execute ", "bash ", "python ", "npm ", "pip ", "git ", "docker ")):
         return "command_execution"
@@ -107,22 +91,15 @@ def classify_intent(prompt: str) -> str:
 
 
 def is_ambiguous(prompt: str) -> bool:
-    """R6: heuristic ambiguity detector.
 
-    Flags prompts that are too short or underspecified to act on confidently.
-    Pattern: <=6 words AND no concrete noun + no concrete verb. Conservative —
-    only TRUE on the empty/single-word/question-without-noun cases, never on
-    even a modestly specific prompt. Caller branches off `ambiguous` intent
-    with a clarifying question before reaching big.
-    """
     p = prompt.strip()
     if not p or len(p) < 8:
         return True
     words = p.split()
     if len(words) <= 4:
-        # ≤4 words → almost always needs clarification
+
         return True
-    # Pronoun-heavy / no concrete noun
+
     pronouns = sum(1 for w in words if w.lower() in {
         "it", "this", "that", "these", "those", "they", "them",
         "there", "here", "do", "does", "did", "fix", "make", "update",
@@ -132,7 +109,7 @@ def is_ambiguous(prompt: str) -> bool:
     return False
 
 
-# ── Main gate ─────────────────────────────────────────────────────────────
+
 class PreFlightResult:
     def __init__(self):
         self.passed = True
@@ -157,9 +134,9 @@ class PreFlightResult:
         }
 
 
-# Prompt keywords → capability name, so a capability table configured via
-# CORTEXAGENT_MODEL_CAPABILITIES ({"vision": true, "web": false, ...}) actually
-# gates the request. Empty/absent table = no restrictions (current default).
+
+
+
 _CAPABILITY_KEYWORDS = {
     "vision": ("image", "picture", "photo", "screenshot", "visual", "see"),
     "web": ("web", "internet", "browse", "search the web", "fetch url", "http"),
@@ -176,7 +153,7 @@ class PreFlightGate:
         self._iter: Dict[str, int] = {}
 
     def _requested_capability(self, prompt: str) -> Optional[str]:
-        """Return the capability the prompt asks for, or None if none is named."""
+
         low = prompt.lower()
         for cap, keywords in _CAPABILITY_KEYWORDS.items():
             if any(kw in low for kw in keywords):
@@ -187,14 +164,14 @@ class PreFlightGate:
               budget_remaining: Optional[float] = None) -> PreFlightResult:
         result = PreFlightResult()
 
-        # Empty prompt
+
         if not prompt or not prompt.strip():
             result.passed = False
             result.blocked = True
             result.reason = "Empty prompt"
             return result
 
-        # Budget advisory
+
         if budget_remaining is not None and budget_remaining <= 0:
             result.passed = False
             result.blocked = True
@@ -202,7 +179,7 @@ class PreFlightGate:
             return result
         result.budget_remaining = budget_remaining
 
-        # Iteration cap (advisory)
+
         count = self._iter.get(profile, 0)
         if count >= self.max_iterations:
             result.passed = False
@@ -211,15 +188,15 @@ class PreFlightGate:
             return result
         self._iter[profile] = count + 1
 
-        # Cache check
+
         cache = _check_cache(profile, prompt)
         if cache["cached"]:
             result.cached_response = cache["response"]
             result.warnings.append("Returning cached response — LLM call skipped")
 
-        # Intent
+
         result.intent = classify_intent(prompt)
-        # R6: ambiguous prompts → ask clarifying question instead of guessing
+
         if result.intent == "ambiguous" and not result.cached_response:
             result.warnings.append(
                 "Prompt looks ambiguous — asking for clarification instead of "
@@ -233,8 +210,8 @@ class PreFlightGate:
             )
             return result
 
-        # Capability gate: if a capability table is configured and the prompt
-        # requests a capability that isn't enabled, block rather than run blind.
+
+
         if self.capabilities:
             cap = self._requested_capability(prompt)
             if cap and not bool(self.capabilities.get(cap, False)):
@@ -252,11 +229,10 @@ class PreFlightGate:
 
 def verify_before_llm(prompt: str, profile: str = "default",
                       budget: Optional[float] = None) -> PreFlightResult:
-    """Convenience function — single-call gate."""
-    return PreFlightGate().check(prompt, profile=profile, budget_remaining=budget)
+       return PreFlightGate().check(prompt, profile=profile, budget_remaining=budget)
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+
 def _cli(argv: List[str]) -> int:
     if not argv:
         print(__doc__)
@@ -297,33 +273,33 @@ def _cli(argv: List[str]) -> int:
 def _smoke() -> int:
     g = PreFlightGate()
 
-    # Empty prompt blocked
+
     r = g.check("   ")
     assert r.blocked
     print(f"  empty prompt: blocked={r.blocked}  reason={r.reason}")
 
-    # Normal prompt
+
     r = g.check("edit file lib/foo.py", profile="default")
     assert not r.blocked
     assert r.intent == "file_operation"
     print(f"  file-op intent: passed={r.passed}  intent={r.intent}")
 
-    # Intent: command
+
     r = g.check("Run python3 --version")
     assert r.intent == "command_execution"
     print(f"  command intent: {r.intent}")
 
-    # Intent: conversation
+
     r = g.check("hello there")
     assert r.intent == "conversation"
     print(f"  greeting intent: {r.intent}")
 
-    # Budget exhausted
+
     r = g.check("anything", budget_remaining=0)
     assert r.blocked
     print(f"  budget=0: blocked={r.blocked}  reason={r.reason}")
 
-    # Iteration cap
+
     g2 = PreFlightGate(max_iterations=2)
     g2.check("a", profile="x")
     g2.check("b", profile="x")
@@ -331,7 +307,7 @@ def _smoke() -> int:
     assert r.blocked
     print(f"  iter cap: blocked={r.blocked}  reason={r.reason}")
 
-    # Reset
+
     g2.reset_iterations("x")
     r = g2.check("d", profile="x")
     assert not r.blocked

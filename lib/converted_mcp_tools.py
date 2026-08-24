@@ -1,32 +1,5 @@
 #!/usr/bin/env python3
-"""lib/converted_mcp_tools.py — Direct Python wrappers for all MCP servers.
 
-Replaces MCP JSON-RPC/stdio transport with direct function calls.
-This minimizes token usage by presenting the model with a stubbed tool
-surface (name + description only) while the actual work happens via
-direct Python calls — no subprocess, no stdio, no JSON-RPC overhead.
-
-Every tool is a direct Python call wired to a real backend:
-  - memory_* (read/write/search/clear/semantic/graph/ontology): CortexLLM
-    (cortexllm_db + cortexllm_vector/graph/ontology singletons)
-  - firecrawl_search/scrape: Firecrawl REST client
-  - slimtoken_minify/maxify: real slimtoken pipeline (dedup+distill) /
-    token-aware marker expansion (slimtoken has no inverse minify)
-  - magicui_generate: config-gated (CORTEXAGENT_MAGICUI_BACKEND=llm|template);
-    unconfigured → actionable error, never canned markup
-  - alpaca_get_account / quant_trader_strategy: real Alpaca REST (needs
-    CORTEXAGENT_ALPACA_API_KEY/_SECRET_KEY); unconfigured → actionable error
-  - ibkr_get_positions: real IBKR Web API gateway (needs
-    CORTEXAGENT_IBKR_GATEWAY_URL); unconfigured → actionable error
-  - session_*: session coordinator (shared-file backbone)
-
-Each tool is a plain Python function (or class with persistent state if
-it holds connections/sessions across calls).
-
-Usage:
-  from lib.converted_mcp_tools import execute_converted_tool
-  result = execute_converted_tool("memory_search", {"query": "test", "limit": 5})
-"""
 from __future__ import annotations
 
 import json
@@ -38,34 +11,34 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# ---------------------------------------------------------------------------
-# Path setup for cortexllm imports
-# ---------------------------------------------------------------------------
+
+
+
 _CWD = Path(__file__).resolve().parent.parent
 if str(_CWD) not in sys.path:
     sys.path.insert(0, str(_CWD))
-# cortexllm legacy modules (vector/graph/ontology/db) live in the installed
-# repo's legacy/ dir (~/cortexllm/repo/legacy) — NOT a vendored copy in this
-# repo. Repointed 2026-08-20 so the maintained copy is used; the old vendored
-# ~/cortexagent/cortexllm/ was stale (pre-FIFO-cap-removal) and is being deleted.
+
+
+
+
 _CLX_LEGACY = Path.home() / "cortexllm" / "repo" / "legacy"
 if _CLX_LEGACY.is_dir() and str(_CLX_LEGACY) not in sys.path:
     sys.path.insert(0, str(_CLX_LEGACY))
 if str(_CWD / "lib") not in sys.path:
     sys.path.insert(0, str(_CWD / "lib"))
 
-# ---------------------------------------------------------------------------
-# Persistent state holders (classes with connection/session state)
-# ---------------------------------------------------------------------------
+
+
+
 
 class HTTPSession:
-    """Persistent HTTP session for tools that make many requests."""
+
     _instances: Dict[str, 'HTTPSession'] = {}
     _lock = threading.Lock()
 
     def __init__(self, base_url: str = ""):
         self.base_url = base_url
-        self.session = None  # Lazy-initialized
+        self.session = None
 
     @classmethod
     def get(cls, base_url: str = "") -> 'HTTPSession':
@@ -75,7 +48,7 @@ class HTTPSession:
             return cls._instances[base_url]
 
     def get_session(self):
-        """Return requests.Session (lazy import)."""
+
         if self.session is None:
             import requests
             self.session = requests.Session()
@@ -85,7 +58,7 @@ class HTTPSession:
 
 
 class GraphStore:
-    """Persistent graph store singleton (reused across calls)."""
+
     _instance = None
     _lock = threading.Lock()
 
@@ -106,7 +79,7 @@ class GraphStore:
 
 
 class VectorStore:
-    """Persistent vector store singleton (reused across calls)."""
+
     _instance = None
     _lock = threading.Lock()
 
@@ -127,7 +100,7 @@ class VectorStore:
 
 
 class OntologyEngine:
-    """Persistent ontology engine singleton."""
+
     _instance = None
     _lock = threading.Lock()
 
@@ -147,12 +120,12 @@ class OntologyEngine:
         return cls._instance
 
 
-# ---------------------------------------------------------------------------
-# CortexLLM Memory Tools (direct Python)
-# ---------------------------------------------------------------------------
+
+
+
 
 def memory_read(tier: str, platform: str = "default", category: str = None) -> dict:
-    """Read from CortexLLM memory (hot/warm/cold)."""
+
     try:
         from memory_manager import MemoryManager
         mm = MemoryManager()
@@ -171,7 +144,7 @@ def memory_read(tier: str, platform: str = "default", category: str = None) -> d
 
 def memory_write(tier: str, content: str, platform: str = "default",
                  category: str = None, role: str = "user") -> dict:
-    """Write to CortexLLM memory (hot/warm/cold)."""
+
     try:
         from memory_manager import MemoryManager
         mm = MemoryManager()
@@ -179,7 +152,7 @@ def memory_write(tier: str, content: str, platform: str = "default",
             mm.add_to_hot(platform, content, role)
             result = {"status": "written", "tier": "hot", "platform": platform}
         elif tier == "warm":
-            mm.add_to_hot(platform, content, role)  # Warm written via hot
+            mm.add_to_hot(platform, content, role)
             result = {"status": "written", "tier": "warm"}
         elif tier == "cold":
             try:
@@ -196,7 +169,7 @@ def memory_write(tier: str, content: str, platform: str = "default",
 
 
 def memory_search(query: str, limit: int = 10) -> dict:
-    """Search across all CortexLLM memory tiers."""
+
     try:
         from domain_db import search
         results = search("default", query, limit)
@@ -206,13 +179,13 @@ def memory_search(query: str, limit: int = 10) -> dict:
 
 
 def memory_clear(tier: str, platform: str = None) -> dict:
-    """Clear CortexLLM memory."""
+
     try:
         from cortexllm_db import db
         db.initialize()
         w = db.writer
         if tier == "hot":
-            w.execute("DELETE FROM Memory_Hot" + (" WHERE platform = ?" if platform else ""), 
+            w.execute("DELETE FROM Memory_Hot" + (" WHERE platform = ?" if platform else ""),
                       (platform,) if platform else ())
         elif tier == "warm":
             w.execute("DELETE FROM Memory_Warm")
@@ -226,7 +199,7 @@ def memory_clear(tier: str, platform: str = None) -> dict:
 
 
 def memory_search_semantic(query: str, limit: int = 10, platform: str = None) -> dict:
-    """Semantic (vector) search using BM25."""
+
     try:
         vs = VectorStore.get()._store
         if vs is None:
@@ -240,7 +213,7 @@ def memory_search_semantic(query: str, limit: int = 10, platform: str = None) ->
 def memory_graph_query(action: str, entity: str = None, text: str = None,
                        target: str = None, depth: int = 2,
                        platform: str = None) -> dict:
-    """Query the knowledge graph."""
+
     try:
         gs = GraphStore.get()._store
         if gs is None:
@@ -261,7 +234,7 @@ def memory_graph_query(action: str, entity: str = None, text: str = None,
 
 
 def memory_ontology(action: str, text: str = None) -> dict:
-    """Ontology operations: categorize, taxonomy, gaps, tags."""
+
     try:
         oe = OntologyEngine.get()._engine
         if oe is None:
@@ -287,19 +260,15 @@ def memory_ontology(action: str, text: str = None) -> dict:
         return {"error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# API Adapter Tools (self-registering proxy layer)
-# ---------------------------------------------------------------------------
-# Backends live in lib/adapters/*.py and self-register on import. New
-# adapter = drop a file in that directory + add an import line in
-# lib/adapters/__init__.py. Zero edits to core agent logic needed.
+
+
+
+
+
+
 
 def adapter_list() -> dict:
-    """List every registered API adapter and its live health status.
 
-    Backends without required credentials report enabled=False / status=disabled
-    so the model can pick a working backend without guessing.
-    """
     try:
         from lib.adapters import all_adapters_dict
         items = all_adapters_dict(only_enabled=False)
@@ -310,13 +279,7 @@ def adapter_list() -> dict:
 
 def adapter_search(query: str, limit: int = 5,
                     adapter_name: Optional[str] = None) -> dict:
-    """Search/lookup via the API adapter layer.
 
-    adapter_name=None → fan out across every enabled adapter (safe; one
-    failing backend never blocks the rest).
-    adapter_name="google_cse" → target one backend only. Unknown name
-    returns {"error": "unknown adapter: ..."}.
-    """
     try:
         from lib.adapters import (
             get as _get,
@@ -337,7 +300,7 @@ def adapter_search(query: str, limit: int = 5,
                 return {"status": "ok", "results": {adapter_name: results}}
             except Exception as e:
                 return {"error": str(e), "source": adapter_name}
-        # fan-out
+
         enabled = list_adapters(only_enabled=True)
         if not enabled:
             return {"status": "noop",
@@ -351,12 +314,12 @@ def adapter_search(query: str, limit: int = 5,
         return {"error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# Firecrawl Tools (web scraping/search)
-# ---------------------------------------------------------------------------
+
+
+
 
 def firecrawl_search(query: str, limit: int = 10) -> dict:
-    """Search the web using Firecrawl."""
+
     try:
         from lib.firecrawl_proxy import FirecrawlClient
         fc = FirecrawlClient()
@@ -367,7 +330,7 @@ def firecrawl_search(query: str, limit: int = 10) -> dict:
 
 
 def firecrawl_scrape(url: str) -> dict:
-    """Scrape content from a URL using Firecrawl."""
+
     try:
         from lib.firecrawl_proxy import FirecrawlClient
         fc = FirecrawlClient()
@@ -377,18 +340,12 @@ def firecrawl_scrape(url: str) -> dict:
         return {"error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# MagicUI Tools (UI generation)
-# ---------------------------------------------------------------------------
+
+
+
 
 def magicui_generate(description: str, format: str = "html") -> dict:
-    """Generate UI from a description, config-gated (never a hardcoded stub).
 
-    Backend selected by CORTEXAGENT_MAGICUI_BACKEND:
-      - "llm": render via the local model (tiny_llm.query)
-      - "template": render a minimal responsive HTML shell from the description
-      - unset: actionable "not configured" — no canned markup.
-    """
     backend = os.environ.get("CORTEXAGENT_MAGICUI_BACKEND", "").strip().lower()
     if not backend:
         return {"error": (
@@ -420,12 +377,12 @@ def magicui_generate(description: str, format: str = "html") -> dict:
         return {"error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# Trading Tools (IBKR, Quant-Trader, Alpaca)
-# ---------------------------------------------------------------------------
+
+
+
 
 class TradingSession:
-    """Persistent trading session state."""
+
     _instances: Dict[str, 'TradingSession'] = {}
     _lock = threading.Lock()
 
@@ -443,13 +400,7 @@ class TradingSession:
 
 
 def alpaca_get_account() -> dict:
-    """Get Alpaca account info via the Alpaca REST API.
 
-    Requires CORTEXAGENT_ALPACA_API_KEY + CORTEXAGENT_ALPACA_SECRET_KEY (or the
-    ALPACA_* equivalents); set CORTEXAGENT_ALPACA_PAPER=1 to hit the paper
-    endpoint. Returns an actionable error when credentials are missing — never
-    canned account data.
-    """
     import json as _json
     import urllib.request
     api_key = (os.environ.get("CORTEXAGENT_ALPACA_API_KEY")
@@ -475,12 +426,7 @@ def alpaca_get_account() -> dict:
 
 
 def ibkr_get_positions() -> dict:
-    """Get Interactive Brokers positions via the IBKR Web API gateway.
 
-    Requires CORTEXAGENT_IBKR_GATEWAY_URL (default http://127.0.0.1:5000/v1/api)
-    with a live gateway session. Returns an actionable error when the gateway
-    is unreachable — never an empty canned result.
-    """
     import json as _json
     import urllib.request
     try:
@@ -508,12 +454,7 @@ def ibkr_get_positions() -> dict:
 
 
 def quant_trader_strategy(symbol: str, timeframe: str = "1d") -> dict:
-    """Run a real 20/50 SMA-crossover strategy on bars from the configured broker.
 
-    Fetches Alpaca bars for the symbol and emits a buy/sell/hold signal. Returns
-    an actionable error when no broker is configured or bars are insufficient —
-    never a canned 'hold' signal.
-    """
     import json as _json
     import urllib.request
     api_key = (os.environ.get("CORTEXAGENT_ALPACA_API_KEY")
@@ -525,7 +466,7 @@ def quant_trader_strategy(symbol: str, timeframe: str = "1d") -> dict:
             "quant_trader_strategy needs a broker to source bars. Configure Alpaca "
             "(CORTEXAGENT_ALPACA_API_KEY / CORTEXAGENT_ALPACA_SECRET_KEY).")}
     try:
-        limit = 120  # enough bars for a 20/50 SMA cross
+        limit = 120
         url = (f"https://data.alpaca.markets/v2/stocks/{symbol}/bars"
                f"?timeframe={timeframe}&limit={limit}")
         req = urllib.request.Request(url)
@@ -557,12 +498,12 @@ def quant_trader_strategy(symbol: str, timeframe: str = "1d") -> dict:
         return {"error": f"Quant strategy failed: {e}"}
 
 
-# ---------------------------------------------------------------------------
-# SlimToken Tools (token management)
-# ---------------------------------------------------------------------------
+
+
+
 
 def slimtoken_minify(messages: list) -> dict:
-    """Minify messages using the real slimtoken pipeline (dedup + distill)."""
+
     try:
         from slimtoken.pipeline import minify_request, MinifyConfig
         out, stats = minify_request({"messages": messages}, MinifyConfig())
@@ -573,13 +514,7 @@ def slimtoken_minify(messages: list) -> dict:
 
 
 def slimtoken_maxify(messages: list) -> dict:
-    """Token-aware expansion of slimtoken's minified markers.
 
-    slimtoken's minify is one-way (dedup/distill drop content), so the removed
-    bytes cannot be reconstructed verbatim. This expansion locates every slimtoken
-    marker and expands it with its omitted-char count so the caller knows what was
-    compressed and how to restore it — it never fabricates the missing content.
-    """
     import re
     DEDUP_RE = re.compile(
         r"\[slimtoken: identical to a later tool_result; omitted (\d+) chars\]")
@@ -613,15 +548,15 @@ def slimtoken_maxify(messages: list) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# Session Coordination Tools
-# ---------------------------------------------------------------------------
+
+
+
+
 
 def session_broadcast(status: str = "working", task: str = None) -> dict:
-    """Broadcast session status to other sessions."""
+
     try:
         from lib.session_coordinator import get_coordinator
         coord = get_coordinator("cortexagent")
@@ -632,7 +567,7 @@ def session_broadcast(status: str = "working", task: str = None) -> dict:
 
 
 def session_check() -> dict:
-    """Check what other sessions are doing."""
+
     try:
         from lib.session_coordinator import get_coordinator
         coord = get_coordinator("cortexagent")
@@ -645,7 +580,7 @@ def session_check() -> dict:
 
 
 def session_log(message: str, level: str = "info") -> dict:
-    """Log inter-session awareness message."""
+
     try:
         from lib.session_coordinator import get_coordinator
         coord = get_coordinator("cortexagent")
@@ -654,20 +589,13 @@ def session_log(message: str, level: str = "info") -> dict:
         return {"error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# CVE / MITRE ATT&CK threat-intel tools (stdlib-only; lib.cve_intel)
-# ---------------------------------------------------------------------------
+
+
+
 
 def cve_recent(since: str = "7d", min_cvss: float = 0.0,
                kev_only: bool = False, limit: int = 50) -> dict:
-    """Return recent CVEs from local intel cache (NVD + KEV + EPSS + GHSA + OSV).
 
-    Args:
-        since: window like "7d", "24h", "30m" (parsed by cve_intel._parse_window).
-        min_cvss: floor on CVSS v3 score (0.0 = no floor).
-        kev_only: if True, only return entries in CISA KEV.
-        limit: max entries returned.
-    """
     try:
         from lib import cve_intel
         entries = cve_intel.recent(since=since, min_cvss=min_cvss,
@@ -678,10 +606,7 @@ def cve_recent(since: str = "7d", min_cvss: float = 0.0,
 
 
 def cve_lookup(cve_id: str) -> dict:
-    """Look up a single CVE by ID (e.g. CVE-2024-3094).
 
-    Returns the full entry plus mapped MITRE ATT&CK techniques.
-    """
     try:
         from lib import cve_intel
         entry = cve_intel.lookup(cve_id)
@@ -697,10 +622,7 @@ def cve_lookup(cve_id: str) -> dict:
 
 
 def mitre_techniques_for_cve(cve_id: str) -> dict:
-    """Return ATT&CK Enterprise technique IDs mapped to the given CVE.
 
-    Mapping path: CWE→technique lookup with summary keyword fallback.
-    """
     try:
         from lib import cve_intel
         techniques = cve_intel.mitre_for_cve(cve_id)
@@ -710,11 +632,7 @@ def mitre_techniques_for_cve(cve_id: str) -> dict:
 
 
 def mitre_mitigations_coverage() -> dict:
-    """Return MITRE mitigation (M-code) coverage of our local hardening.
 
-    Static mapping in cve_intel._LOCAL_MITIGATIONS. Reports percent covered
-    against MITRE ATT&CK Enterprise v15 (≈42 mitigations).
-    """
     try:
         from lib import cve_intel
         return {"status": "ok", **cve_intel.mitre_coverage()}
@@ -723,11 +641,7 @@ def mitre_mitigations_coverage() -> dict:
 
 
 def cve_poll_now(since: str = "7d", include_osv: bool = False) -> dict:
-    """Trigger a fresh CVE feed poll (NVD+KEV+EPSS+GHSA by default; OSV optional).
 
-    Network-intensive — use sparingly. Writes new entries to
-    ~/security-console/cve/intel.jsonl and (for critical/KEV) to cold memory.
-    """
     try:
         from lib import cve_intel
         new_entries = cve_intel.poll_cve_feeds(since=since, skip_osv=not include_osv)
@@ -735,7 +649,7 @@ def cve_poll_now(since: str = "7d", include_osv: bool = False) -> dict:
                        if (e.get("cvss_v3") or 0) >= 9.0 or e.get("severity") == "critical")
         kev = sum(1 for e in new_entries if e.get("kev"))
         summary = {"new_count": len(new_entries), "critical": critical, "kev": kev}
-        # Cold-memory write per standing rule (append-only for daily intel)
+
         try:
             from lib.memory_thin import write_cold
             from datetime import datetime
@@ -755,18 +669,12 @@ def cve_poll_now(since: str = "7d", include_osv: bool = False) -> dict:
         return {"status": "error", "error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# Hardening status tools (lib.hardening_status — read-only snapshot)
-# ---------------------------------------------------------------------------
+
+
+
 
 def hardening_status(subsystem: str = "all") -> dict:
-    """Read-only snapshot of hardening subsystems (nftables/sshd/sysctl/auditd/etc.).
 
-    Args:
-        subsystem: "all" (default) returns every checker; or one of
-            nftables, sshd, sysctl, auditd, capabilities, unbound, dnsmasq,
-            lsms, dns_blocklist.
-    """
     try:
         from lib import hardening_status as hs
         if subsystem == "all" or not subsystem:
@@ -779,7 +687,7 @@ def hardening_status(subsystem: str = "all") -> dict:
 
 
 def nftables_list() -> dict:
-    """Snapshot the live nftables ruleset (tables/chains/rules)."""
+
     try:
         from lib import hardening_status as hs
         snap = hs.hardening_snapshot(subsystems=["nftables"])
@@ -789,7 +697,7 @@ def nftables_list() -> dict:
 
 
 def auditd_query() -> dict:
-    """Return active auditd rules count + staged rule files."""
+
     try:
         from lib import hardening_status as hs
         snap = hs.hardening_snapshot(subsystems=["auditd"])
@@ -799,7 +707,7 @@ def auditd_query() -> dict:
 
 
 def sshd_config_dump() -> dict:
-    """Return parsed sshd_config vs hardening baseline deviations."""
+
     try:
         from lib import hardening_status as hs
         snap = hs.hardening_snapshot(subsystems=["sshd"])
@@ -809,13 +717,13 @@ def sshd_config_dump() -> dict:
 
 
 def sysctl_current(keys: list[str] | None = None) -> dict:
-    """Read live sysctl values; if keys is None, return baseline comparison."""
+
     try:
         from lib import hardening_status as hs
         snap = hs.hardening_snapshot(subsystems=["sysctl"])
         if not keys:
             return {"status": "ok", **snap["subsystems"].get("sysctl", {})}
-        # Ad-hoc reads for arbitrary keys
+
         out = {k: hs._read_proc_sys(k) for k in keys}
         return {"status": "ok", "values": out}
     except Exception as e:
@@ -823,7 +731,7 @@ def sysctl_current(keys: list[str] | None = None) -> dict:
 
 
 def unbound_status() -> dict:
-    """Return unbound presence + harden-* directives + running state."""
+
     try:
         from lib import hardening_status as hs
         snap = hs.hardening_snapshot(subsystems=["unbound"])
@@ -833,10 +741,7 @@ def unbound_status() -> dict:
 
 
 def capabilities_list(paths: list[str] | None = None) -> dict:
-    """Enumerate file capabilities; flag binaries holding risky caps.
 
-    Default scan paths: /usr/bin /usr/sbin /usr/local/bin.
-    """
     try:
         from lib import hardening_status as hs
         if paths:
@@ -866,7 +771,7 @@ def capabilities_list(paths: list[str] | None = None) -> dict:
 
 
 def lsm_stack() -> dict:
-    """Return the active LSM stack (landlock/lockdown/yama/etc.)."""
+
     try:
         from lib import hardening_status as hs
         snap = hs.hardening_snapshot(subsystems=["lsms"])
@@ -875,12 +780,12 @@ def lsm_stack() -> dict:
         return {"status": "error", "error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# SIEM / SOAR bridge tools (lib.siem_bridge + lib.soar_playbooks)
-# ---------------------------------------------------------------------------
+
+
+
 
 def siem_recent(source: str | None = None, limit: int = 50) -> dict:
-    """Recent SIEM findings (optionally filtered by source: cve_intel, hardening_status, etc.)."""
+
     try:
         import siem.db as siem_db  # type: ignore
         rows = siem_db.list_findings(limit=limit, source=source)
@@ -891,7 +796,7 @@ def siem_recent(source: str | None = None, limit: int = 50) -> dict:
 
 
 def siem_posture() -> dict:
-    """Latest posture_event per hardening subsystem (newest by id)."""
+
     try:
         import siem.db as siem_db  # type: ignore
         rows = siem_db.list_findings(limit=500, source="hardening_status")
@@ -913,7 +818,7 @@ def siem_posture() -> dict:
 
 
 def siem_push_recent(since: str = "7d") -> dict:
-    """Pull recent CVEs from local cache into the SIEM."""
+
     try:
         from lib import siem_bridge
         n = siem_bridge.push_recent_cves(since=since)
@@ -923,7 +828,7 @@ def siem_push_recent(since: str = "7d") -> dict:
 
 
 def soar_run_on_recent(since: str = "7d", dry_run: bool = False) -> dict:
-    """Run SOAR playbooks against recent CVE findings (critical/KEV → block/notify)."""
+
     try:
         from lib import soar_playbooks
         r = soar_playbooks.run_on_recent(since=since, dry_run=dry_run)
@@ -933,7 +838,7 @@ def soar_run_on_recent(since: str = "7d", dry_run: bool = False) -> dict:
 
 
 def soar_run_posture(dry_run: bool = False) -> dict:
-    """Run SOAR playbooks for hardening posture fails (enqueues audit reviews)."""
+
     try:
         from lib import soar_playbooks
         r = soar_playbooks.run_on_posture(dry_run=dry_run)
@@ -943,7 +848,7 @@ def soar_run_posture(dry_run: bool = False) -> dict:
 
 
 def soar_history(limit: int = 20) -> dict:
-    """Last N SOAR playbook runs (newest first)."""
+
     try:
         from lib import soar_playbooks
         return {"status": "ok", "count": min(limit, len(soar_playbooks.load_history(limit))),
@@ -952,8 +857,8 @@ def soar_history(limit: int = 20) -> dict:
         return {"status": "error", "error": str(e)}
 
 
-# Unified Tool Registry for converted MCP tools
-# ---------------------------------------------------------------------------
+
+
 
 CONVERTED_TOOLS = [
 {
@@ -1665,7 +1570,7 @@ TOOL_MAP = {
     "session_broadcast": session_broadcast,
     "session_check": session_check,
     "session_log": session_log,
-    # API adapter layer (self-registering proxy — see lib/adapters/)
+
     "adapter_list": adapter_list,
     "adapter_search": adapter_search,
     "firecrawl_search": firecrawl_search,
@@ -1676,13 +1581,13 @@ TOOL_MAP = {
     "quant_trader_strategy": quant_trader_strategy,
     "slimtoken_minify": slimtoken_minify,
     "slimtoken_maxify": slimtoken_maxify,
-    # CVE / MITRE threat-intel (Phase 2)
+
     "cve_recent": cve_recent,
     "cve_lookup": cve_lookup,
     "mitre_techniques_for_cve": mitre_techniques_for_cve,
     "mitre_mitigations_coverage": mitre_mitigations_coverage,
     "cve_poll_now": cve_poll_now,
-    # Hardening status (Wave 3)
+
     "hardening_status": hardening_status,
     "nftables_list": nftables_list,
     "auditd_query": auditd_query,
@@ -1691,7 +1596,7 @@ TOOL_MAP = {
     "unbound_status": unbound_status,
     "capabilities_list": capabilities_list,
     "lsm_stack": lsm_stack,
-    # SIEM / SOAR bridge (SIEM Waves 1-3)
+
     "siem_recent": siem_recent,
     "siem_posture": siem_posture,
     "siem_push_recent": siem_push_recent,
@@ -1702,7 +1607,7 @@ TOOL_MAP = {
 
 
 def execute_converted_tool(name: str, args: dict) -> dict:
-    """Execute a converted MCP tool (direct Python)."""
+
     if name not in TOOL_MAP:
         return {"error": f"Unknown tool: {name}"}
     try:
@@ -1713,10 +1618,10 @@ def execute_converted_tool(name: str, args: dict) -> dict:
 
 
 def list_converted_tools(limit: int = 16, stub: bool = True) -> list:
-    """List converted tools (stub mode reduces context size)."""
+
     tools = CONVERTED_TOOLS[:limit]
     if stub:
-        # Return minimal info to save tokens
+
         return [
             {"type": "function", "function": {
                 "name": t["function"]["name"],
@@ -1729,23 +1634,23 @@ def list_converted_tools(limit: int = 16, stub: bool = True) -> list:
 
 
 if __name__ == "__main__":
-    # Smoke test
+
     print("Testing converted MCP tools...")
-    
-    # Test memory tools
+
+
     r = execute_converted_tool("memory_read", {"tier": "warm"})
     print(f"memory_read: {r}")
-    
+
     r = execute_converted_tool("memory_search", {"query": "test", "limit": 5})
     print(f"memory_search: {r}")
-    
+
     r = execute_converted_tool("memory_search_semantic", {"query": "test", "limit": 5})
     print(f"memory_search_semantic: {r}")
-    
+
     r = execute_converted_tool("memory_graph_query", {"action": "stats"})
     print(f"memory_graph_query: {r}")
-    
+
     r = execute_converted_tool("memory_ontology", {"action": "stats"})
     print(f"memory_ontology: {r}")
-    
+
     print("\nConverted MCP tools: OK")

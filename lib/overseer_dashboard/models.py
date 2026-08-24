@@ -1,21 +1,11 @@
-"""lib/overseer_dashboard/models.py — typed view models for the Overseer dashboard.
 
-Every UI surface reads a typed model rather than poking raw JSON. These
-dataclasses are the single source of truth for what the dashboard can render.
-They are deliberately plain (stdlib dataclasses) so the UI, the test harness,
-and the pipeline logic all share one vocabulary.
-
-The spec's core rule: never invent metrics. If a field is absent from the
-underlying telemetry it stays ``None`` and the UI renders ``—`` / "Unavailable"
-rather than a fabricated zero.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
 
 
-# ── Enums (kept as plain strings so they serialize cleanly) ─────────────────
+
 STAGE_STATE = ("complete", "active", "queued", "skipped", "failed")
 BLOCK_CATEGORY = ("system", "user", "history", "memory", "retrieval",
                   "tool_schema", "tool_output", "attachment", "reasoning",
@@ -23,38 +13,28 @@ BLOCK_CATEGORY = ("system", "user", "history", "memory", "retrieval",
 BLOCK_PRIORITY = ("pinned", "high", "compressible", "discardable")
 
 
-# ── Model identity ─────────────────────────────────────────────────────────
+
 @dataclass
 class ModelIdentity:
-    """Concrete serving model, route alias, and backend as separate fields.
 
-    ``model`` is the resolved concrete model name (never a route alias unless
-    nothing better exists). ``route`` is the route/profile alias. ``backend``
-    is the provider (Ollama / llama.cpp / etc).
-    """
     model: str = "unknown"
     route: str = "cortex-big"
     backend: str = "unknown"
-    # How the model name was resolved, for diagnostics.
+
     source: str = "none"
 
     def display_model(self) -> str:
-        """Strip ``.gguf`` for presentation but keep quantization identity."""
+
         m = self.model
         if m.lower().endswith(".gguf"):
             m = m[:-5]
         return m or "unknown"
 
 
-# ── Token component (typed block metadata) ──────────────────────────────────
+
 @dataclass
 class TokenComponent:
-    """One typed block of the request context.
 
-    Instrumented at request-construction time (never estimated in the UI
-    thread). ``optimizable`` is whether SlimToken may touch it; ``pinned``
-    means it is protected and must survive unchanged.
-    """
     id: str
     category: str = "other"
     source: str = ""
@@ -63,16 +43,16 @@ class TokenComponent:
     sensitivity: bool = False
     optimizable: bool = True
     pinned: bool = False
-    priority: str = "compressible"  # pinned|high|compressible|discardable
+    priority: str = "compressible"
 
 
-# ── Compose result ──────────────────────────────────────────────────────────
+
 @dataclass
 class ComposeResult:
-    """Output of the Compose stage: policy framing + protection + budget."""
+
     policy: str = "coding-agent / strict-tools"
-    input_budget: int = 0          # contextWindow - maxOutputTokens
-    output_reserved: int = 0       # maxOutputTokens
+    input_budget: int = 0
+    output_reserved: int = 0
     blocks: List[TokenComponent] = field(default_factory=list)
     pinned: List[TokenComponent] = field(default_factory=list)
     compressible: List[TokenComponent] = field(default_factory=list)
@@ -94,13 +74,13 @@ class ComposeResult:
         return sum(b.tokens for b in self.discardable)
 
 
-# ── SlimToken result ────────────────────────────────────────────────────────
+
 @dataclass
 class SlimTokenAction:
-    """One optimization action applied (or proposed) by SlimToken."""
+
     block_id: str = ""
     category: str = "other"
-    action: str = "preserved"      # removed|compacted|deduplicated|summarized|preserved
+    action: str = "preserved"
     reason: str = ""
     tokens_before: int = 0
     tokens_after: int = 0
@@ -108,7 +88,7 @@ class SlimTokenAction:
 
 @dataclass
 class SlimTokenResult:
-    """Before/after + actions + diff for the SlimToken stage."""
+
     enabled: bool = True
     policy: str = "balanced"
     before_tokens: int = 0
@@ -140,10 +120,10 @@ class SlimTokenResult:
         return sum(1 for a in self.actions if a.action == "preserved")
 
 
-# ── Finalize result ─────────────────────────────────────────────────────────
+
 @dataclass
 class FinalizeResult:
-    """Output of the Finalize stage: the immutable provider-ready payload."""
+
     valid: bool = True
     template_applied: bool = False
     schema_valid: bool = False
@@ -155,62 +135,61 @@ class FinalizeResult:
     errors: List[str] = field(default_factory=list)
 
 
-# ── Pipeline stage ──────────────────────────────────────────────────────────
+
 @dataclass
 class PipelineStage:
-    """One stage of COLLECT → COMPOSE → SLIMTOKEN → FINALIZE → PREFILL →
-    DECODE → DELIVER."""
+
     name: str
-    state: str = "queued"          # complete|active|queued|skipped|failed
+    state: str = "queued"
     elapsed_ms: Optional[float] = None
     tokens_in: Optional[int] = None
     tokens_out: Optional[int] = None
     detail: str = ""
-    # Stage-specific payload (e.g. ComposeResult / SlimTokenResult).
+
     payload: Any = None
 
 
-# ── Pathway groups (broader-scale prompt path for the bottom strip) ──────────
-# Eleven grouped stages, mapped to existing PipelineStage names where they
-# share data. Stages not backed by an existing telemetry stage render as
-# "queued" until a richer data path lands.
+
+
+
+
 PATHWAY_GROUPS: List[str] = [
-    "prompt_intake",     # → COLLECT
-    "frame_assemble",    # → COMPOSE
-    "frame_of_ref",      # derived from snap.model.route / system_profile
-    "memory_check",      # derived from snap.minify runs / overseer write-check
-    "slimtoken_minify",  # → SLIMTOKEN
-    "tool_routing",      # derived from overseer tool-call activity
-    "context_fit",       # → FINALIZE
-    "prefill",           # → PREFILL
-    "decode",            # → DECODE
-    "stream_out",        # → DELIVER
-    "cost_ledger",       # derived from inference input+output tokens
+    "prompt_intake",
+    "frame_assemble",
+    "frame_of_ref",
+    "memory_check",
+    "slimtoken_minify",
+    "tool_routing",
+    "context_fit",
+    "prefill",
+    "decode",
+    "stream_out",
+    "cost_ledger",
 ]
 
 
 @dataclass
 class PathwayNode:
-    """State for a single pathway-strip node."""
+
     key: str
-    state: str = "queued"           # complete|active|queued|skipped|failed
+    state: str = "queued"
     detail: str = ""
     in_text: Optional[str] = None
     out_text: Optional[str] = None
 
 
-# ── Live inference telemetry ────────────────────────────────────────────────
+
 @dataclass
 class InferenceTelemetry:
-    """Real-time prefill/decode/context/cache numbers. None = not instrumented."""
+
     context_used: Optional[int] = None
     context_window: Optional[int] = None
-    input_tps: Optional[float] = None      # prefill/input speed
-    output_tps: Optional[float] = None     # decode/output speed
+    input_tps: Optional[float] = None
+    output_tps: Optional[float] = None
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
-    cache_pct: Optional[float] = None      # only if real
-    reused_pct: Optional[float] = None      # only if real
+    cache_pct: Optional[float] = None
+    reused_pct: Optional[float] = None
     vram_used_mib: Optional[int] = None
     vram_total_mib: Optional[int] = None
     gpu_util_pct: Optional[float] = None
@@ -228,10 +207,10 @@ class InferenceTelemetry:
         return round(self.context_used / self.context_window * 100, 1)
 
 
-# ── Backend capabilities ────────────────────────────────────────────────────
+
 @dataclass
 class BackendCapabilities:
-    """What the active backend actually supports. Drives which controls render."""
+
     supports_temperature: bool = True
     supports_top_p: bool = True
     supports_top_k: bool = True
@@ -246,26 +225,26 @@ class BackendCapabilities:
     paid: bool = False
 
 
-# ── Settings ────────────────────────────────────────────────────────────────
+
 @dataclass
 class SettingValue:
     key: str
     label: str
     value: Any
-    kind: str = "text"             # text|number|slider|select|toggle
+    kind: str = "text"
     options: List[str] = field(default_factory=list)
     min: Optional[float] = None
     max: Optional[float] = None
     step: Optional[float] = None
-    group: str = "runtime"        # runtime|slimtoken|service
+    group: str = "runtime"
     supported: bool = True
-    disruptive: bool = False       # changing interrupts active work
+    disruptive: bool = False
     tooltip: str = ""
 
 
 @dataclass
 class SettingsState:
-    """activeSettings vs pendingSettings, kept separate."""
+
     active: Dict[str, Any] = field(default_factory=dict)
     pending: Dict[str, Any] = field(default_factory=dict)
     defaults: Dict[str, Any] = field(default_factory=dict)
@@ -284,14 +263,14 @@ class SettingsState:
         return self.has_pending
 
 
-# ── Scheduler ────────────────────────────────────────────────────────────────
+
 @dataclass
 class SchedulerTask:
     id: str
     name: str
     cron: str = ""
     humanized: str = ""
-    status: str = "active"        # active|paused|error
+    status: str = "active"
     next_run: str = ""
     task_type: str = ""
 
@@ -308,7 +287,7 @@ class SchedulerState:
     error: str = ""
 
 
-# ── Test run ────────────────────────────────────────────────────────────────
+
 @dataclass
 class TestRun:
     id: str
@@ -318,7 +297,7 @@ class TestRun:
     model: str = "unknown"
     route: str = "cortex-big"
     backend: str = "unknown"
-    settings_used: str = "active"     # active|pending
+    settings_used: str = "active"
     slimtoken_on: bool = True
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
@@ -328,13 +307,13 @@ class TestRun:
     stages: List[PipelineStage] = field(default_factory=list)
     output_preview: str = ""
     errors: List[str] = field(default_factory=list)
-    status: str = "running"           # running|complete|failed|cancelled
+    status: str = "running"
 
 
-# ── Runtime snapshot (top-level) ─────────────────────────────────────────────
+
 @dataclass
 class RuntimeSnapshot:
-    """The full live state the dashboard renders on one refresh tick."""
+
     connected: bool = True
     data_age_s: float = 0.0
     stale: bool = False

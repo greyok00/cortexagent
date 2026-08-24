@@ -1,43 +1,4 @@
-"""
-el-framework — Python/Tkinter bridge
-====================================
 
-Reads the CSS token files (`tokens.css` + `themes.css`) and converts them
-into tkinter-friendly configuration. Use as a theme source for any tkinter
-project — the same themes you see in the HTML demos work in desktop apps.
-
-Usage
------
-
-    from el_framework import ElTheme, apply_theme, ElWidget
-
-    # Option A: full theme object
-    theme = ElTheme("cockpit")
-    root.configure(bg=theme.bg)
-    btn = tk.Button(root, text="Run", **theme.btn_kwargs())
-    btn.pack()
-
-    # Option B: apply to entire root window
-    apply_theme(root, "cockpit")
-
-    # Option C: theme-aware widget helpers
-    pill = ElWidget(root, "pill", text="OK", variant="ok")
-    pill.pack()
-
-Requires
---------
-- tkinter (stdlib)
-- re (stdlib)
-
-No external deps. Drop into any Python project.
-
-Adding new themes
------------------
-Themes are read from `themes.css`. Add a new `[data-theme="<slug>"]` block
-and it will appear automatically.
-
-License: MIT
-"""
 
 from __future__ import annotations
 
@@ -47,18 +8,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 
-# ── Token parsing ───────────────────────────────────────────────────────
+
 
 _VAR_RE = re.compile(r"--([a-z0-9\-]+)\s*:\s*([^;]+?)\s*;")
 
 
 def _parse_vars(css_text: str) -> Dict[str, str]:
-    """Extract all `--name: value;` declarations from CSS text."""
+
     return {m.group(1): m.group(2).strip() for m in _VAR_RE.finditer(css_text)}
 
 
 def _resolve(value: str, all_vars: Dict[str, str]) -> str:
-    """Resolve `var(--foo)` references inside a token value."""
+
     seen = set()
 
     def sub(match: re.Match) -> str:
@@ -69,7 +30,7 @@ def _resolve(value: str, all_vars: Dict[str, str]) -> str:
         return all_vars.get(name, match.group(0))
 
     out = value
-    for _ in range(8):  # bounded — avoid infinite recursion
+    for _ in range(8):
         new = re.sub(r"var\(\s*--([a-z0-9\-]+)\s*(?:,[^)]*)?\)", sub, out)
         if new == out:
             break
@@ -78,7 +39,7 @@ def _resolve(value: str, all_vars: Dict[str, str]) -> str:
 
 
 def _hex_to_rgb(value: str) -> Optional[tuple]:
-    """Convert #rrggbb or #rgb to (r, g, b). Returns None if not a color."""
+
     m = re.match(r"#([0-9a-fA-F]{6})$", value)
     if m:
         h = m.group(1)
@@ -90,11 +51,11 @@ def _hex_to_rgb(value: str) -> Optional[tuple]:
     return None
 
 
-# ── Theme model ─────────────────────────────────────────────────────────
+
 
 @dataclass
 class ElTheme:
-    """Parsed CSS theme. All tokens resolved to concrete values."""
+
 
     slug: str
     tokens: Dict[str, str] = field(default_factory=dict)
@@ -163,10 +124,10 @@ class ElTheme:
     def font_mono(self) -> str:
         return self.tokens.get("font-mono", "TkFixedFont")
 
-    # ── tkinter-friendly kwargs ──
+
 
     def btn_kwargs(self, variant: str = "") -> Dict[str, Any]:
-        """Return kwargs for `tk.Button(**kwargs)`."""
+
         return {
             "bg": self.accent,
             "fg": self.on_accent,
@@ -210,13 +171,13 @@ class ElTheme:
         }
 
     def _first_font_family(self) -> str:
-        """Strip quoted font names; return the first usable family."""
+
         s = self.font_body
         m = re.match(r"'([^']+)'", s)
         return m.group(1) if m else "TkDefaultFont"
 
 
-# ── Loader ──────────────────────────────────────────────────────────────
+
 
 class ElThemeNotFound(KeyError):
     pass
@@ -229,7 +190,7 @@ def _load_themes(
     tokens_path: Optional[Union[str, Path]] = None,
     themes_path: Optional[Union[str, Path]] = None,
 ) -> Dict[str, ElTheme]:
-    """Parse tokens.css + themes.css and return a dict of slug → ElTheme."""
+
     global _THEMES_CACHE
     if _THEMES_CACHE is not None:
         return _THEMES_CACHE
@@ -239,13 +200,13 @@ def _load_themes(
     themes_path = Path(themes_path) if themes_path else here / "themes.css"
 
     base = _parse_vars(tokens_path.read_text()) if tokens_path.exists() else {}
-    # Strip the leading "el-" prefix from token names so properties look up cleanly
+
     base_norm = {k.removeprefix("el-"): v for k, v in base.items()}
     themes: Dict[str, ElTheme] = {"neutral": ElTheme("neutral", dict(base_norm))}
 
     if themes_path.exists():
         css = themes_path.read_text()
-        # Split by [data-theme="..."] blocks
+
         for m in re.finditer(
             r'\[data-theme="([^"]+)"\]\s*\{([^}]+)\}', css, re.DOTALL
         ):
@@ -262,12 +223,12 @@ def _load_themes(
 
 
 def available_themes() -> List[str]:
-    """List all theme slugs."""
+
     return list(_load_themes().keys())
 
 
 def get_theme(slug: str = "neutral") -> ElTheme:
-    """Return the named theme. Raises ElThemeNotFound if missing."""
+
     themes = _load_themes()
     if slug not in themes:
         raise ElThemeNotFound(
@@ -276,15 +237,11 @@ def get_theme(slug: str = "neutral") -> ElTheme:
     return themes[slug]
 
 
-# ── Application helpers ─────────────────────────────────────────────────
+
 
 
 def apply_theme(widget: Any, slug: str = "neutral") -> ElTheme:
-    """Apply a theme to a tk widget (typically `root`).
 
-    Sets background + foreground + fonts on the widget. For full theming
-    you'll want to pass `theme.btn_kwargs()` etc. into your widget constructors.
-    """
     theme = get_theme(slug)
     try:
         widget.configure(bg=theme.bg)
@@ -293,17 +250,11 @@ def apply_theme(widget: Any, slug: str = "neutral") -> ElTheme:
     return theme
 
 
-# ── Element widgets (Tkinter helpers) ───────────────────────────────────
+
 
 
 class ElWidget:
-    """Tkinter widget factory matching the HTML el-* primitives.
 
-    Usage:
-        ElWidget(parent, "btn", text="Run")
-        ElWidget(parent, "pill", text="OK", variant="ok")
-        ElWidget(parent, "gauge", text="auditd", variant="fail")
-    """
 
     def __init__(self, parent: Any, kind: str, theme: Optional[ElTheme] = None, **kwargs):
         import tkinter as tk
@@ -334,7 +285,7 @@ class ElWidget:
             tk.Label(inner, text=kwargs.get("val", ""), bg=self.theme.panel_2, fg=fg, font=(self.theme._first_font_family(), 14, "bold")).pack(pady=(4, 8))
             self._w = inner
         else:
-            # Fallback to a plain label
+
             self._w = tk.Label(parent, text=kwargs.get("text", kind),
                                **self.theme.label_kwargs())
 
@@ -355,11 +306,11 @@ class ElWidget:
         return self._w
 
 
-# ── Self-test ───────────────────────────────────────────────────────────
+
 
 
 if __name__ == "__main__":
-    # Print all available themes + their key tokens
+
     print(f"Found {len(available_themes())} themes:\n")
     for slug in available_themes():
         t = get_theme(slug)

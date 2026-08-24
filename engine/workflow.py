@@ -1,17 +1,4 @@
-"""CortexAgent Workflow Engine — 5-Stage Pipeline with Real Execution
 
-Every task follows this lifecycle:
-1. Strategy & Focus — expands vague prompts into concrete goals
-2. Graph Decomposition — breaks goal into dependent micro-tasks with engine types
-3. Model Batching — reorders execution to minimize VRAM & context switching
-4. Execution & Watch — runs tasks with self-correction, emits progress events
-5. Assembly & Delivery — final validation and presentation
-
-CLI:
-  python3 -m engine.workflow run "build a website"
-  python3 -m engine.workflow status
-  python3 -m engine.workflow list
-"""
 import json, os, subprocess, sys, time
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +6,7 @@ from typing import Optional, Callable
 from .types import Task, TaskStatus, EngineType, WorkflowPlan, BatchGroup, ProgressEvent
 from .dag import DAGScheduler
 
-# ── Persistence ──────────────────────────────────────────────────────────────
+
 STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR", str(Path.home() / ".cortexagent")))
 WORKFLOW_FILE = STATE_DIR / "workflow_state.json"
 
@@ -62,10 +49,10 @@ def _load_workflow() -> Optional[WorkflowPlan]:
         return None
 
 
-# ── Engine ───────────────────────────────────────────────────────────────────
+
 
 class WorkflowEngine:
-    """Orchestrates the 5-stage workflow pipeline with real execution."""
+
 
     def __init__(self):
         self.scheduler = DAGScheduler()
@@ -73,10 +60,10 @@ class WorkflowEngine:
         self.progress_events: list[ProgressEvent] = []
         self.completed_tasks: set[str] = set()
 
-    # ── Stage 1: Strategy & Focus ──────────────────────────────────────────
+
 
     def expand_goal(self, raw_prompt: str) -> str:
-        """Expand vague prompt into concrete specification."""
+
         expansions = {
             "website": "Build a complete website with frontend, backend, and deployment configuration",
             "api": "Design and implement a RESTful API with authentication, documentation, and tests",
@@ -92,10 +79,10 @@ class WorkflowEngine:
                 return expansion
         return raw_prompt
 
-    # ── Stage 2: Graph Decomposition ──────────────────────────────────────
+
 
     def decompose(self, goal: str) -> list[Task]:
-        """Break goal into dependent micro-tasks."""
+
         g = goal.lower()
         if "website" in g or "web" in g:
             return self._deploy_website_tasks(goal)
@@ -187,18 +174,18 @@ class WorkflowEngine:
             Task("G-03", "Verification", EngineType.SYSTEM_EXEC, "Verify implementation works correctly", depends_on=["G-02"], priority=3),
         ]
 
-    # ── Stage 3: Model Batching ──────────────────────────────────────────
+
 
     def batch_schedule(self, tasks: list[Task]) -> list[BatchGroup]:
-        """Reorder tasks by engine type to minimize context switching."""
+
         for task in tasks:
             self.scheduler.add_task(task)
         return self.scheduler.optimize_schedule()
 
-    # ── Stage 4: Real Execution ────────────────────────────────────────────
+
 
     def _run_shell_command(self, command: str, timeout: int = 300) -> str:
-        """Execute a shell command and return output."""
+
         try:
             result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)
             output = result.stdout[:2000]
@@ -211,14 +198,14 @@ class WorkflowEngine:
             return f"ERROR: {e}"
 
     def execute_task(self, task: Task) -> str:
-        """Execute a single task based on its engine type. Returns result text."""
+
         if task.engine == EngineType.SYSTEM_EXEC:
             return self._run_shell_command(task.prompt)
         elif task.engine == EngineType.WEB_RESEARCH:
-            # Web research: use curl or return prompt for manual execution
+
             return f"Research task: {task.prompt}"
         elif task.engine == EngineType.LLM_REASONING or task.engine == EngineType.LLM_CODE:
-            # LLM tasks: return the prompt for the main model to handle
+
             return f"LLM task: {task.prompt}"
         elif task.engine == EngineType.IMAGE_GEN:
             return f"Image generation: {task.prompt}"
@@ -229,7 +216,7 @@ class WorkflowEngine:
         return f"Unknown engine: {task.engine}"
 
     def execute_batch(self, batch: BatchGroup, on_progress: Callable) -> None:
-        """Execute a batch of tasks for the same engine type."""
+
         for task in batch.tasks:
             task.status = TaskStatus.RUNNING
             on_progress(ProgressEvent("execution", task.id, TaskStatus.RUNNING,
@@ -247,10 +234,10 @@ class WorkflowEngine:
                 on_progress(ProgressEvent("execution", task.id, TaskStatus.FAILED,
                                           f"Failed: {task.name}: {e}", 0.0))
 
-    # ── Stage 5: Assembly ────────────────────────────────────────────────
+
 
     def assemble(self, plan: WorkflowPlan) -> dict:
-        """Assemble final results from all completed tasks."""
+
         results = {}
         for task in plan.tasks:
             if task.status == TaskStatus.COMPLETED:
@@ -264,10 +251,10 @@ class WorkflowEngine:
             "results": results,
         }
 
-    # ── Full Pipeline ─────────────────────────────────────────────────────
+
 
     def run(self, prompt: str, on_progress: Optional[Callable] = None) -> dict:
-        """Run the full 5-stage workflow pipeline."""
+
         if on_progress is None:
             on_progress = lambda e: self.progress_events.append(e)
 
@@ -291,7 +278,7 @@ class WorkflowEngine:
                                       f"Batch {i+1}/{len(batches)}: {batch.engine.name} ({len(batch.tasks)} tasks)",
                                       0.3 + (i / len(batches)) * 0.5))
             self.execute_batch(batch, on_progress)
-            _save_workflow(plan)  # save after each batch
+            _save_workflow(plan)
 
         on_progress(ProgressEvent("assembly", None, TaskStatus.RUNNING, "Assembling results...", 0.9))
         result = self.assemble(plan)
@@ -301,7 +288,7 @@ class WorkflowEngine:
         return result
 
     def get_status(self) -> dict:
-        """Get current workflow status."""
+
         plan = _load_workflow()
         if not plan:
             return {"status": "no_workflow", "message": "No workflow has been run yet"}
@@ -318,7 +305,7 @@ class WorkflowEngine:
         }
 
 
-# ── CLI ──────────────────────────────────────────────────────────────────────
+
 
 def main():
     if len(sys.argv) < 2:

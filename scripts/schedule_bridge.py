@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/schedule_bridge.py — the task-strip data the cortex CLI (Pi fork) reads.
 
-The cortex CLI's task-strip widget (above the chat) calls this script to show
-scheduled tasks, the queue, and the active plan. Same contract as
-tool_bridge.py: one JSON document on stdout, exit 0 on success.
-
-  python3 scripts/schedule_bridge.py list          # scheduled tasks
-  python3 scripts/schedule_bridge.py queue         # task queue
-  python3 scripts/schedule_bridge.py plan          # active plan
-  python3 scripts/schedule_bridge.py --smoke
-
-All reads are side-effect-free — the overseer owns the state files; this
-script only reads them through lib.overseer's accessors.
-"""
 from __future__ import annotations
 
 import json

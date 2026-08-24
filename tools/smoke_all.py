@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""smoke_all.py — end-to-end smoke harness for ~/cortexagent.
 
-Runs every layer that can be tested:
-  L1 compile      — py_compile every in-scope .py
-  L2 import       — import every module in lib/
-  L3 module smoke — every def _smoke() and --smoke CLI block
-  L4 cli          — every public CLI subcommand
-  L5 live         — local HTTP endpoints (8080/8081/8082) + overseer status
-  L6 hot paths    — observability, token tracker, memory thin, converted tools
-  L7 sockets      — cortexllm memory.sock round-trip
-
-Idempotent. Writes nothing to the live state dir except a results file.
-
-Run:
-  python3 tools/smoke_all.py [--layer N] [--json] [--no-live]
-
-Exit codes:
-  0  all green
-  1  one or more layers failed
-  2  catastrophic (could not even run a layer)
-"""
 import argparse
 import json
 import os
@@ -35,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-# ── Result type ──────────────────────────────────────────────────────────────
+
 class R:
     def __init__(self, name: str, passed: bool, detail: str = "",
                  errors: Optional[List[str]] = None):
@@ -50,7 +30,7 @@ class R:
                 "detail": self.detail, "errors": self.errors}
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+
 def _sys_run(args: List[str], timeout: int = 60, cwd: Optional[Path] = None,
              env: Optional[Dict] = None) -> Tuple[int, str, str]:
     try:
@@ -75,7 +55,7 @@ def _http_get(url: str, timeout: float = 1.5) -> Tuple[int, str, str]:
         return 0, "", str(e)
 
 
-# ── Layer 1: py_compile every in-scope .py ───────────────────────────────────
+
 def layer_compile(scope: List[Path]) -> R:
     name = "L1.compile"
     errors: List[str] = []
@@ -95,7 +75,7 @@ def layer_compile(scope: List[Path]) -> R:
     return R(name, True, f"{n} files compiled")
 
 
-# ── Layer 2: import every module in lib/ ─────────────────────────────────────
+
 def layer_import() -> R:
     name = "L2.import"
     errors: List[str] = []
@@ -115,14 +95,14 @@ def layer_import() -> R:
     return R(name, True, f"{n} modules imported")
 
 
-# ── Layer 3: run every module _smoke() + --smoke CLI ─────────────────────────
+
 def layer_module_smoke() -> R:
     name = "L3.module-smoke"
     errors: List[str] = []
     n_ok = 0
     n_skip = 0
     lib_dir = REPO_ROOT / "lib"
-    # Find every module with _smoke() or __main__ --smoke
+
     for path in sorted(lib_dir.glob("*.py")):
         if path.name.startswith("_") or path.name in ("__init__.py",):
             continue
@@ -133,19 +113,19 @@ def layer_module_smoke() -> R:
         if not (has_smoke_fn or has_main_smoke):
             n_skip += 1
             continue
-        # Try invoking via subprocess (--smoke) or import+call
+
         if has_main_smoke:
-            # Some modules load HF models on first run (image_adapter, diffusion
-            # backends) — give those 120s instead of 30s.
+
+
             is_heavy = any(s in path.name for s in
                            ("diffusion_backend",
                             "diffusers", "img2img"))
-            # image_adapter loads Moondream 2 (~7.5GB on GPU, falls back to
-            # CPU under VRAM pressure when the big model is resident, plus
-            # downloads weights on first run). Under bin/verify the transformer
-            # JIT warmup + HF cache hydration can add ~3-4 min on top of load,
-            # so 600s gives safe headroom; standalone --no-live runs complete
-            # in ~60s because torch is already warm.
+
+
+
+
+
+
             timeout = 600 if "image_adapter" in path.name else (180 if is_heavy else 30)
             rc, out, err = _sys_run(
                 ["python3", str(path), "--smoke"], timeout=timeout)
@@ -170,7 +150,7 @@ def layer_module_smoke() -> R:
             except SystemExit:
                 n_ok += 1
             except Exception as e:
-                # Don't fail category-wide for one busted module
+
                 errors.append(f"{path.name}: {type(e).__name__}: {str(e)[:200]}")
     if errors:
         return R(name, False, f"{n_ok} ok, {len(errors)} failed; "
@@ -178,11 +158,11 @@ def layer_module_smoke() -> R:
     return R(name, True, f"{n_ok} ok, {n_skip} skipped")
 
 
-# ── Layer 4: every public CLI subcommand ─────────────────────────────────────
+
 def layer_cli() -> R:
     name = "L4.cli"
     errors: List[str] = []
-    # These were audited in the prior sweep; verify each help/status works.
+
     cmds = [
         (["python3", "lib/overseer.py", "status"], "overseer status"),
         (["python3", "lib/daemon.py", "status"], "daemon status"),
@@ -204,7 +184,7 @@ def layer_cli() -> R:
     return R(name, True, f"{len(cmds)} cmds ok")
 
 
-# ── Layer 5: live endpoints (best-effort, no-fail-if-down) ───────────────────
+
 def layer_live() -> R:
     name = "L5.live"
     errors: List[str] = []
@@ -220,18 +200,18 @@ def layer_live() -> R:
             notes.append(f"{label}: {code}")
         else:
             errors.append(f"{label} ({url}): {err[:120]}")
-    # ok if at least one is up; report the rest
+
     if not notes:
         return R(name, False, "all endpoints down", errors)
     return R(name, True, f"up: {', '.join(notes)}; "
                          f"down: {len(errors)}", errors)
 
 
-# ── Layer 6: hot-path assertions (the "spans: []" family) ───────────────────
+
 def layer_hot_paths() -> R:
     name = "L6.hot-paths"
     errors: List[str] = []
-    # 6.1 Observability — spans must actually attach to a trace on disk
+
     try:
         from lib.observability import Trace, Span, save_trace, evaluate_trace
         nid = f"smoke-{int(time.time())}"
@@ -241,7 +221,7 @@ def layer_hot_paths() -> R:
             s.set_metric("tokens_in", 50)
             s.set_metric("tokens_out", 100)
         save_trace(trace)
-        # Read back
+
         path = Path.home() / ".cortexagent" / "observability" / "traces.ndjson"
         lines = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
         mine = [t for t in lines if t["trace_id"] == nid]
@@ -255,7 +235,7 @@ def layer_hot_paths() -> R:
     except Exception as e:
         errors.append(f"observability: {type(e).__name__}: {e}")
 
-    # 6.2 Token tracker — tiny + proxy reconcile under one schema
+
     try:
         from lib.token_tracker import merge_stats, get_status
         s = merge_stats()
@@ -270,7 +250,7 @@ def layer_hot_paths() -> R:
     except Exception as e:
         errors.append(f"token_tracker: {type(e).__name__}: {e}")
 
-    # 6.3 converted_mcp_tools — every advertised tool is reachable + returns
+
     try:
         from lib.converted_mcp_tools import CONVERTED_TOOLS, TOOL_MAP
         adv = [t["function"]["name"] for t in CONVERTED_TOOLS]
@@ -278,7 +258,7 @@ def layer_hot_paths() -> R:
         if missing:
             errors.append(f"converted_mcp_tools: advertised but not reachable: "
                           f"{missing}")
-        # Run a few representative tools that don't need config
+
         for name, args in [
             ("memory_search", {"query": "smoke", "limit": 1}),
             ("memory_search_semantic", {"query": "smoke", "limit": 1}),
@@ -296,15 +276,15 @@ def layer_hot_paths() -> R:
                 if not isinstance(result, dict):
                     errors.append(f"{name}: returned {type(result).__name__}")
                 elif "error" in result and "not configured" not in result["error"]:
-                    # Errors that are "not configured" are EXPECTED.
-                    # Other errors are problems.
+
+
                     pass
             except Exception as e:
                 errors.append(f"{name}: {type(e).__name__}: {e}")
     except Exception as e:
         errors.append(f"converted_mcp_tools: {type(e).__name__}: {e}")
 
-    # 6.4 memory_thin — round-trip append→read (retry once for socket buffering)
+
     try:
         from lib.memory_thin import append, read_last, search, write_cold, read_cold
         mark = f"smoke-{int(time.time())}-{int(time.time()*1000) % 100000}"
@@ -314,7 +294,7 @@ def layer_hot_paths() -> R:
                 append(mark, role="user")
             except SystemExit:
                 pass
-            time.sleep(0.3)  # let the daemon flush
+            time.sleep(0.3)
             s = search(mark, limit=5)
             if s:
                 ok = True
@@ -329,7 +309,7 @@ def layer_hot_paths() -> R:
     except Exception as e:
         errors.append(f"memory_thin: {type(e).__name__}: {e}")
 
-    # 6.5 tool_registry — listed tools match CONVERTED_TOOLS coverage
+
     try:
         import sys
         for mod_path in ["lib.tool_registry", "tool_registry"]:
@@ -347,7 +327,7 @@ def layer_hot_paths() -> R:
     return R(name, True, "all hot paths green")
 
 
-# ── Layer 7: cortexllm memory socket round-trip ──────────────────────────────
+
 def layer_socket() -> R:
     name = "L7.socket"
     sock = Path.home() / ".cortexllm" / "memory.sock"
@@ -370,14 +350,14 @@ def layer_socket() -> R:
         return R(name, False, f"socket error: {e}")
 
 
-# ── Layer 8: configuration drift (the run_smoke.py:1900 bug class) ───────────
+
 def layer_config() -> R:
     name = "L8.config"
     errors: List[str] = []
     try:
         from lib.config import CFG
-        # Known-intentional defaults; flag undocumented drift
-        # CFG.stt_device defaulted to "cuda" but run_smoke.py tests for "auto"
+
+
         stt_device = getattr(CFG, "stt_device", None)
         stt_model = getattr(CFG, "stt_model", None)
         if stt_device is None:
@@ -391,7 +371,7 @@ def layer_config() -> R:
     return R(name, True, f"stt_device={stt_device}, stt_model={stt_model}")
 
 
-# ── Driver ───────────────────────────────────────────────────────────────────
+
 def run_all(layers: List[str], no_live: bool) -> Dict[str, Any]:
     scope = [REPO_ROOT / "lib", REPO_ROOT / "cortex", REPO_ROOT / "cortexllm",
              REPO_ROOT / "tests"]

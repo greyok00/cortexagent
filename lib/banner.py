@@ -1,23 +1,5 @@
 #!/usr/bin/env python3
-"""cortexagent banner — branded startup banner + in-place boot animation.
 
-Replaces the suppressed Claude Code welcome chrome (`IS_DEMO=1` in
-``bin/cortexagent``) with a CortexAgent banner. Uses ANSI cursor control so
-the boot animation overwrites itself in place — NO ``clear`` / ``\\033[2J``
-(that strobes/flickers). Cursor is sent home with ``\\033[H`` between frames
-and hidden during the animation (``\\033[?25l`` → ``\\033[?25h``); every line
-ends with ``\\033[K`` (clear-to-EOL) so a shorter frame never leaves the
-previous frame's trailing characters visible.
-
-Non-interactive / piped runs (no TTY, or ``CORTEXAGENT_BOOT_ANIM=0``) get the
-static banner — one compact block, no cursor codes — so smoke tests and logs
-stay clean.
-
-Usage:
-  python3 lib/banner.py --model <name>            # TTY → animate, else static
-  python3 lib/banner.py --model <name> --no-anim  # force static
-  python3 lib/banner.py smoke                      # self-test
-"""
 from __future__ import annotations
 
 import os
@@ -28,26 +10,26 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-from lib.config import CFG  # author tag is configurable (CORTEXAGENT_AUTHOR)
+from lib.config import CFG
 
-# ── ANSI ────────────────────────────────────────────────────────────────────
-ICE = "\033[38;2;150;220;255m"   # truecolor ice-blue (logo wordmark only)
-RED = "\033[38;2;224;88;74m"     # truecolor brand red — the only accent color
+
+ICE = "\033[38;2;150;220;255m"
+RED = "\033[38;2;224;88;74m"
 DIM = "\033[2m"
 RST = "\033[0m"
-HOME = "\033[H"                   # cursor → top-left (replaces `clear`)
-CLEAR_EOL = "\033[K"              # clear from cursor to end-of-line
+HOME = "\033[H"
+CLEAR_EOL = "\033[K"
 HIDE_CURSOR = "\033[?25l"
 SHOW_CURSOR = "\033[?25h"
 
-# ── Logo ────────────────────────────────────────────────────────────────────
-# Frame-uniform: every frame has the same line count (LOGO + 2 tagline rows),
-# so \033[H overwrites cleanly. Each rendered line is padded to LOGO_W and gets
-# a trailing \033[K so a shorter glyph never leaks the prior frame's tail.
-#
-# The devil-mask glyph (8 rows) is the brand mascot. Restored 2026-08-16 after
-# being replaced by a placeholder wordmark. Originals survived in commit
-# 5c20b87 (v0.3.2 release).
+
+
+
+
+
+
+
+
 LOGO = [
     "█▄        ▄█",
     "███▄▄▄▄▄▄███",
@@ -60,28 +42,21 @@ LOGO = [
 ]
 LOGO_H = len(LOGO)
 LOGO_W = max(len(ln) for ln in LOGO)
-TAG_H = 2  # "CortexAgent by <author>" + "Model: <name>"
+TAG_H = 2
 
 
 def _pad(ln: str) -> str:
-    """Pad a logo line to LOGO_W with spaces (uniform frame width)."""
+
     return ln.ljust(LOGO_W)
 
 
 def _color_for(line_idx: int) -> str:
-    """Pick an ANSI color for a devil-glyph row. Red-only brand — every
-    row uses the same brand red."""
+
     return RED
 
 
 def _frames() -> list[str]:
-    """Progressive-reveal boot frames (top-down), each a full-height block.
 
-    Frame i lights the first i logo rows; the rest are blank. The two
-    tagline rows appear only on the final frame (blank before). Every line
-    carries \\033[K so overwrite leaves no residue. Returns N+1 frames
-    (N = LOGO_H), each prefixed with \\033[H.
-    """
     frames: list[str] = []
     for i in range(LOGO_H + 1):
         rows: list[str] = []
@@ -101,8 +76,8 @@ def _frames() -> list[str]:
     return frames
 
 
-# _model_placeholder is swapped per-run in boot()/print_banner(); the static
-# frame list above is rebuilt with the real model so the width is stable.
+
+
 _model_placeholder = ""
 
 
@@ -113,11 +88,7 @@ def _frames_for(model: str) -> list[str]:
 
 
 def print_banner(model: str = "", stream=None) -> None:
-    """Emit the static banner once (no cursor codes). For non-TTY / logs.
 
-    Clean layout — wolf art on its own block, brand + model on separate lines
-    below. No redundant "Model:" prefix on the wolf art itself.
-    """
     stream = stream or sys.stdout
     stream.write("\n")
     for idx, ln in enumerate(LOGO):
@@ -128,18 +99,18 @@ def print_banner(model: str = "", stream=None) -> None:
     stream.flush()
 
 
-# Plain (no-ANSI) variant — for embedding inside a Tk widget label
-# where we don't want raw escape sequences. Used by widgets.py.
+
+
 DEVIL_LINES = LOGO
 
 
 def render_devil_plain() -> str:
-    """Return the devil glyph as plain multi-line text (no ANSI codes)."""
+
     return "\n".join(LOGO)
 
 
 def boot(model: str = "", stream=None, delay: float = 0.06) -> None:
-    """In-place animated reveal. TTY-only. No ``clear`` — uses \\033[H."""
+
     stream = stream or sys.stdout
     frames = _frames_for(model)
     stream.write(HIDE_CURSOR)
@@ -149,7 +120,7 @@ def boot(model: str = "", stream=None, delay: float = 0.06) -> None:
             stream.write(f)
             stream.flush()
             time.sleep(delay)
-        # Hold the finished banner briefly before the agent takes over.
+
         time.sleep(0.15)
     finally:
         stream.write(SHOW_CURSOR)
@@ -182,7 +153,7 @@ def main() -> int:
 
 
 def _smoke() -> int:
-    # Static banner has the brand + model line.
+
     import io
     buf = io.StringIO()
     print_banner("Qwen-test", stream=buf)
@@ -195,7 +166,7 @@ def _smoke() -> int:
     print(f"  static: brand+model present, devil glyph + red "
           f"({len(out.splitlines())} lines)")
 
-    # Frames: uniform line count, no clear-screen, EOL clear on every line.
+
     frames = _frames_for("Qwen-test")
     assert len(frames) == LOGO_H + 1, f"frame count {len(frames)} != {LOGO_H + 1}"
     h = [len(f.split("\n")) for f in frames]
@@ -204,14 +175,14 @@ def _smoke() -> int:
         assert "\033[2J" not in f, "frame uses clear-screen (forbidden)"
         assert "\033[H" in f, "frame missing cursor-home"
         assert CLEAR_EOL in f, "frame missing EOL clear (residue risk)"
-    # Final frame lights every logo row + tagline.
+
     final = frames[-1]
     assert RED in final and ICE in final, "final frame missing lit glyph/brand"
     assert "CORTEXAGENT" in final, "brand wordmark missing"
-    # First frame is all blank rows (nothing lit yet).
+
     assert RED not in frames[0], "first frame should light nothing"
     print(f"  frames: {len(frames)} uniform ({h[0]} lines each), no clear, EOL-cleared, lit-final")
-    # Plain-text helper
+
     plain = render_devil_plain()
     assert plain.count("\n") == LOGO_H - 1, "plain devil lines count mismatch"
     assert "▀██▀" in plain, "devil eyes missing from plain"

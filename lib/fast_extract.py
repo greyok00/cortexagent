@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
-"""fast_extract.py — Extract practices from structured text without LLM.
 
-Parses markdown cheatsheets, HTML tables, and PDF text dumps directly
-into the Coding_Practices DB. No LLM needed — uses pattern matching.
-
-Usage:
-  python3 fast_extract.py --md /tmp/cheatsheet.md --source "Name"
-  python3 fast_extract.py --html /tmp/page.html --source "Name"
-  python3 fast_extract.py --pdftext /tmp/extracted.txt --source "Name"
-  python3 fast_extract.py --list
-"""
 import json, re, sqlite3, sys
 from pathlib import Path
 
 DB = Path.home() / ".config/cortexllm" / "cortexllm.db"
 
-# ── Category mapping ─────────────────────────────────────────────────────────
+
 CATEGORY_KEYWORDS = {
     "Network Security": ["nmap", "port scan", "network", "firewall", "dns", "subdomain",
                          "sniff", "packet", "cidr", "asn", "tcp", "udp"],
@@ -56,7 +46,7 @@ CATEGORY_KEYWORDS = {
 }
 
 def guess_category(text: str) -> str:
-    """Guess the best category based on keyword matches."""
+
     text_lower = text.lower()
     scores = {}
     for cat, keywords in CATEGORY_KEYWORDS.items():
@@ -75,15 +65,15 @@ def insert_practice(category, practice, description, source, priority="medium", 
         (category, practice)
     ).fetchone()
     if row:
-        # Update existing with more detail if new description is longer
+
         existing = conn.execute("SELECT description FROM Coding_Practices WHERE id=?", (row[0],)).fetchone()
         if existing and len(description) > len(existing[0]):
             conn.execute("UPDATE Coding_Practices SET description=?, last_updated=datetime('now') WHERE id=?", (description[:5000], row[0]))
             conn.commit()
             conn.close()
-            return True  # updated
+            return True
         conn.close()
-        return False  # duplicate
+        return False
     conn.execute(
         "INSERT INTO Coding_Practices (category, practice, description, source, priority, tags) "
         "VALUES (?, ?, ?, ?, ?, ?)",
@@ -94,15 +84,15 @@ def insert_practice(category, practice, description, source, priority="medium", 
     return True
 
 
-# ── Markdown Parser ─────────────────────────────────────────────────────────
+
 
 def parse_markdown(text: str, source: str) -> int:
-    """Parse markdown cheatsheet. Extracts full sections with context."""
+
     total = 0
     current_category = "Penetration Testing"
     lines = text.split("\n")
 
-    # Category mapping for headings
+
     CAT_HEADING_MAP = {
         "reconnaissance": "OSINT", "osint": "OSINT",
         "scanning": "Vulnerability Assessment", "enumeration": "Vulnerability Assessment",
@@ -115,7 +105,7 @@ def parse_markdown(text: str, source: str) -> int:
         "cryptography": "Cryptography", "authentication": "Authentication",
     }
 
-    # Collect sections: each section is (heading, [lines])
+
     sections = []
     current_heading = "General"
     current_lines = []
@@ -132,25 +122,25 @@ def parse_markdown(text: str, source: str) -> int:
 
     for heading, section_lines in sections:
         heading_lower = heading.lower()
-        # Map heading to category
+
         for key, cat in CAT_HEADING_MAP.items():
             if key in heading_lower:
                 current_category = cat
                 break
 
-        # Extract techniques from this section
+
         section_text = "\n".join(section_lines)
 
-        # Find tool introductions (### Tool Name or **toolname**)
-        # Pattern 1: ### Tool Name followed by code block
+
+
         for j, line in enumerate(section_lines):
             s = line.strip()
-            # ### heading = tool name
+
             if s.startswith("### "):
                 tool_name = s[4:].strip()
                 if not tool_name or len(tool_name) < 2:
                     continue
-                # Collect code block after heading
+
                 code_lines = []
                 bullet_lines = []
                 for k in range(j + 1, min(j + 20, len(section_lines))):
@@ -167,7 +157,7 @@ def parse_markdown(text: str, source: str) -> int:
                         break
                     if next_line.startswith("- ") or next_line.startswith("* "):
                         bullet_lines.append(next_line[2:].strip())
-                # Build description
+
                 desc_parts = []
                 if code_lines:
                     desc_parts.append("Command:\n" + "\n".join(code_lines[:5]))
@@ -180,7 +170,7 @@ def parse_markdown(text: str, source: str) -> int:
                     total += 1
                     print(f"  ✅ [{cat}] {tool_name[:50]}")
 
-        # Pattern 2: **toolname** — description
+
         tools = re.findall(r'\*\*([^*]+)\*\*\s*[—–:-]?\s*([^\n]*)', section_text)
         for tool_name, tool_desc in tools:
             tool_name = tool_name.strip()
@@ -196,7 +186,7 @@ def parse_markdown(text: str, source: str) -> int:
                 total += 1
                 print(f"  ✅ [{cat}] {tool_name[:50]}")
 
-        # Pattern 3: Bullet point techniques
+
         for line in section_lines:
             s = line.strip()
             if s.startswith("- ") or s.startswith("* "):
@@ -220,13 +210,13 @@ def parse_markdown(text: str, source: str) -> int:
     return total
 
 
-# ── HTML Parser ────────────────────────────────────────────────────────────
+
 
 def parse_html(text: str, source: str) -> int:
-    """Parse HTML content. Extracts from tables and structured lists."""
+
     total = 0
 
-    # Extract table rows: look for | ... | patterns
+
     table_rows = re.findall(r'\|([^|]+)\|([^|]+)\|([^|]+)\|', text)
     for row in table_rows:
         cells = [c.strip() for c in row]
@@ -241,7 +231,7 @@ def parse_html(text: str, source: str) -> int:
                 total += 1
                 print(f"  ✅ [{cat}] {name[:50]}")
 
-    # Extract from definition lists (<strong> or **text:** patterns)
+
     defs = re.findall(r'\*\*([^*]+)\*\*:\s*([^*]+)', text)
     for name, desc in defs:
         name = name.strip()[:60]
@@ -256,11 +246,10 @@ def parse_html(text: str, source: str) -> int:
     return total
 
 
-# ── PDF Text Parser ────────────────────────────────────────────────────────
+
 
 def parse_pdf_text(text: str, source: str) -> int:
-    """Parse extracted PDF text. Looks for section headings, bullet points,
-    and practical techniques."""
+
     total = 0
     lines = text.split("\n")
     current_category = "Penetration Testing"
@@ -270,13 +259,13 @@ def parse_pdf_text(text: str, source: str) -> int:
         if not s or len(s) < 15:
             continue
 
-        # Skip headers/footers/copyright
+
         if any(w in s.lower() for w in ["copyright", "all rights reserved", "ebscohost",
                                           "packt publishing", "www.", "http://", "https://",
                                           "printed on", "terms-of-use"]):
             continue
 
-        # Detect section headings (short, capitalized lines)
+
         if len(s) < 60 and s.isupper() and not s.startswith(" "):
             heading = s.lower()
             for key, cat in [("chapter", "Penetration Testing"), ("introduction", "Penetration Testing"),
@@ -293,7 +282,7 @@ def parse_pdf_text(text: str, source: str) -> int:
                     break
             continue
 
-        # Extract numbered techniques (e.g., "1. Do X")
+
         if re.match(r'^\d+[.)]\s', s):
             name = re.sub(r'^\d+[.)]\s+', '', s)[:60]
             desc = s[:150]
@@ -304,7 +293,7 @@ def parse_pdf_text(text: str, source: str) -> int:
                 total += 1
                 print(f"  ✅ [{cat}] {name[:50]}")
 
-        # Extract bullet points
+
         if s.startswith("•") or s.startswith("-") or s.startswith("*"):
             content = s[1:].strip()
             if len(content) < 15:
@@ -319,7 +308,7 @@ def parse_pdf_text(text: str, source: str) -> int:
     return total
 
 
-# ── CLI ────────────────────────────────────────────────────────────────────
+
 
 def list_sources():
     conn = sqlite3.connect(str(DB))

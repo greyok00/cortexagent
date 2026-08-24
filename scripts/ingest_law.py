@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/ingest_law.py — ingest law source files into the law domain DB."""
+
 from __future__ import annotations
 
 import sys

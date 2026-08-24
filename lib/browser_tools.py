@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""lib/browser_tools.py — Playwright/Brave browser tools for the harness.
 
-Registers the 9 ``brave_*`` tools directly in the tool registry by wrapping
-``lib/browser_control`` functions — no MCP server process, no round-trip.
-Same schemas as ``playwright_brave_mcp.py``'s TOOLS so the two surfaces stay
-in sync. Drives Brave via CDP on :9222 (see lib/browser_control.py).
-
-Usage:
-  python3 lib/browser_tools.py smoke          # self-test (CDP optional)
-"""
 from __future__ import annotations
 
 import json
@@ -37,16 +28,16 @@ def _schema(description: str, properties: Dict[str, Any],
         "type": "object", "properties": properties, "required": required}}
 
 
-# 2026-08-21 user feedback: "the model keeps passing tab=16 and other
-# ints — they're inventions. Make it string-only." Accepting integer
-# made the model think index-style addressing was OK; resolve_tab()
-# will fall back to tabs[0] on miss which is silently wrong. The
-# correct way to address a tab is by URL prefix or CDP target id —
-# both strings.
+
+
+
+
+
+
 _TAB = {"type": ["string", "null"],
         "description": "Target tab: URL prefix, CDP target id, or omit for the first tab."}
 
-# Same schemas as playwright_brave_mcp.py TOOLS (kept in sync).
+
 _TOOL_DEFS = [
     ("brave_status", "Check Brave CDP reachability and count open tabs.",
      {}, []),
@@ -86,7 +77,7 @@ _TOOL_DEFS = [
 ]
 
 
-def _handle_status() -> Dict[str, Any]:
+def _handle_status(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         tabs = list_tabs()
         return {"ok": True, "output": f"Brave reachable on {CDP_URL} — {len(tabs)} tab(s).", "error": ""}
@@ -94,7 +85,7 @@ def _handle_status() -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": f"Brave not reachable on {CDP_URL}: {e}"}
 
 
-def _handle_tabs() -> Dict[str, Any]:
+def _handle_tabs(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         tabs = list_tabs()
         lines = [f"[{t['index']}] {t['title']} — {t['url']}" for t in tabs]
@@ -180,7 +171,7 @@ def _handle_health(args: Dict[str, Any]) -> Dict[str, Any]:
         h = health()
         if not h.get("cdp_reachable"):
             return {"ok": False, "output": "", "error": h.get("cdp_error", "CDP unreachable")}
-        # Format as a compact, scannable multiline string.
+
         lines = [
             f"CDP: {h.get('browser', '?')}",
             f"  reachable: yes   uptime: {h.get('uptime_sec', 0):.1f}s",
@@ -208,17 +199,17 @@ _HANDLERS = {
 
 
 def register_browser_tools() -> int:
-    """Register the 9 brave_* tools in the tool registry. Idempotent."""
+
     from lib.tool_registry import TOOLS
     count = 0
     for name, desc, props, required in _TOOL_DEFS:
         if name in TOOLS:
             continue
-        # Wrap the handler so the registry's `handler(**args)` call resolves
-        # to a single `args` positional — our handlers expect `args: dict`,
-        # not `**kwargs`. Without this wrap, a tool call like
-        # brave_snapshot(tab=16) blows up with
-        # `_handle_snapshot() got an unexpected keyword argument 'tab'`.
+
+
+
+
+
         def _make_wrapped(name=name):
             def _wrapped(**kwargs):
                 return _HANDLERS[name](kwargs)

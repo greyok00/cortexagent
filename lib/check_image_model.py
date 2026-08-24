@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""lib/check_image_model.py — Guard against image requests on a non-multimodal model.
 
-Call this BEFORE sending any image to the model. It checks whether the current
-model can actually see images. If it can't, it exits non-zero with a clear
-message: do NOT send the image (it would 400 and crash) — ask the user instead.
-
-Usage:
-    python3 lib/check_image_model.py
-    # exit 0  -> model is multimodal, safe to send the image
-    # exit 1  -> model is NOT multimodal; do not send; ask the user
-
-The model name is read from the environment (Claude Code maps all model slots
-to the active backend model) or from ~/.cortexagent/state/active_model.json.
-"""
 from __future__ import annotations
 
 import json
@@ -20,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-# Models known to accept image input. Anything else is treated as text-only.
+
 _MULTIMODAL = {
     "claude-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5",
     "claude-fable-5", "claude-3-5-sonnet", "claude-3-7-sonnet",
@@ -33,7 +20,7 @@ _MULTIMODAL = {
 
 
 def _current_model() -> str:
-    """Best-effort resolution of the active model name."""
+
     for key in ("CLAUDE_CODE_SUBAGENT_MODEL",
                 "ANTHROPIC_DEFAULT_SONNET_MODEL",
                 "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -53,13 +40,13 @@ def _current_model() -> str:
 
 
 def is_multimodal(model: str) -> bool:
-    """True if the model name looks like it can accept images."""
+
     m = model.lower()
-    # Strip a :tag suffix (e.g. "claude-sonnet-5:2025" -> "claude-sonnet-5").
+
     base = m.split(":")[0]
     if base in _MULTIMODAL:
         return True
-    # Any name containing a known vision marker.
+
     return any(k in m for k in ("-vl", "vision", "multimodal", "llava"))
 
 

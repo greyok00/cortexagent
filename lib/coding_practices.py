@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Quick-reference tool for the Coding Practices database.
-Usage:
-  python3 coding_practices.py                          # List all categories with counts
-  python3 coding_practices.py --category "Input Validation"  # Practices in a category
-  python3 coding_practices.py --source "OWASP"               # Practices from a source
-  python3 coding_practices.py --priority critical            # Critical practices only
-  python3 coding_practices.py --search "injection"           # Search practices
-  python3 coding_practices.py --all                          # Dump everything
-"""
+
 import sqlite3, sys, os
 from pathlib import Path
 

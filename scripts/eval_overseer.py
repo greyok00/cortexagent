@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval_overseer.py — score the overseer model on :8082.
 
-Runs the step-2 loop's smoke scenarios against whatever model serves :8082
-and scores three dimensions (spec §5):
-  1. tool-call correctness — valid JSON, right tool, right args
-  2. Socratic quality — surfaces assumptions + falsification, no premature tools
-  3. loop convergence — finishes within max_steps with a non-empty answer
-
-Model-agnostic: the STT session owns the model swap; this script just
-measures. Prints a score table and exits 0 (a low score is data, not a
-failure — the swap decision is coordinated separately).
-
-Usage:
-  python3 scripts/eval_overseer.py
-"""
 from __future__ import annotations
 
 import sys
@@ -31,7 +17,7 @@ LOOP_PROMPT = "Run the command echo hello and report the output."
 
 
 def _score_tool_calls() -> dict:
-    """Valid tool_calls JSON with the right tool? 0-2 points."""
+
     try:
         resp = tiny_llm.query_with_tools(
             [{"role": "user", "content": TOOL_PROMPT}],
@@ -52,7 +38,7 @@ def _score_tool_calls() -> dict:
 
 
 def _score_socratic() -> dict:
-    """Surfaces assumptions/falsification without calling tools? 0-2 points."""
+
     try:
         resp = tiny_llm.query_with_tools(
             [{"role": "user", "content": SOCRATIC_PROMPT}],
@@ -70,7 +56,7 @@ def _score_socratic() -> dict:
 
 
 def _score_convergence() -> dict:
-    """Loop finishes within max_steps with non-empty output? 0-2 points."""
+
     try:
         result = react_loop.run_react(
             {"type": "llm", "prompt": LOOP_PROMPT, "max_steps": 4})

@@ -1,30 +1,16 @@
-"""lib/popup_themes.py — Greyok UI framework theme bridge for the popup + STT.
 
-Reads the same themes.css the HTML demos use (`ui-mockups/_elements/
-themes.css`) and exposes the 12 framework themes to the GTK popup +
-Tkinter STT panel via a flat dict mapping framework tokens
-(`--el-bg`, `--el-accent`, ...) to CSS colors that GTK CSSProvider +
-Tkinter can consume.
-
-Adding a theme = adding a `[data-theme="<slug>"]` block to themes.css.
-This module auto-discovers them at import time.
-
-Fallback: when themes.css can't be found, falls back to a minimal
-"cockpit" mapping (aviation HMI dark + amber — closest to the
-original popup default).
-"""
 from __future__ import annotations
 
 import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-# ── Locate themes.css ───────────────────────────────────────────────────────
-# Walk up from this file to find ui-mockups/_elements/themes.css. The
-# repo layout: this file lives at lib/popup_themes.py; the framework
-# CSS lives at ui-mockups/_elements/themes.css. Also support the
-# standalone ~/ui-framework dir for users who only have the framework
-# checked out (not the cortexagent repo).
+
+
+
+
+
+
 
 _THEMES_CSS_REL = Path("ui-mockups/_elements/themes.css")
 _FALLBACK_CSS_REL = Path("ui-framework/themes")
@@ -32,16 +18,13 @@ _HOME_FALLBACK = Path.home() / "ui-framework" / "themes"
 
 
 def _find_themes_css() -> Path | None:
-    """Locate the framework's themes.css. Returns None when no source
-    is reachable so the caller can fall back to the hardcoded cockpit
-    palette.
-    """
+
     candidates = []
-    # 1. Repo-relative (cortexagent layout).
-    here = Path(__file__).resolve().parent.parent  # lib/../
+
+    here = Path(__file__).resolve().parent.parent
     candidates.append(here / _THEMES_CSS_REL)
-    # 2. ~/ui-framework standalone dir — read any *.md for token hints
-    #    if themes.css isn't shipped there.
+
+
     candidates.append(_HOME_FALLBACK / "themes.css")
     for p in candidates:
         if p.exists():
@@ -49,20 +32,20 @@ def _find_themes_css() -> Path | None:
     return None
 
 
-# ── Theme catalog ──────────────────────────────────────────────────────────
 
-# Each entry is a flat dict of named CSS colors that the popup's
-# Gtk.CssProvider rebuilds when Apply is pressed, and the STT panel
-# reads from ~/.cortexagent/popup_settings.json on its heartbeat refresh.
-#
-# Mapped from the 12 framework themes in themes.css. Each theme picks:
-#   bg, bg_alt  → window bg + secondary panel
-#   fg, fg_dim  → text + dim text
-#   accent      → header / button accent
-#   border      → hairline dividers
-#   success, warning, danger → semantic state colors
-#   hover_bg, hover_fg → button hover surface
-#   on_accent   → text on accent (kept for completeness)
+
+
+
+
+
+
+
+
+
+
+
+
+
 DEFAULT_THEMES: Dict[str, Dict[str, str]] = {
     "polaroid": {
         "label":    "polaroid",
@@ -154,13 +137,13 @@ DEFAULT_THEMES: Dict[str, Dict[str, str]] = {
     },
 }
 
-# Track the original order from themes.css (the framework's intended
-# dropdown ordering). If themes.css can't be loaded we fall back to
-# alphabetic so the picker still works.
+
+
+
 THEMES_ORDER: Tuple[str, ...] = tuple(DEFAULT_THEMES.keys())
 
 
-# ── Live theme reloading from themes.css ────────────────────────────────────
+
 
 _VAR_RE = re.compile(r"--el-([a-z0-9-]+)\s*:\s*([^;]+);")
 _BLOCK_RE = re.compile(
@@ -170,23 +153,7 @@ _BLOCK_RE = re.compile(
 
 
 def _reload_from_css() -> Dict[str, Dict[str, str]]:
-    """Re-parse themes.css and merge into DEFAULT_THEMES.
 
-    Returns a NEW dict (does not mutate DEFAULT_THEMES) so callers can
-    decide whether to use it. The token → palette field mapping:
-        bg        → --el-bg
-        bg_alt    → --el-panel
-        fg        → --el-ink
-        fg_dim    → --el-ink-soft
-        accent    → --el-accent
-        border    → --el-line
-        success   → --el-ok
-        warning   → --el-warn
-        danger    → --el-fail
-        hover_bg  → --el-panel-2
-        hover_fg  → --el-ink
-        on_accent → --el-on-accent
-    """
     src = _find_themes_css()
     if src is None:
         return dict(DEFAULT_THEMES)
@@ -195,7 +162,7 @@ def _reload_from_css() -> Dict[str, Dict[str, str]]:
         text = src.read_text(encoding="utf-8")
     except Exception:
         return dict(DEFAULT_THEMES)
-    # Track the order the framework uses (matches the picker UX).
+
     order: List[str] = []
     for m in _BLOCK_RE.finditer(text):
         slug = m.group("slug")
@@ -219,27 +186,22 @@ def _reload_from_css() -> Dict[str, Dict[str, str]]:
             "hover_fg":  tokens.get("ink",       "#dde6f0"),
             "on_accent": tokens.get("on-accent", "#0a1218"),
         }
-    # Preserve only the discovered themes — the static defaults act as
-    # a fallback if the framework CSS disappears at runtime.
+
+
     if order:
         globals()["THEMES_ORDER"] = tuple(order)
     return out or dict(DEFAULT_THEMES)
 
 
 def get_themes() -> Dict[str, Dict[str, str]]:
-    """Return the live theme catalog, reloading from themes.css.
 
-    The picker dropdown reads from this so theme additions in
-    themes.css propagate without a Python edit. Returns the static
-    DEFAULT_THEMES if the CSS is unreachable.
-    """
     return _reload_from_css()
 
 
 THEMES = get_themes()
 
 
-# ── Resolutions ────────────────────────────────────────────────────────────
+
 
 RESOLUTIONS: Tuple[Tuple[int, int], ...] = (
     (1500, 300),
@@ -249,7 +211,7 @@ RESOLUTIONS: Tuple[Tuple[int, int], ...] = (
 )
 
 
-# ── Persistence ────────────────────────────────────────────────────────────
+
 
 POPUP_SETTINGS = Path.home() / ".cortexagent" / "popup_settings.json"
 
@@ -263,7 +225,7 @@ DEFAULT_SETTINGS = {
 
 
 def load_settings() -> Dict:
-    """Read ~/.cortexagent/popup_settings.json with defaults applied."""
+
     import json
     out = dict(DEFAULT_SETTINGS)
     try:
@@ -279,7 +241,7 @@ def load_settings() -> Dict:
 
 
 def save_settings(settings: Dict) -> None:
-    """Persist the picked settings for the next launch + STT panel."""
+
     import json
     try:
         POPUP_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
@@ -291,6 +253,6 @@ def save_settings(settings: Dict) -> None:
 
 
 def get_palette(name: str) -> Dict[str, str]:
-    """Resolve a palette by name; falls back to cockpit on miss."""
+
     themes = get_themes()
     return themes.get(name, themes.get("cockpit", DEFAULT_THEMES["cockpit"]))

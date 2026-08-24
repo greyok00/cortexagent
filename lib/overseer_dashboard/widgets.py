@@ -1,18 +1,4 @@
-"""lib/overseer_dashboard/widgets.py — reusable Tk widgets for the Overseer UI.
 
-High-contrast dark graphical widgets: badges, bars, metric rows, tooltips,
-section panels, and pipeline stage chips. Everything pairs color with a label
-and glyph — never color alone.
-
-2026-08-16 redesign:
-  - Bigger base fonts (13/11/15) so the dashboard reads cleanly on 4K.
-  - ``TogglePill`` replaces bare checkboxes with always-visible state.
-  - ``PresetPillGroup`` for radio-style preset selection.
-  - ``PipelineNode`` + ``PathwayStrip`` for the bottom-of-window path view.
-  - ``devil_mascot_widget()`` renders the brand devil in the header.
-  - ``init_ttk_theme()`` configures ``ttk.Style`` once at boot so the
-    OptionMenu / Combobox widgets match the rest of the dashboard.
-"""
 from __future__ import annotations
 
 import os
@@ -27,7 +13,7 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 from lib.banner import DEVIL_LINES  # noqa: E402
 
-# ── Palette (spec: green/cyan/yellow/red/purple) ───────────────────────────
+
 BG = "#0d0d12"
 PANEL = "#15151c"
 PANEL2 = "#1a1a24"
@@ -40,16 +26,16 @@ CYAN = "#4fd6c8"
 BLUE = "#5aa8e0"
 YELLOW = "#e0a23a"
 RED = "#d65a5a"
-RED_BRAND = "#e0584a"   # the only brand red — devil + accent
+RED_BRAND = "#e0584a"
 PURPLE = "#b07ae0"
 GOLD = "#c9a84c"
 
-# ── Fonts ──────────────────────────────────────────────────────────────────
-# 2026-08-16: bumped base sizes again. The user is on 3840×2400 with 1.0×
-# scale (HiDPI now uses scaling for widget metrics, not font-size inflation),
-# so the base sizes need to be readable on a 4K screen at native pixels.
-# The ``_f(size, scale)`` helper multiplies these by ``self._scale``, so on
-# a 1.0× display you get the base size; on a 2.0× display you get 2× bigger.
+
+
+
+
+
+
 FONT = ("DejaVu Sans", 17)
 FONT_SM = ("DejaVu Sans", 14)
 FONT_BOLD = ("DejaVu Sans", 17, "bold")
@@ -76,15 +62,12 @@ STATE_GLYPH = {
 }
 
 
-# ── ttk theme (call once at boot) ─────────────────────────────────────────
+
 _TTK_THEME_READY = False
 
 
 def init_ttk_theme(root: Optional[tk.Misc] = None) -> None:
-    """Configure ``ttk.Style`` so Combobox / OptionMenu match the dark palette.
 
-    Idempotent. Call once after the Tk root is created.
-    """
     global _TTK_THEME_READY
     if _TTK_THEME_READY:
         return
@@ -125,10 +108,10 @@ def init_ttk_theme(root: Optional[tk.Misc] = None) -> None:
     _TTK_THEME_READY = True
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────
+
 def _f(size: int, scale: float = 1.0, bold: bool = False,
        mono: bool = False) -> Tuple[str, ...]:
-    """Build a font tuple sized by ``size`` and DPI-scaled by ``scale``."""
+
     family = "DejaVu Sans Mono" if mono else "DejaVu Sans"
     pt = max(8, int(round(size * scale)))
     if bold:
@@ -137,7 +120,7 @@ def _f(size: int, scale: float = 1.0, bold: bool = False,
 
 
 def _hover_bg(widget: tk.Widget, normal: str, hover: str = PANEL_HOVER) -> None:
-    """Wire <Enter>/<Leave> to swap background. Walks all child labels."""
+
     targets: List[tk.Widget] = [widget]
 
     def _walk(w: tk.Widget) -> None:
@@ -172,9 +155,9 @@ def _hover_bg(widget: tk.Widget, normal: str, hover: str = PANEL_HOVER) -> None:
             pass
 
 
-# ── Tooltip ───────────────────────────────────────────────────────────────
+
 class Tooltip:
-    """Hover tooltip for a widget. Explains advanced telemetry/controls."""
+
 
     def __init__(self, widget: tk.Widget, text: str) -> None:
         self.widget = widget
@@ -203,10 +186,10 @@ class Tooltip:
             self._tip = None
 
 
-# ── Primitives ────────────────────────────────────────────────────────────
+
 def badge(parent: tk.Widget, text: str, color: str, bg: str = PANEL,
           font: Any = FONT_BOLD) -> tk.Label:
-    """A colored status badge (glyph + text)."""
+
     return tk.Label(parent, text=text, bg=bg, fg=color, font=font,
                     padx=8, pady=3, bd=1, relief="solid",
                     highlightthickness=1, highlightbackground=color)
@@ -214,14 +197,14 @@ def badge(parent: tk.Widget, text: str, color: str, bg: str = PANEL,
 
 def section(parent: tk.Widget, title: str, color: str = BLUE,
             padx: int = 12, pady: int = 8, scale: float = 1.0) -> Tuple[tk.Frame, tk.Frame]:
-    """A titled panel with a colored header rule."""
+
     frame = tk.Frame(parent, bg=PANEL, bd=1, relief="solid",
                      highlightthickness=1, highlightbackground=BORDER)
     head = tk.Frame(frame, bg=PANEL)
     head.pack(fill="x", padx=padx, pady=(pady, 0))
     tk.Label(head, text=title, bg=PANEL, fg=color,
              font=_f(14, scale, bold=True), anchor="w").pack(side="left")
-    # 3-px beveled divider: 2px color + 1px PANEL highlight below.
+
     tk.Frame(head, bg=color, height=2).pack(fill="x", pady=(4, 0))
     tk.Frame(head, bg=PANEL, height=1).pack(fill="x")
     body = tk.Frame(frame, bg=PANEL)
@@ -233,7 +216,7 @@ def metric_row(parent: tk.Widget, label: str, value: str, color: str = FG,
                value_font: Any = FONT_BOLD, tooltip: str = "",
                scale: float = 1.0,
                ) -> tk.Frame:
-    """A label/value row. Value uses '—' for unavailable, never a fake zero."""
+
     row = tk.Frame(parent, bg=PANEL)
     row.pack(fill="x", pady=2)
     tk.Label(row, text=label, bg=PANEL, fg=DIM, font=_f(11, scale),
@@ -246,9 +229,9 @@ def metric_row(parent: tk.Widget, label: str, value: str, color: str = FG,
     return row
 
 
-# ── Bar ───────────────────────────────────────────────────────────────────
+
 class Bar(tk.Frame):
-    """A labeled progress bar. Never a fake bar — value may be None."""
+
 
     def __init__(self, parent: tk.Widget, label: str, color: str = CYAN,
                  width: int = 220, height: int = 14, scale: float = 1.0) -> None:
@@ -281,9 +264,9 @@ class Bar(tk.Frame):
         self._text.config(text=text or f"{value:g} / {max_value:g}", fg=FG)
 
 
-# ── StageChip (existing — kept for backward compat) ──────────────────────
+
 class StageChip(tk.Frame):
-    """One pipeline stage chip: glyph + name + state color. Clickable."""
+
 
     def __init__(self, parent: tk.Widget, name: str,
                  on_click: Optional[Callable] = None, width: int = 90,
@@ -314,13 +297,9 @@ class StageChip(tk.Frame):
             Tooltip(self, f"{self.name}: {detail}")
 
 
-# ── TogglePill ───────────────────────────────────────────────────────────
-class TogglePill(tk.Frame):
-    """A binary on/off control that ALWAYS shows its state with color + glyph.
 
-    Replaces bare tk.Checkbutton (which renders as an unreadable white square
-    in dark themes). Click anywhere on the pill to flip state.
-    """
+class TogglePill(tk.Frame):
+
 
     ON_BG = "#1f3326"
     OFF_BG = "#1a1a24"
@@ -387,7 +366,7 @@ class TogglePill(tk.Frame):
         return bool(self._var.get())
 
     def get_value(self):
-        """Return ``on_value`` if on, ``off_value`` otherwise (defaults to bool)."""
+
         return self._on_value if self.get() else self._off_value
 
     def set(self, value: bool) -> None:
@@ -395,16 +374,9 @@ class TogglePill(tk.Frame):
         self._render()
 
 
-# ── PresetPillGroup ──────────────────────────────────────────────────────
+
 class PresetPillGroup(tk.Frame):
-    """A row of mutually-exclusive pills. Exactly one is selected at a time.
 
-    Selecting a preset calls ``on_select(preset_key)``. The caller is
-    responsible for rewriting the underlying settings to match.
-
-    Visual model: pills are TogglePills with empty state — clicking one
-    lights it up in its brand color and dims the others.
-    """
 
     PRESETS = (
         ("aggressive", "Aggressive", RED),
@@ -426,16 +398,16 @@ class PresetPillGroup(tk.Frame):
                               on_color=color, off_color=DIM,
                               tooltip=tooltip, scale=scale)
             pill.pack(side="left", padx=2, pady=2)
-            # Override click handler to act as radio.
+
             for w in (pill, pill._dot, pill._label, pill._state_lbl):
                 w.bind("<Button-1>",
                        lambda _e, k=key: self.select(k))
             self._pills[key] = pill
-        # Hide the state label on these — they're radio pills, not toggles.
+
         for p in self._pills.values():
             p._state_lbl.pack_forget()
-        # Mark the selected one without firing the callback (the caller's
-        # callback may reference state that isn't built yet at this point).
+
+
         if selected in self._pills:
             self._selected = selected
             for k, p in self._pills.items():
@@ -454,9 +426,9 @@ class PresetPillGroup(tk.Frame):
         return self._selected
 
 
-# ── Button ───────────────────────────────────────────────────────────────
+
 class Button(tk.Button):
-    """A styled button with consistent dark theme + hover state."""
+
 
     def __init__(self, parent: tk.Widget, text: str,
                  command: Optional[Callable] = None,
@@ -474,9 +446,9 @@ class Button(tk.Button):
         _hover_bg(self, PANEL2)
 
 
-# ── Modal ────────────────────────────────────────────────────────────────
+
 class Modal(tk.Toplevel):
-    """A scrollable modal dialog."""
+
 
     def __init__(self, master: tk.Widget, title: str, width: int = 760,
                  height: int = 520) -> None:
@@ -522,9 +494,9 @@ class Modal(tk.Toplevel):
                  justify="left", anchor="w").pack(fill="x", padx=14, pady=2)
 
 
-# ── ScrollFrame ──────────────────────────────────────────────────────────
+
 class ScrollFrame(tk.Frame):
-    """A vertically scrollable container."""
+
 
     def __init__(self, parent: tk.Widget, bg: str = BG) -> None:
         super().__init__(parent, bg=bg)
@@ -555,15 +527,10 @@ class ScrollFrame(tk.Frame):
             pass
 
 
-# ── Devil mascot ─────────────────────────────────────────────────────────
+
 def devil_mascot_widget(parent: tk.Widget, scale: float = 1.0,
                         tooltip: str = "") -> tk.Frame:
-    """Render the 8-line devil mask as a vertical stack of Tk labels.
 
-    Brand red + orange accent for the eyes. Sized for the dashboard header.
-    No tooltip — the devil is decorative, click-to-open-modal handles the
-    exploration experience.
-    """
     wrap = tk.Frame(parent, bg=BG)
     for idx, line in enumerate(DEVIL_LINES):
         tk.Label(wrap, text=line, bg=BG, fg=RED_BRAND,
@@ -571,13 +538,9 @@ def devil_mascot_widget(parent: tk.Widget, scale: float = 1.0,
     return wrap
 
 
-# ── PipelineNode + PathwayStrip ─────────────────────────────────────────
-class PipelineNode(tk.Frame):
-    """A single pathway node with state glyph + name + in/out mini-label.
 
-    Larger and more legible than StageChip. Designed for the bottom-of-window
-    pathway strip showing ~10-12 grouped stages of the prompt path.
-    """
+class PipelineNode(tk.Frame):
+
 
     def __init__(self, parent: tk.Widget, name: str, sub: str = "",
                  on_click: Optional[Callable] = None,
@@ -627,14 +590,14 @@ class PipelineNode(tk.Frame):
                 self._sub.config(text=txt, fg=color)
             elif detail:
                 self._sub.config(text=detail[:40], fg=color)
-        # No hover tooltip here — the sub-label already shows the detail.
-        # Re-creating Tooltip on every refresh was leaving dangling
-        # <Enter>/<Leave> bindings that showed stale text in random
-        # positions. The click handler (``on_click``) opens a real modal
-        # with the full payload if the user wants more.
+
+
+
+
+
 
     def flash(self, color: str = YELLOW, ms: int = 800) -> None:
-        """Briefly ring the node in ``color`` to signal 'this changed'."""
+
         original = self.cget("highlightbackground")
         self.configure(highlightbackground=color)
         try:
@@ -644,12 +607,7 @@ class PipelineNode(tk.Frame):
 
 
 class PathwayStrip(tk.Frame):
-    """A horizontal strip of PipelineNodes with arrows between them.
 
-    Holds an ordered list of node keys. ``set_states(dict)`` updates each
-    node from a {key: (state, detail, in_text, out_text)} map.
-    ``flash_changed(set)`` transiently highlights nodes whose keys changed.
-    """
 
     def __init__(self, parent: tk.Widget, nodes: List[str],
                  on_node_click: Optional[Callable[[str], None]] = None,
@@ -688,10 +646,10 @@ class PathwayStrip(tk.Frame):
                 node.flash()
 
 
-# ── SignatureLine (footer) ───────────────────────────────────────────────
+
 def signature_line(parent: tk.Widget, scale: float = 1.0,
                    version: str = "v0.4.x") -> tk.Frame:
-    """Bottom-of-window brand signature. Dim, single line, anchored."""
+
     row = tk.Frame(parent, bg=BG)
     tk.Label(row, text=f"◈ cortexagent · overseer · {version}",
              bg=BG, fg=DIM, font=_f(10, scale), anchor="w").pack(

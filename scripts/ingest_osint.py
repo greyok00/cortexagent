@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/ingest_osint.py — ingest OSINT source files into the osint domain DB."""
+
 from __future__ import annotations
 
 import sys

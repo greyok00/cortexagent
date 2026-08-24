@@ -1,28 +1,4 @@
-"""Structured error logging + crash dumps for CortexAgent components.
 
-Every long-running component (overseer, daemon, grammar_proxy) routes its
-uncaught exceptions and shutdown events through this module so a failure
-carries enough context to resolve it quickly:
-
-- A concise, structured one-line log entry:
-  ``ERROR <Type>: <msg> (crashdump: <path>)``
-- A full crash dump (JSON) with traceback, component, pid, uptime, and optional
-  caller-supplied state.
-
-Usage:
-    from lib.errorlog import log_exception, close_dump
-
-    try:
-        ...
-    except Exception as e:
-        log_exception(e, component="overseer", context={"tick": tick}, log_file=LOG_FILE)
-
-    # on clean shutdown (SIGINT/SIGTERM):
-    close_dump(component="overseer", reason="SIGINT", context={"ticks": tick}, log_file=LOG_FILE)
-
-Crash dumps land in ``~/.cortexagent/crashdumps/`` (override via
-``CORTEXAGENT_CRASH_DIR``). Stdlib only — safe to import from any component.
-"""
 
 import json
 import os
@@ -34,7 +10,7 @@ from pathlib import Path
 
 _PROC_START = time.time()
 
-# Crash dumps land here (override via CORTEXAGENT_CRASH_DIR).
+
 CRASH_DIR = Path(os.environ.get("CORTEXAGENT_CRASH_DIR", "~/.cortexagent/crashdumps")).expanduser()
 
 
@@ -49,7 +25,7 @@ def _write_dump(dump: dict) -> Path:
     try:
         path.write_text(json.dumps(dump, indent=2, default=str))
     except Exception:
-        pass  # never let dump-writing mask the original error
+        pass
     return path
 
 
@@ -74,7 +50,7 @@ def _rel(path: Path) -> str:
 
 def log_exception(exc: BaseException, component: str, context: dict | None = None,
                   log_file: Path | None = None) -> Path:
-    """Log a structured error entry + write a crash dump. Returns the dump path."""
+
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     dump = {
         "component": component,
@@ -93,7 +69,7 @@ def log_exception(exc: BaseException, component: str, context: dict | None = Non
 
 def close_dump(component: str, reason: str, context: dict | None = None,
                log_file: Path | None = None) -> Path:
-    """Write a close dump for a normal shutdown (SIGINT/SIGTERM). Returns the dump path."""
+
     dump = {
         "component": component,
         "timestamp": datetime.now().isoformat(),

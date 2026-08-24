@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set big_ub 2048->2560 and stt_vad_threshold 0.03->0.05 (cut singing hallucination)."""
+
 import sys
 
 CFG = "~/cortexagent/lib/config.py"

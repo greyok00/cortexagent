@@ -1,33 +1,5 @@
 #!/usr/bin/env python3
-"""lib/prompt_schema.py — structured extraction from prompts (no-loss).
 
-A deterministic, pure-CPU schema extractor over a natural-language prompt. It
-pulls a stable set of typed fields out of the rambling text, then ALWAYS keeps
-the ``original`` alongside — the schema is additive, so nothing the user said
-is ever dropped. This is the "full schema with no-loss guard" the user chose.
-
-Primitives come from the canonical slim reframing engine via
-``lib/prompt_framing`` (the pure-slim shim). All extraction is local regex /
-heuristics — no LLM roundtrip, matching the pure-slim decision.
-
-Schema keys:
-  original         the untouched source (the no-loss guard)
-  reframed         slim's cleaned, deduped version (not shrunk — keeps meaning)
-  domain           business | professional | osint | cybersecurity | code | general
-  intent           the primary goal — the cleanest imperative sentence
-  actions          imperative verb phrases (what the user wants done)
-  constraints      clauses with limiters (only/must/never/unless/...)
-  entities         proper nouns, file paths, URLs, hostnames, tool names
-  inputs           quoted values / explicit numbers / named parameters
-  outputs        requested result format (table/code/report/json/...)
-  references       files, URLs, #issue/branch refs the prompt points at
-  memory_hint      yes|no|maybe — does it need prior context? (text heuristic)
-
-Usage:
-    from lib.prompt_schema import schema_prompt
-    s = schema_prompt("can you basically... audit the server, only touch prod, table")
-    print(s["intent"], s["constraints"])
-"""
 from __future__ import annotations
 
 import re
@@ -35,7 +7,7 @@ from typing import Dict, List
 
 from lib.prompt_framing import classify_domain, reframe_prompt
 
-# ── Constraint markers ──────────────────────────────────────────────────────
+
 _CONSTRAINT_RE = re.compile(
     r"\b(only|must|mustn't|must not|never|do not|don't|without|unless|"
     r"avoid|limit|max(?:imum)?|min(?:imum)?|at least|at most|keep|ensure|"
@@ -43,7 +15,7 @@ _CONSTRAINT_RE = re.compile(
     r"under|within|excluding|except)\b",
     re.IGNORECASE)
 
-# ── Action verbs (imperative heads) ─────────────────────────────────────────
+
 _ACTION_VERBS = {
     "audit", "analyze", "build", "write", "create", "make", "fix", "debug",
     "refactor", "review", "check", "scan", "test", "install", "configure",
@@ -52,7 +24,7 @@ _ACTION_VERBS = {
     "generate", "add", "show", "report", "implement", "deploy", "optimize",
 }
 
-# ── Entity / reference patterns ─────────────────────────────────────────────
+
 _ENT_FILE = re.compile(r"(?<![\w/])(?:/[A-Za-z0-9._-]+){1,}|(?<![A-Za-z])[A-Za-z]:[/\\][\w.\-/\\]+")
 _ENT_URL = re.compile(r"https?://[^\s\"'<>()]+")
 _ENT_CAP = re.compile(r"\b[A-Z][a-z0-9]+(?:\s+[A-Z][a-z0-9]+){0,2}\b")
@@ -87,8 +59,7 @@ _CLAUSE_LEAD = re.compile(r"^(?:only|just|also|then|and|to|if)\s+",
 
 
 def _strip_filler(s: str) -> str:
-    """Repeatedly strip leading conversational filler so stacked fillers like
-    'can you basically' fully collapse to the verb."""
+
     prev = None
     while prev != s:
         prev = s
@@ -97,8 +68,7 @@ def _strip_filler(s: str) -> str:
 
 
 def _imperative_actions(prompt: str) -> List[str]:
-    """Split into sentences AND comma clauses, then strip conversational filler
-    and keep clauses whose head is an action verb."""
+
     out = []
     parts = re.split(r"(?<=[.!?])\s+|\n+|,\s+", prompt)
     for p in parts:
@@ -126,7 +96,7 @@ def _extract_entities(prompt: str) -> List[str]:
         found.add(m.group(0))
     for m in _HOST.finditer(prompt):
         found.add(m.group(0))
-    # proper-noun runs that aren't sentence-initial filler or bare verbs
+
     for m in _ENT_CAP.finditer(prompt):
         g = m.group(0).strip()
         words = g.split()
@@ -146,8 +116,7 @@ _STOP_CAPS = {
 
 
 def extract(prompt: str) -> Dict[str, object]:
-    """Extract the structured schema dict from a prompt. Always includes
-    ``original`` (the no-loss guard) and ``reframed``."""
+
     prompt = prompt.strip()
     if not prompt:
         return {
@@ -160,7 +129,7 @@ def extract(prompt: str) -> Dict[str, object]:
     domain = classify_domain(prompt)
     reframed = reframe_prompt(prompt)
 
-    # intent = the first clean sentence that carries an action
+
     sents = _sentences(reframed)
     intent = sents[0] if sents else reframed
 
@@ -223,12 +192,11 @@ def _memory_hint(prompt: str) -> str:
 
 
 def schema_prompt(prompt: str) -> Dict[str, object]:
-    """Full wrapper: extract the schema AND keep the no-loss original. This is
-    the intended entry point for wiring into the pipeline."""
+
     return extract(prompt)
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+
 def main() -> int:
     import sys, json
     prompt = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else ""

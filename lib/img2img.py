@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""img2img — DEPRECATED shim over ``lib.diffusion_backend``.
 
-Historical note: this module tried to run GGUF image models (FLUX.2) via
-``llama-cpp-python``'s ``create_completion`` (a *text* API) and a nonexistent
-``img2img`` CLI binary. That path never produced images — llama.cpp has no
-diffusion inference. Image generation now goes through HuggingFace diffusers (in-process) via
-``lib.diffusion_backend``.
-
-This shim keeps the old ``GGUFImageGenerator`` class + CLI so existing callers
-(``media_pipeline``) and scripts keep importing. The class delegates to
-``diffusion_backend.gen_image``.
-
-Usage:
-    python3 lib/img2img.py generate --prompt "a zebra" --output out.png
-    python3 lib/img2img.py info
-"""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
-# Map legacy model-path env onto the diffusion_backend checkpoint-name env.
+
 _legacy = os.environ.get("CORTEXAGENT_FLUX_MODEL", "")
 if _legacy and not os.environ.get("CORTEXAGENT_IMAGE_MODEL"):
     base = os.path.basename(_legacy)
@@ -35,19 +20,14 @@ from lib import diffusion_backend as _db  # noqa: E402
 
 
 class GGUFImageGenerator:
-    """Deprecated image generator — delegates to the diffusers backend.
 
-    Kept for import compatibility. The ``model_path`` arg is accepted but
-    ignored if it points at a GGUF (diffusers needs a .safetensors checkpoint
-    filename, resolved by the backend from CORTEXAGENT_IMAGE_MODEL).
-    """
 
     def __init__(self, model_path: Optional[str] = None):
         self.model_path = model_path
         self._loaded = False
 
     def load(self) -> bool:
-        # Local load is lazy — diffusers owns the model. "Loaded" == backend ready.
+
         self._loaded = _db.is_running()
         return self._loaded
 

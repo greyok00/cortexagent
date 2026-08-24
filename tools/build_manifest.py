@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""build_manifest.py — SHA256 baseline of every file in scope.
 
-Builds .superpowers/manifest/cortexagent.manifest.json with
-{schema, generated_at, root, files: {relpath: {sha256, size, mtime}}}.
-
-Excluded from the manifest (transient / generated / vendored):
-  - .git/, .claude/worktrees/, .superpowers/manifest/, .pytest_cache/
-  - __pycache__/, *.pyc, *.pyo, *.swp, *.bak, *~
-  - node_modules/, .venv/, venv/, .mypy_cache/, .ruff_cache/
-  - *.log (transient logs), *.tmp, *.lock, *.pid
-  - test_results/ (load_test writes here)
-  - addons/* (third-party browser extensions)
-
-Run:
-  python3 tools/build_manifest.py [--out PATH] [--print] [--check]
-
-Exit codes:
-  0 — manifest built / in sync
-  1 — drift detected (only with --check)
-  2 — error
-"""
 import argparse
 import hashlib
 import json
@@ -32,7 +12,7 @@ from typing import Dict, Iterable, Optional
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = REPO_ROOT / ".superpowers" / "manifest" / "cortexagent.manifest.json"
 
-# Directories to walk (relative to repo root)
+
 ROOTS = [
     "lib",
     "cortex",
@@ -47,7 +27,7 @@ ROOTS = [
     "tools",
 ]
 
-# Top-level files to include
+
 TOPLEVEL_FILES = [
     "pipeline-server.py",
     "pipeline-viz.html",
@@ -65,7 +45,7 @@ TOPLEVEL_FILES = [
     "conftest.py",
 ]
 
-# Files / directories to exclude at any depth
+
 EXCLUDE_PATTERNS = {
     ".git", ".claude", ".superpowers", ".pytest_cache", ".mypy_cache",
     ".ruff_cache", "__pycache__", "node_modules", ".venv", "venv",
@@ -86,13 +66,13 @@ def _should_exclude(path: Path) -> bool:
 
 def _iter_files() -> Iterable[Path]:
     seen = set()
-    # Top-level files
+
     for name in TOPLEVEL_FILES:
         p = REPO_ROOT / name
         if p.is_file() and not _should_exclude(p):
             seen.add(p)
             yield p
-    # Walked roots
+
     for root in ROOTS:
         rp = REPO_ROOT / root
         if not rp.exists():
@@ -159,7 +139,7 @@ def _check(manifest: Dict) -> int:
             continue
         if current_sha != meta["sha256"] or current_size != meta["size"]:
             rows.append(("MODIFIED", rel, f"{meta['sha256'][:12]} -> {current_sha[:12]}"))
-    # Detect NEW files (on disk, not in manifest)
+
     seen = set(entries.keys())
     for f in _iter_files():
         rel = f.relative_to(REPO_ROOT).as_posix()

@@ -1,23 +1,5 @@
 #!/usr/bin/env python3
-"""anti_hallucination — verify paths, CLI flags, services, and user claims before tool use.
 
-Verify paths, CLI flags, services, and user claims before tool use.
-
-  - COMMON_PATHS and SERVICES dicts are loaded from
-    ~/.cortexagent/config/verification.json (auto-created with sensible defaults)
-  - Generic verify_service_running() instead of hardcoded browser checks
-  - verify_command_arguments() checks a multi-arg command (CLI + flags + paths)
-    against its help output before running
-
-Stdlib only.
-
-CLI:
-  python3 anti_hallucination.py verify --prompt "..." [--files PATH ...] [--claim "..."]
-  python3 anti_hallucination.py check-cli "git commit -m 'x'"
-  python3 anti_hallucination.py check-service NAME
-  python3 anti_hallucination.py check-path PATH [--must-be-readable]
-  python3 anti_hallucination.py smoke
-"""
 from __future__ import annotations
 
 import json
@@ -35,13 +17,13 @@ from typing import Dict, List, Optional, Tuple
 _CONFIG_FILE = Path.home() / ".cortexagent" / "config" / "verification.json"
 
 _DEFAULT_CONFIG: Dict = {
-    # Path aliases — short name → absolute path
+
     "paths": {
         "cortexagent_config": str(Path.home() / ".cortexagent-config"),
         "cortexagent_memory": str(Path.home() / ".cortexagent" / "memory"),
         "claude_projects": str(Path.home() / ".claude" / "projects"),
     },
-    # Services: short name → {port, process_pattern}
+
     "services": {
         "llama_server": {"port": 8080, "process": "llama-server"},
         "cortexagent_memory_mcp": {"port": None, "process": "mcp_server.py"},
@@ -56,10 +38,10 @@ def _load_config() -> Dict:
             _CONFIG_FILE.write_text(json.dumps(_DEFAULT_CONFIG, indent=2))
         except Exception:
             pass
-        return json.loads(json.dumps(_DEFAULT_CONFIG))  # deep copy
+        return json.loads(json.dumps(_DEFAULT_CONFIG))
     try:
         cfg = json.loads(_CONFIG_FILE.read_text())
-        # Merge missing keys from defaults
+
         for k, v in _DEFAULT_CONFIG.items():
             cfg.setdefault(k, v if isinstance(v, dict) else v)
         return cfg
@@ -67,7 +49,7 @@ def _load_config() -> Dict:
         return json.loads(json.dumps(_DEFAULT_CONFIG))
 
 
-# ── Result container ───────────────────────────────────────────────────────
+
 class VerificationResult:
     def __init__(self):
         self.passed = True
@@ -108,9 +90,9 @@ class VerificationResult:
         }
 
 
-# ── CLI command verification ──────────────────────────────────────────────
+
 def verify_cli_command(command: str) -> VerificationResult:
-    """Verify a CLI command: command exists, flags appear valid."""
+
     result = VerificationResult()
     parts = command.split()
     if not parts:
@@ -153,8 +135,7 @@ def verify_cli_command(command: str) -> VerificationResult:
 
 
 def verify_command_arguments(command: str, paths: Optional[List[str]] = None) -> VerificationResult:
-    """Verify a full command (base + flags + paths). Checks the binary, flags,
-    and that any path-like arguments exist."""
+
     result = verify_cli_command(command)
     parts = command.split()
     if paths:
@@ -163,7 +144,7 @@ def verify_command_arguments(command: str, paths: Optional[List[str]] = None) ->
             result.verifications.extend(file_result.verifications)
             result.warnings.extend(file_result.warnings)
     else:
-        # Auto-detect path-like arguments
+
         for part in parts[1:]:
             if part.startswith("/") or part.startswith("~") or part.startswith("./"):
                 fr = verify_file_exists(part, must_be_readable=False)
@@ -172,9 +153,9 @@ def verify_command_arguments(command: str, paths: Optional[List[str]] = None) ->
     return result
 
 
-# ── Service verification ───────────────────────────────────────────────────
+
 def verify_service_running(service_name: str) -> VerificationResult:
-    """Verify a service is running (port listening + process present)."""
+
     result = VerificationResult()
     cfg = _load_config()
     services = cfg.get("services", {})
@@ -186,11 +167,11 @@ def verify_service_running(service_name: str) -> VerificationResult:
         return result
     config = services[service_name]
 
-    # Port check (if configured)
+
     port = config.get("port")
     if port is not None:
         port_ok = False
-        # Prefer ss, fall back to netstat, fall back to socket connect
+
         try:
             ss = subprocess.run(["ss", "-tln"], capture_output=True, text=True, timeout=5)
             port_ok = f":{port} " in ss.stdout or ss.stdout.endswith(f":{port}")
@@ -220,7 +201,7 @@ def verify_service_running(service_name: str) -> VerificationResult:
                                     False, f"Port {port} not listening")
             result.add_recommendation(f"Start {service_name} service")
 
-    # Process check
+
     proc_pattern = config.get("process")
     if proc_pattern:
         try:
@@ -237,7 +218,7 @@ def verify_service_running(service_name: str) -> VerificationResult:
             result.add_verification(f"Service {service_name} process",
                                     False, f"Could not check process: {e}")
 
-    # HTTP health check (if url provided)
+
     health_url = config.get("health_url")
     if health_url:
         try:
@@ -255,9 +236,9 @@ def verify_service_running(service_name: str) -> VerificationResult:
     return result
 
 
-# ── File path verification ────────────────────────────────────────────────
+
 def verify_file_exists(path: str, must_be_readable: bool = True) -> VerificationResult:
-    """Verify a file path exists and (optionally) is readable."""
+
     result = VerificationResult()
     expanded = Path(path).expanduser()
     if not expanded.exists():
@@ -277,9 +258,9 @@ def verify_file_exists(path: str, must_be_readable: bool = True) -> Verification
     return result
 
 
-# ── User-claim verification ───────────────────────────────────────────────
+
 def verify_user_claim(claim: str, context: Optional[Dict] = None) -> VerificationResult:
-    """Verify a user's claim against actual system state."""
+
     result = VerificationResult()
     cfg = _load_config()
     services = cfg.get("services", {})
@@ -310,26 +291,19 @@ def verify_user_claim(claim: str, context: Optional[Dict] = None) -> Verificatio
     return result
 
 
-# ── Main entry point ──────────────────────────────────────────────────────
+
 def verify_before_code(user_prompt: str,
                        context: Optional[Dict] = None) -> VerificationResult:
-    """Run all verifications relevant to a prompt.
 
-    Context dict keys:
-      - files_mentioned: list of paths to check
-      - claim: a user statement to validate
-      - commands: list of CLI commands to verify
-      - services: list of service names to check
-    """
     result = VerificationResult()
     context = context or {}
     cfg = _load_config()
     services = cfg.get("services", {})
     prompt_lower = user_prompt.lower()
 
-    # 1. Commands
+
     commands = list(context.get("commands", []))
-    # Auto-detect verb-command patterns
+
     cmd_patterns = [
         r'(?:run|execute|call|invoke)\s+(\w+)',
         r'(\w+)\s+(?:command|script|tool)',
@@ -347,7 +321,7 @@ def verify_before_code(user_prompt: str,
             result.blocker = f"CLI verification failed: {cmd}"
             result.passed = False
 
-    # 2. Services mentioned
+
     for service_name in services:
         if service_name in prompt_lower:
             sr = verify_service_running(service_name)
@@ -361,19 +335,19 @@ def verify_before_code(user_prompt: str,
         result.verifications.extend(sr.verifications)
         result.warnings.extend(sr.warnings)
 
-    # 3. Files
+
     for path in context.get("files_mentioned", []):
         fr = verify_file_exists(path)
         result.verifications.extend(fr.verifications)
         result.warnings.extend(fr.warnings)
 
-    # 4. Claim
+
     if "claim" in context:
         cr = verify_user_claim(context["claim"], context)
         result.verifications.extend(cr.verifications)
         result.warnings.extend(cr.warnings)
 
-    # 5. Web-search recommendation
+
     if result.web_search_needed:
         result.add_recommendation(f"Web search recommended: {result.web_search_query}")
 
@@ -409,7 +383,7 @@ def format_report(result: VerificationResult) -> str:
     return "\n".join(lines)
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+
 def _cli(argv: List[str]) -> int:
     if not argv:
         print(__doc__)
@@ -417,7 +391,7 @@ def _cli(argv: List[str]) -> int:
     cmd = argv[0]
     rest = argv[1:]
     if cmd == "verify":
-        # gather --prompt, --files, --claim, --command, --service
+
         kwargs: Dict = {}
         files: List[str] = []
         commands: List[str] = []
@@ -470,16 +444,16 @@ def _cli(argv: List[str]) -> int:
 
 
 def _smoke() -> int:
-    # verify_cli_command on a known-good command
+
     r = verify_cli_command("ls --help")
     print(f"  ls --help: passed={r.passed}")
 
-    # verify_cli_command on a missing command
+
     r = verify_cli_command("definitely-not-a-real-binary-xyz")
     assert not r.passed
     print(f"  fake binary: passed={r.passed}  blocker={r.blocker[:50]}…")
 
-    # verify_file_exists
+
     r = verify_file_exists("/etc/hostname")
     assert r.passed
     print(f"  /etc/hostname: passed={r.passed}")
@@ -487,11 +461,11 @@ def _smoke() -> int:
     assert not r.passed
     print(f"  nonexistent: passed={r.passed}")
 
-    # verify_service_running on a known service (might not be running in smoke)
+
     r = verify_service_running("llama_server")
     print(f"  llama_server: passed={r.passed}  verifications={len(r.verifications)}")
 
-    # verify_before_code integration
+
     r = verify_before_code("Run definitely-not-a-real-binary-xyz", context={
         "files_mentioned": ["/etc/hostname", "/this/does/not/exist"],
     })

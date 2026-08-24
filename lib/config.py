@@ -1,39 +1,5 @@
 #!/usr/bin/env python3
-"""lib/config.py — single source of truth for all CortexAgent paths + settings.
 
-Why this exists
----------------
-Before this module, paths were hardcoded across the codebase:
-  - memory/db.py:26-27        → ~/.config/cortexllm/cortexllm.db
-  - hooks/*.sh                 → ~/.cortexllm/memory.sock, ~/.cortexllm/scripts/save-context.py
-  - bin/cortexagent            → ~/llama.cpp/build, ~/models, ~/cortexllm/repo/...
-  - lib/overseer.py            → ~/.cortexagent
-That worked for the original single-machine setup but broke portability and
-made the personal-vs-distributable difference impossible to express.
-
-This module centralizes every path/setting behind one resolver with a clear
-precedence:
-
-    1. environment variable   (highest — always wins)
-    2. ~/.cortexagent/cortexagent.conf   (user config file, INI format)
-    3. sensible default        (lowest — matches the original hardcoded values)
-
-CRITICAL: the defaults are intentionally the *original* hardcoded values, so an
-existing install (e.g. the developer's) keeps behaving identically with NO config
-file and NO env vars. New users / AppImage installs get the same standard paths
-in their own $HOME (fresh, empty DBs created on first run). The personal-vs-
-distributable delta is expressed purely through env vars / the conf file — never
-through different code.
-
-Usage (Python):
-    from lib.config import CFG
-    CFG.db_path, CFG.cortexllm_dir, CFG.backend, ...
-
-Usage (bash hooks — no shell sourcing needed):
-    python3 "$REPO_ROOT/lib/config.py" get db_path
-    python3 "$REPO_ROOT/lib/config.py" get cortexllm_socket
-    python3 "$REPO_ROOT/lib/config.py" shell        # emit `export` lines
-"""
 from __future__ import annotations
 
 import configparser
@@ -44,9 +10,9 @@ from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# ── Config file location ────────────────────────────────────────────────────
-# The conf file is OPTIONAL. Defaults below match the original hardcoded values,
-# so an existing install needs no conf file to keep working identically.
+
+
+
 CONF_FILE = Path(os.environ.get(
     "CORTEXAGENT_CONF",
     str(Path.home() / ".cortexagent" / "cortexagent.conf"),
@@ -54,14 +20,14 @@ CONF_FILE = Path(os.environ.get(
 
 
 def _load_conf() -> configparser.ConfigParser:
-    """Load the optional user conf file (INI). Missing file → empty config."""
-    # interpolate=False so {{HOME}}-style placeholders in values aren't mangled
+
+
     cp = configparser.ConfigParser(interpolation=None)
     if CONF_FILE.exists():
         try:
             cp.read(CONF_FILE)
         except Exception:
-            pass  # malformed conf → fall back to defaults silently
+            pass
     return cp
 
 
@@ -70,7 +36,7 @@ _CONF = _load_conf()
 
 def _env(name: str, conf_section: str, conf_key: str,
          default: Optional[str] = None) -> Optional[str]:
-    """Resolve a value: env var → conf [section] key → default."""
+
     val = os.environ.get(name)
     if val:
         return val
@@ -100,7 +66,7 @@ def _env_int(name: str, conf_section: str, conf_key: str,
 
 def _env_float(name: str, conf_section: str, conf_key: str,
                default: Optional[float] = None) -> Optional[float]:
-    """Resolve a float: env var → conf [section] key → default."""
+
     val = _env(name, conf_section, conf_key, None)
     if val is None:
         return default
@@ -110,16 +76,16 @@ def _env_float(name: str, conf_section: str, conf_key: str,
         return default
 
 
-# ── Locked model settings (Phase C) ──────────────────────────────────────────
-# These pinned values OVERRIDE env vars + the conf for the big-model llama-server
-# args, so a stray CORTEXAGENT_CTX / conf edit / launcher default can't silently
-# OOM the 16 GB card again (that was the original hang). The lock is the single
-# chokepoint: every Python caller reads CFG.big_ctx etc. The bash launcher
-# honors it by sourcing `python3 lib/config.py shell-locked`.
-#
-# Bypass: CORTEXAGENT_UNLOCK=1 (all keys) or CORTEXAGENT_UNLOCK_<KEY>=1 for one
-# key (e.g. CORTEXAGENT_UNLOCK_BIG_CTX=1) — the testing/tuning escape hatch.
-# When unlocked, env > conf > default precedence is restored for that key.
+
+
+
+
+
+
+
+
+
+
 LOCKED_KEYS = {
     "big_ctx": 131072,
     "big_ub": 2560,
@@ -142,7 +108,7 @@ def _unlock_for(key: str) -> bool:
 
 def _locked_divergence(name: str, env_name: str, conf_section: str,
                        conf_key: str, pinned) -> None:
-    """Record (once) if env or conf would have produced a different value."""
+
     envval = os.environ.get(env_name)
     conf_val = None
     try:
@@ -175,13 +141,7 @@ def _env_locked(name: str, env_name: str, conf_section: str,
 
 
 def _detect_cortexllm_dir() -> str:
-    """Where does the CortexLLM code live?
 
-    Preference:
-      1. CORTEXLLM_DIR env / conf        (explicit)
-      2. ~/cortexllm/repo                 (global default install)
-      3. <repo>/cortexllm                 (vendored copy — new users / AppImage)
-    """
     explicit = _env("CORTEXLLM_DIR", "cortexllm", "dir")
     if explicit:
         return str(Path(explicit).expanduser())
@@ -192,12 +152,12 @@ def _detect_cortexllm_dir() -> str:
 
 
 class Config:
-    """Resolved configuration. Instantiate once (CFG below)."""
+
 
     def __init__(self) -> None:
         home = Path.home()
 
-        # ── Core directories ────────────────────────────────────────────────
+
         self.repo_root = REPO_ROOT
         self.state_dir = Path(_env(
             "CORTEXAGENT_STATE_DIR", "paths", "state_dir",
@@ -210,22 +170,22 @@ class Config:
             str(home / ".cortexagent" / "profiles")))
         self.logs_dir = self.state_dir / "logs"
 
-        # ── Memory DB ──────────────────────────────────────────────────────
-        # The agent DB and the CortexLLM DB are the SAME file by design
-        # (CortexLLM is fully integrated — agent memory IS shared memory).
-        # Default = the standard CortexLLM location. Existing install: unchanged.
-        # New user: fresh empty DB created here on first run.
+
+
+
+
+
         self.db_path = Path(_env(
             "CORTEXAGENT_DB_PATH", "memory", "db_path",
             str(home / ".config" / "cortexllm" / "cortexllm.db")))
         self.cortexllm_db_path = Path(_env(
             "CORTEXLLM_DB_PATH", "memory", "cortexllm_db_path",
-            str(self.db_path)))  # defaults to the same file
+            str(self.db_path)))
         self.cortexllm_memory_dir = Path(_env(
             "CORTEXLLM_MEMORY_DIR", "memory", "cortexllm_memory_dir",
             str(home / ".config" / "cortexllm" / "memory")))
 
-        # ── CortexLLM code + daemon runtime ───────────────────────────────
+
         self.cortexllm_dir = Path(_detect_cortexllm_dir())
         self.cortexllm_mcp_server = self.cortexllm_dir / "cortexllm_mcp_server.py"
         self.cortexllm_socket = Path(_env(
@@ -236,9 +196,9 @@ class Config:
             str(home / ".cortexllm" / "scripts" / "save-context.py")))
         self.cortexllm_hot_file = self.cortexllm_memory_dir / "hot" / "cortexagent.jsonl"
 
-        # ── Model backend ──────────────────────────────────────────────────
-        # llamacpp = both models on llama-server (fastest, default).
-        # (ollama removed — kept as a string only for future opt-in.)
+
+
+
         self.backend = _env(
             "CORTEXAGENT_BACKEND", "backend", "kind", "llamacpp") or "llamacpp"
         self.llama_dir = Path(_env(
@@ -247,10 +207,10 @@ class Config:
         self.models_dir = Path(_env(
             "CORTEXAGENT_MODELS_DIR", "backend", "models_dir",
             str(home / "models")))
-        # Big model — empty by default; users MUST configure their own (env
-        # CORTEXAGENT_MODEL or ini [backend] big_model). The shipped defaults
-        # would otherwise pin new users to a 13 GB IQ3_S that won't fit their
-        # GPU. Set this to your own model file path to override.
+
+
+
+
         self.big_model = _env(
             "CORTEXAGENT_MODEL", "backend", "big_model", "")
         self.big_model_port = _env_int(
@@ -261,9 +221,9 @@ class Config:
             "CORTEXAGENT_TINY_MODEL", "backend", "tiny_model",
             str(self.models_dir / "lfm2.5-1.2b" / "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"))
 
-        # ── Cortex routing (Phase 3 — Claude→Cortex) ─────────────────────────
-        # Replaces Claude only for the cortexagent program. Uses toolproxy.py
-        # as a tool-calling fallback for abliterated models.
+
+
+
         self.cortex_router_mode = _env(
             "CORTEXAGENT_ROUTER_MODE", "cortex", "router_mode", "auto")
         self.cortex_host = _env(
@@ -275,25 +235,25 @@ class Config:
         self.cortex_author = _env(
             "CORTEXAGENT_AUTHOR", "branding", "author", "GreyOK00")
 
-        # Vision: REMOVED in v3.x. The big model is multimodal (Qwen3-VL family
-        # fine-tunes / Qwen3.6 35B), so a separate vision server (formerly
-        # qwen3vl-8b on :8083) is no longer needed. Big handles vision natively
-        # and orchestrates image/video gen via diffusers in-process. To re-add
-        # a separate vision model, subclass and override big_model with a
-        # vision-capable path.
 
-        # ── Big model llama-server args (daemon-managed; mirror the launcher) ─
-        # These mirror the env vars bin/cortexagent already reads, so an existing
-        # shell profile keeps working. The daemon uses them to own the big model.
-        # Context window. 262144 (256k) OOMs a 16 GB card at ub>=2048:
-        # --kv-unified makes the compute-buffer reservation scale with ubatch,
-        # and at 256k the compute buffer alone is ~1.7 GB on top of the 14.3 GB
-        # IQ3_S weights. 131072 (128k) is the tuned value: the hybrid model's KV
-        # cache is tiny (~5 KB/token → ~0.6 GB at 128k), so at ub=1024 weights +
-        # KV + buffer ≈ 14.1 GB, and with the lean tiny resident ≈ 14.7 GB —
-        # a ~1.6 GB margin on 16 GB, with the full 128k window for long sessions.
-        # (Measured: 35B = 13.7 GB at 128k/ub512; ub=1024 adds ~0.43 GB buffer.)
-        # LOCKED in LOCKED_KEYS below; override only via CORTEXAGENT_UNLOCK=1.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         self.big_ctx = _env_locked_int(
             "big_ctx", "CORTEXAGENT_CTX", "backend", "big_ctx", 131072)
         self.big_ngl = _env_locked_int(
@@ -306,14 +266,14 @@ class Config:
             "big_ctv", "CORTEXAGENT_CTV", "backend", "big_ctv", "q4_0")
         self.big_np = _env_locked_int(
             "big_np", "CORTEXAGENT_NP", "backend", "big_np", 1)
-        # Prompt-eval batching. ubatch (-ub) is the physical batch and the
-        # lever for the compute/graph buffer under --kv-unified: 512 reserves
-        # ~0.43 GB, 1024 ~0.86 GB, 2048 ~1.7 GB. 1024 doubles prompt-eval
-        # parallelism vs 512 (the 30-tool system prompt evals in half the
-        # chunks → faster prompt eval) while staying inside the 16 GB budget
-        # (35B process ≈ 14.1 GB at 128k/ub1024 + tiny 0.6 GB ≈ 14.7 GB, ~1.6 GB
-        # margin). Token-generation speed is unaffected (governed by -b).
-        # LOCKED in LOCKED_KEYS below; override only via CORTEXAGENT_UNLOCK=1.
+
+
+
+
+
+
+
+
         self.big_b = _env_int(
             "CORTEXAGENT_B", "backend", "big_b", 2048)
         self.big_ub = _env_locked_int(
@@ -326,58 +286,58 @@ class Config:
             "CORTEXAGENT_LOG", "backend", "big_log",
             str(home / ".cortexagent-server.log")))
 
-        # ── big_vram_min_gb (informational; no fallback swap happens) ─────
-        # Historical: a smaller fallback model was swapped in when free VRAM
-        # was below this threshold. Removed 2026-08-11 — the only model the
-        # daemon now serves on :8080 is the big one (with the tiny llama
-        # on :8082 powering the overseer). If the big 35B can't load (e.g.
-        # the GGUF is missing), the daemon logs the failure and leaves :8080
-        # down rather than swapping in a substitute.
+
+
+
+
+
+
+
         self.big_vram_min_gb = _env_int(
             "CORTEXAGENT_BIG_VRAM_MIN", "backend", "big_vram_min_gb", 14)
 
-        # ── Daemon / idle VRAM management ──────────────────────────────────
-        # Big model stays loaded at all times (user pref: "keep it loaded").
-        # Set to 0 to disable idle-unload entirely. Any positive value is the
-        # grace period in seconds before the daemon unloads big after the last
-        # session ends. 0 = never unload (recommended; saves the swap latency
-        # the user perceived as bad UX).
+
+
+
+
+
+
         self.idle_unload_sec = _env_int(
             "CORTEXAGENT_IDLE_UNLOAD_SEC", "daemon", "idle_unload_sec", 0)
-        # A session that claims the big model but has produced NO request for
-        # this long is stale (wrapper died without session-end — SIGPIPE,
-        # SIGKILL, orphaned bash). Released so idle-unload can free VRAM.
-        # Generous default: longer than any realistic human think gap.
+
+
+
+
         self.stale_session_sec = _env_int(
             "CORTEXAGENT_STALE_SESSION_SEC", "daemon", "stale_session_sec", 1800)
         self.control_socket = self.state_dir / "control.sock"
 
-        # ── Display / UX ───────────────────────────────────────────────────
-        # inline_scroll=0 → Claude Code locked-screen TUI (non-scroll, the
-        # "Swooping…" in-place feel). =1 → inline scroll (legacy).
+
+
+
         self.inline_scroll = _env_bool(
             "CORTEXAGENT_INLINE_SCROLL", "display", "inline_scroll", False)
 
-        # ── Optional integrations ──────────────────────────────────────────
+
         self.browser_enabled = _env_bool(
             "CORTEXAGENT_BRAVE_ENABLED", "integrations", "browser_enabled", True)
         self.firecrawl_enabled = _env_bool(
             "CORTEXAGENT_FIRECRAWL_ENABLED", "integrations", "firecrawl_enabled", True)
 
-        # ── Branding (configurable; default neutral for distribution) ───────
+
         self.brand = _env("CORTEXAGENT_BRAND", "branding", "name", "CortexAgent")
         self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "GreyOK00")
 
-        # ── STT (speech-to-text) ────────────────────────────────────────────
-        # Local-only. Default mic = the Logi USB Headset (card 0).
-        # stt_device=auto uses CUDA when free VRAM allows it (blazing-fast
-        # dictation) and falls back to CPU when the GPU is busy; the whisper
-        # model also unloads after 120s idle so the big model keeps its VRAM.
-        # Set CORTEXAGENT_STT_DEVICE=cpu to force CPU-only (keeps the GPU
-        # fully free, "mostly cpu" mode).
-        # stt_model=small = the accuracy sweet spot (fixes mishearing like
-        # "full input volume" → "four volume input"). Override with
-        # CORTEXAGENT_STT_MODEL=tiny (fastest) or =base (faster, less accurate).
+
+
+
+
+
+
+
+
+
+
         self.stt_model = _env("CORTEXAGENT_STT_MODEL", "stt", "model", "base")
         self.stt_device = _env("CORTEXAGENT_STT_DEVICE", "stt", "device", "cuda")
         self.stt_mic_device = _env(
@@ -388,61 +348,61 @@ class Config:
             "CORTEXAGENT_STT_SPEAK", "stt", "speak_to_capture", True)
         self.stt_vad_threshold = _env_float(
             "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.05)
-        # Silence flush window: how long trailing silence is required to
-        # commit a clip. 0.8s is snappy but produces very short fragments
-        # when the user is thinking. 1.2s gives the speaker time to pause
-        # between sentences. 1.5s is the noisy-room setting: background
-        # noise fuzzes the speech boundaries, so a short window splits one
-        # sentence into fragments (the "misses text" complaint); a longer
-        # window keeps the utterance open across noise-fuzzed pauses. Cost:
-        # ~+0.3s commit lag after you stop talking, and continuous speech
-        # rides closer to stt_vad_max_utterance_sec (the 10s hard flush).
+
+
+
+
+
+
+
+
+
         self.stt_vad_silence_sec = _env_float(
             "CORTEXAGENT_STT_VAD_SILENCE", "stt", "vad_silence_sec", 1.5)
-        # Hard flush: VAD commits a clip after this many seconds of
-        # accumulated speech even if the user hasn't paused. Prevents
-        # unbounded clip growth when someone talks continuously for >10s.
-        # Set CORTEXAGENT_STT_VAD_MAX_UTTERANCE to disable (e.g. 0).
+
+
+
+
         self.stt_vad_max_utterance_sec = _env_float(
             "CORTEXAGENT_STT_VAD_MAX_UTTERANCE", "stt", "vad_max_utterance_sec", 10.0)
-        # Cleanup (grammar-fix via the tiny LLM) adds ~10s per clip — off by
-        # Cleanup = tiny-model pass that fixes punctuation, capitalization,
-        # and sentence structure. OFF by default — user feedback 2026-08-19:
-        # the tiny model hallucinates and ADDS text the user never said,
-        # which is worse than raw whisper output. The current better path is
-        # to tune whisper's initial_prompt directly so it produces
-        # properly-punctuated, compressed output without a second pass.
-        # Set CORTEXAGENT_STT_CLEANUP=true to re-enable (and consider using
-        # the big model via CORTEXAGENT_STT_CLEANUP_TARGET=big).
+
+
+
+
+
+
+
+
+
         self.stt_cleanup = _env_bool(
             "CORTEXAGENT_STT_CLEANUP", "stt", "cleanup", False)
         self.stt_cleanup_target = _env(
             "CORTEXAGENT_STT_CLEANUP_TARGET", "stt", "cleanup_target", "tiny")
-        # Max sentences to keep per cleanup pass. Caps long-winded dictation
-        # bursts so a single utterance doesn't dump a paragraph into the
-        # focused prompt.
+
+
+
         self.stt_cleanup_max_sentences = _env_int(
             "CORTEXAGENT_STT_CLEANUP_MAX_SENTENCES", "stt",
             "cleanup_max_sentences", 4)
 
-        # ── VRAM budget ─────────────────────────────────────────────────────
-        # The GPU is shared: big model + overseer + faster-whisper are required
-        # residents. Everything else (adapters, RAG embedding) may use the
-        # remaining free VRAM minus a locked buffer that is never touched —
-        # crash protection so the desktop never OOMs. Adapters check
-        # lib/vram.can_fit() before loading on GPU and fall back to CPU when
-        # the budget is too small.
+
+
+
+
+
+
+
         self.vram_buffer_mb = _env_int(
             "CORTEXAGENT_VRAM_BUFFER_MB", "vram", "buffer_mb", 512)
 
-        # ── Metrics / observability ─────────────────────────────────────────
-        # Latency alert: when the p95 per-request latency (ms) exceeds this
-        # threshold, the overseer logs a warning. 0 disables the alert.
+
+
+
         self.latency_alert_p95_ms = _env_float(
             "CORTEXAGENT_LATENCY_ALERT_P95_MS", "metrics", "latency_alert_p95_ms", 5000.0)
-        # Context-window monitor thresholds (percent of the big-model slot).
-        # Alert at alert_pct; force-reset the session when pegged at critical_pct
-        # for critical_ticks consecutive ticks (auto-compact dead → hard 400).
+
+
+
         self.context_alert_pct = _env_float(
             "CORTEXAGENT_CTX_ALERT_PCT", "metrics", "context_alert_pct", 76.0)
         self.context_critical_pct = _env_float(
@@ -450,9 +410,9 @@ class Config:
         self.context_critical_ticks = _env_int(
             "CORTEXAGENT_CTX_CRITICAL_TICKS", "metrics", "context_critical_ticks", 3)
 
-    # ── Helpers ────────────────────────────────────────────────────────────
+
     def ensure_dirs(self) -> None:
-        """Create runtime dirs. Safe to call repeatedly."""
+
         for d in (self.state_dir, self.logs_dir, self.profiles_dir / "default",
                   self.db_path.parent, self.cortexllm_memory_dir):
             try:
@@ -464,14 +424,14 @@ class Config:
         return {k: str(v) for k, v in self.__dict__.items()}
 
     def shell_exports(self) -> str:
-        """Emit `export KEY=value` lines for bash sourcing."""
+
         lines = []
         for k, v in self.as_dict().items():
             lines.append(f"export CORTEXAGENT_CFG_{k.upper()}={repr(str(v))}")
         return "\n".join(lines)
 
     def locked_keys(self) -> dict:
-        """Return {key: (pinned, active, unlocked?)} for status display."""
+
         out = {}
         for k, pinned in LOCKED_KEYS.items():
             active = getattr(self, k, None)
@@ -486,15 +446,15 @@ class Config:
 
 CFG = Config()
 
-# Emit lock divergences once at import (one line per key env/conf tried to
-# change). Normally empty → silent. Suppressed if CORTEXAGENT_LOCK_QUIET=1.
+
+
 if _LOCK_LOG and os.environ.get("CORTEXAGENT_LOCK_QUIET", "").lower() not in (
         "1", "true", "yes", "on"):
     for line in _LOCK_LOG:
         print(f"[config] {line}", file=sys.stderr)
 
 
-# ── CLI for bash hooks ──────────────────────────────────────────────────────
+
 def _cli() -> int:
     if len(sys.argv) < 2:
         print("usage: config.py get <key> | shell | list | shell-locked | lock-status",
@@ -517,10 +477,10 @@ def _cli() -> int:
             print(f"{k}={v}")
         return 0
     if cmd == "shell-locked":
-        # Emit `export CORTEXAGENT_*` for the locked keys only, so the bash
-        # launcher can source the pinned values regardless of the user's env.
-        # Honors CORTEXAGENT_UNLOCK: when a key is unlocked, emit the env/conf
-        # value (fall through to normal resolution) instead of the pin.
+
+
+
+
         env_map = {
             "big_ctx": ("CORTEXAGENT_CTX", 131072),
             "big_ub": ("CORTEXAGENT_UB", 2560),
@@ -533,7 +493,7 @@ def _cli() -> int:
         }
         for key, (env_name, pinned) in env_map.items():
             if _unlock_for(key):
-                # unlocked: emit whatever the normal resolver produced
+
                 val = getattr(CFG, key, pinned)
             else:
                 val = LOCKED_KEYS[key]

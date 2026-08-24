@@ -1,41 +1,5 @@
 #!/usr/bin/env python3
-"""overseer — unified heartbeat + orchestrator daemon for CortexAgent.
 
-Combines memory health monitoring, task scheduling, plan tracking, and
-the tiny LLM (LFM2.5-1.2B on llama-server :8082) into one persistent
-background overseer.
-
-Features:
-  - Memory health monitoring (hot/warm/cold counts, cold distill)
-  - Session health checks (proxy, DB integrity)
-  - Task queue (add/list/clear/remove)
-  - Calendar scheduler (cron/daily/weekly/date)
-  - Plan tracking (set steps, advance, status)
-  - Tiny LLM start/keepalive (LFM2.5-1.2B on llama-server :8082 — no Ollama)
-  - PID-locked single instance
-  - Persistent state across restarts
-
-CLI:
-  python3 overseer.py start [--interval 30]
-  python3 overseer.py stop
-  python3 overseer.py status
-  python3 overseer.py smoke
-
-  python3 overseer.py plan-set "Feature X" --steps 5 --context "Building X"
-  python3 overseer.py plan-step [N]
-  python3 overseer.py plan-status
-
-  python3 overseer.py queue add --type command --command "echo hi"
-  python3 overseer.py queue list
-  python3 overseer.py queue clear
-
-  python3 overseer.py schedule add --name "daily" --cron "0 9 * * *" --type command --command "backup"
-  python3 overseer.py schedule list
-
-  python3 overseer.py workflow run "pentest the network"
-  python3 overseer.py workflow status
-  python3 overseer.py workflow list
-"""
 from __future__ import annotations
 
 import json
@@ -53,18 +17,18 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Deque
 
-# ── Paths (must precede the scheduler import below) ─────────────────────────
-# When overseer.py runs as a script, sys.path[0] is this file's directory
-# (lib/), so `from lib.scheduler import ...` would fail with "No module named
-# 'lib'" unless the repo root is on sys.path FIRST. This ordering bug silently
-# disabled the event-sourced scheduler (SCHEDULER_AVAILABLE=False → legacy
-# empty schedule) — the root cause of "Schedule: 0 entries" despite seeded
-# tasks. Insert the repo root before importing anything under `lib.`.
+
+
+
+
+
+
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-# ── Scheduler (NDJSON event-sourced) ───────────────────────────────────────
+
 try:
     from lib.scheduler import Store, Recovery, SchedulerUI
     SCHEDULER_AVAILABLE = True
@@ -74,22 +38,17 @@ except ImportError as _ie:
 
 
 def _fromiso(s: str) -> datetime:
-    """Compat wrapper for datetime.fromisoformat. Pre-3.11 only accepted the
-    exact format `datetime.isoformat()` produces (no 'T' separator, no
-    fractional seconds). 3.11+ accepts most ISO 8601 strings. We always
-    generate ISO via `datetime.now().isoformat()` so the upgrade-to-3.11
-    case is a no-op; the downgrade case is the one this guards against.
-    """
+
     try:
         return datetime.fromisoformat(s)
     except (TypeError, ValueError):
-        # Common pre-3.11 issues: 'T' separator, 'Z' suffix, fractional secs.
+
         s2 = s.replace("T", " ").rstrip("Z")
         if "." in s2:
             s2 = s2.split(".")[0]
         return datetime.fromisoformat(s2)
 
-# ── Paths ────────────────────────────────────────────────────────────────────
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
                  str(Path.home() / ".cortexagent")))
@@ -101,7 +60,7 @@ SCHEDULE_FILE = STATE_DIR / "overseer_schedule.json"
 PLAN_FILE = STATE_DIR / "overseer_plan.json"
 WORKFLOW_FILE = STATE_DIR / "workflow_state.json"
 
-# ── Config + model backend (no Ollama) ────────────────────────────────────────
+
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 from lib.config import CFG  # noqa: E402
@@ -110,23 +69,19 @@ from lib import tiny_llm  # noqa: E402
 from lib import control  # noqa: E402 — daemon_present() to detect daemon mode
 from lib.errorlog import log_exception, close_dump  # noqa: E402
 
-# Slimtoken pipeline for request optimization (minify, dedup, distill)
+
 try:
     from slimtoken.pipeline import minify_request, MinifyConfig  # noqa: E402
     SLIMTOKEN_AVAILABLE = True
 except ImportError:
     SLIMTOKEN_AVAILABLE = False
 
-# SessionBridge for unified multi-agent chat (overseer emits "Overseer"
-# username events). Imported lazily to keep boot safe if the bridge file
-# is unreadable for any reason — the chat pane is a nice-to-have, the
-# scheduler/dispatcher is the load-bearing thing.
-def _bridge_emit(kind: str, content: str, **extra) -> None:
-    """Emit one chat event to the SessionBridge with username='Overseer'.
 
-    Best-effort: any exception is swallowed. The chat pane is decoration;
-    the dispatch path is what matters.
-    """
+
+
+
+def _bridge_emit(kind: str, content: str, **extra) -> None:
+
     try:
         from lib.session_bridge import SessionBridge
         ev = {
@@ -142,119 +97,119 @@ def _bridge_emit(kind: str, content: str, **extra) -> None:
     except Exception:
         pass
 
-# ── Constants ────────────────────────────────────────────────────────────────
-DEFAULT_INTERVAL = 30  # seconds
+
+DEFAULT_INTERVAL = 30
 WARM_CAP = 2000
 HOT_CAP = 300
 COMPACT_THRESHOLD = 0.85
-COLD_DISTILL_INTERVAL = 3600  # 1 hour
+COLD_DISTILL_INTERVAL = 3600
 
-# Hot-memory thresholds (the actual overflow problem). When hot exceeds:
-#   SOFT (100%)        → run _auto_compact() once
-#   HARD (200%)        → run /clear on the active CLI session (drop hot to zero)
-#   CRITICAL (300%+)   → force /clear every tick until it drops
-# Sustained-overflow counter increments when hot > HOT_CAP across consecutive
-# ticks — after 5 sustained ticks (>2.5 min) we force /clear even at SOFT
-# because auto-compact is failing to free space.
+
+
+
+
+
+
+
 HOT_SOFT_PCT = 1.00
 HOT_HARD_PCT = 2.00
 HOT_CRITICAL_PCT = 3.00
 HOT_SUSTAINED_TICKS_FORCE = 5
 
-# HARD RULE (2026-08-11): no caps. The HOT_CAP/WARM_CAP constants are kept as
-# observability targets only — the engine never auto-compacts. The only
-# background memory work the overseer does is hot→warm sync (every line that
-# lives in hot should also live in warm). Byte thresholds below are advisory
-# only — they never trigger /clear or compaction.
+
+
+
+
+
 HOT_HARD_LIMIT_MB = 500
 HOT_WARM_LIMIT_MB = 2000
 
-# Cap tasks dispatched per workflow tick so a 50-task workflow doesn't
-# stall the overseer loop for hours. The next tick picks up where this
-# left off (depends_on gate).
+
+
+
 WORKFLOW_DISPATCH_MAX = 2
 
-# ── Stability: Queue Limits & Backpressure ─────────────────────────
-# Bounded queue to prevent OOM under burst traffic. The queue holds at most
-# MAX_QUEUE_SIZE items; producers that exceed this get backpressure (the
-# queue_add call blocks instead of appending to an unbounded list). Size
-# is derived from typical task size (~2 KB each) and available RAM.
+
+
+
+
+
 MAX_QUEUE_SIZE = 500
-MAX_WORKERS = 4  # Concurrent workers for non-LLM tasks (commands, ingest)
-WORKER_TIMEOUT = 120  # seconds before a worker is considered dead
+MAX_WORKERS = 4
+WORKER_TIMEOUT = 120
 QUEUE_METRICS_FILE = STATE_DIR / "queue_metrics.json"
 WORKER_POOL_FILE = STATE_DIR / "worker_pool.json"
 
-# ── Stability: Semaphore for concurrent fragile calls ───────────────
-# Limits concurrent llama-server calls to prevent GPU/VRAM exhaustion.
-# Each call acquires one slot; the rest wait. This turns a burst of N
-# requests into a steady stream of max_concurrent_calls.
-_MAX_LLM_CALLS = 2  # Never have more than 2 simultaneous model calls
+
+
+
+
+_MAX_LLM_CALLS = 2
 _llm_call_semaphore = threading.Semaphore(_MAX_LLM_CALLS)
 
-# ── Stability: Backoff config for fragile dependencies ─────────────
-# Base delay and multipliers for exponential backoff + jitter when
-# llama-server, diffusion, or filesystem tools fail.
-_BACKOFF_BASE = 0.5   # seconds
-_BACKOFF_MAX = 30     # cap backoff at 30s
-_BACKOFF_FACTOR = 1.5  # multiply delay by this each retry
-_BACKOFF_JITTER = 0.25  # ±25% jitter to avoid thundering herd
 
-# ── Observability: Metrics collectors ───────────────────────────────
-# Thread-safe deques for latency/token metrics. Each entry is (timestamp, value).
-_latency_history: Deque = deque(maxlen=1000)  # per-request latency (ms)
-_token_history: Deque = deque(maxlen=1000)    # tokens per request
-_queue_depth_history: Deque = deque(maxlen=500)  # queue depth over time
-_context_history: Deque = deque(maxlen=500)    # context length per request
+
+
+_BACKOFF_BASE = 0.5
+_BACKOFF_MAX = 30
+_BACKOFF_FACTOR = 1.5
+_BACKOFF_JITTER = 0.25
+
+
+
+_latency_history: Deque = deque(maxlen=1000)
+_token_history: Deque = deque(maxlen=1000)
+_queue_depth_history: Deque = deque(maxlen=500)
+_context_history: Deque = deque(maxlen=500)
 _metrics_lock = threading.Lock()
 
-# ── Observability: Context usage tracking ──────────────────────────
-# Tracks context window usage per session. Raises alerts when approaching
-# model limits.
-CONTEXT_WARN_PCT = 85   # warn at 85%
-CONTEXT_CRIT_PCT = 95   # critical at 95% — auto-reset
 
-# ── Worker pool health tracking ─────────────────────────────────────
+
+
+CONTEXT_WARN_PCT = 85
+CONTEXT_CRIT_PCT = 95
+
+
 _worker_heartbeat: Deque = deque(maxlen=64)
 
-# ── Overseer model (LFM2.5-1.2B on llama-server :8082) ──────
-# LFM2.5-1.2B has better reasoning than 0.5B for scheduling/minification tasks.
-# 1 slot + q4_0 KV + flash-attn + 4096 ctx keeps it ~1.1 GB VRAM.
+
+
+
 _tiny = LlamaServer(
     name="tiny",
     model_path=str(CFG.tiny_model),
     port=int(CFG.tiny_model_port),
-    ctx=2048,  # lean tiny: cortex CLI overrides the system prompt for tiny (minimal chat prompt)
+    ctx=2048,
     ngl=999,
     alias="cortexagent-tiny",
     extra_args=["-fa", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-np", "1", "-t", "4"],
     log_file=str(CFG.logs_dir / "tiny-server.log"),
 )
 
-# Vision model removed in v3.x — the big model is multimodal and handles
-# vision natively. To re-add a separate vision server, restore this block
-# from git history.
 
-# Serializes tiny start/stop so a keepalive thread and a shutdown can't both
-# spawn a llama-server on :8082 (port conflict) or race a stop against a start.
+
+
+
+
+
 _tiny_lock = threading.Lock()
-_queue_dispatch_lock = threading.Lock()  # M9 fix: prevent double-dispatch
+_queue_dispatch_lock = threading.Lock()
 
-# ── Clean shutdown flag ──────────────────────────────────────────────────────
-# Set by the SIGTERM/SIGINT handler so the daemon loop exits cleanly (exit code 0)
-# instead of being signal-killed. A signal-kill would make systemd's
-# Restart=on-failure respawn the overseer, which would re-pin the LFM2.5-1.2B model —
-# the "memory jumps back up after closing cortexagent" bug.
+
+
+
+
+
 _SHUTDOWN = False
 
 
 def _handle_stop_signal(signum, frame):
-    """SIGTERM/SIGINT handler: request a clean shutdown (exit 0)."""
+
     global _SHUTDOWN
     _SHUTDOWN = True
 
 
-# ── Colors ───────────────────────────────────────────────────────────────────
+
 CYAN = "\033[36m"
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
@@ -265,9 +220,9 @@ DIM = "\033[2m"
 RST = "\033[0m"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  LOGGING
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _log(msg: str, emoji: str = "", color: str = "") -> None:
     ts = datetime.now().strftime("%H:%M:%S")
@@ -278,9 +233,9 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
         f.write(f"[{ts}] {msg}\n")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  STATE PERSISTENCE
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _load_json(path: Path, default: Any = None) -> Any:
     if default is None:
@@ -298,26 +253,19 @@ def _save_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  STABILITY: Backoff / Retry for Fragile Dependencies
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _backoff_delay(retry_count: int) -> float:
-    """Compute exponential backoff delay with jitter.
 
-    delay = min(base * factor^retry * random(1-jitter, 1+jitter), max)
-    """
     base = _BACKOFF_BASE * (_BACKOFF_FACTOR ** retry_count)
     jitter = random.uniform(1 - _BACKOFF_JITTER, 1 + _BACKOFF_JITTER)
     return min(base * jitter, _BACKOFF_MAX)
 
 
 def retry_with_backoff(func, *args, max_retries: int = 3, **kwargs) -> Any:
-    """Execute func with exponential backoff + jitter on failure.
 
-    Returns the result on success, or raises the last exception after
-    all retries are exhausted.
-    """
     last_exc = None
     for attempt in range(max_retries + 1):
         try:
@@ -331,16 +279,12 @@ def retry_with_backoff(func, *args, max_retries: int = 3, **kwargs) -> Any:
     raise last_exc
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  STABILITY: Bounded Queue with Backpressure
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _queue_add_backpressure(task: Dict) -> bool:
-    """Add task to queue with backpressure enforcement.
 
-    Returns True if task was added, False if queue is full (backpressure).
-    The caller should either wait or reject the task.
-    """
     queue = _load_queue()
     if len(queue) >= MAX_QUEUE_SIZE:
         _log(f"Queue full ({len(queue)}/{MAX_QUEUE_SIZE}) — backpressure", "⚠️", YELLOW)
@@ -351,22 +295,17 @@ def _queue_add_backpressure(task: Dict) -> bool:
 
 
 def _queue_depth() -> int:
-    """Get current queue depth."""
+
     queue = _load_queue()
     return len(queue)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  STABILITY: Worker Pool with Health Checks
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 class WorkerPool:
-    """Thread pool for non-LLM tasks (commands, ingest, etc.) with health checks.
 
-    Workers are long-lived threads that pull tasks from the queue. If a worker
-    exceeds WORKER_TIMEOUT without producing a heartbeat, it is considered dead
-    and the pool spawns a replacement.
-    """
     def __init__(self, max_workers: int = MAX_WORKERS):
         self.max_workers = max_workers
         self.workers: Dict[str, threading.Thread] = {}
@@ -375,7 +314,7 @@ class WorkerPool:
         self._shutdown = threading.Event()
 
     def submit(self, task: Dict) -> str:
-        """Submit a task to the worker pool. Returns worker ID."""
+
         worker_id = f"worker-{task.get('id', 'unknown')}"
         worker = threading.Thread(
             target=self._run_task,
@@ -389,16 +328,16 @@ class WorkerPool:
         return worker_id
 
     def _run_task(self, task: Dict) -> None:
-        """Run a single task with heartbeat updates."""
+
         worker_id = f"worker-{task.get('id', 'unknown')}"
         try:
             while not self._shutdown.is_set():
                 self.heartbeats[worker_id] = time.time()
-                # Run the task
+
                 success = _execute_task(task)
                 if success:
                     break
-                # If failed, wait a bit and retry (for transient failures)
+
                 time.sleep(1)
         except Exception as e:
             _log(f"Worker {worker_id} crashed: {e}", "❌", RED)
@@ -410,20 +349,20 @@ class WorkerPool:
                     del self.heartbeats[worker_id]
 
     def heartbeat_check(self) -> List[str]:
-        """Check worker health. Returns list of dead worker IDs."""
+
         dead = []
         now = time.time()
         with self._lock:
             for worker_id, last_heartbeat in list(self.heartbeats.items()):
                 if now - last_heartbeat > WORKER_TIMEOUT:
                     dead.append(worker_id)
-                    # Replace dead worker
+
                     self.workers.pop(worker_id, None)
                     self.heartbeats.pop(worker_id, None)
         return dead
 
     def shutdown(self) -> None:
-        """Shutdown all workers."""
+
         self._shutdown.set()
         with self._lock:
             for worker in self.workers.values():
@@ -432,37 +371,37 @@ class WorkerPool:
             self.heartbeats.clear()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  OBSERVABILITY: Metrics Collection
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _record_latency(task_type: str, duration_ms: float) -> None:
-    """Record per-request latency."""
+
     with _metrics_lock:
         _latency_history.append((time.time(), task_type, duration_ms))
 
 
 def _record_tokens(tokens_in: int, tokens_out: int) -> None:
-    """Record per-request token usage."""
+
     with _metrics_lock:
         _token_history.append((time.time(), tokens_in, tokens_out))
 
 
 def _record_queue_depth(depth: int) -> None:
-    """Record queue depth for monitoring."""
+
     with _metrics_lock:
         _queue_depth_history.append((time.time(), depth))
 
 
 def _record_context_usage(context_len: int, max_ctx: int) -> None:
-    """Record context window usage."""
+
     with _metrics_lock:
         pct = (context_len / max_ctx * 100) if max_ctx > 0 else 0
         _context_history.append((time.time(), pct))
 
 
 def _get_latency_stats() -> Dict:
-    """Get latency statistics from recent requests."""
+
     with _metrics_lock:
         if not _latency_history:
             return {"count": 0}
@@ -481,7 +420,7 @@ def _get_latency_stats() -> Dict:
 
 
 def _get_token_stats() -> Dict:
-    """Get token usage statistics."""
+
     with _metrics_lock:
         if not _token_history:
             return {"count": 0}
@@ -497,7 +436,7 @@ def _get_token_stats() -> Dict:
 
 
 def _get_queue_depth_stats() -> Dict:
-    """Get queue depth statistics."""
+
     with _metrics_lock:
         if not _queue_depth_history:
             return {"count": 0}
@@ -513,7 +452,7 @@ def _get_queue_depth_stats() -> Dict:
 
 
 def _get_context_stats() -> Dict:
-    """Get context usage statistics."""
+
     with _metrics_lock:
         if not _context_history:
             return {"count": 0}
@@ -529,7 +468,7 @@ def _get_context_stats() -> Dict:
 
 
 def _check_context_alerts() -> List[str]:
-    """Check context usage and return alerts if near overflow."""
+
     alerts = []
     ctx_stats = _get_context_stats()
     current_pct = ctx_stats.get("current_pct", 0)
@@ -540,44 +479,38 @@ def _check_context_alerts() -> List[str]:
     return alerts
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  STABILITY: Graceful Shutdown Protocol
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _shutdown_signal_handler(signum, frame):
-    """Enhanced SIGTERM/SIGINT handler with graceful shutdown.
-    
-    Stops worker pool, drains queue, joins workers, saves state.
-    """
+
     global _SHUTDOWN, _worker_pool
     _SHUTDOWN = True
     _log(f"Shutdown signal received ({signum}) — draining...", "🛑", RED)
-    
-    # Stop worker pool
+
+
     if _worker_pool:
         _worker_pool.stop()
         _log("Worker pool stopped", "🛑", DIM)
-    
-    # Drain remaining queue tasks
+
+
     _drain_queue()
-    
-    # Save final state
+
+
     try:
         _save_metrics()
     except Exception:
         pass
 
 
-# Override the existing signal handler
+
 signal.signal(signal.SIGTERM, _shutdown_signal_handler)
 signal.signal(signal.SIGINT, _shutdown_signal_handler)
 
 
 def _drain_queue() -> None:
-    """Drain the queue: process remaining tasks, then mark shutdown complete.
 
-    Called during shutdown to ensure all in-flight tasks complete before exit.
-    """
     queue = _load_queue()
     pending = [t for t in queue if t["status"] in ("queued", "running")]
     if not pending:
@@ -598,12 +531,12 @@ def _drain_queue() -> None:
     _log("Queue drain complete", "🧹", GREEN)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  METRICS PERSISTENCE
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _save_metrics() -> None:
-    """Persist metrics to disk for dashboard/tray consumption."""
+
     metrics = {
         "timestamp": time.time(),
         "latency": _get_latency_stats(),
@@ -626,13 +559,13 @@ def _load_state() -> Dict:
         "health_events": [],
         "started_at": None,
         "total_ticks": 0,
-        # Two-layer state (see CLAUDE.md "Two-layer state tracking"):
-        #   overseer_state — plain-language activity tag for the tray popout
-        #   task_steps     — numbered list of steps the reasoning model is
-        #                    currently working through (capped at 7 visible,
-        #                    trimmed to current ±1 in the consumer)
+
+
+
+
+
         "overseer_state": {"label": "idle", "since": None},
-        "task_steps": [],   # [{"id":1, "label":"...", "status":"done|in_progress|pending"}]
+        "task_steps": [],
         "current_step": None,
     })
 
@@ -641,44 +574,29 @@ def _save_state(state: Dict) -> None:
     _save_json(STATE_FILE, state)
 
 
-# ── Two-layer state helpers ─────────────────────────────────────────────
-# Used by both this overseer and any external caller (the big LLM, the tray
-# popout, the webui) to publish what the system is doing in plain language
-# and what step it's on. Each helper takes `state` so the caller can keep
-# batching its own state changes without a separate write.
+
+
+
+
+
 
 def overseer_set_state(state: Dict, label: str) -> None:
-    """Publish the overseer's current activity as a plain-language tag.
 
-    Examples: "idle", "watching health checks", "compacting warm memory",
-    "distilling warm → cold", "running scheduled task 'nightly backup'",
-    "querying tiny LLM", "self-healing (retry #1)".
-
-    The tray popout reads this verbatim — keep it short and human.
-    """
     state["overseer_state"] = {"label": label, "since": datetime.now().isoformat()}
 
 
 def task_steps_publish(state: Dict, steps: List[Dict], current: Optional[int]) -> None:
-    """Publish the reasoning model's task step list.
 
-    Args:
-        state: the overseer state dict (mutated in place)
-        steps: list of {"id": int, "label": str, "status": "pending"|"in_progress"|"done"}
-               Limited to 7 entries by the consumer; pass the full list and
-               let the consumer trim to current ±1 with an "X of Y" counter.
-        current: 1-indexed step that's currently in progress, or None if idle.
-    """
     state["task_steps"] = list(steps)
     state["current_step"] = current
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  TINY LLM (LFM2.5-1.2B on llama-server :8082 — no Ollama)
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _preload_tiny_model() -> bool:
-    """Start the tiny llama-server and wait for /health (idempotent)."""
+
     with _tiny_lock:
         _log(f"Starting tiny model on :{_tiny.port} (llama-server)...", "🔄", CYAN)
         if _tiny.start():
@@ -689,12 +607,7 @@ def _preload_tiny_model() -> bool:
 
 
 def _keepalive_tiny_model() -> bool:
-    """Health-check the tiny server; restart it if it died (self-healing).
 
-    Bounded to 60s of /health polling so a down tiny can't freeze the daemon
-    loop for the full 180s startup_timeout. Runs under _tiny_lock so a
-    concurrent keepalive/shutdown can't double-spawn on :8082.
-    """
     with _tiny_lock:
         if _tiny.is_healthy():
             return True
@@ -704,22 +617,10 @@ def _keepalive_tiny_model() -> bool:
 
 def _query_tiny_llm(prompt: str, system: str = "",
                     max_tokens: int = 256) -> Optional[str]:
-    """Query the tiny LLM via llama-server's OpenAI endpoint.
 
-    The overseer is the frame-of-mind gatekeeper for every tiny call:
-      1. Wrap whatever system prompt the caller (usually the big LLM via the
-         task queue) supplies under a stable practical-reasoning frame so
-         tiny always reasons short, operational, no markdown, no hedging —
-         even if the caller's own prompt drifted.
-      2. Self-heal: if the first call returns None/empty (server hiccup,
-         transient HTTP error, malformed JSON), retry once with stricter
-         instructions ("answer in plain text, one line, no preamble") before
-         giving up. Don't loop — one retry, then surface the failure to the
-         caller.
-    """
-    # Practical-reasoning frame wrapper — the caller's system prompt is
-    # appended after so caller-specific instructions still apply, but the
-    # operational tone is preserved.
+
+
+
     frame = (
         "You are the CortexAgent overseer's reasoning engine. Plain language, "
         "short answers (one or two lines), no markdown, no emojis, no narration. "
@@ -730,31 +631,24 @@ def _query_tiny_llm(prompt: str, system: str = "",
     else:
         wrapped_system = frame
 
-    # First attempt
+
     result = tiny_llm.query(prompt, system=wrapped_system, max_tokens=max_tokens)
     if result:
         return result
 
-    # Self-heal: one retry with a stricter framing
+
     _log("tiny LLM returned empty — retrying once with stricter framing", "🔁", DIM)
     strict = wrapped_system + "\n\nAnswer in plain text, one line, no preamble."
     result = tiny_llm.query(prompt, system=strict, max_tokens=max_tokens)
-    return result  # may still be None — caller handles it
+    return result
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  MEMORY HEALTH (from heartbeat)
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _get_memory_stats() -> Dict:
-    """Get current memory counts (NDJSON = file of truth) and byte sizes.
 
-    Adapter over cortexllm.stats.stats (v0.4.0) — returns the legacy shape
-    {hot, warm, cold, hot_bytes, warm_bytes} that callers expect, but the
-    counts come from the NDJSON files (the file-of-truth per the no-caps
-    rule), not from SQLite. SQLite is still queried only for the cold
-    category count (cortexllm's stats returns the list of categories).
-    """
     out = {"hot": 0, "warm": 0, "cold": 0,
            "hot_bytes": 0, "warm_bytes": 0}
     try:
@@ -767,11 +661,11 @@ def _get_memory_stats() -> Dict:
         plat_w = s.get("warm", {}).get("by_platform", {}).get("cortexagent", {})
         out["warm"] = plat_w.get("entries", 0)
         out["warm_bytes"] = plat_w.get("bytes", 0)
-        # Cold is category count (1 per category file). cortexllm.stats returns
-        # the list; len() is the category count.
+
+
         out["cold"] = len(s.get("cold", {}).get("categories", []))
     except Exception:
-        # Fallback: SQLite count + NDJSON bytes (the legacy code path).
+
         try:
             sys.path.insert(0, str(REPO_ROOT))
             from memory.db import db
@@ -793,12 +687,7 @@ def _get_memory_stats() -> Dict:
 
 
 def _check_health(stats: Dict) -> List[str]:
-    """Check memory health and return alerts.
 
-    HARD RULE (2026-08-11): no caps. The HOT_CAP/WARM_CAP percentages are
-    OBSERVABILITY ONLY — they never trigger compaction or `/clear`. The
-    alerts are just informational one-liners the operator can read.
-    """
     alerts = []
     if stats["warm"] > WARM_CAP * COMPACT_THRESHOLD:
         pct = int(stats["warm"] / WARM_CAP * 100)
@@ -812,7 +701,7 @@ def _check_health(stats: Dict) -> List[str]:
 
 
 def _check_memory_writes() -> List[str]:
-    """Verify prompts are being stored. Alert if no recent activity."""
+
     alerts = []
     try:
         sys.path.insert(0, str(REPO_ROOT))
@@ -834,13 +723,7 @@ def _check_memory_writes() -> List[str]:
 
 
 def _check_session_health() -> List[str]:
-    """Check if the main model proxy is responding.
 
-    502 from the proxy = proxy is UP but the big model is idle-unloaded — the
-    normal no-session state (the daemon loads big on demand), NOT an alert.
-    Only a genuinely unreachable proxy (connection refused / 5xx other than 502)
-    is a real problem.
-    """
     alerts = []
     proxy_port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
     try:
@@ -850,24 +733,24 @@ def _check_session_health() -> List[str]:
             if resp.status not in (200, 502):
                 alerts.append(f"Proxy health check failed (HTTP {resp.status})")
     except urllib.error.HTTPError as e:
-        if e.code != 502:  # 502 = backend (big model) idle-unloaded → expected
+        if e.code != 502:
             alerts.append(f"Proxy health check failed (HTTP {e.code})")
     except Exception:
         alerts.append(f"Proxy not reachable on port {proxy_port} — main model may be down")
     return alerts
 
 
-# ── Minify stats reader ──────────────────────────────────────────────────────
-# The grammar proxy writes a cumulative snapshot to ~/.cortexagent/minify_stats.json
-# after every minified request (tmp+rename; same pattern as big_model_steps.json).
-# We poll it every tick and surface it under `state["minify"]` plus log a one-line
-# delta when the saved-token count climbs — so the savings are visible from
-# `overseer status`, the statusline, and the dashboard.
+
+
+
+
+
+
 MINIFY_STATS_FILE = STATE_DIR / "minify_stats.json"
 
 
 def _read_minify_stats() -> Dict:
-    """Return the proxy's persisted minify snapshot, or {} on any read error."""
+
     try:
         with MINIFY_STATS_FILE.open(encoding="utf-8") as f:
             d = json.load(f)
@@ -879,7 +762,7 @@ def _read_minify_stats() -> Dict:
 
 
 def _merge_minify_into_state(state: Dict) -> None:
-    """Pull the proxy's minify snapshot into the overseer state under `minify`."""
+
     snap = _read_minify_stats()
     if not snap:
         return
@@ -898,12 +781,12 @@ def _merge_minify_into_state(state: Dict) -> None:
     }
 
 
-# ── Token Tracking ──────────────────────────────────────────────────────────
+
 _TOKEN_TRACKER_FILE = STATE_DIR / "token_tracker.json"
 
 
 def _merge_token_stats() -> Dict:
-    """Merge token stats from proxy + tiny model paths."""
+
     proxy_stats = _read_minify_stats()
     tiny_stats = _load_json(_TOKEN_TRACKER_FILE, default={}) or {}
 
@@ -922,19 +805,14 @@ def _merge_token_stats() -> Dict:
 
 
 def _track_tiny_model_run(tokens_in: int, tokens_out: int) -> None:
-    """Track a single tiny model run.
 
-    The tiny path does NOT minify. We record runs, tokens_in, tokens_out,
-    and a (ts, tokens_in) entry in history_60s for the dashboard sparkline.
-    tokens_saved stays 0 and ratio_pct stays 0% — anything else is fake.
-    """
     stats = _load_json(_TOKEN_TRACKER_FILE, default={}) or {}
     now = time.time()
 
     stats["runs"] = stats.get("runs", 0) + 1
     stats["tokens_in"] = stats.get("tokens_in", 0) + tokens_in
     stats["tokens_out"] = stats.get("tokens_out", 0) + tokens_out
-    # tiny path does NOT minify — leave these at 0 to avoid a false metric.
+
     stats["tokens_saved"] = 0
     stats["ratio_pct"] = 0.0
     stats["last_run_ts"] = now
@@ -948,17 +826,17 @@ def _track_tiny_model_run(tokens_in: int, tokens_out: int) -> None:
 
 
 def _track_tiny_model_query(prompt: str, result: str) -> None:
-    """Track token usage for a tiny model query."""
+
     if not result:
         return
-    # Rough token estimate: ~4 chars per token
+
     tokens_in = max(1, len(prompt) // 4)
     tokens_out = max(0, len(result) // 4)
     _track_tiny_model_run(tokens_in, tokens_out)
 
 
 def _merge_minify_into_state(state: Dict) -> None:
-    """Pull the proxy's minify snapshot into the overseer state under `minify`."""
+
     snap = _read_minify_stats()
     if not snap:
         return
@@ -975,7 +853,7 @@ def _merge_minify_into_state(state: Dict) -> None:
         "history_60s": list(snap.get("history_60s") or []),
         "errors": int(snap.get("errors", 0) or 0),
     }
-    # Surface a one-line delta in the tick log when the savings climb.
+
     delta = state["minify"]["tokens_saved"] - prev_tokens_saved
     if delta > 0:
         _log(f"Minify: +{delta} tok saved this tick "
@@ -1000,29 +878,21 @@ def _merge_minify_into_state(state: Dict) -> None:
             if resp.status not in (200, 502):
                 alerts.append(f"Proxy health check failed (HTTP {resp.status})")
     except urllib.error.HTTPError as e:
-        if e.code != 502:  # 502 = backend (big model) idle-unloaded → expected
+        if e.code != 502:
             alerts.append(f"Proxy health check failed (HTTP {e.code})")
     except Exception:
         alerts.append(f"Proxy not reachable on port {proxy_port} — main model may be down")
     return alerts
 
 
-# Context-window monitor state (big model KV usage). Reset once below critical.
+
 _CTX_CRITICAL_TICKS = 0
-# Thresholds are configurable via CFG (CORTEXAGENT_CTX_* env / [metrics] conf).
-# Defaults: warn at 88%, force-reset at 95% after 3 sustained ticks (90s @30s).
+
+
 
 
 def _check_context_window() -> List[str]:
-    """Monitor the big model's context-window usage (n_past vs n_ctx).
 
-    The user hit hard 400s when the context grew to the server ceiling and
-    auto-compact never fired (window misconfig). With the window now matched
-    (131072), auto-compact keeps traffic ~95%; this monitor is the failsafe
-    that gives visibility near the ceiling and force-resets the session when
-    the slot is pegged ≥95% across several ticks (auto-compact clearly dead).
-    Returns alerts (does not self-mutate; the loop handles the failsafe).
-    """
     global _CTX_CRITICAL_TICKS
     alert_pct = CFG.context_alert_pct
     critical_pct = CFG.context_critical_pct
@@ -1032,7 +902,7 @@ def _check_context_window() -> List[str]:
         with urllib.request.urlopen(req, timeout=5) as resp:
             slots = json.loads(resp.read().decode() or "[]")
     except Exception:
-        # Big model down/unreachable — session health check covers that.
+
         _CTX_CRITICAL_TICKS = 0
         return []
     alerts: List[str] = []
@@ -1057,10 +927,7 @@ def _check_context_window() -> List[str]:
 
 
 def _context_failsafe() -> None:
-    """Force a fresh session when the slot is pegged at the ceiling — the
-    auto-compact that should have fired is dead (misconfig or client bug), so
-    the next request would hard-400. Reset the session (unloads big) so the
-    next launch starts clean instead of failing at the ceiling again."""
+
     global _CTX_CRITICAL_TICKS
     needed = CFG.context_critical_ticks
     if _CTX_CRITICAL_TICKS < needed:
@@ -1076,17 +943,13 @@ def _context_failsafe() -> None:
 
 
 def _check_latency_alert() -> List[str]:
-    """Alert when the p95 per-request latency exceeds the configured threshold.
 
-    Reads the in-memory latency history (last 100 requests). Returns an alert
-    string when p95_ms > CFG.latency_alert_p95_ms (0 disables). Does not mutate.
-    """
     threshold = CFG.latency_alert_p95_ms
     if not threshold:
         return []
     stats = _get_latency_stats()
     if stats.get("count", 0) < 5:
-        return []  # not enough samples to be meaningful
+        return []
     p95 = stats.get("p95_ms", 0)
     if p95 > threshold:
         return [f"LATENCY p95 {p95:.0f}ms > {threshold:.0f}ms threshold "
@@ -1095,17 +958,7 @@ def _check_latency_alert() -> List[str]:
 
 
 def _cortexagent_active() -> bool:
-    """True if a cortexagent session is running.
 
-    Detects either the cortexagent CLI wrapper (``bin/cortexagent``) or a claude
-    process launched by it (has ``--mcp-config`` pointing at the cortexagent
-    config). Fail-safe: returns True on any error so we never unload a model we
-    can't verify is idle.
-
-    Excludes the checker's own process and its ancestors so a caller whose own
-    command line happens to mention ``bin/cortexagent`` (e.g. a test harness)
-    can't self-match and suppress the watchdog.
-    """
     exclude = set()
     p = os.getpid()
     for _ in range(32):
@@ -1126,12 +979,12 @@ def _cortexagent_active() -> bool:
     except Exception:
         return True
     for line in out.splitlines():
-        # split(None, 2) splits on runs of whitespace — the pid column is
-        # right-aligned to the widest pid on the system, so a fixed-width
-        # split(" ", 2) yields an empty pid for any process with fewer digits
-        # than the widest (e.g. a 4-digit cortexagent pid on a system whose
-        # widest pid is 7 digits) and silently skips it — which would make the
-        # watchdog unload the big model while cortexagent is actively running.
+
+
+
+
+
+
         parts = line.split(None, 2)
         if len(parts) != 3:
             continue
@@ -1141,40 +994,25 @@ def _cortexagent_active() -> bool:
                 continue
         except ValueError:
             continue
-        # cortexagent CLI wrapper (a bash script) or any process whose args
-        # reference the wrapper path.
+
+
         if "bin/cortexagent" in args:
             return True
-        # claude session launched by the wrapper (has --mcp-config → cortexagent).
+
         if comm in ("claude", "node") and "--mcp-config" in args and "cortexagent" in args:
             return True
     return False
 
 
 def _watchdog_cortexagent() -> None:
-    """If cortexagent is closed but the daemon still tracks an active session,
-    reset the session and unload the big model (frees VRAM).
 
-    This is the safety net for the "model stays loaded after killing
-    cortexagent" bug: a SIGKILLed CLI never sends ``session-end``, so the
-    daemon's refcount stays > 0 and the idle watcher never fires. The overseer
-    (always-on systemd service) detects the stale session and forces cleanup.
-
-    Important: a 'closed' CLI must be backed by *no recent daemon activity*
-    on the proxy (:8081). Otherwise a webui-only / daemon-managed session
-    (no `bin/cortexagent` process running) would be falsely flagged as stale
-    and unloaded mid-conversation. We require BOTH signals:
-      1. No `bin/cortexagent` / `claude --mcp-config ...cortexagent` process
-      2. Daemon `_last_request` older than ``watchdog_stale_sec`` (default 300s)
-         OR the daemon reports active_sessions == 0
-    """
     if _cortexagent_active():
         return
-    # 300s is tighter than daemon's stale_session_sec default (1800s) — the
-    # watchdog fires BEFORE the daemon's self-heal so a leaked session is
-    # reset sooner. If the daemon has received a proxy request within this
-    # window, a session is alive even when we can't see the CLI process
-    # (webui, MCP clients, daemons).
+
+
+
+
+
     watchdog_stale_sec = 300
     try:
         st = control.send_request("status", timeout=5)
@@ -1185,9 +1023,9 @@ def _watchdog_cortexagent() -> None:
         if active == 0:
             return
         if idle is not None and idle < watchdog_stale_sec:
-            # Daemon saw a request recently — a client (webui or otherwise) is
-            # using the proxy. Do not treat the absence of `bin/cortexagent`
-            # as proof of a closed session.
+
+
+
             return
         _log("cortexagent closed AND daemon idle > "
              f"{watchdog_stale_sec}s with active session — "
@@ -1198,7 +1036,7 @@ def _watchdog_cortexagent() -> None:
 
 
 def _check_db_integrity() -> List[str]:
-    """Quick SQLite integrity check."""
+
     alerts = []
     try:
         sys.path.insert(0, str(REPO_ROOT))
@@ -1213,12 +1051,7 @@ def _check_db_integrity() -> List[str]:
 
 
 def _estimate_tokens(stats: Dict) -> str:
-    """Rough token estimate: 4 chars per token, ~200 chars per entry.
 
-    Backed by cortexllm.stats.estimate_tokens (v0.4.0) when available —
-    same heuristic (4 chars/token, ~200 chars/entry), just routed through
-    the public API so we don't drift from the canonical estimator.
-    """
     total = stats["hot"] + stats["warm"] + stats["cold"]
     try:
         from cortexllm.stats import estimate_tokens
@@ -1233,7 +1066,7 @@ def _estimate_tokens(stats: Dict) -> str:
 
 
 def _cold_distill() -> bool:
-    """Run cold distillation."""
+
     try:
         sys.path.insert(0, str(REPO_ROOT))
         from lib.cold_distiller import ColdDistiller
@@ -1247,21 +1080,14 @@ def _cold_distill() -> bool:
 
 
 def _spawn_subagent(prompt: str, model: str = "sonnet", timeout: int = 600) -> Dict:
-    """Spawn a Claude Code subagent via the Task/Agent CLI to handle a delegated
-    task. Returns {"ok": bool, "output": str, "error": str}.
 
-    Uses `claude -p <prompt>` in a non-interactive shell so the overseer can
-    delegate bounded work (research, sweeps, code edits) without blocking its
-    tick loop. Bounded by a timeout; failures fall through to the caller so
-    the queue can record them as failed and self-heal (don't loop).
-    """
     try:
-        # -p / --print = non-interactive (prints response and exits). This is
-        # the canonical non-interactive mode for Claude Code. --bare keeps the
-        # subagent from re-reading CLAUDE.md / spawning hooks / polluting the
-        # parent's auto-memory. --dangerously-skip-permissions so subagents
-        # don't stall waiting for the user mid-batch (the user already
-        # implicitly authorized the work by queuing it).
+
+
+
+
+
+
         cmd = [
             "claude", "-p", prompt,
             "--model", model,
@@ -1286,21 +1112,12 @@ def _spawn_subagent(prompt: str, model: str = "sonnet", timeout: int = 600) -> D
 
 
 def _dispatch_workflow(state: Dict) -> int:
-    """Walk the current workflow and execute any tasks whose dependencies are
-    satisfied. Maps workflow engines to the existing task pipeline:
 
-        LLM_REASONING / LLM_CODE → "subagent" task (Claude Code subagent)
-        SYSTEM_EXEC              → "command" task (shell)
-
-    Returns the number of tasks dispatched this call. Runs at most
-    `WORKFLOW_DISPATCH_MAX` tasks per tick to avoid blocking the overseer
-    loop on a big workflow.
-    """
     try:
         sys.path.insert(0, str(REPO_ROOT))
         from engine import WorkflowEngine
         from engine.types import TaskStatus
-        from engine.workflow import _load_workflow, _save_workflow  # module-level
+        from engine.workflow import _load_workflow, _save_workflow
         plan_path = WORKFLOW_FILE
         if not plan_path.exists():
             return 0
@@ -1308,7 +1125,7 @@ def _dispatch_workflow(state: Dict) -> int:
         if not plan:
             return 0
 
-        # Find ready tasks (PENDING + all deps COMPLETED), priority order.
+
         completed = {t.id for t in plan.tasks if t.status.name == "COMPLETED"}
         ready = [
             t for t in plan.tasks
@@ -1323,11 +1140,11 @@ def _dispatch_workflow(state: Dict) -> int:
         dispatched = 0
         for task in ready[:WORKFLOW_DISPATCH_MAX]:
             if task.engine.name in ("LLM_REASONING", "LLM_CODE"):
-                # Hand to a Claude subagent. Bounded 10-minute timeout per task.
-                # Use sonnet for code, opus for reasoning if available.
+
+
                 model = "opus" if task.engine.name == "LLM_REASONING" else "sonnet"
-                # Inherit results of dependencies — feed them into the prompt so
-                # the subagent has the context to continue the chain.
+
+
                 dep_context = ""
                 for dep_id in (task.depends_on or []):
                     dep = next((t for t in plan.tasks if t.id == dep_id), None)
@@ -1343,7 +1160,7 @@ def _dispatch_workflow(state: Dict) -> int:
                 res = _spawn_subagent(full_prompt, model=model, timeout=600)
                 if res["ok"]:
                     task.status = TaskStatus.COMPLETED
-                    task.result = res["output"][:8000]  # cap stored result
+                    task.result = res["output"][:8000]
                     _log(f"Workflow {task.id} completed ({len(res['output'])} chars)",
                          "✅", GREEN)
                 else:
@@ -1379,37 +1196,31 @@ def _dispatch_workflow(state: Dict) -> int:
             dispatched += 1
 
         if dispatched:
-            _save_workflow(plan)  # persist after batch
+            _save_workflow(plan)
         return dispatched
     except Exception as e:
         _log(f"Workflow dispatch error: {e}", "⚠️", YELLOW)
         return 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  HOT-MEMORY REMEDIATION (overseer must ACT, not just alert)
-# ═══════════════════════════════════════════════════════════════════════════════
 
-# Sustained-overflow counter. Persisted in state["hot_overflow_ticks"] so a
-# restart doesn't reset the count and immediately force /clear again.
+
+
+
+
+
 def _hot_remediation(state: Dict, stats: Dict) -> None:
-    """Hot→warm sync + byte-threshold advisories. HARD RULE (2026-08-11):
 
-    The 914% overflow alarm is GONE. There is no auto-compact. There is no
-    /clear. Hot grows unbounded; warm mirrors it. The only background work
-    we do here is ensuring every hot line is also in warm, and warning the
-    operator if byte-size exceeds the soft advisory thresholds.
-    """
     hot_bytes = stats.get("hot_bytes", 0)
     warm_bytes = stats.get("warm_bytes", 0)
     sustained = int(state.get("hot_overflow_ticks", 0))
 
-    # 1. Hot→warm sync. Driven by the daemon now (it always mirrors), but we
-    #    re-check on every tick in case the daemon was down when a write
-    #    happened. Cheap linear scan of the last few entries only.
+
+
+
     _hot_to_warm_sync(state)
 
-    # 2. Byte-threshold advisory only (no /clear, no compact).
+
     hot_mb = hot_bytes / (1024 * 1024)
     warm_mb = warm_bytes / (1024 * 1024)
     if hot_mb > HOT_HARD_LIMIT_MB or warm_mb > HOT_WARM_LIMIT_MB:
@@ -1419,7 +1230,7 @@ def _hot_remediation(state: Dict, stats: Dict) -> None:
             f"memory size advisory: hot={hot_mb:.1f}MB warm={warm_mb:.1f}MB "
             f"(advisory only; no action taken per hard rule)"
         )
-        if sustained % 30 == 0:  # every 30 ticks (~15 min), log a one-liner
+        if sustained % 30 == 0:
             _log(f"Memory advisory: hot={hot_mb:.1f}MB warm={warm_mb:.1f}MB "
                  f"(no caps, no /clear — this is informational only)", "📊", YELLOW)
     else:
@@ -1428,10 +1239,7 @@ def _hot_remediation(state: Dict, stats: Dict) -> None:
 
 
 def _hot_to_warm_sync(state: Dict) -> None:
-    """Mirror hot→warm. The daemon already does this on every write, but we
-    re-check on every overseer tick to catch any gaps. We only sync the tail
-    (from where warm left off) — older lines are already in warm.
-    """
+
     try:
         from lib.memory_thin import HOT_DIR, WARM_DIR
         for platform in ("cortexagent", "claude", "openclaw_brain", "system"):
@@ -1443,10 +1251,10 @@ def _hot_to_warm_sync(state: Dict) -> None:
                 hot_size = hot_file.stat().st_size
                 warm_size = warm_file.stat().st_size if warm_file.exists() else 0
                 if warm_size >= hot_size:
-                    continue  # warm is caught up
-                # Append the tail of hot to warm (the gap).
+                    continue
+
                 with open(hot_file, "rb") as f:
-                    f.seek(max(0, warm_size - 1))  # re-read last byte in case of partial newline
+                    f.seek(max(0, warm_size - 1))
                     gap = f.read()
                 if gap:
                     _atomic_append_bytes(warm_file, gap)
@@ -1457,12 +1265,7 @@ def _hot_to_warm_sync(state: Dict) -> None:
 
 
 def _atomic_append_bytes(file_path, data: bytes) -> None:
-    """POSIX-atomic append raw bytes. Safe for ≤PIPE_BUF (4096B) per write.
 
-    Drop-in to cortexllm.atomic.atomic_append_bytes (v0.4.0). The local copy
-    was a verbatim duplicate; kept as a one-liner shim so callers don't
-    change and the import is optional.
-    """
     try:
         from cortexllm.atomic import atomic_append_bytes
         atomic_append_bytes(file_path, data)
@@ -1478,9 +1281,9 @@ def _atomic_append_bytes(file_path, data: bytes) -> None:
         _os.close(fd)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  TASK QUEUE (from orchestrator)
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _load_queue() -> List[Dict]:
     return _load_json(QUEUE_FILE, [])
@@ -1535,16 +1338,7 @@ def queue_remove(task_id: str) -> bool:
 
 
 def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
-    """Execute a single task with stability enhancements.
 
-    Features:
-    - Backoff/retry for fragile dependencies (llama-server, diffusion)
-    - Semaphore for concurrent model calls
-    - Latency and token tracking
-    - Worker health monitoring
-
-    Returns True on success, False on failure.
-    """
     task_type = task.get("type", "command")
     prompt = task.get("prompt", "")
     command = task.get("command", "")
@@ -1570,10 +1364,10 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
             return False
 
     elif task_type == "llm":
-        # ReAct/Socratic loop (step 2) — the tiny model drives tools.
-        # Acquire semaphore to limit concurrent LLM calls.
+
+
         from lib.react_loop import run_react
-        
+
         try:
             result = retry_with_backoff(
                 run_react,
@@ -1585,10 +1379,10 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
                 duration_ms = (time.time() - start_time) * 1000
                 _record_latency("llm", duration_ms)
                 _record_tokens(
-                    max(1, len(prompt) // 4),  # Rough estimate
+                    max(1, len(prompt) // 4),
                     max(0, len(result.get('output', '')) // 4),
                 )
-                # Apply beautification pass to LLM output
+
                 from lib.react_loop import _beautify_response
                 result['output'] = _beautify_response(result.get('output', ''))
                 _log(f"LLM task completed ({len(result.get('output', ''))} chars, {duration_ms:.0f}ms)",
@@ -1603,8 +1397,8 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
             return False
 
     elif task_type == "subagent":
-        # Delegate to a Claude Code subagent (full tool access, model per task).
-        # Optional keys: model (default "sonnet"), timeout (default 600s).
+
+
         model = task.get("model", "sonnet")
         timeout = int(task.get("timeout", 600))
         try:
@@ -1625,7 +1419,7 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
             return False
 
     elif task_type in ("image", "video"):
-        # Route to media pipeline (background model swap) with retry
+
         tool = "generate_image" if task_type == "image" else "generate_video"
         try:
             result = retry_with_backoff(
@@ -1645,12 +1439,12 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
             return False
 
     elif task_type == "media":
-        # Auto-detect: let MediaPipeline decide image vs video vs text
+
         try:
             result = execute_tool("generate_media", {"prompt": prompt})
             if result.get("ok"):
-                # Output is "queued media task T-<id> (background)" — extract the
-                # task id from the string (the old json.loads always failed here).
+
+
                 out = result.get("output", "")
                 task_id = out
                 for tok in out.split():
@@ -1667,7 +1461,7 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
             return False
 
     elif task_type == "ingest":
-        # Run a per-domain ingestion script (cron), or ingest from task fields.
+
         try:
             if command:
                 result = execute_tool("run_command", {"command": command, "timeout": 3600})
@@ -1691,15 +1485,7 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
 
 
 def _sync_scheduler_result(task: Dict, success: bool) -> None:
-    """Sync a finished queue task's result back to the scheduler store.
 
-    The scheduler capsule reads tasks.json + executions.jsonl for status, but
-    the overseer's queue is the real executor. Without this sync, a dispatched
-    task's state stays "queued" and its execution receipt stays "pending"
-    forever — so the capsule shows it as perpetually running. This updates the
-    scheduler task state and appends a terminal execution receipt so the
-    capsule reflects reality.
-    """
     sched_task_id = task.get("scheduler_task_id")
     if not sched_task_id:
         return
@@ -1711,7 +1497,7 @@ def _sync_scheduler_result(task: Dict, success: bool) -> None:
         if not rec:
             return
         new_state = "completed" if success else "failed"
-        # Optimistic concurrency: pass the version we just read.
+
         sched.update(sched_task_id, rec.get("version", 0), state=new_state)
         sched.record_execution(
             sched_task_id,
@@ -1725,23 +1511,9 @@ def _sync_scheduler_result(task: Dict, success: bool) -> None:
 
 
 def _process_queue(state: Optional[Dict] = None) -> None:
-    """Process all queued tasks sequentially with stability enhancements.
 
-    Features:
-    - Backpressure enforcement (MAX_QUEUE_SIZE)
-    - Queue depth monitoring for observability
-    - Worker health checks
-    - Graceful shutdown handling
-
-    M9 fix (2026-08-11): guarded by ``_queue_dispatch_lock`` so a second
-    caller (e.g. a scheduled task triggering during an in-progress dispatch)
-    can't double-dispatch the same queued item.
-
-    ``state`` (optional) is the live overseer state dict threaded from the
-    tick loop; it is passed to ``_execute_task`` so ReAct steps publish live.
-    """
     if _SHUTDOWN:
-        # During shutdown, only process remaining tasks if there are few
+
         queue = _load_queue()
         remaining = len([t for t in queue if t["status"] in ("queued", "running")])
         if remaining > 0:
@@ -1750,8 +1522,8 @@ def _process_queue(state: Optional[Dict] = None) -> None:
             return
 
     if not _queue_dispatch_lock.acquire(blocking=False):
-        # Another dispatch is in progress; let it finish and the next tick
-        # will pick up whatever remains.
+
+
         return
     try:
         queue = _load_queue()
@@ -1765,9 +1537,9 @@ def _process_queue(state: Optional[Dict] = None) -> None:
         _bridge_emit("queue", f"▶️ Processing {len(pending)} queued task(s)")
 
         for task in pending:
-            # Check if shutdown was requested during processing
+
             if _SHUTDOWN and len([t for t in queue if t["status"] == "queued"]) > 5:
-                # Leave remaining queued tasks for next startup
+
                 _log("Shutdown: leaving remaining tasks for next start", "🛑", YELLOW)
                 break
 
@@ -1785,8 +1557,8 @@ def _process_queue(state: Optional[Dict] = None) -> None:
             try:
                 success = _execute_task(task, state)
             except Exception as e:
-                # A crash in _execute_task (e.g. MediaPipeline raising) must not
-                # leave the task stuck in "running" forever — mark it failed.
+
+
                 _log(f"Task {task['id']} crashed: {e}", "❌", RED)
                 _bridge_emit("task_crash", f"❌ Task {task['id']} crashed: {e}",
                              task_id=task["id"])
@@ -1797,8 +1569,8 @@ def _process_queue(state: Optional[Dict] = None) -> None:
             task["result"] = "success" if success else "failed"
             _save_queue(queue)
             _record_queue_depth(len([t for t in queue if t["status"] in ("queued", "running")]))
-            # Sync the terminal result back to the scheduler store so the
-            # capsule shows the real status instead of a perpetual "running".
+
+
             _sync_scheduler_result(task, success)
 
             if success:
@@ -1814,25 +1586,23 @@ def _process_queue(state: Optional[Dict] = None) -> None:
 
 
 def _cleanup_queue() -> None:
-    """Remove completed/failed tasks older than 1 hour to prevent queue bloat.
-    Keeps only the last 10 completed tasks (for debugging) and all pending.
-    Called every 10 ticks (every ~5 minutes) to avoid constant I/O."""
+
     queue = _load_queue()
     now = datetime.now()
     kept = []
     removed = 0
     for task in queue:
-        # Keep all pending/running tasks
+
         if task["status"] in ("queued", "running"):
             kept.append(task)
             continue
-        # For completed/failed, keep only the last 10
+
         try:
             completed_at = datetime.fromisoformat(task.get("completed_at", now.isoformat()))
         except Exception:
             kept.append(task)
             continue
-        # Keep if completed in last hour, or if we have fewer than 10 total
+
         if (now - completed_at).total_seconds() < 3600 or len(kept) < 10:
             kept.append(task)
         else:
@@ -1842,9 +1612,9 @@ def _cleanup_queue() -> None:
         _log(f"Queue cleanup: removed {removed} old completed tasks", "🧹", DIM)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  SCHEDULER (from orchestrator)
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _load_schedule() -> List[Dict]:
     return _load_json(SCHEDULE_FILE, [])
@@ -1859,7 +1629,7 @@ def _cron_matches(expr: str, now: datetime) -> bool:
     if len(fields) != 5:
         return False
     minute, hour, dom, mon, dow = fields
-    # cron dow is 0=Sunday..6=Saturday; Python weekday() is 0=Monday..6=Sunday.
+
     cron_dow = (now.weekday() + 1) % 7
     values = [now.minute, now.hour, now.day, now.month, cron_dow]
     for fld, val in zip([minute, hour, dom, mon, dow], values):
@@ -1885,17 +1655,14 @@ def _cron_matches(expr: str, now: datetime) -> bool:
 
 
 def _scheduler() -> Optional[Store]:
-    """Lazy singleton for the scheduler store."""
+
     if SCHEDULER_AVAILABLE:
         return Store()
     return None
 
 
 def _check_schedule_legacy() -> None:
-    """Legacy schedule check (fallback when scheduler store unavailable).
-    
-    Uses old JSON schedule file for backward compatibility.
-    """
+
     now = datetime.now()
     schedule = _load_schedule()
 
@@ -1962,10 +1729,10 @@ def _check_schedule_legacy() -> None:
 def schedule_add(name: str, task_type: str, schedule_type: str,
                  schedule_value: str, prompt: str = "", command: str = "",
                  output: str = "", system: str = "") -> Dict:
-    """Schedule a task. Uses new scheduler store if available."""
+
     sched = _scheduler()
     if sched is None:
-        # Fallback to old JSON method
+
         schedule = _load_schedule()
         entry = {
             "name": name,
@@ -1986,7 +1753,7 @@ def schedule_add(name: str, task_type: str, schedule_type: str,
         _log(f"Scheduled '{name}' ({schedule_type}: {schedule_value})", "📅", CYAN)
         return entry
 
-    # Use new scheduler store
+
     receipt = sched.create(
         title=name,
         kind="user",
@@ -2007,7 +1774,7 @@ def schedule_add(name: str, task_type: str, schedule_type: str,
 
 
 def schedule_list() -> List[Dict]:
-    """List scheduled tasks. Uses new scheduler store if available."""
+
     sched = _scheduler()
     if sched is None:
         return _load_schedule()
@@ -2015,7 +1782,7 @@ def schedule_list() -> List[Dict]:
 
 
 def schedule_remove(name: str) -> bool:
-    """Remove a scheduled task. Uses new scheduler store if available."""
+
     sched = _scheduler()
     if sched is None:
         schedule = _load_schedule()
@@ -2027,7 +1794,7 @@ def schedule_remove(name: str) -> bool:
             return True
         return False
 
-    # Find task by title
+
     for task in sched.list():
         if task.get("title") == name or name in task.get("title", ""):
             result = sched.cancel(task["id"])
@@ -2040,27 +1807,24 @@ def schedule_remove(name: str) -> bool:
 
 
 def _check_schedule() -> None:
-    """Check scheduled tasks and queue any that are due.
-    
-    Uses new scheduler store with event-sourced tasks.
-    """
+
     sched = _scheduler()
     if sched is None:
-        # Fallback to old method
+
         _check_schedule_legacy()
         return
-    
-    # Use new scheduler
+
+
     tasks = sched.list(visible_only=False)
     now = datetime.now()
-    
+
     for task in tasks:
         if not task.get("enabled", True):
             continue
         if task.get("state") != "scheduled":
             continue
-        
-        # Dedup: skip if already ran this minute
+
+
         last_run = task.get("last_run")
         if last_run:
             try:
@@ -2068,12 +1832,12 @@ def _check_schedule() -> None:
                     continue
             except Exception:
                 pass
-        
-        # Check if due based on trigger
+
+
         should_run = False
         trigger = task.get("trigger", "manual")
         sv = task.get("schedule_value", "")
-        
+
         if trigger == "cron":
             should_run = _cron_matches(sv, now)
         elif trigger == "daily":
@@ -2096,8 +1860,8 @@ def _check_schedule() -> None:
             except Exception:
                 pass
         elif trigger == "interval":
-            should_run = True  # Fire immediately for intervals
-        
+            should_run = True
+
         if should_run:
             payload = task.get("payload", {})
             task_type = task.get("payload_type", "command")
@@ -2106,11 +1870,11 @@ def _check_schedule() -> None:
                       command=payload.get("command", ""),
                       output=payload.get("output", ""),
                       scheduler_task_id=task["id"])
-            
-            # Mark as queued
+
+
             sched.update(task["id"], task.get("version", 0),
                         state="queued", updated_at=now.isoformat())
-            
+
             _log(f"📅 Scheduled task '{task['title']}' queued ({task_type})",
                  "📅", GREEN)
             _bridge_emit(
@@ -2121,19 +1885,19 @@ def _check_schedule() -> None:
             )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  PLAN TRACKING
-#  (Post-cortexllm v0.4.0: thin shim over cortexllm.plan.Plan. The Plan class
-#  stores the dict shape verbatim — name/total_steps/current_step/context/
-#  steps/step_status/started_at/updated_at/completed — so callers don't
-#  change. Local copy only kept for the log lines + the pre-existing caller
-#  signature of plan_set(name, total_steps, context, steps) which is
-#  DIFFERENT from cortexllm.plan.Plan.set(name, total_steps, steps, context)
-#  (note the swapped last two args). The shim fixes the order.)
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
+
 
 def _plan():
-    """Lazy singleton for the cortexllm plan backing store."""
+
     try:
         from cortexllm.plan import Plan as _Plan
         return _Plan(dir=str(STATE_DIR), name="overseer_plan")
@@ -2143,20 +1907,15 @@ def _plan():
 
 def plan_set(name: str, total_steps: int, context: str = "",
              steps: Optional[List[str]] = None) -> Dict:
-    """Set or update the current plan.
 
-    Note: parameter order is `(name, total_steps, context, steps)` — fixed
-    from the pre-2026-08-11 bug where cortexllm's order is
-    `(name, total_steps, steps, context)`. The shim swaps before calling.
-    """
     plan = _plan()
     if plan is not None:
-        # cortexllm.plan.Plan.set signature: (name, total_steps, steps, context)
+
         result = plan.set(name=name, total_steps=total_steps,
                           steps=steps, context=context)
         _log(f"Plan set: '{name}' ({total_steps} steps)", "📋", CYAN)
         return result
-    # Fallback (cortexllm missing): local copy.
+
     local = {
         "name": name,
         "total_steps": total_steps,
@@ -2174,7 +1933,7 @@ def plan_set(name: str, total_steps: int, context: str = "",
 
 
 def plan_step(n: Optional[int] = None) -> Dict:
-    """Advance to step N, or next step if N is None."""
+
     plan = _plan()
     if plan is not None:
         result = plan.advance(n=n)
@@ -2186,7 +1945,7 @@ def plan_step(n: Optional[int] = None) -> Dict:
             _log(f"Step {result['current_step']}/{result['total_steps']}: "
                  f"{result['steps'][result['current_step']-1]}", "➡️", CYAN)
         return result
-    # Fallback (cortexllm missing): local copy.
+
     data = _load_json(PLAN_FILE)
     if not data:
         return {"error": "No plan set. Use plan-set first."}
@@ -2214,7 +1973,7 @@ def plan_step(n: Optional[int] = None) -> Dict:
 
 
 def plan_status() -> Dict:
-    """Get current plan status."""
+
     plan = _plan()
     if plan is not None:
         return plan.status()
@@ -2225,7 +1984,7 @@ def plan_status() -> Dict:
 
 
 def plan_complete() -> Dict:
-    """Mark the current plan as completed."""
+
     plan = _plan()
     if plan is not None:
         result = plan.complete()
@@ -2242,15 +2001,15 @@ def plan_complete() -> Dict:
     return data
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  DAEMON LOOP
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _daemon_loop(interval: int) -> None:
-    """Main overseer loop: health checks, schedule, queue, LLM keepalive."""
-    # Register clean-shutdown handlers so SIGTERM/SIGINT exit 0 (not signal-kill).
-    # This prevents systemd Restart=on-failure from respawning us and re-pinning
-    # the LFM2.5-1.2B model after cortexagent closes.
+
+
+
+
     signal.signal(signal.SIGTERM, _handle_stop_signal)
     signal.signal(signal.SIGINT, _handle_stop_signal)
 
@@ -2260,7 +2019,7 @@ def _daemon_loop(interval: int) -> None:
     state["started_at"] = datetime.now().isoformat()
     _save_state(state)
 
-    # Start the tiny LFM2.5-1.2B llama-server (replaces Ollama preload)
+
     has_llm = _preload_tiny_model()
 
     tick = 0
@@ -2271,8 +2030,8 @@ def _daemon_loop(interval: int) -> None:
             now = datetime.now().strftime("%H:%M:%S")
             _log(f"── Tick {tick} @ {now} ─────────────────────", "⏱️", DIM)
 
-            # Publish the tick's step list (5-7 visible, current ±1). The tray
-            # popout and webui read this verbatim — keep labels short.
+
+
             task_steps_publish(state, [
                 {"id": 1, "label": "Memory health checks",       "status": "in_progress"},
                 {"id": 2, "label": "Watchdog (every 2nd tick)",  "status": "pending"},
@@ -2281,42 +2040,42 @@ def _daemon_loop(interval: int) -> None:
                 {"id": 5, "label": "LLM health summary",         "status": "pending"},
             ], current=1)
 
-            # ── Health checks ──
+
             overseer_set_state(state, "watching memory health")
             stats = _get_memory_stats()
             _log(f"Memory: {stats['hot']}H / {stats['warm']}W / {stats['cold']}C", "📊", DIM)
             alerts = _check_health(stats)
             alerts += _check_memory_writes()
             alerts += _check_session_health()
-            # Context-window monitor: alert near the ceiling; failsafe-reset on
-            # sustained critical (auto-compact dead → the 400-class bug).
+
+
             ctx_alerts = _check_context_window()
             alerts += ctx_alerts
             _context_failsafe()
             if ctx_alerts:
                 _log("Context: " + " | ".join(ctx_alerts), "📏", YELLOW)
 
-            # Latency alert: p95 per-request latency over the configured
-            # threshold (CORTEXAGENT_LATENCY_ALERT_P95_MS, default 5000ms).
+
+
             lat_alerts = _check_latency_alert()
             alerts += lat_alerts
             if lat_alerts:
                 _log("Latency: " + " | ".join(lat_alerts), "⏱️", YELLOW)
 
-            # ── CortexAgent watchdog (every 2nd tick) ──
-            # If cortexagent is closed but the daemon still tracks an active
-            # session, reset + unload the big model so VRAM is freed.
+
+
+
             if tick % 2 == 0:
                 overseer_set_state(state, "watchdogging cortexagent session")
                 _watchdog_cortexagent()
 
-            # ── Minify stats (proxy writes to ~/.cortexagent/minify_stats.json) ──
-            # Pull the cumulative snapshot, surface a delta log line, and merge
-            # into state for the dashboard / statusline / CLI to read.
+
+
+
             overseer_set_state(state, "merging minify stats")
             _merge_minify_into_state(state)
 
-            # DB integrity + queue cleanup every 10th tick (~5 min)
+
             if tick % 10 == 0:
                 alerts += _check_db_integrity()
                 _cleanup_queue()
@@ -2330,9 +2089,9 @@ def _daemon_loop(interval: int) -> None:
                 })
                 state["health_events"] = state["health_events"][-100:]
 
-                # Auto-compact gate — HARD RULE (2026-08-11): no auto-compact.
-                # The legacy threshold is kept as observation only; we never
-                # compact automatically. Warm grows unbounded.
+
+
+
                 if stats["warm"] > WARM_CAP * COMPACT_THRESHOLD:
                     overseer_set_state(
                         state,
@@ -2340,11 +2099,11 @@ def _daemon_loop(interval: int) -> None:
                         f"no auto-compact per hard rule)"
                     )
 
-            # Hot-memory remediation — hot→warm sync + byte-threshold advisory.
-            # The 914% alarm is GONE. There is no /clear. Hot grows unbounded.
+
+
             _hot_remediation(state, stats)
 
-            # ── Cold distill (hourly) ──
+
             last_distill = state.get("last_distill")
             if stats["warm"] > 100 and (
                 not last_distill or
@@ -2354,34 +2113,34 @@ def _daemon_loop(interval: int) -> None:
                 _cold_distill()
                 state["last_distill"] = datetime.now().isoformat()
 
-            # ── Worker pool heartbeat check (every tick) ──
+
             pool = get_worker_pool()
             if pool:
                 actions = pool.heartbeat_check()
                 for action in actions:
                     _log(f"Worker pool: {action}", "⚠️", YELLOW)
-            
-            # ── Schedule check ──
+
+
             overseer_set_state(state, "checking schedule + queue")
-            # Count from the event-sourced store when available (the legacy
-            # overseer_schedule.json is empty on new installs and would
-            # misleadingly report 0 even with real tasks seeded).
+
+
+
             _sched = _scheduler()
             sched_count = len(_sched.list(visible_only=False)) if _sched else len(_load_schedule())
             _log(f"Schedule: {sched_count} entries", "📅", DIM)
             _check_schedule()
-            
-            # ── Process queue ──
+
+
             q = _load_queue()
             pending = len([t for t in q if t["status"] == "queued"])
             if pending:
                 _log(f"Queue: {pending} pending tasks", "📦", DIM)
             _process_queue(state)
-            
-            # ── Record queue metrics ──
+
+
             _record_queue_depth(len(q))
 
-            # ── Workflow engine check + dispatch ──
+
             try:
                 sys.path.insert(0, str(REPO_ROOT))
                 from engine import WorkflowEngine
@@ -2392,12 +2151,12 @@ def _daemon_loop(interval: int) -> None:
                     running_wf = wf_status.get("running", 0)
                     if pending_wf > 0 or running_wf > 0:
                         _log(f"Workflow: {pending_wf} pending, {running_wf} running", "⚙️", DIM)
-                # Actually dispatch ready tasks (depends_on gate).
-                # The original loop only read status — workflows stayed
-                # "pending" forever. Now the dispatcher walks the DAG and
-                # executes any task whose deps are COMPLETED.
-                # Run in a daemon thread so a 10-minute subagent invocation
-                # doesn't block the next tick (queue, health, watchdog).
+
+
+
+
+
+
                 if wf_status.get("pending", 0) > 0:
                     threading.Thread(
                         target=_dispatch_workflow, args=(state,),
@@ -2406,10 +2165,10 @@ def _daemon_loop(interval: int) -> None:
             except Exception:
                 pass
 
-            # ── Observability: Record metrics every tick ──
+
             if tick % 5 == 0:
                 _record_queue_depth(len([t for t in _load_queue()]))
-                # Check context usage alerts
+
                 ctx_alerts = _check_context_alerts()
                 if ctx_alerts:
                     for alert in ctx_alerts:
@@ -2419,15 +2178,15 @@ def _daemon_loop(interval: int) -> None:
                         "alerts": ctx_alerts,
                     })
 
-            # ── LLM keepalive (every 5th tick) ──
-            # Always run (not gated on the boot-time has_llm): if the tiny
-            # failed to start at boot, the keepalive is the only thing that can
-            # recover it. Runs in a thread so a down tiny (up to 60s of /health
-            # polling) can't freeze the watchdog / health checks / scheduler.
+
+
+
+
+
             if tick % 5 == 0:
                 threading.Thread(target=_keepalive_tiny_model, daemon=True).start()
 
-            # ── LLM health summary (every 10th tick) ──
+
             if has_llm and tick % 10 == 0:
                 overseer_set_state(state, "querying tiny LLM for health summary")
                 prompt = (
@@ -2440,21 +2199,21 @@ def _daemon_loop(interval: int) -> None:
                     _log(f"LLM health: {summary}", "💬", DIM)
                     state["last_llm_summary"] = summary
 
-            # ── Log memory estimate ──
+
             if tick % 5 == 0:
                 est = _estimate_tokens(stats)
                 _log(f"Memory: {stats['hot']}H/{stats['warm']}W/{stats['cold']}C (~{est} tok)  "
                      f"Alerts: {len(alerts)}  Ticks: {tick}", "📊", DIM)
 
-            # Reset state for the next tick's readers
+
             overseer_set_state(state, "idle")
             task_steps_publish(state, [], None)
             _save_state(state)
 
         except Exception as e:
-            # Structured error: log a concise line + write a full crash dump
-            # (traceback, pid, uptime, tick) so a swallowed loop error is
-            # resolvable without grepping for the bare message.
+
+
+
             _log(f"Daemon error: {e}", "❌", RED)
             log_exception(
                 e, component="overseer",
@@ -2462,21 +2221,21 @@ def _daemon_loop(interval: int) -> None:
                 log_file=LOG_FILE,
             )
 
-        # Interruptible sleep: poll the shutdown flag every 1s so a SIGTERM is
-        # noticed within ~1s instead of waiting up to `interval` seconds.
+
+
         for _ in range(interval):
             if _SHUTDOWN:
                 break
             time.sleep(1)
 
-    # ── Clean shutdown: unload the LFM2.5-1.2B so the llama-server frees VRAM, then exit 0 ──
+
     _log("Overseer shutting down — unloading tiny model...", "🛑", YELLOW)
     _unload_tiny_model()
     state = _load_state()
     state["stopped_at"] = datetime.now().isoformat()
     _save_state(state)
-    # Close dump: record the clean shutdown (SIGINT/SIGTERM) with uptime + tick
-    # count so a "normal close" is still auditable.
+
+
     close_dump(
         component="overseer",
         reason="SIGINT/SIGTERM clean shutdown",
@@ -2488,12 +2247,12 @@ def _daemon_loop(interval: int) -> None:
     sys.exit(0)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  DAEMON LIFECYCLE
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _is_running() -> Optional[int]:
-    """Check if daemon is running. Returns PID or None."""
+
     if not PID_FILE.exists():
         return None
     try:
@@ -2506,7 +2265,7 @@ def _is_running() -> Optional[int]:
 
 
 def _start(interval: int) -> None:
-    """Start the overseer daemon."""
+
     pid = _is_running()
     if pid:
         print(f"Overseer already running (pid {pid})")
@@ -2514,18 +2273,18 @@ def _start(interval: int) -> None:
 
     pid = os.fork()
     if pid > 0:
-        # Parent
+
         PID_FILE.write_text(str(pid))
         print(f"Overseer started (pid {pid})")
         return
 
-    # Child — become session leader
+
     os.setsid()
-    # Redirect all stdio to /dev/null. stderr MUST be redirected too: if the
-    # daemon inherits the parent's stderr pipe, the parent's exit closes the
-    # read end and the daemon's next _log() print to stderr raises SIGPIPE and
-    # kills it. The log file (written by _log) is the source of truth — monitor
-    # with: tail -f ~/.cortexagent/logs/overseer.log
+
+
+
+
+
     with open(os.devnull, 'w') as null:
         os.dup2(null.fileno(), 0)
         os.dup2(null.fileno(), 1)
@@ -2534,12 +2293,7 @@ def _start(interval: int) -> None:
 
 
 def _unload_tiny_model() -> bool:
-    """Stop the tiny llama-server to free VRAM.
 
-    In daemon mode the persistent daemon owns the tiny model — we must NOT stop
-    it here (the daemon keeps it up for the next session). The daemon will tear
-    it down on its own shutdown.
-    """
     if control.daemon_present():
         _log("Daemon present — leaving tiny model to the daemon (not stopping)", "🛡️", DIM)
         return True
@@ -2551,23 +2305,15 @@ def _unload_tiny_model() -> bool:
 
 
 def _stop() -> None:
-    """Stop the overseer daemon and stop the tiny llama-server.
 
-    Order matters: SIGTERM the daemon FIRST so it can no longer issue keepalive
-    ticks that would restart the LFM2.5-1.2B. The daemon's clean handler stops the
-    tiny server itself and exits 0. We then stop again as a backup so VRAM is
-    freed even if the daemon was already dead or failed to stop it.
-    Exiting 0 (not signal-killed) keeps systemd Restart=on-failure from
-    respawning us and re-loading the LFM2.5-1.2B after cortexagent closes.
-    """
     pid = _is_running()
     if pid:
         try:
             os.kill(pid, signal.SIGTERM)
-            # Wait up to 45s for a clean exit (daemon exits within ~2s normally;
-            # margin covers a mid-tick LLM query, which can take up to 30s).
-            # SIGKILLing a mid-query daemon would make systemd Restart=on-failure
-            # respawn it and re-pin the LFM2.5-1.2B — the exact bug clean exit 0 avoids.
+
+
+
+
             exited = False
             for _ in range(450):
                 try:
@@ -2577,8 +2323,8 @@ def _stop() -> None:
                     exited = True
                     break
             if not exited:
-                # Last resort: SIGKILL. (May cause systemd restart, but a stuck
-                # daemon is worse. The clean handler should make this unreachable.)
+
+
                 os.kill(pid, signal.SIGKILL)
                 PID_FILE.unlink(missing_ok=True)
                 print(f"Overseer force-killed (pid {pid})")
@@ -2590,7 +2336,7 @@ def _stop() -> None:
         print("Overseer not running")
         PID_FILE.unlink(missing_ok=True)
 
-    # Backup stop: stop the tiny llama-server regardless of daemon state.
+
     if _unload_tiny_model():
         print(f"Tiny model stopped on :{_tiny.port} — VRAM freed")
     else:
@@ -2598,26 +2344,23 @@ def _stop() -> None:
 
 
 def _replace_emoji(text: str) -> str:
-    """Replace emoji with colorblind-safe status glyphs (BEAUTIFY-106).
-    
-    Maps emoji to Unicode glyphs that are readable without color.
-    """
+
     replacements = {
-        "✅": "✓",    # success
-        "❌": "✕",    # error
-        "⚠️ ": "▲",   # warn
-        "📋": "▎",   # task
-        "📦": "◻",   # queue
-        "📅": "◌",   # schedule
-        "🗑️ ": "✕",  # remove
-        "🛑": "▌",   # stop
-        "👷": "◉",   # worker
-        "⚠️": "▲",   # warning
-        "📊": "◐",   # stats
-        "🔴": "✕",   # error
-        "🟡": "▲",   # warning
-        "🟠": "▲",   # critical
-        "🟢": "✓",   # healthy
+        "✅": "✓",
+        "❌": "✕",
+        "⚠️ ": "▲",
+        "📋": "▎",
+        "📦": "◻",
+        "📅": "◌",
+        "🗑️ ": "✕",
+        "🛑": "▌",
+        "👷": "◉",
+        "⚠️": "▲",
+        "📊": "◐",
+        "🔴": "✕",
+        "🟡": "▲",
+        "🟠": "▲",
+        "🟢": "✓",
     }
     for emoji, glyph in replacements.items():
         text = text.replace(emoji, glyph)
@@ -2625,7 +2368,7 @@ def _replace_emoji(text: str) -> str:
 
 
 def _status() -> None:
-    """Show overseer status — beautified as key:value table."""
+
     pid = _is_running()
     if pid:
         state = _load_state()
@@ -2649,8 +2392,8 @@ def _status() -> None:
         lines.append(f"  Queue: {len(queue)} total ({pending} pending)")
         lines.append(f"  Schedule: {len(schedule)} entries")
 
-        # Minify savings — surfacing in `overseer status` makes it visible at
-        # the CLI without the user opening the dashboard.
+
+
         m = state.get("minify") or _read_minify_stats()
         if m and m.get("runs", 0):
             lines.append(f"  Minify: {m['tokens_saved']:,} tok saved "
@@ -2658,7 +2401,7 @@ def _status() -> None:
         else:
             lines.append(f"  Minify: no runs yet")
 
-        # Token tracking — show merged stats from proxy + tiny model paths
+
         token_stats = _merge_token_stats()
         total = token_stats.get("total", {})
         if total.get("runs", 0):
@@ -2670,7 +2413,7 @@ def _status() -> None:
         else:
             lines.append(f"  Token tracking: no data yet")
 
-        # Observability: latency + queue metrics
+
         latency_stats = _get_latency_stats()
         if latency_stats.get("count", 0):
             lines.append(f"  Latency (ms): avg={latency_stats['avg_ms']:.0f} "
@@ -2695,7 +2438,7 @@ def _status() -> None:
         else:
             lines.append(f"  Context usage: no data yet")
 
-        # Worker pool health
+
         pool = WorkerPool()
         dead_workers = pool.heartbeat_check()
         if dead_workers:
@@ -2710,7 +2453,7 @@ def _status() -> None:
             done = "✅" if plan.get("completed") else "➡️"
             lines.append(f"  Plan: {done} '{name}' — step {step}/{total}")
 
-        # Apply beautify pass — converts key:value to formatted table
+
         output = "\n".join(lines)
         print(_beautify_status(output))
     else:
@@ -2718,11 +2461,7 @@ def _status() -> None:
 
 
 def _beautify_status(text: str) -> str:
-    """Apply beautify pass to overseer status output.
-    
-    BEAUTIFY-106: Also replaces emoji with colorblind-safe glyphs.
-    Chain: replace_emoji → beautify
-    """
+
     try:
         text = _replace_emoji(text)
         from lib.beautify import beautify
@@ -2732,15 +2471,7 @@ def _beautify_status(text: str) -> str:
 
 
 def _smoke() -> int:
-    """Smoke test — DISABLED 2026-08-19.
 
-    The user's directive: "the whole scheduler built into the pie.dev, the
-    original one needs just be removed. just fully remove it." Every
-    invocation was queueing `smoke-test-sched` (cron `0 9 * * *`,
-    command `echo test`) into ~/.cortexagent/scheduler/tasks.json,
-    accumulating 40+ duplicate entries per day. This function is kept as
-    a stub so `bin/cortexagent smoke` still exits 0, but no side-effects.
-    """
     print(f"{BOLD}Overseer Smoke Test{RST}")
     print(f"{'─'*50}")
     print("  Smoke runner is DISABLED. See _smoke() docstring.")
@@ -2748,12 +2479,12 @@ def _smoke() -> int:
     return 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  CLI
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 def _minify_status_cli(args: List[str]) -> None:
-    """Print live minify stats from the proxy snapshot. No daemon needed."""
+
     snap = _read_minify_stats()
     if not snap:
         print("Minify: no data yet (proxy hasn't served a minified request)")
@@ -2791,7 +2522,7 @@ def main() -> int:
 
     cmd = sys.argv[1]
 
-    # ── Daemon lifecycle ──
+
     if cmd == "start":
         interval = _parse_interval(sys.argv[2:])
         _start(interval)
@@ -2808,7 +2539,7 @@ def main() -> int:
     elif cmd == "smoke":
         return _smoke()
 
-    # ── Plan tracking ──
+
     elif cmd == "plan-set":
         if len(sys.argv) < 3:
             print("Usage: overseer.py plan-set <name> [--steps N] [--context ...]")
@@ -2842,7 +2573,7 @@ def main() -> int:
         print(json.dumps(result, indent=2))
         return 0
 
-    # ── Queue ──
+
     elif cmd == "queue":
         if len(sys.argv) < 3:
             print("Usage: overseer.py queue <add|list|clear|remove> ...")
@@ -2880,12 +2611,12 @@ def main() -> int:
             _cleanup_queue()
             print("Queue cleanup completed")
         elif sub == "prune":
-            # Alias for cleanup (removes old completed tasks)
+
             _cleanup_queue()
             print("Prune completed")
         return 0
 
-    # ── Schedule ──
+
     elif cmd == "schedule":
         if len(sys.argv) < 3:
             print("Usage: overseer.py schedule <add|list|remove> ...")
@@ -2936,7 +2667,7 @@ def main() -> int:
                 print(f"Schedule '{name}' not found")
         return 0
 
-    # ── Workflow ──
+
     elif cmd == "workflow":
         if len(sys.argv) < 3:
             print("Usage: overseer.py workflow <run|status|list|clear> ...")
@@ -2991,19 +2722,13 @@ def main() -> int:
         return 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  QUEUE-003: Worker Pool with Heartbeat
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 class WorkerPool:
-    """Multi-threaded worker pool for task execution.
-    
-    Features:
-    - N worker threads pulling from bounded queue
-    - Heartbeat every 60s, dead worker replacement
-    - Backpressure metrics tracking
-    """
-    
+
+
     def __init__(self, max_workers: int = 5, heartbeat_interval: int = 60):
         self.max_workers = max_workers
         self.heartbeat_interval = heartbeat_interval
@@ -3012,12 +2737,12 @@ class WorkerPool:
         self._metrics = {
             "total_executed": 0,
             "total_failed": 0,
-            "last_executions": deque(maxlen=100),  # (timestamp, duration_ms)
+            "last_executions": deque(maxlen=100),
         }
         self._lock = threading.Lock()
-    
+
     def start(self) -> None:
-        """Start worker threads."""
+
         self._stop_event.clear()
         for i in range(self.max_workers):
             t = threading.Thread(
@@ -3035,9 +2760,9 @@ class WorkerPool:
                 "current_task": None,
             })
             _log(f"Worker {worker_id} started", "👷", DIM)
-    
+
     def stop(self) -> None:
-        """Signal workers to stop."""
+
         self._stop_event.set()
         for w in self.workers:
             try:
@@ -3046,12 +2771,12 @@ class WorkerPool:
                 pass
         self.workers.clear()
         _log("Worker pool stopped", "🛑", RED)
-    
+
     def _worker_loop(self) -> None:
-        """Main loop for each worker thread."""
+
         while not self._stop_event.is_set():
             try:
-                # Get task from queue with timeout
+
                 queue = _load_queue()
                 task = None
                 for i, t in enumerate(queue):
@@ -3061,19 +2786,19 @@ class WorkerPool:
                         task["started_at"] = datetime.now().isoformat()
                         _save_queue(queue)
                         break
-                
+
                 if task is None:
-                    time.sleep(1)  # No tasks, sleep briefly
+                    time.sleep(1)
                     continue
-                
-                # Update worker status
+
+
                 self._update_heartbeat(True, task["id"])
-                
+
                 try:
                     start = time.time()
                     success = _execute_task(task)
                     duration_ms = (time.time() - start) * 1000
-                    
+
                     with self._lock:
                         self._metrics["total_executed"] += 1
                         if success:
@@ -3081,8 +2806,8 @@ class WorkerPool:
                                 (time.time(), duration_ms))
                         else:
                             self._metrics["total_failed"] += 1
-                    
-                    # Update task status
+
+
                     queue = _load_queue()
                     for i, t in enumerate(queue):
                         if t["id"] == task["id"]:
@@ -3092,23 +2817,23 @@ class WorkerPool:
                             queue[i] = t
                             break
                     _save_queue(queue)
-                    
+
                 except Exception as e:
                     with self._lock:
                         self._metrics["total_failed"] += 1
                     _log(f"Worker task error: {e}", "❌", RED)
-                
+
                 finally:
                     self._update_heartbeat(True, None)
-                    
+
             except Exception as e:
                 _log(f"Worker loop error: {e}", "❌", RED)
                 time.sleep(5)
-        
+
         self._update_heartbeat(False, None)
-    
+
     def _update_heartbeat(self, alive: bool, current_task: Optional[str]) -> None:
-        """Update heartbeat for the calling worker."""
+
         thread_name = threading.current_thread().name
         for w in self.workers:
             if w["thread"].name == thread_name:
@@ -3116,23 +2841,23 @@ class WorkerPool:
                 w["status"] = "alive" if alive else "dead"
                 w["current_task"] = current_task
                 break
-    
+
     def heartbeat_check(self) -> List[str]:
-        """Check heartbeats, replace dead workers. Returns list of actions taken."""
+
         now = time.time()
         actions = []
         dead_workers = []
-        
+
         for w in self.workers:
             if now - w["last_heartbeat"] > self.heartbeat_interval * 2:
                 dead_workers.append(w["id"])
-        
+
         if dead_workers:
-            # Replace dead workers
+
             for dw in dead_workers:
-                # Remove dead worker
+
                 self.workers = [w for w in self.workers if w["id"] != dw]
-                # Create replacement
+
                 replacement_id = f"w{len(self.workers)}"
                 t = threading.Thread(
                     target=self._worker_loop,
@@ -3149,15 +2874,15 @@ class WorkerPool:
                 })
                 actions.append(f"Replaced dead worker {dw} with {replacement_id}")
                 _log(f"Worker pool: replaced dead worker {dw}", "⚠️", YELLOW)
-        
+
         return actions
-    
+
     def get_metrics(self) -> Dict:
-        """Get current worker pool metrics."""
+
         with self._lock:
             last_execs = list(self._metrics["last_executions"])
             durations = [d for _, d in last_execs]
-            
+
             return {
                 "total_executed": self._metrics["total_executed"],
                 "total_failed": self._metrics["total_failed"],
@@ -3168,12 +2893,12 @@ class WorkerPool:
             }
 
 
-# Global worker pool instance
+
 _worker_pool: Optional[WorkerPool] = None
 
 
 def get_worker_pool() -> Optional[WorkerPool]:
-    """Get the global worker pool (lazy init)."""
+
     global _worker_pool
     if _worker_pool is None:
         _worker_pool = WorkerPool()
@@ -3182,18 +2907,18 @@ def get_worker_pool() -> Optional[WorkerPool]:
 
 
 def record_queue_depth(depth: int) -> None:
-    """Record queue depth for monitoring (called by tick loop)."""
+
     global _queue_depth_history
     _queue_depth_history.append((time.time(), depth))
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  Entry point — MUST be the last thing in the file.
-#  main() → _daemon_loop() runs an infinite loop, so every module-level name it
-#  references (WorkerPool, get_worker_pool, record_queue_depth, _worker_pool)
-#  must already be defined. If this block sits above those definitions, the loop
-#  throws NameError on the first tick. Keep it at the very bottom.
-# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
 if __name__ == "__main__":
     sys.exit(main())
 

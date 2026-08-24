@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""lazy_mcp_proxy — generic thin wrapper for optional MCP servers.
 
-Exposes one stub tool per configured server. When called, spawns the real
-MCP server (stdio), performs handshake, lists real tools, proxies the call,
-and shuts the real server down. Keeps idle tool tax minimal.
-
-Config:
-  CORTEXAGENT_LAZY_MCP_CONFIG  default: ~/.cortexagent/config/lazy_mcp_servers.json
-  Each entry: {"name": "wp-studio", "command": ["npx", "-y", "@wp-studio/mcp"], "tools_hint": ["wp_render", "wp_deploy"]}
-
-Usage:
-  python3 lib/lazy_mcp_proxy.py --name wp-studio    # stdio MCP server
-  python3 lib/lazy_mcp_proxy.py smoke               # self-test
-"""
 from __future__ import annotations
 
 import argparse
@@ -66,7 +53,7 @@ def _proxy_server(command: List[str]) -> Tuple[subprocess.Popen, int]:
         cwd=str(Path(__file__).resolve().parent.parent),
     )
 
-    # handshake
+
     hello = _read_json(proc.stdout)
     if hello and hello.get("method") == "initialize":
         proc.stdin.write(json.dumps({
@@ -93,7 +80,7 @@ def _proxy_server(command: List[str]) -> Tuple[subprocess.Popen, int]:
     proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
     proc.stdin.flush()
 
-    # list real tools
+
     proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "tools/list", "id": 2}) + "\n")
     proc.stdin.flush()
     tools_resp = _read_json(proc.stdout)
@@ -151,7 +138,7 @@ def _build_stub(entry: Dict[str, Any]) -> Dict[str, Any]:
 def _run_server(name: str) -> None:
     entries = _load_config(name)
     if not entries:
-        # config missing — expose one tool that returns an error
+
         stub = {
             "name": f"lazy_{name}",
             "description": f"Optional MCP server '{name}' is not configured.",

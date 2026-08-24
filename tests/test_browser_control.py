@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_browser_control.py — pure-logic tests for lib/browser_control.py.
 
-No live CDP. The transport is monkey-patched so we exercise the engine's
-generic surface:
-
-  - /json TTL cache: hits once within the TTL, refetches after expiry
-  - cache invalidation: new_tab() and stale-target eviction drop the cache
-  - per-target lock identity: same target → same lock, different → different
-  - health() shape + monotonic counters: never raises, counters only grow
-  - close() clears all caches and locks
-  - _lock_for is safe under concurrent first-touch (no double-create)
-
-Run:
-  python3 -m pytest tests/test_browser_control.py -q
-  python3 tests/test_browser_control.py            # unittest entry
-"""
 from __future__ import annotations
 
 import json
@@ -25,7 +10,7 @@ import unittest
 from typing import Any, Dict, List
 from unittest import mock
 
-# Repo root on sys.path so `import browser_control` resolves regardless of cwd.
+
 _REPO = __import__("pathlib").Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
@@ -36,7 +21,7 @@ import browser_control as bc  # noqa: E402
 
 
 class _FakeHTTPJson:
-    """Stand-in for _http_json that records calls and returns canned data."""
+
 
     def __init__(self, tabs: List[Dict[str, Any]]):
         self.tabs = tabs
@@ -62,7 +47,7 @@ def _make_tab(target_id: str, url: str = "https://example.com",
 
 class TabsCacheTests(unittest.TestCase):
     def setUp(self) -> None:
-        # Reset module-level state so each test starts clean.
+
         bc.close()
         self._fake = _FakeHTTPJson([_make_tab("T1"), _make_tab("T2", "https://b.test")])
         self._patch = mock.patch.object(bc, "_http_json", self._fake)
@@ -83,7 +68,7 @@ class TabsCacheTests(unittest.TestCase):
 
     def test_after_ttl_refetches(self) -> None:
         bc.list_tabs()
-        # Force expiry
+
         bc._tabs_cache_at -= (bc._TABS_TTL_SEC + 0.1)
         bc.list_tabs()
         self.assertEqual(self._fake.calls, 2)
@@ -91,7 +76,7 @@ class TabsCacheTests(unittest.TestCase):
     def test_new_tab_invalidates_cache(self) -> None:
         bc.list_tabs()
         self.assertEqual(self._fake.calls, 1)
-        # Pretend a tab appeared — invalidate must drop the cache.
+
         bc._invalidate_tabs_cache()
         bc.list_tabs()
         self.assertEqual(self._fake.calls, 2)
@@ -112,8 +97,8 @@ class PerTargetLockTests(unittest.TestCase):
         self.assertIsNot(a, b)
 
     def test_concurrent_first_touch_is_safe(self) -> None:
-        # Race 50 threads on the same fresh target — exactly one lock should
-        # end up in the dict.
+
+
         target = "TRACE"
         start = threading.Event()
         threads = [threading.Thread(target=lambda: (start.wait(), bc._lock_for(target)))
@@ -144,8 +129,8 @@ class HealthTests(unittest.TestCase):
         bc.close()
 
     def test_health_shape(self) -> None:
-        # health() reads /json/version via raw urllib (not _http_json), so we
-        # stub urlopen to return our canned version payload.
+
+
         version_resp = mock.Mock()
         version_resp.read = lambda: json.dumps({"Browser": "Chrome/test"}).encode()
         version_resp.__enter__ = lambda s: s
@@ -176,7 +161,7 @@ class HealthTests(unittest.TestCase):
         with mock.patch.object(bc.urllib.request, "urlopen", return_value=version_resp):
             before = bc.health()
             bc.list_tabs()
-            bc.list_tabs()  # cached
+            bc.list_tabs()
             after = bc.health()
         self.assertGreaterEqual(after["json_fetches"], before["json_fetches"])
         self.assertGreaterEqual(after["calls"], before["calls"])
@@ -184,8 +169,7 @@ class HealthTests(unittest.TestCase):
 
 
 class ResolveTabFallbackTests(unittest.TestCase):
-    """resolve_tab must always return a target id from the live tab list
-    without raising — falls back to tabs[0] on a miss."""
+
 
     def setUp(self) -> None:
         bc.close()
@@ -206,7 +190,7 @@ class ResolveTabFallbackTests(unittest.TestCase):
 
     def test_int_index(self) -> None:
         self.assertEqual(bc.resolve_tab(1), "BETA")
-        self.assertEqual(bc.resolve_tab(99), "ALPHA")  # fallback
+        self.assertEqual(bc.resolve_tab(99), "ALPHA")
 
     def test_url_prefix(self) -> None:
         self.assertEqual(bc.resolve_tab("https://g.test"), "GAMMA")
@@ -226,7 +210,7 @@ class ResolveTabFallbackTests(unittest.TestCase):
 class CloseHygieneTests(unittest.TestCase):
     def test_close_is_idempotent(self) -> None:
         bc.close()
-        bc.close()  # must not raise
+        bc.close()
         self.assertEqual(bc._ws_cache, {})
         self.assertEqual(bc._id_counter, {})
         self.assertEqual(bc._tabs_cache, [])

@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""lib/hardening_status.py — read-only snapshot of hardening subsystems.
 
-Consolidates the 2026-08-17 / 2026-08-18 security research into a single
-status surface that webui, MCP tools, and the scheduler can poll. NEVER
-mutates anything — read-only by construction. Per the security research:
-- nftables (B.1-B.13) — list ruleset, count active sets, count jumps
-- sshd_config — parse, grade against ssh-audit recommendations
-- sysctl — read current values vs hardening baseline
-- auditd — list active rules, count
-- capabilities — enumerate non-default caps on filesystem
-- unbound/dnsmasq — check running service, config parse
-- LSMs — kernel cmdline `lsm=`, /sys/kernel/security/lsm
-- kernel hardening — dmesg_restrict, kptr_restrict, etc.
-
-Each subsystem has: a checker function returning a dict with at least
-``{"status": "ok"|"warn"|"fail"|"unknown", "summary": str, "details": {...}}``.
-
-CLI:
-    python3 lib/hardening_status.py --summary
-    python3 lib/hardening_status.py --subsystem nftables
-    python3 lib/hardening_status.py --json
-"""
 from __future__ import annotations
 
 import argparse
@@ -33,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-# ── Paths ─────────────────────────────────────────────────────────────────
+
 _PROC_CMDLINE = Path("/proc/cmdline")
 _PROC_SECURITY_LSM = Path("/sys/kernel/security/lsm")
 _SYSCTL_BASE = Path("/proc/sys")
@@ -45,17 +24,17 @@ _NFTABLES_CONF = Path("/etc/nftables.conf")
 _DNSMASQ_CONF = Path("/etc/dnsmasq.conf")
 _UNBOUND_CONF = Path("/etc/unbound/unbound.conf")
 
-# Hardening baselines (from research notes)
+
 SYSCTL_BASELINE: dict[str, int] = {
-    # Kernel hardening
+
     "kernel/kptr_restrict": 2,
     "kernel/dmesg_restrict": 1,
     "kernel/perf_event_paranoid": 3,
     "kernel/unprivileged_bpf_disabled": 1,
-    "kernel/yama/ptrace_scope": 1,            # 3 for max
+    "kernel/yama/ptrace_scope": 1,
     "kernel/apparmor_restrict_unprivileged_userns": 1,
     "vm/unprivileged_userfaultfd": 0,
-    # Net hardening
+
     "net/ipv4/tcp_syncookies": 1,
     "net/ipv4/ip_forward": 0,
     "net/ipv4/conf/all/rp_filter": 1,
@@ -83,8 +62,8 @@ SSHD_BASELINE: dict[str, str] = {
     "MACs": "*-etm@openssh.com",
 }
 
-# Capabilities flagged as "should be dropped unless explicitly required"
-# From security-research-linux-hardening.md
+
+
 RISKY_CAPS = {
     "cap_sys_admin", "cap_sys_ptrace", "cap_sys_module", "cap_sys_rawio",
     "cap_sys_boot", "cap_dac_read_search", "cap_linux_immutable",
@@ -95,9 +74,9 @@ RISKY_CAPS = {
 }
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────
+
 def _safe_run(cmd: list[str], timeout: float = 5.0) -> tuple[int, str, str]:
-    """Run a command, return (rc, stdout, stderr). Never raises."""
+
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
                            timeout=timeout, check=False)
@@ -107,7 +86,7 @@ def _safe_run(cmd: list[str], timeout: float = 5.0) -> tuple[int, str, str]:
 
 
 def _read_proc_sys(key: str) -> int | None:
-    """Read /proc/sys/<key> as int; None on miss."""
+
     p = _SYSCTL_BASE / key
     if not p.exists():
         return None
@@ -121,14 +100,14 @@ def _check_tool(name: str) -> str | None:
     return shutil.which(name)
 
 
-# ── Per-subsystem checkers ────────────────────────────────────────────────
+
 def check_nftables() -> dict[str, Any]:
-    """Snapshot nftables: tables, chains, rules count, base set usage."""
+
     if not _check_tool("nft"):
         return {"status": "unknown", "summary": "nft not installed", "details": {}}
     rc, out, err = _safe_run(["nft", "--json", "list", "ruleset"], timeout=10.0)
     if rc != 0 or not out.strip():
-        # Fallback: list ruleset non-JSON
+
         rc, out, err = _safe_run(["nft", "list", "ruleset"], timeout=10.0)
         if rc != 0:
             return {"status": "fail", "summary": f"nft list failed: {err.strip()[:120]}",
@@ -155,7 +134,7 @@ def check_nftables() -> dict[str, Any]:
 
 
 def check_sshd() -> dict[str, Any]:
-    """Parse sshd_config + sshd_config.d/*.conf and grade against baseline."""
+
     files = []
     if _SSHD_CONFIG.exists():
         files.append(_SSHD_CONFIG)
@@ -181,7 +160,7 @@ def check_sshd() -> dict[str, Any]:
         actual = cfg.get(key)
         if actual is None:
             bad.append(f"{key}=MISSING (want={expected})")
-        elif expected not in actual:  # permissive match (lists)
+        elif expected not in actual:
             bad.append(f"{key}={actual} (want contains={expected})")
     if not bad:
         return {"status": "ok", "summary": "all baseline keys match",
@@ -194,7 +173,7 @@ def check_sshd() -> dict[str, Any]:
 
 
 def check_sysctl() -> dict[str, Any]:
-    """Read live sysctl values vs SYSCTL_BASELINE."""
+
     bad: list[str] = []
     ok_count = 0
     miss_count = 0
@@ -217,13 +196,13 @@ def check_sysctl() -> dict[str, Any]:
 
 
 def check_auditd() -> dict[str, Any]:
-    """List active auditd rules; flag if <5 baseline rules."""
+
     rc, out, _ = _safe_run(["auditctl", "-l"], timeout=5.0)
     if rc != 0:
         return {"status": "warn", "summary": "auditctl not queryable (auditd not running?)",
                 "details": {"rc": rc}}
     rule_count = sum(1 for line in out.splitlines() if line.strip())
-    # Try to detect staged rules in /etc/audit/rules.d
+
     staged = []
     if _AUDIT_RULES_D.exists():
         for f in sorted(_AUDIT_RULES_D.glob("*.rules")):
@@ -241,10 +220,10 @@ def check_auditd() -> dict[str, Any]:
 
 
 def check_capabilities() -> dict[str, Any]:
-    """Enumerate file capabilities on filesystem; flag risky ones."""
+
     if not _check_tool("getcap"):
         return {"status": "unknown", "summary": "getcap not installed", "details": {}}
-    # Restrict to common bins to keep this fast
+
     rc, out, err = _safe_run(["getcap", "-r", "/usr/bin", "/usr/sbin", "/usr/local/bin"],
                              timeout=30.0)
     if rc != 0:
@@ -266,12 +245,12 @@ def check_capabilities() -> dict[str, Any]:
     return {
         "status": status,
         "summary": f"{len(risky)} binaries with risky caps (scanned /usr/*)",
-        "details": {"risky": risky[:20]},  # cap output
+        "details": {"risky": risky[:20]},
     }
 
 
 def check_unbound() -> dict[str, Any]:
-    """Check unbound presence and config presence."""
+
     has_bin = bool(_check_tool("unbound"))
     has_conf = _UNBOUND_CONF.exists()
     if not has_bin and not has_conf:
@@ -296,7 +275,7 @@ def check_unbound() -> dict[str, Any]:
 
 
 def check_dnsmasq() -> dict[str, Any]:
-    """Check dnsmasq presence, active service, /etc/resolv.conf points at 127.0.0.1."""
+
     has_bin = bool(_check_tool("dnsmasq"))
     rc, _, _ = _safe_run(["systemctl", "is-active", "dnsmasq"], timeout=3.0)
     running = rc == 0
@@ -320,7 +299,7 @@ def check_dnsmasq() -> dict[str, Any]:
 
 
 def check_lsms() -> dict[str, Any]:
-    """Inspect LSM stack: /sys/kernel/security/lsm + boot cmdline."""
+
     lsm_active: list[str] = []
     if _PROC_SECURITY_LSM.exists():
         try:
@@ -349,7 +328,7 @@ def check_lsms() -> dict[str, Any]:
 
 
 def check_dns_blocklist() -> dict[str, Any]:
-    """Check /etc/hosts.adblock presence + entry count."""
+
     hosts_file = Path("/etc/hosts.adblock")
     if not hosts_file.exists():
         return {"status": "warn", "summary": "/etc/hosts.adblock not installed",
@@ -368,7 +347,7 @@ def check_dns_blocklist() -> dict[str, Any]:
     }
 
 
-# ── Rollup ────────────────────────────────────────────────────────────────
+
 CHECKERS: dict[str, Callable[[], dict[str, Any]]] = {
     "nftables": check_nftables,
     "sshd": check_sshd,
@@ -383,13 +362,13 @@ CHECKERS: dict[str, Callable[[], dict[str, Any]]] = {
 
 
 def hardening_snapshot(subsystems: list[str] | None = None) -> dict[str, Any]:
-    """Run all (or specified) checkers, return a dict keyed by subsystem name."""
+
     keys = subsystems or sorted(CHECKERS.keys())
     out: dict[str, Any] = {}
     for k in keys:
         try:
             out[k] = CHECKERS[k]()
-        except Exception as exc:  # never let one checker crash the rollup
+        except Exception as exc:
             out[k] = {"status": "fail", "summary": f"checker raised: {exc}",
                       "details": {}}
     overall = "ok"
@@ -407,7 +386,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────
+
 def _cli_summary(snap: dict[str, Any]) -> None:
     print(f"Overall: {snap['overall'].upper()}")
     for name, v in snap["subsystems"].items():

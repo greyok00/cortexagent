@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""lib/domain_embed.py — all-MiniLM-L6-v2 embeddings via onnxruntime.
 
-Lazy singleton: no model loads until the first embed call. Model + tokenizer
-files are expected at ~/.cortexagent/models/all-MiniLM-L6-v2/ (downloaded on
-first use, one-time ~90MB). Runs on GPU when the VRAM budget allows (see
-lib/vram.py) and onnxruntime has a CUDA provider; otherwise CPU. The GPU is
-never taken from the required residents (big model, overseer, whisper) — the
-budget is free VRAM minus the locked buffer, so when the big model is loaded
-the embedder silently stays on CPU.
-
-Usage:
-  python3 lib/domain_embed.py --smoke
-"""
 from __future__ import annotations
 
 import json
@@ -40,23 +28,15 @@ _FILES = {
 }
 EMBED_DIM = 384
 MAX_SEQ = 256
-# VRAM the GPU path may reserve: the onnxruntime CUDA arena is capped at this
-# via gpu_mem_limit (default would be 2GB — enough to evict the big model's
-# headroom). The budget check uses the same number so the GPU path only
-# engages when there is real headroom and never starves a required resident.
+
+
+
+
 EMBED_VRAM_MB = 512
 
 
 def _ensure_cuda_libs() -> None:
-    """Preload the nvidia-cudnn pip package's libs so onnxruntime-gpu works.
 
-    onnxruntime-gpu needs cuDNN 9 at load time, but the nvidia-cudnn wheel
-    installs it under site-packages where the dynamic loader never looks.
-    Setting LD_LIBRARY_PATH mid-process is useless (the loader reads it at
-    startup), so the libs are loaded explicitly via ctypes in dependency
-    order; onnxruntime's dlopen then finds them already resident. No-op when
-    the package is absent (CPU-only install).
-    """
     try:
         import ctypes
         import importlib.util
@@ -66,7 +46,7 @@ def _ensure_cuda_libs() -> None:
         d = Path(list(spec.submodule_search_locations)[0]) / "lib"
         if not d.is_dir():
             return
-        # Stub first, then the versioned impls it dlopens.
+
         for name in ("libcudnn.so.9", "libcudnn_ops.so.9", "libcudnn_cnn.so.9",
                      "libcudnn_adv.so.9", "libcudnn_graph.so.9",
                      "libcudnn_heuristic.so.9",
@@ -80,7 +60,7 @@ def _ensure_cuda_libs() -> None:
 
 
 class DomainEmbedder:
-    """Lazy all-MiniLM-L6-v2 embedder (tokenizers + onnxruntime, CPU). Singleton."""
+
 
     _instance: Optional["DomainEmbedder"] = None
 
@@ -101,9 +81,9 @@ class DomainEmbedder:
             target = MODEL_DIR / name
             if target.exists() and target.stat().st_size > 0:
                 continue
-            # Download to a temp file and atomically rename on success — a
-            # partial or corrupt download never persists as the final file,
-            # so a retry re-downloads instead of choking on a bad onnx.
+
+
+
             part = MODEL_DIR / (name + ".part")
             print(f"[domain_embed] downloading {name}...")
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -126,18 +106,18 @@ class DomainEmbedder:
         import onnxruntime as ort
         from tokenizers import Tokenizer
         self._tok = Tokenizer.from_file(str(MODEL_DIR / "tokenizer.json"))
-        # Never truncate — pad only, preserve full tokens
+
         self._tok.enable_padding(pad_id=0, pad_token="[PAD]")
-        # GPU only when the budget allows AND onnxruntime has a CUDA provider
-        # (onnxruntime-gpu installed). Otherwise CPU — never evict a resident.
+
+
         providers = ["CPUExecutionProvider"]
         provider_options = [{}]
         if vram.can_fit(EMBED_VRAM_MB):
             try:
                 if "CUDAExecutionProvider" in ort.get_available_providers():
                     providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                    # Cap the CUDA arena so the embedder never reserves the
-                    # default 2GB — that would starve the big model.
+
+
                     provider_options = [{"gpu_mem_limit": EMBED_VRAM_MB * 1024 * 1024}, {}]
             except Exception:
                 pass
@@ -150,7 +130,7 @@ class DomainEmbedder:
         return self.embed_batch([text])[0]
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        """Batch-embed texts → list of 384-dim L2-normalized vectors."""
+
         self._load()
         import numpy as np
         enc = self._tok.encode_batch([t or " " for t in texts])

@@ -1,22 +1,5 @@
 #!/usr/bin/env python3
-"""lib/skills.py — skills system for the CortexAgent harness.
 
-Skills are reusable capability bundles, modularized the way slimtoken and
-cortexllm are. Each skill is a Python module exposing:
-
-    NAME        — unique skill name (kebab-case)
-    DESCRIPTION — one-line description shown to the model
-    SCHEMA      — {"type": "object", "properties": {...}, "required": [...]}
-    run(args)   — callable returning {"ok": bool, "output": str, "error": str}
-
-Skills load from a directory (default ``~/.cortexagent/skills/``) and register
-in the tool registry as ``skill_<name>`` so the overseer react loop can call
-them like any other tool.
-
-Usage:
-  python3 lib/skills.py smoke          # self-test
-  python3 lib/skills.py list           # list loaded skills
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -34,18 +17,18 @@ from lib.tool_registry import register_tool  # noqa: E402
 DEFAULT_SKILLS_DIR = Path(os.environ.get(
     "CORTEXAGENT_SKILLS_DIR", "~/.cortexagent/skills")).expanduser()
 
-# name -> {"description", "schema", "run"}
+
 SKILLS: Dict[str, Dict[str, Any]] = {}
 
 
 def register_skill(name: str, description: str, schema: Dict[str, Any],
                    run: Callable) -> None:
-    """Add a skill at runtime. ``run`` must return {"ok", "output", "error"}."""
+
     SKILLS[name] = {"description": description, "schema": schema, "run": run}
 
 
 def _load_module(path: Path) -> Optional[Dict[str, Any]]:
-    """Load one skill module file. Returns None on any failure."""
+
     try:
         spec = importlib.util.spec_from_file_location(
             f"cortexagent_skill_{path.stem}", path)
@@ -68,7 +51,7 @@ def _load_module(path: Path) -> Optional[Dict[str, Any]]:
 
 
 def load_skills_dir(path: Optional[Path] = None) -> int:
-    """Load skill modules from a directory. Returns count loaded. Idempotent."""
+
     d = Path(path) if path else DEFAULT_SKILLS_DIR
     if not d.exists():
         return 0
@@ -85,13 +68,13 @@ def load_skills_dir(path: Optional[Path] = None) -> int:
 
 
 def list_skills() -> List[Dict[str, Any]]:
-    """Return the loaded skills as a sorted list of dicts."""
+
     return [{"name": n, "description": s["description"]}
             for n, s in sorted(SKILLS.items())]
 
 
 def run_skill(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
-    """Run a skill by name. Returns {"ok", "output", "error"}."""
+
     skill = SKILLS.get(name)
     if skill is None:
         return {"ok": False, "output": "", "error": f"unknown skill: {name}"}
@@ -107,7 +90,7 @@ def run_skill(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def register_skill_tools() -> int:
-    """Register every loaded skill as ``skill_<name>`` in the tool registry."""
+
     from lib.tool_registry import TOOLS
     count = 0
     for name, s in sorted(SKILLS.items()):

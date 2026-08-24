@@ -1,9 +1,5 @@
-# tests/test_sec_controls.py
-"""Unit tests for the pure-logic helpers in lib/sec_controls.
 
-These functions take only plain data (lists of alert dicts) and return
-strings — no tkinter, no display, so they're safe to test headlessly.
-"""
+
 import sys
 from pathlib import Path
 
@@ -55,9 +51,9 @@ def test_human_frame_unknown_kind_falls_back_to_default():
 
 
 def test_block_feedback_write_failure(tmp_path, monkeypatch):
-    blocker = tmp_path / "not_a_dir"          # a regular file
+    blocker = tmp_path / "not_a_dir"
     blocker.write_text("x")
-    # FIREWALL_COMMANDS = a path INSIDE that file → parent mkdir fails
+
     monkeypatch.setattr(sc, "FIREWALL_COMMANDS", blocker / "cmds.jsonl")
     monkeypatch.setattr(sc, "FIREWALL_STATE", tmp_path / "state.json")
     out = sc._block_feedback("1.2.3.4", "test")
@@ -65,12 +61,11 @@ def test_block_feedback_write_failure(tmp_path, monkeypatch):
 
 
 def test_block_feedback_applied(tmp_path, monkeypatch):
-    """Success path: the root helper already applied the rule, so the status
-    reads 'Blocked <ip> ✓' instead of 'queued'."""
+
     import json
     monkeypatch.setattr(sc, "FIREWALL_COMMANDS", tmp_path / "cmds.jsonl")
     monkeypatch.setattr(sc, "FIREWALL_STATE", tmp_path / "state.json")
-    # Simulate the root helper's write: NDJSON with ip + ok keys.
+
     result = tmp_path / "firewall_commands_result.jsonl"
     result.write_text(json.dumps(
         {"action": "block", "ip": "1.2.3.4", "ok": True, "msg": "Rule inserted"}
@@ -80,10 +75,10 @@ def test_block_feedback_applied(tmp_path, monkeypatch):
 
 
 def test_block_feedback_pending_when_no_result(tmp_path, monkeypatch):
-    """Write succeeds but no matching result yet → queued, not applied."""
+
     monkeypatch.setattr(sc, "FIREWALL_COMMANDS", tmp_path / "cmds.jsonl")
     monkeypatch.setattr(sc, "FIREWALL_STATE", tmp_path / "state.json")
-    # No result file at all.
+
     out = sc._block_feedback("1.2.3.4", "manual: test")
     assert "Blocked" not in out
     assert "queued" in out

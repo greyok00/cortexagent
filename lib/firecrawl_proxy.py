@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""firecrawl_proxy — lazy single-tool MCP wrapper for the firecrawl MCP server.
 
-Presents exactly one tool (firecrawl) to Claude Code and only spawns the
-real npx firecrawl-mcp process when that tool is called. Keeps the 26 native
-firecrawl tools "cold" — no idle cost, no per-request token tax.
-
-Usage:
-  python3 lib/firecrawl_proxy.py            # stdio MCP server
-  python3 lib/firecrawl_proxy.py smoke      # self-test
-
-Protocol: JSON-RPC 2.0 over stdio (MCP).
-"""
 from __future__ import annotations
 
 import json
@@ -55,7 +44,7 @@ def _read_json() -> Optional[Dict[str, Any]]:
 
 
 def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
-    """Spawn the real firecrawl-mcp, call one tool, return (ok, result_or_error)."""
+
     if method not in FIRECRAWL_METHODS:
         return (False, f"Unknown firecrawl method: {method}. "
                         f"Known methods: {', '.join(sorted(FIRECRAWL_METHODS))}")
@@ -83,7 +72,7 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
     import threading
 
     def _read_stderr_bounded(stream, max_bytes: int = 400, timeout: float = 0.5) -> str:
-        """Read up to max_bytes from stderr without blocking past `timeout`."""
+
         if stream is None:
             return ""
         chunks: list[str] = []
@@ -123,8 +112,8 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
         proc.stdin.flush()  # type: ignore
 
     try:
-        # 1. handshake from child (server might send initialize first).
-        # Cold-start npx can take well over 3s; allow 15s.
+
+
         hello = read_line(timeout=15.0)
         if hello and hello.get("method") == "initialize":
             _send_id = hello.get("id")
@@ -138,7 +127,7 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
             }) + "\n")
             proc.stdin.flush()  # type: ignore
 
-        # 2. trigger the real server's init / tools list
+
         rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "cortexagent-firecrawl-proxy", "version": "1.0"}}, 1)
         resp = read_line(timeout=10.0)
         if not resp or "result" not in resp:
@@ -151,7 +140,7 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
             err = _read_stderr_bounded(proc.stderr)
             return (False, f"firecrawl-mcp tools/list failed: {resp or err}")
 
-        # 3. call the requested native tool
+
         native_tool = f"firecrawl_{method}"
         rpc("tools/call", {"name": native_tool, "arguments": args or {}}, 3)
         resp = read_line(timeout=60.0)
@@ -163,7 +152,7 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
             return (False, resp["error"])
 
         result = resp.get("result", {})
-        # Extract content array if present; otherwise return the raw result.
+
         if isinstance(result, dict) and "content" in result:
             return (True, result["content"])
         return (True, result)
@@ -247,7 +236,7 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             "error": {"code": -32000, "message": str(payload)},
         }
 
-    # Unknown method — standard JSON-RPC method not found.
+
     return {
         "jsonrpc": "2.0",
         "id": _id,
