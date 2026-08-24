@@ -71,19 +71,6 @@ def _check_cli(f: Dict) -> Tuple[bool, str]:
         return False, f"{type(e).__name__}: {e}"
 
 
-def _check_http(f: Dict) -> Tuple[bool, str]:
-
-    endpoint = f["schema"]["endpoint"]
-    candidates = [REPO_ROOT / "lib" / "webui.py", REPO_ROOT / "lib" / "sec_webui.py"]
-    for path in candidates:
-        if not path.exists():
-            continue
-        text = path.read_text(errors="replace")
-        if endpoint in text:
-            return True, f"in source ({path.name})"
-    return False, "endpoint not found in webui.py or sec_webui.py"
-
-
 def _check_control(f: Dict) -> Tuple[bool, str]:
 
     cmd = f["schema"]["cmd"]
@@ -98,7 +85,6 @@ CHECKERS = {
     "mcp_tool": _check_mcp_tool,
     "registered_tool": _check_registered_tool,
     "cli_subcommand": _check_cli,
-    "http_endpoint": _check_http,
     "control_socket_rpc": _check_control,
 }
 

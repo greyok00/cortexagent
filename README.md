@@ -1,136 +1,127 @@
 # CortexAgent
 
-**A private, local AI coding agent that runs entirely on your machine — no cloud, no API key, no data leaves your computer.**
+> **Your private, local AI coding agent — no cloud, no API key.**
 
-CortexAgent combines a local llama.cpp model with a clean terminal chat interface, automatic memory, and the **CortexAgent Console** — a floating window that puts chat, your active task, and your open browser tabs in one place.
+CortexAgent runs entirely on your machine: a local llama.cpp model, a terminal TUI plus a floating Console, automatic memory across sessions, local browser automation, local speech-to-text, and token compression. Everything binds to `127.0.0.1`. No accounts, no telemetry, nothing is ever uploaded.
 
 ---
 
-## Quick start
+## It verifies itself
+
+`bin/verify` is a four-layer, offline gate that ships with the repo. A release only ships when it passes — and you can run it yourself any time:
+
+| Layer | Check | Last run |
+|---|---|---|
+| 1 · Manifest | file-hash drift across **1,537 files** | ✅ no drift |
+| 2 · Contract | doc-vs-code contract | ✅ |
+| 3 · Smoke | in-process smoke harness (no live endpoints) | ✅ |
+| 4 · Features | **84** feature-catalog reachability checks | ✅ ALL GREEN |
 
 ```bash
-# 1. Clone and install
-git clone <repo>/cortexagent
+bin/verify
+```
+
+---
+
+## Install
+
+Linux. An NVIDIA GPU with ~16 GB VRAM is recommended (CPU-only works, slower).
+
+```bash
+git clone https://github.com/greyok00/cortexagent
 cd cortexagent
-./install.sh            # sets up config, memory, and the `cortexagent` command
-
-# 2. Launch
-cortexagent             # starts the TUI chat + the system tray (which owns the Console)
+./install.sh     # config, memory dirs, systemd units, the `cortexagent` command
+cortexagent      # first run prompts you to start your local model
 ```
 
-`cortexagent` opens the terminal chat interface. The Console opens from the system tray. Your first prompt loads the local model and you are talking to your own private agent.
-
-> Everything binds to `127.0.0.1`. Nothing leaves your machine.
+`install.sh` is re-runnable and non-destructive — existing config is backed up, never silently overwritten.
 
 ---
 
-## Core features
+## Start in 60 seconds
 
-- **CortexAgent Console** — a single floating window with chat, the active task, and your open browser tabs. Tray-launched, mouse-friendly, localhost-only. See the [CortexAgent Console](#cortexagent-console) section below.
-- **Local-by-default model** — Qwen3.6-35B MoE runs on your GPU via llama.cpp. No cloud, no account, no API key.
-- **Automatic memory** — remembers across sessions (hot working memory + curated cold knowledge), so you do not re-explain yourself.
-- **Token compression (SlimToken)** — your context is minified before it reaches the model, so you fit more into the context window.
-- **Speech-to-text (STT)** — talk instead of type. A popout with two big buttons (Start/Stop + Enter) lets you dictate hands-free, no keyboard needed.
-- **Overseer routing** — a dedicated small model plans and routes your request to the big model.
-- **Domain memory** — recalled context from your own notes is injected automatically.
-
----
-
-## Browser automation (generic, any site)
-
-The agent can drive your real browser (Brave on `127.0.0.1:9222`) through 10 generic tools registered in the tool registry:
-
-| Tool | What it does |
-|---|---|
-| `brave_status` | CDP reachability + open tab count |
-| `brave_tabs` | List open tabs (index, title, url) |
-| `brave_navigate` | Navigate a tab to a URL |
-| `brave_fetch` | Fetch page text via the browser (good for JS-heavy sites) |
-| `brave_click` | Click by CSS selector or accessible text |
-| `brave_type` | Type into an element; optionally press Enter |
-| `brave_evaluate` | Evaluate JS and return the result |
-| `brave_snapshot` | Return the accessibility tree |
-| `brave_fill_send` | Fill a shadow-DOM controlled component and press Enter |
-| `brave_health` | Engine health: calls, reconnects, retries, failures, last-call latency |
-
-All tools are site-agnostic — no embedded URLs, no site markers, no canned messages in the engine. Site-specific automation lives in standalone scripts under `scripts/`.
-
-The engine itself (`lib/browser_control.py`) is hardened:
-
-- per-tab websocket pool with one-shot retry on transient errors
-- per-target locks so different tabs run in parallel; same tab serializes
-- 150 ms TTL cache on the tab list so bursts don't re-hit `/json`
-- atexit cleanup so process death doesn't leak sockets on the browser
-- read-only `health()` + `bin/cortexagent-browser-health` for observability
-
-It **never** restarts Brave, **never** touches the CDP port, **never** closes your open tabs.
+**Code with it** — open the TUI and give it a task:
 
 ```bash
-bin/cortexagent-browser-health           # human summary
-bin/cortexagent-browser-health --json    # machine-readable
-bin/cortexagent-browser-health --watch 2 # live ticker (Ctrl-C to stop)
+cortexagent
+# → "add a --dry-run flag to bin/publish and test it"
+```
+
+**One-shot, no session:**
+
+```bash
+cortexagent -p "find why the daemon is unresponsive and fix it"
+```
+
+**Drive the browser** — start Brave with `--remote-debugging-port=9222`, then just ask. The agent has 10 site-agnostic CDP tools (`brave_status`, `brave_tabs`, `brave_navigate`, `brave_fetch`, `brave_click`, `brave_type`, `brave_evaluate`, `brave_snapshot`, `brave_fill_send`, `brave_health`) — it never restarts the browser, never touches the CDP port, never closes your tabs.
+
+**Or dictate** — a mouse-only speech-to-text popup (Start/Stop + Enter). Audio never leaves the machine.
+
+---
+
+## Features
+
+- **Terminal TUI + floating Console** — chat TUI plus a tray-launched window showing the chat stream, the active task, and your open browser tabs.
+- **Local model by default** — Qwen3.6-35B MoE on llama.cpp at `127.0.0.1:8080`. No account, no key, no cloud.
+- **Automatic memory** — hot/warm/cold tiers on local disk; sessions resume without re-explaining yourself.
+- **Token compression** — a SlimToken proxy at `127.0.0.1:8081` minifies context before the model sees it, so more fits the window.
+- **Overseer routing** — a tiny dedicated model (~1.6 GB at `127.0.0.1:8082`) plans, routes, and schedules.
+- **Local speech-to-text** — mouse-only dictation popup; audio stays on your machine.
+- **Instant VRAM release** — `cortexagent models unload big` frees ~13 GB for games and other tools; `models load big` brings it back.
+- **Self-repair** — `cortexagent doctor` detects and fixes config drift.
+
+---
+
+## When it's not for you
+
+A tool that tests itself should name its own limits:
+
+- **Frontier reasoning.** A 13.7 GB local MoE is capable but not frontier-class. For a genuinely novel puzzle you'll often do better with a hosted model — and nothing here stops you from exporting a conversation and running it there.
+- **It wants VRAM.** The shipped fit (128k context, default batch) is verified to fit ~16 GB. Raising context or batch beyond the documented defaults OOMs — if you change the fit, test it yourself.
+- **Text-first.** The main model is text-only; images route through the bundled vision model (`qwen3-vl`). Vision works, the text model just never sees a pixel.
+- **Single-user, Linux-only.** One agent on one machine — not a multi-user team platform.
+
+---
+
+## How it works
+
+| Service | Address | Role |
+|---|---|---|
+| Big model (llama.cpp) | `127.0.0.1:8080` | the agent's brain — Qwen3.6-35B MoE, 128k ctx |
+| SlimToken proxy | `127.0.0.1:8081` | OpenAI-compatible frontend; minifies context before the model |
+| Overseer | `127.0.0.1:8082` | tiny model — plans, routes, schedules |
+| CDP (Brave) | `127.0.0.1:9222` | page-level browser automation |
+
+Everything binds to `127.0.0.1` — never `0.0.0.0`. Enforced in code, checked by `bin/verify`. A systemd user daemon owns the big-model + proxy lifecycle and idle-unloads the model to free VRAM.
+
+> 💡 **VRAM:** `cortexagent models unload big` drops the model instantly; `cortexagent models load big` brings it back.
+> ⚠️ **Model fit:** raising context or batch beyond the shipped defaults OOMs on 16 GB — the shipped fit is the one that was verified.
+> 🔒 **Localhost:** these ports are local-only by design — don't forward or expose them.
+
+---
+
+## CLI
+
+```bash
+cortexagent                      # interactive session (TUI + tray)
+cortexagent -p "task"            # one-shot
+cortexagent daemon start         # persistent backend
+cortexagent models status        # big / tiny / proxy state
+cortexagent models unload big    # free ~13 GB VRAM
+cortexagent doctor               # detect + fix config drift
+cortexagent status               # is everything up?
 ```
 
 ---
 
-## CortexAgent Console
+## Security
 
-The **CortexAgent Console** is a compact floating window that sits next to your chat — it gives you a graphical surface for chat, the active task list, and your open browser tabs, all without leaving the agent. The console binds to `127.0.0.1` and never reaches the network.
-
-![CortexAgent Console](docs/img/cortexagent-console.png)
-
-### What it gives you
-
-| Surface | What you see / do there |
-|---|---|
-| **Chat stream** | The same conversation as the TUI, with the latest user prompt + assistant reply rendered inline. Tool calls collapse to one-line indicators while they run and expand on demand. |
-| **Active task panel** | The primary in-flight task (subject + active form spinner) is always shown at the top of the left rail so you can see what the agent is doing without opening the TUI. |
-| **Browser tabs strip** | A live list of your open Brave tabs, populated from the CDP endpoint on `127.0.0.1:9222`. Click a tab to switch to it in Brave — activation goes through Chromium's `Page.bringToFront`, not title guessing, so it picks the right tab even when many share a prefix. |
-| **Hotkey footer** | One-line key reminders (interrupt, clear/exit, commands, bash, expand) styled like real keys. |
-| **Speech-to-text buttons** | The same Toggle STT / Enter buttons from the tray popout, attached directly to the console. |
-
-### Where it runs
-
-```
-bin/cortexagent          # starts both the agent (TUI) AND the console tray item
-lib/browser_console.py   # the console itself (Tkinter + WebSocket to CDP)
-```
-
-The console is launched as a system-tray entry; clicking it raises the window. The window starts collapsed (thin strip) and expands on demand — the chevron was removed in 2026-08-21 to avoid focus-stealing breaks.
-
-### How tabs work
-
-- Read from `http://127.0.0.1:9222/json` (Brave must have been started with `--remote-debugging-port=9222`).
-- Activation uses `Page.bringToFront` over each tab's `webSocketDebuggerUrl` — this is the canonical Chromium-side focus path and is the only reliable way to choose a tab when several are open.
-- If CDP fails, the console falls back to X11 (`xdotool`) title-matching. The Brave window is raised without `--sync` to avoid hangs.
-
-### Localhost binding (HARD)
-
-The console, the TUI, and the pipeline server all bind to `127.0.0.1` only. They never listen on `0.0.0.0`. This is enforced in code and checked by `bin/verify`.
-
----
-
-## How it works (at a glance)
-
-| Piece | What it does |
-|-------|--------------|
-| **Terminal TUI** (`cortex`) | The one interface you talk to |
-| **Daemon** | Owns the big model + proxy lifecycle |
-| **Overseer** | Small model that plans, routes, and schedules |
-| **Proxy** | Compresses tokens (SlimToken) + routes traffic |
-| **Memory** | Hot/cold recall across sessions |
-| **STT** | Voice dictation with a mouse-only popout |
-
----
-
-## Requirements
-
-- Linux with an NVIDIA GPU (16 GB+ VRAM recommended)
-- Python 3.10+
-- A GGUF model file (see `config/MODELS.md`)
+- **Binds `127.0.0.1` only** — enforced in code, verified by `bin/verify`.
+- **No API keys stored, no telemetry, nothing uploaded.** The only network call in the whole system is yours — when you opt in to a hosted provider.
+- **Local-first by construction** — memory, browser state, and voice all live on your machine.
 
 ---
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [LICENSE](LICENSE).

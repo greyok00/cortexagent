@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 
 
 
-_THEMES_CSS_REL = Path("ui-mockups/_elements/themes.css")
+_THEMES_CSS_REL = Path("lib/themes/themes.css")
 _FALLBACK_CSS_REL = Path("ui-framework/themes")
 _HOME_FALLBACK = Path.home() / "ui-framework" / "themes"
 

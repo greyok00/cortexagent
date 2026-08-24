@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-_DEFAULT_PATH = Path.home() / ".cortexagent" / "state" / "webui_session.jsonl"
+_DEFAULT_PATH = Path.home() / ".cortexagent" / "state" / "session_bridge.jsonl"
 
 
 class SessionBridge:

@@ -60,30 +60,6 @@ def _walk_argparse() -> list[dict]:
     return out
 
 
-def _walk_routes() -> list[dict]:
-
-    out = []
-    path = REPO_ROOT / "lib" / "webui.py"
-    if not path.exists():
-        return out
-    text = path.read_text(errors="replace")
-
-    for m in re.finditer(
-        r'@(?:app|self)\.(?:route|get|post|put|delete)\(\s*["\']([^"\']+)["\']'
-        r'(?:[^,]*(?:methods\s*=\s*\[([^\]]+)\]))?',
-        text):
-        endpoint = m.group(1)
-        methods = re.findall(r"['\"](\w+)['\"]", m.group(2) or "GET")
-        out.append({
-            "id": f"webui:{methods[0] if methods else 'GET'}:{endpoint}",
-            "kind": "http_endpoint",
-            "advertised_in": "lib/webui.py",
-            "schema": {"endpoint": endpoint, "methods": methods or ["GET"]},
-            "description": "",
-        })
-    return out
-
-
 def _walk_control_socket() -> list[dict]:
 
     out = []
@@ -98,25 +74,6 @@ def _walk_control_socket() -> list[dict]:
             "kind": "control_socket_rpc",
             "advertised_in": "lib/daemon.py:_handle",
             "schema": {"cmd": m.group(1)},
-            "description": "",
-        })
-    return out
-
-
-def _walk_webui_routes() -> list[dict]:
-
-    out = []
-    path = REPO_ROOT / "lib" / "webui.py"
-    if not path.exists():
-        return out
-    text = path.read_text(errors="replace")
-
-    for m in re.finditer(r'parsed\.path\s*==\s*["\']([^"\']+)["\']', text):
-        out.append({
-            "id": f"webui:GET:{m.group(1)}",
-            "kind": "http_endpoint",
-            "advertised_in": "lib/webui.py",
-            "schema": {"endpoint": m.group(1), "method": "GET"},
             "description": "",
         })
     return out
@@ -155,7 +112,6 @@ def main() -> int:
     features = _dedupe(
         _walk_converted_tools()
         + _walk_argparse()
-        + _walk_webui_routes()
         + _walk_control_socket()
         + _walk_register_tool()
     )

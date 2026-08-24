@@ -114,24 +114,13 @@ if [ ! -f "${MEMORY_DIR}/cold/cortexagent.md" ] && [ -f "${REPO_ROOT}/memory/col
 fi
 echo "    memory dir: ${MEMORY_DIR}"
 
-# ── Per-profile directories (for lib/profiles.py, lib/loop_guard.py, webui) ──
+# ── Per-profile directories (for lib/profiles.py, lib/loop_guard.py) ────────
 PROFILES_DIR="${CORTEXAGENT_PROFILES_DIR:-$HOME/.cortexagent/profiles}"
 mkdir -p "${PROFILES_DIR}/default"/{state,memory,workspace,sandboxes,logs}
 echo "    profiles dir: ${PROFILES_DIR}/default/{state,memory,workspace,sandboxes,logs}"
 
-# ── Webui log dir ───────────────────────────────────────────────────────────
+# ── Log dir ─────────────────────────────────────────────────────────────────
 mkdir -p "${HOME}/.cortexagent/logs"
-
-# ── Copy extension for sideloading ───────────────────────────────────────────
-EXTENSION_DIR="${HOME}/.local/share/cortexagent/extension"
-mkdir -p "${EXTENSION_DIR}"
-cp -r "${REPO_ROOT}/extension/"* "${EXTENSION_DIR}/"
-echo "    extension: ${EXTENSION_DIR}"
-echo "    To sideload in Chromium/Brave:"
-echo "      1. Go to chrome://extensions"
-echo "      2. Enable Developer mode"
-echo "      3. Click 'Load unpacked'"
-echo "      4. Select ${EXTENSION_DIR}"
 
 # ── Symlink the entry point → engine/cli.py (unified Python dispatcher) ──────
 # `cortexagent` (no args) → cli.py `run` → execs bin/cortexagent (the session
