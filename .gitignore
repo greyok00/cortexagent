@@ -55,3 +55,8 @@ __pycache__/
 .SNAPSHOT_STATUS
 .release-notes.md
 .superpowers/manifest/
+
+# ── Docs / notes — local-only, NEVER re-upload (user HARD rule) ───
+docs/
+prompts/pca_agent.md
+*.bak-merged
