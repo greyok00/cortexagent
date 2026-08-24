@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 # ── Resolve the canonical slim reframe engine ──────────────────────────────
-# repo sibling layout: /home/grey/cortexagent  +  /home/grey/slimtoken
+# repo sibling layout: cortexagent + slimtoken share a parent dir
 # this file: <cortex>/lib/prompt_framing.py  → parents[2] = <home>
 _LOCAL_REF = Path(__file__).resolve().parents[2] / "slimtoken" / "src" \
     / "slimtoken" / "prompt_reframe.py"

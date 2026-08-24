@@ -14,7 +14,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-HOT_MEMORY = Path("/home/grey/.config/cortexllm/memory/hot/claude.jsonl")
+HOT_MEMORY = Path.home() / ".config/cortexllm/memory/hot/claude.jsonl"
 FALLBACK_PROMPTS = [
     "fix the slider speed",
     "build api and write tests",

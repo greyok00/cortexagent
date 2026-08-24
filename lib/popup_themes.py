@@ -43,7 +43,6 @@ def _find_themes_css() -> Path | None:
     # 2. ~/ui-framework standalone dir — read any *.md for token hints
     #    if themes.css isn't shipped there.
     candidates.append(_HOME_FALLBACK / "themes.css")
-    candidates.append(Path("/home/grey/cortexagent/ui-mockups/_elements/themes.css"))
     for p in candidates:
         if p.exists():
             return p

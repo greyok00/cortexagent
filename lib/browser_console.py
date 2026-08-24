@@ -1051,7 +1051,7 @@ def build_window() -> int:
     try:
         # 2026-08-21 user feedback: "the window is still not that tall".
         # Root cause: launched via systemd-run the working dir was NOT
-        # /home/grey/cortexagent, so `from lib.popup_themes import …`
+        # the repo root, so `from lib.popup_themes import …`
         # raised ModuleNotFoundError. The except block silently fell
         # through to the monitor-derived size (3840×2400 × 0.625×0.25
         # = 2400×600 — way too big and ignored the user's 760px pick).

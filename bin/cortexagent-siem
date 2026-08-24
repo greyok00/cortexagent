@@ -23,7 +23,7 @@ REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
 
 PY="${PYTHON:-python3}"
-export PYTHONPATH="${PYTHONPATH:-}:/home/grey/security-console:${REPO_ROOT}"
+export PYTHONPATH="${PYTHONPATH:-}:${HOME}/security-console:${REPO_ROOT}"
 
 _install_schedule() {
   echo "🗓  Registering daily SIEM ingest (06:47)..."
