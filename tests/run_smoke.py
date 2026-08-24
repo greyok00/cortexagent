@@ -316,7 +316,7 @@ PII_PATTERNS = ["/home/grey", "GreyOK00", "fc-", "sk-ant-"]
 PII_EXCLUDE_DIRS = {".git", "node_modules", "__pycache__", ".cortexagent",
                     ".cortexagent-config", ".cortexagent-test", ".claude",
                     "cortex", "backup", ".backups", ".snapshots",
-                    ".superpowers"}
+                    ".superpowers", "build"}
 
 
 
@@ -348,7 +348,8 @@ def test_pii_free() -> R:
     for p in REPO.rglob("*"):
         if not p.is_file() or any(part in PII_EXCLUDE_DIRS for part in p.parts):
             continue
-        if p.suffix in (".gguf", ".db", ".db-wal", ".db-shm", ".png", ".jpg", ".svg"):
+        if p.suffix in (".gguf", ".db", ".db-wal", ".db-shm", ".png", ".jpg", ".svg",
+                        ".so"):
             continue
         try:
             rel = str(p.relative_to(REPO))

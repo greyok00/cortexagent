@@ -49,6 +49,7 @@ build/
 *.swo
 .DS_Store
 __pycache__/
+*.so
 *.pyc
 *.pyo
 # ── Local backups — never commit ────────────────────────────────

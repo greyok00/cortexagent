@@ -6,11 +6,31 @@ from pathlib import Path
 DB = Path.home() / ".config/cortexllm/cortexllm.db"
 
 
+_CONN = None
+_LOCK = None
+
+
+def _get_conn():
+    global _CONN, _LOCK
+    if _LOCK is None:
+        import threading
+        _LOCK = threading.RLock()
+    if _CONN is None:
+        _CONN = sqlite3.connect(str(DB), check_same_thread=False)
+    return _CONN
+
+
 def query(sql, params=()):
-    conn = sqlite3.connect(str(DB))
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return rows
+    conn = _get_conn()
+    with _LOCK:
+        try:
+            return conn.execute(sql, params).fetchall()
+        except sqlite3.ProgrammingError:
+
+
+            global _CONN
+            _CONN = sqlite3.connect(str(DB), check_same_thread=False)
+            return _CONN.execute(sql, params).fetchall()
 
 
 def list_categories():

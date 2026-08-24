@@ -104,12 +104,13 @@ def _serve_one(conn, handler):
 
     conn.settimeout(30)
     try:
-        data = b""
-        while b"\n" not in data:
+        buf = bytearray()
+        while b"\n" not in buf:
             chunk = conn.recv(65536)
             if not chunk:
                 break
-            data += chunk
+            buf += chunk
+        data = bytes(buf)
         req = json.loads(data.decode().strip().splitlines()[0]) if data.strip() else {}
         resp = handler(req)
     except Exception as e:
