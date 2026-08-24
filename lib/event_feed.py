@@ -21,7 +21,7 @@ _STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
 SOCKET_PATH = _STATE_DIR / "state" / "event_feed.sock"
 MINIFY_STATS = _STATE_DIR / "minify_stats.json"
 ROUTING_STATE = _STATE_DIR / "routing_state.json"
-BRIDGE_FILE = _STATE_DIR / "state" / "webui_session.jsonl"
+BRIDGE_FILE = _STATE_DIR / "state" / "session_bridge.jsonl"
 MEMORY_DIR = Path.home() / ".config" / "cortexllm" / "memory"
 
 RING_SIZE = 200

@@ -1151,67 +1151,6 @@ def test_patch_binary_wired() -> R:
 
 
 
-def test_webui_assets() -> R:
-
-    import urllib.request
-    logo = REPO / "assets" / "cortexagentsquarelogo.jpg"
-    if not logo.exists():
-        return R("webui /assets/logo route", "webui", False, f"logo asset missing: {logo}")
-    try:
-        import importlib
-        w = importlib.import_module("lib.webui")
-    except Exception as e:
-        return R("webui /assets/logo route", "webui", False, f"import: {e}")
-    bad = []
-    src = (REPO / "lib" / "webui.py").read_text()
-    if "/assets/logo" not in src or "_send_logo" not in src:
-        bad.append("route/handler missing in source")
-
-    import socket, threading
-    for _ in range(10):
-        s = socket.socket()
-        try:
-            s.bind(("127.0.0.1", 0))
-            port = s.getsockname()[1]
-            s.close()
-            break
-        except OSError:
-            continue
-    else:
-        return R("webui /assets/logo route", "webui", False, "no free port")
-    old_webui = os.environ.get("CORTEXAGENT_WEBUI_ENABLED")
-    os.environ["CORTEXAGENT_WEBUI_ENABLED"] = "1"
-    try:
-        server = w.serve_forever("127.0.0.1", port)
-    except Exception as e:
-        return R("webui /assets/logo route", "webui", False, f"serve_forever: {e}")
-    th = threading.Thread(target=server.serve_forever, daemon=True)
-    th.start()
-    try:
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/assets/logo")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            status = resp.status
-            ctype = resp.headers.get("Content-Type", "")
-            body = resp.read()
-        if status != 200:
-            bad.append(f"status={status}")
-        if not ctype.startswith("image/"):
-            bad.append(f"ctype={ctype}")
-        if not body or body[:4] not in (b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1", b"\xff\xd8\xff\xdb"):
-            bad.append(f"not a JPEG body (first bytes {body[:4]!r})")
-    except Exception as e:
-        bad.append(f"GET failed: {e.__class__.__name__}: {e}")
-    finally:
-        server.shutdown()
-        th.join(timeout=3)
-
-
-        if old_webui is None:
-            os.environ.pop("CORTEXAGENT_WEBUI_ENABLED", None)
-        else:
-            os.environ["CORTEXAGENT_WEBUI_ENABLED"] = old_webui
-    return R("webui /assets/logo route", "webui", not bad,
-             "; ".join(bad) if bad else f"GET /assets/logo → 200 image/jpeg ({len(body)} bytes) on :{port}")
 
 
 
@@ -1393,7 +1332,6 @@ COVERAGE = [
     ("lib/diffusion_backend.py — diffusers in-process (#30/#31/#33)", "diffusion_backend", True),
     ("lib/banner.py — ANSI in-place boot banner + static fallback", "banner", True),
     ("lib/patch_binary.py — install.sh post-install wiring + module", "patch_binary_wired", True),
-    ("lib/webui.py — /assets/logo route", "webui_assets", True),
     ("lib/grammar_proxy.py + statusline.py — VRAM in /metrics + render", "proxy_vram_field", True),
     ("lib/doctor.py — settings drift repair + idempotent + non-destructive", "doctor_drift_repair", True),
 ]
@@ -1866,7 +1804,7 @@ def test_stt_oom_floor_unload() -> R:
     return R("stt oom-floor unload", "stt", True, "resident kept, OOM-floor freed")
 
 
-def test_stt_webui_endpoint() -> R:
+def test_stt_transcribe_pipeline() -> R:
 
     import subprocess, tempfile, os, json
     from lib import stt
@@ -1875,9 +1813,9 @@ def test_stt_webui_endpoint() -> R:
                     "fix the proxy token accounting bug"], check=True)
     text = stt.transcribe_and_cleanup(wav)
     if not (text and text.strip()):
-        return R("stt webui endpoint", "stt", False,
+        return R("stt transcribe pipeline", "stt", False,
                  f"pipeline returned empty: {text!r}")
-    return R("stt webui endpoint", "stt", True, f"webui pipeline → {text!r}")
+    return R("stt transcribe pipeline", "stt", True, f"transcribed → {text!r}")
 
 
 
@@ -2169,7 +2107,6 @@ TESTS = {
     "nvsmi": [test_nvidia_smi_toks],
     "diffusion": [test_diffusion_backend],
     "patch": [test_patch_binary_wired],
-    "webui": [test_webui_assets],
     "doctor": [test_doctor_drift_repair],
     "overseer": [test_overseer_unit_template, test_kill_stale_big_only,
                  test_overseer_big_params, test_cleanup_big_only],
@@ -2182,7 +2119,7 @@ TESTS = {
             test_processing_animation],
     "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
             test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
-            test_stt_vad_math, test_stt_oom_floor_unload, test_stt_webui_endpoint],
+            test_stt_vad_math, test_stt_oom_floor_unload, test_stt_transcribe_pipeline],
     "registry": [test_tool_registry],
     "adapters": [test_adapters],
     "bridges": [test_bridges],

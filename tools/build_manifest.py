@@ -21,7 +21,6 @@ ROOTS = [
     "scripts",
     "bin",
     "engine",
-    "extension",
     "hooks",
     "addons",
     "tools",
@@ -29,20 +28,12 @@ ROOTS = [
 
 
 TOPLEVEL_FILES = [
-    "pipeline-server.py",
-    "pipeline-viz.html",
     "install.sh",
     "patch_ub2560.py",
     "README.md",
     "LICENSE",
-    "WEBUI-3D-PIPELINE.md",
-    ".release-notes.md",
     ".SAFETY_QUICK_REF",
     ".SNAPSHOT_STATUS",
-    "Makefile",
-    "pyproject.toml",
-    "pytest.ini",
-    "conftest.py",
 ]
 
 

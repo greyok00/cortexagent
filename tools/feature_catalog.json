@@ -1,979 +1,1008 @@
 {
- "by_kind": {
-  "cli_subcommand": 20,
-  "control_socket_rpc": 10,
-  "http_endpoint": 0,
-  "mcp_tool": 37,
-  "registered_tool": 15
- },
- "feature_count": 82,
- "features": [
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Read from CortexLLM memory (hot/warm/cold tiers)",
-   "id": "memory_read",
-   "implementation": "lib/converted_mcp_tools.py:memory_read",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "tier",
-     "platform",
-     "category"
-    ],
-    "required": [
-     "tier"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Write to CortexLLM memory tier",
-   "id": "memory_write",
-   "implementation": "lib/converted_mcp_tools.py:memory_write",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "tier",
-     "content",
-     "platform",
-     "category",
-     "role"
-    ],
-    "required": [
-     "tier",
-     "content"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Search across all CortexLLM memory tiers",
-   "id": "memory_search",
-   "implementation": "lib/converted_mcp_tools.py:memory_search",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "query",
-     "limit"
-    ],
-    "required": [
-     "query"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Clear CortexLLM memory",
-   "id": "memory_clear",
-   "implementation": "lib/converted_mcp_tools.py:memory_clear",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "tier",
-     "platform"
-    ],
-    "required": [
-     "tier"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Semantic (BM25) search across CortexLLM memory",
-   "id": "memory_search_semantic",
-   "implementation": "lib/converted_mcp_tools.py:memory_search_semantic",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "query",
-     "limit",
-     "platform"
-    ],
-    "required": [
-     "query"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Query the CortexLLM knowledge graph",
-   "id": "memory_graph_query",
-   "implementation": "lib/converted_mcp_tools.py:memory_graph_query",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "action",
-     "entity",
-     "text",
-     "target",
-     "depth",
-     "platform"
-    ],
-    "required": [
-     "action"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Ontology operations (categorize, taxonomy, gaps, tags)",
-   "id": "memory_ontology",
-   "implementation": "lib/converted_mcp_tools.py:memory_ontology",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "action",
-     "text"
-    ],
-    "required": [
-     "action"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Search the web using Firecrawl",
-   "id": "firecrawl_search",
-   "implementation": "lib/converted_mcp_tools.py:firecrawl_search",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "query",
-     "limit"
-    ],
-    "required": [
-     "query"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Scrape content from a URL",
-   "id": "firecrawl_scrape",
-   "implementation": "lib/converted_mcp_tools.py:firecrawl_scrape",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "url"
-    ],
-    "required": [
-     "url"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Generate UI from description",
-   "id": "magicui_generate",
-   "implementation": "lib/converted_mcp_tools.py:magicui_generate",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "description",
-     "format"
-    ],
-    "required": [
-     "description"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Get Alpaca trading account info",
-   "id": "alpaca_get_account",
-   "implementation": "lib/converted_mcp_tools.py:alpaca_get_account",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Get Interactive Brokers positions",
-   "id": "ibkr_get_positions",
-   "implementation": "lib/converted_mcp_tools.py:ibkr_get_positions",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Run quant strategy on a symbol",
-   "id": "quant_trader_strategy",
-   "implementation": "lib/converted_mcp_tools.py:quant_trader_strategy",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "symbol",
-     "timeframe"
-    ],
-    "required": [
-     "symbol"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Minify messages for slim token usage",
-   "id": "slimtoken_minify",
-   "implementation": "lib/converted_mcp_tools.py:slimtoken_minify",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "messages"
-    ],
-    "required": [
-     "messages"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Expand slimtoken minified markers back into self-describing placeholders",
-   "id": "slimtoken_maxify",
-   "implementation": "lib/converted_mcp_tools.py:slimtoken_maxify",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "messages"
-    ],
-    "required": [
-     "messages"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Broadcast session status to other sessions",
-   "id": "session_broadcast",
-   "implementation": "lib/converted_mcp_tools.py:session_broadcast",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "status",
-     "task"
-    ],
-    "required": [
-     "status"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Check what other sessions are doing",
-   "id": "session_check",
-   "implementation": "lib/converted_mcp_tools.py:session_check",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Log inter-session awareness message",
-   "id": "session_log",
-   "implementation": "lib/converted_mcp_tools.py:session_log",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "message",
-     "level"
-    ],
-    "required": [
-     "message"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Return recent CVEs from local intel cache (NVD+KEV+EPSS+GHSA+OSV)",
-   "id": "cve_recent",
-   "implementation": "lib/converted_mcp_tools.py:cve_recent",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "since",
-     "min_cvss",
-     "kev_only",
-     "limit"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Look up a single CVE by ID (e.g. CVE-2024-3094) plus MITRE technique mapping",
-   "id": "cve_lookup",
-   "implementation": "lib/converted_mcp_tools.py:cve_lookup",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "cve_id"
-    ],
-    "required": [
-     "cve_id"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Return ATT&CK Enterprise technique IDs mapped to the given CVE",
-   "id": "mitre_techniques_for_cve",
-   "implementation": "lib/converted_mcp_tools.py:mitre_techniques_for_cve",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "cve_id"
-    ],
-    "required": [
-     "cve_id"
-    ]
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Return MITRE M-code coverage of local hardening (nftables/systemd/seccomp/etc.)",
-   "id": "mitre_mitigations_coverage",
-   "implementation": "lib/converted_mcp_tools.py:mitre_mitigations_coverage",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Trigger a fresh CVE feed poll (network). Writes new entries to intel.jsonl + cold memory",
-   "id": "cve_poll_now",
-   "implementation": "lib/converted_mcp_tools.py:cve_poll_now",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "since",
-     "include_osv"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Read-only snapshot of hardening subsystems (nftables/sshd/sysctl/auditd/lsms/etc.)",
-   "id": "hardening_status",
-   "implementation": "lib/converted_mcp_tools.py:hardening_status",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "subsystem"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Live nftables ruleset snapshot: tables, chains, rule count",
-   "id": "nftables_list",
-   "implementation": "lib/converted_mcp_tools.py:nftables_list",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Active auditd rule count + staged rules.d files",
-   "id": "auditd_query",
-   "implementation": "lib/converted_mcp_tools.py:auditd_query",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Parse sshd_config + sshd_config.d; grade vs hardening baseline",
-   "id": "sshd_config_dump",
-   "implementation": "lib/converted_mcp_tools.py:sshd_config_dump",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Read live sysctl values; if keys omitted, return baseline comparison",
-   "id": "sysctl_current",
-   "implementation": "lib/converted_mcp_tools.py:sysctl_current",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "keys"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "unbound presence + harden-* directives + service state",
-   "id": "unbound_status",
-   "implementation": "lib/converted_mcp_tools.py:unbound_status",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Enumerate file capabilities; flag binaries holding risky caps (CAP_SYS_ADMIN etc.)",
-   "id": "capabilities_list",
-   "implementation": "lib/converted_mcp_tools.py:capabilities_list",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "paths"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Active LSM stack (landlock/lockdown/yama/apparmor/tomoyo/bpf/ipe/ima)",
-   "id": "lsm_stack",
-   "implementation": "lib/converted_mcp_tools.py:lsm_stack",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Recent SIEM findings (optionally filtered by source: cve_intel, hardening_status, etc.)",
-   "id": "siem_recent",
-   "implementation": "lib/converted_mcp_tools.py:siem_recent",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "source",
-     "limit"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Latest posture_event per hardening subsystem (newest by id)",
-   "id": "siem_posture",
-   "implementation": "lib/converted_mcp_tools.py:siem_posture",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Pull recent CVEs from local cache into SIEM (writes to ~/security-reports/siem/siem.db)",
-   "id": "siem_push_recent",
-   "implementation": "lib/converted_mcp_tools.py:siem_push_recent",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "since"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Run SOAR playbooks against recent CVEs (critical/KEV \u2192 notify/block-IOC)",
-   "id": "soar_run_on_recent",
-   "implementation": "lib/converted_mcp_tools.py:soar_run_on_recent",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "since",
-     "dry_run"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Run SOAR playbooks for hardening posture fails (enqueues audit reviews)",
-   "id": "soar_run_posture",
-   "implementation": "lib/converted_mcp_tools.py:soar_run_posture",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "dry_run"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-   "description": "Last N SOAR playbook runs (newest first)",
-   "id": "soar_history",
-   "implementation": "lib/converted_mcp_tools.py:soar_history",
-   "kind": "mcp_tool",
-   "reachable": true,
-   "schema": {
-    "properties": [
-     "limit"
-    ],
-    "required": []
-   }
-  },
-  {
-   "advertised_in": "lib/cortexagent_call.py",
-   "description": "",
-   "id": "cortexagent_call.py:recent",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cortexagent_call.py",
-   "description": "",
-   "id": "cortexagent_call.py:write",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cortexagent_call.py",
-   "description": "",
-   "id": "cortexagent_call.py:search",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cortexagent_call.py",
-   "description": "",
-   "id": "cortexagent_call.py:query",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cve_intel.py",
-   "description": "",
-   "id": "cve_intel.py:poll",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cve_intel.py",
-   "description": "",
-   "id": "cve_intel.py:lookup",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cve_intel.py",
-   "description": "",
-   "id": "cve_intel.py:cve_id",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cve_intel.py",
-   "description": "",
-   "id": "cve_intel.py:mitre",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cve_intel.py",
-   "description": "",
-   "id": "cve_intel.py:technique_id",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cve_intel.py",
-   "description": "",
-   "id": "cve_intel.py:coverage",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/cve_intel.py",
-   "description": "",
-   "id": "cve_intel.py:recent",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/img2img.py",
-   "description": "",
-   "id": "img2img.py:generate",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/img2img.py",
-   "description": "",
-   "id": "img2img.py:info",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/memory_thin.py",
-   "description": "",
-   "id": "memory_thin.py:append",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/memory_thin.py",
-   "description": "",
-   "id": "memory_thin.py:content",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/memory_thin.py",
-   "description": "",
-   "id": "memory_thin.py:read",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/memory_thin.py",
-   "description": "",
-   "id": "memory_thin.py:search",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/memory_thin.py",
-   "description": "",
-   "id": "memory_thin.py:query",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/memory_thin.py",
-   "description": "",
-   "id": "memory_thin.py:cold",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/memory_thin.py",
-   "description": "",
-   "id": "memory_thin.py:sessions",
-   "kind": "cli_subcommand",
-   "schema": {
-    "args": "<varies>"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:ping",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "ping"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:status",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "status"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:activity",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "activity"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:load",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "load"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:swap",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "swap"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:unload",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "unload"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:shutdown",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "shutdown"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:run",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "run"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:start",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "start"
-   }
-  },
-  {
-   "advertised_in": "lib/daemon.py:_handle",
-   "description": "",
-   "id": "control:stop",
-   "kind": "control_socket_rpc",
-   "schema": {
-    "cmd": "stop"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:run_command",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "run_command"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:query_llm",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "query_llm"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:spawn_subagent",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "spawn_subagent"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:generate_image",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "generate_image"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:generate_video",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "generate_video"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:generate_media",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "generate_media"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:web_search",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "web_search"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:rag_query",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "rag_query"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:coding_practices",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "coding_practices"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:describe_image",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "describe_image"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:transcribe_audio",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "transcribe_audio"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:parse_document",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "parse_document"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:ingest_domain",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "ingest_domain"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:render_image",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "render_image"
-   }
-  },
-  {
-   "advertised_in": "lib/tool_registry.py",
-   "description": "",
-   "id": "tool_registry:add_llm_provider",
-   "kind": "registered_tool",
-   "schema": {
-    "name": "add_llm_provider"
-   }
-  }
- ],
- "generated_at": "2026-08-24 (webui removed)",
- "schema": 1
+  "by_kind": {
+    "cli_subcommand": 20,
+    "control_socket_rpc": 10,
+    "mcp_tool": 39,
+    "registered_tool": 15
+  },
+  "feature_count": 84,
+  "features": [
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Read from CortexLLM memory (hot/warm/cold tiers)",
+      "id": "memory_read",
+      "implementation": "lib/converted_mcp_tools.py:memory_read",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "tier",
+          "platform",
+          "category"
+        ],
+        "required": [
+          "tier"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Write to CortexLLM memory tier",
+      "id": "memory_write",
+      "implementation": "lib/converted_mcp_tools.py:memory_write",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "tier",
+          "content",
+          "platform",
+          "category",
+          "role"
+        ],
+        "required": [
+          "tier",
+          "content"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Search across all CortexLLM memory tiers",
+      "id": "memory_search",
+      "implementation": "lib/converted_mcp_tools.py:memory_search",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "query",
+          "limit"
+        ],
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Clear CortexLLM memory",
+      "id": "memory_clear",
+      "implementation": "lib/converted_mcp_tools.py:memory_clear",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "tier",
+          "platform"
+        ],
+        "required": [
+          "tier"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Semantic (BM25) search across CortexLLM memory",
+      "id": "memory_search_semantic",
+      "implementation": "lib/converted_mcp_tools.py:memory_search_semantic",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "query",
+          "limit",
+          "platform"
+        ],
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Query the CortexLLM knowledge graph",
+      "id": "memory_graph_query",
+      "implementation": "lib/converted_mcp_tools.py:memory_graph_query",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "action",
+          "entity",
+          "text",
+          "target",
+          "depth",
+          "platform"
+        ],
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Ontology operations (categorize, taxonomy, gaps, tags)",
+      "id": "memory_ontology",
+      "implementation": "lib/converted_mcp_tools.py:memory_ontology",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "action",
+          "text"
+        ],
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "List every registered API adapter and its live health status (Google CSE, SearXNG, etc.)",
+      "id": "adapter_list",
+      "implementation": "lib/converted_mcp_tools.py:adapter_list",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Search/lookup via the API adapter layer. adapter_name omitted \u2192 fan-out across every enabled backend. One failing adapter never blocks the rest.",
+      "id": "adapter_search",
+      "implementation": "lib/converted_mcp_tools.py:adapter_search",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "query",
+          "limit",
+          "adapter_name"
+        ],
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Search the web using Firecrawl",
+      "id": "firecrawl_search",
+      "implementation": "lib/converted_mcp_tools.py:firecrawl_search",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "query",
+          "limit"
+        ],
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Scrape content from a URL",
+      "id": "firecrawl_scrape",
+      "implementation": "lib/converted_mcp_tools.py:firecrawl_scrape",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "url"
+        ],
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Generate UI from description",
+      "id": "magicui_generate",
+      "implementation": "lib/converted_mcp_tools.py:magicui_generate",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "description",
+          "format"
+        ],
+        "required": [
+          "description"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Get Alpaca trading account info",
+      "id": "alpaca_get_account",
+      "implementation": "lib/converted_mcp_tools.py:alpaca_get_account",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Get Interactive Brokers positions",
+      "id": "ibkr_get_positions",
+      "implementation": "lib/converted_mcp_tools.py:ibkr_get_positions",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Run quant strategy on a symbol",
+      "id": "quant_trader_strategy",
+      "implementation": "lib/converted_mcp_tools.py:quant_trader_strategy",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "symbol",
+          "timeframe"
+        ],
+        "required": [
+          "symbol"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Minify messages for slim token usage",
+      "id": "slimtoken_minify",
+      "implementation": "lib/converted_mcp_tools.py:slimtoken_minify",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "messages"
+        ],
+        "required": [
+          "messages"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Expand slimtoken minified markers back into self-describing placeholders",
+      "id": "slimtoken_maxify",
+      "implementation": "lib/converted_mcp_tools.py:slimtoken_maxify",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "messages"
+        ],
+        "required": [
+          "messages"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Broadcast session status to other sessions",
+      "id": "session_broadcast",
+      "implementation": "lib/converted_mcp_tools.py:session_broadcast",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "status",
+          "task"
+        ],
+        "required": [
+          "status"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Check what other sessions are doing",
+      "id": "session_check",
+      "implementation": "lib/converted_mcp_tools.py:session_check",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Log inter-session awareness message",
+      "id": "session_log",
+      "implementation": "lib/converted_mcp_tools.py:session_log",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "message",
+          "level"
+        ],
+        "required": [
+          "message"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Return recent CVEs from local intel cache (NVD+KEV+EPSS+GHSA+OSV)",
+      "id": "cve_recent",
+      "implementation": "lib/converted_mcp_tools.py:cve_recent",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "since",
+          "min_cvss",
+          "kev_only",
+          "limit"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Look up a single CVE by ID (e.g. CVE-2024-3094) plus MITRE technique mapping",
+      "id": "cve_lookup",
+      "implementation": "lib/converted_mcp_tools.py:cve_lookup",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "cve_id"
+        ],
+        "required": [
+          "cve_id"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Return ATT&CK Enterprise technique IDs mapped to the given CVE",
+      "id": "mitre_techniques_for_cve",
+      "implementation": "lib/converted_mcp_tools.py:mitre_techniques_for_cve",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "cve_id"
+        ],
+        "required": [
+          "cve_id"
+        ]
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Return MITRE M-code coverage of local hardening (nftables/systemd/seccomp/etc.)",
+      "id": "mitre_mitigations_coverage",
+      "implementation": "lib/converted_mcp_tools.py:mitre_mitigations_coverage",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Trigger a fresh CVE feed poll (network). Writes new entries to intel.jsonl + cold memory",
+      "id": "cve_poll_now",
+      "implementation": "lib/converted_mcp_tools.py:cve_poll_now",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "since",
+          "include_osv"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Read-only snapshot of hardening subsystems (nftables/sshd/sysctl/auditd/lsms/etc.)",
+      "id": "hardening_status",
+      "implementation": "lib/converted_mcp_tools.py:hardening_status",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "subsystem"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Live nftables ruleset snapshot: tables, chains, rule count",
+      "id": "nftables_list",
+      "implementation": "lib/converted_mcp_tools.py:nftables_list",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Active auditd rule count + staged rules.d files",
+      "id": "auditd_query",
+      "implementation": "lib/converted_mcp_tools.py:auditd_query",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Parse sshd_config + sshd_config.d; grade vs hardening baseline",
+      "id": "sshd_config_dump",
+      "implementation": "lib/converted_mcp_tools.py:sshd_config_dump",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Read live sysctl values; if keys omitted, return baseline comparison",
+      "id": "sysctl_current",
+      "implementation": "lib/converted_mcp_tools.py:sysctl_current",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "keys"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "unbound presence + harden-* directives + service state",
+      "id": "unbound_status",
+      "implementation": "lib/converted_mcp_tools.py:unbound_status",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Enumerate file capabilities; flag binaries holding risky caps (CAP_SYS_ADMIN etc.)",
+      "id": "capabilities_list",
+      "implementation": "lib/converted_mcp_tools.py:capabilities_list",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "paths"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Active LSM stack (landlock/lockdown/yama/apparmor/tomoyo/bpf/ipe/ima)",
+      "id": "lsm_stack",
+      "implementation": "lib/converted_mcp_tools.py:lsm_stack",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Recent SIEM findings (optionally filtered by source: cve_intel, hardening_status, etc.)",
+      "id": "siem_recent",
+      "implementation": "lib/converted_mcp_tools.py:siem_recent",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "source",
+          "limit"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Latest posture_event per hardening subsystem (newest by id)",
+      "id": "siem_posture",
+      "implementation": "lib/converted_mcp_tools.py:siem_posture",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Pull recent CVEs from local cache into SIEM (writes to ~/security-console/siem/siem.db)",
+      "id": "siem_push_recent",
+      "implementation": "lib/converted_mcp_tools.py:siem_push_recent",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "since"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Run SOAR playbooks against recent CVEs (critical/KEV \u2192 notify/block-IOC)",
+      "id": "soar_run_on_recent",
+      "implementation": "lib/converted_mcp_tools.py:soar_run_on_recent",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "since",
+          "dry_run"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Run SOAR playbooks for hardening posture fails (enqueues audit reviews)",
+      "id": "soar_run_posture",
+      "implementation": "lib/converted_mcp_tools.py:soar_run_posture",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "dry_run"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
+      "description": "Last N SOAR playbook runs (newest first)",
+      "id": "soar_history",
+      "implementation": "lib/converted_mcp_tools.py:soar_history",
+      "kind": "mcp_tool",
+      "reachable": true,
+      "schema": {
+        "properties": [
+          "limit"
+        ],
+        "required": []
+      }
+    },
+    {
+      "advertised_in": "lib/cortexagent_call.py",
+      "description": "",
+      "id": "cortexagent_call.py:recent",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cortexagent_call.py",
+      "description": "",
+      "id": "cortexagent_call.py:write",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cortexagent_call.py",
+      "description": "",
+      "id": "cortexagent_call.py:search",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cortexagent_call.py",
+      "description": "",
+      "id": "cortexagent_call.py:query",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cve_intel.py",
+      "description": "",
+      "id": "cve_intel.py:poll",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cve_intel.py",
+      "description": "",
+      "id": "cve_intel.py:lookup",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cve_intel.py",
+      "description": "",
+      "id": "cve_intel.py:cve_id",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cve_intel.py",
+      "description": "",
+      "id": "cve_intel.py:mitre",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cve_intel.py",
+      "description": "",
+      "id": "cve_intel.py:technique_id",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cve_intel.py",
+      "description": "",
+      "id": "cve_intel.py:coverage",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/cve_intel.py",
+      "description": "",
+      "id": "cve_intel.py:recent",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/img2img.py",
+      "description": "",
+      "id": "img2img.py:generate",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/img2img.py",
+      "description": "",
+      "id": "img2img.py:info",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/memory_thin.py",
+      "description": "",
+      "id": "memory_thin.py:append",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/memory_thin.py",
+      "description": "",
+      "id": "memory_thin.py:content",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/memory_thin.py",
+      "description": "",
+      "id": "memory_thin.py:read",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/memory_thin.py",
+      "description": "",
+      "id": "memory_thin.py:search",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/memory_thin.py",
+      "description": "",
+      "id": "memory_thin.py:query",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/memory_thin.py",
+      "description": "",
+      "id": "memory_thin.py:cold",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/memory_thin.py",
+      "description": "",
+      "id": "memory_thin.py:sessions",
+      "kind": "cli_subcommand",
+      "schema": {
+        "args": "<varies>"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:ping",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "ping"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:status",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "status"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:activity",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "activity"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:load",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "load"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:swap",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "swap"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:unload",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "unload"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:shutdown",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "shutdown"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:run",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "run"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:start",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "start"
+      }
+    },
+    {
+      "advertised_in": "lib/daemon.py:_handle",
+      "description": "",
+      "id": "control:stop",
+      "kind": "control_socket_rpc",
+      "schema": {
+        "cmd": "stop"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:run_command",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "run_command"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:query_llm",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "query_llm"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:spawn_subagent",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "spawn_subagent"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:generate_image",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "generate_image"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:generate_video",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "generate_video"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:generate_media",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "generate_media"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:web_search",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "web_search"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:rag_query",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "rag_query"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:coding_practices",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "coding_practices"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:describe_image",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "describe_image"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:transcribe_audio",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "transcribe_audio"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:parse_document",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "parse_document"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:ingest_domain",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "ingest_domain"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:render_image",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "render_image"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:add_llm_provider",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "add_llm_provider"
+      }
+    }
+  ],
+  "generated_at": "2026-08-24T19:23:46.162201+00:00",
+  "schema": 1
 }
