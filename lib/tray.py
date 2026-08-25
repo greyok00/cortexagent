@@ -188,10 +188,11 @@ def _reload_config() -> str:
 
 def _cli_command() -> list[str]:
 
-
+    # CORTEXAGENT_FORCE_TUI=1 forces the launched cortexagent to enter the TUI
+    # (overrides the new tray-only default for terminal invocations).
     if shutil.which("cortexagent"):
-        return ["cortexagent"]
-    return ["bash", str(_LAUNCHER)]
+        return ["env", "CORTEXAGENT_FORCE_TUI=1", "cortexagent"]
+    return ["env", "CORTEXAGENT_FORCE_TUI=1", "bash", str(_LAUNCHER)]
 
 
 def _launch_cli() -> None:
@@ -200,7 +201,7 @@ def _launch_cli() -> None:
     try:
         if os.name == "nt":
 
-            subprocess.Popen(["cmd", "/c", "start", "CortexAgent", "cmd", "/k"] + cmd)
+            subprocess.Popen(["cmd", "/c", "start", "Cortex", "cmd", "/k"] + cmd)
             return
         if sys.platform == "darwin":
 
@@ -341,7 +342,7 @@ def _run_gui(quit_event: threading.Event) -> None:
 
     def _toast(icon, msg, kind="info"):
         try:
-            icon.notify(msg, "CortexAgent")
+            icon.notify(msg, "Cortex")
         except Exception:
             pass
         _log(msg, "ℹ️", CYAN if kind == "info" else (GREEN if kind == "ok" else RED))
@@ -442,20 +443,20 @@ def _run_gui(quit_event: threading.Event) -> None:
             _toast(icon, f"Failed to open browser console: {e}", "info")
 
     menu = Menu(
-        MI("CortexAgent", None, enabled=False),
+        MI("Cortex", None, enabled=False),
+        Menu.SEPARATOR,
+        MI("Open Console", on_cli),
         Menu.SEPARATOR,
         MI("Open Browser Automation", on_browser_console),
         Menu.SEPARATOR,
         MI("Open STT Controls", on_stt_controls),
         Menu.SEPARATOR,
-
-
         MI(_big_label_text, _big_action_wrapper),
         Menu.SEPARATOR,
         MI("Quit", on_quit),
     )
     icon = pystray.Icon("cortexagent", _make_icon_image(),
-                        "CortexAgent", menu)
+                        "Cortex", menu)
 
 
     try:

@@ -171,7 +171,7 @@ def main():
 
 
 
-    brand = str(CFG.author) or "CortexAgent"
+    brand = str(CFG.author) or "Cortex"
     parts = [brand]
     if model and model.strip().lower() != brand.strip().lower():
         parts.append(model)
@@ -192,4 +192,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        print(f"CortexAgent · {CFG.author}")
+        print(f"Cortex · {CFG.author}")

@@ -49,6 +49,28 @@ echo "    building native modules (Cython)…"
 python3 -m pip install --break-system-packages --user cython 2>&1 | tail -1 >/dev/null
 python3 "${REPO_ROOT}/tools/build_opt.py" 2>&1 | tail -3
 
+# ── Verify all expected .so artifacts are present after the build ─────────────
+# Cython can fail per-module silently if a compile breaks (out-of-tree build
+# cache, missing header). A half-optimized install is worse than a transparent
+# fallback — the user would think they're fast when they're not. Report loudly
+# if any expected .so is missing.
+echo "    verifying Cython artifacts…"
+if python3 "${REPO_ROOT}/tools/build_opt.py" --check 2>&1 | tee /tmp/_build_opt_check.$$ | grep -q "on .py fallback"; then
+  echo "WARN: some modules still on .py fallback — install is functional but NOT optimized." >&2
+  echo "      Re-run install.sh after 'pip install --user cython' to retry the build." >&2
+fi
+rm -f /tmp/_build_opt_check.$$
+
+# ── Source minify (DEFAULT — strips comments/docstrings from .py files) ───────
+# tools/minify_source.py rewrites the .py tree in place: comments and
+# docstrings go, runtime behavior is preserved. Idempotent — re-running on an
+# already-minified tree is a no-op. Cython-compiled modules are not touched.
+# Skipped gracefully if the tool errors on an unparseable file (it leaves
+# such files alone and continues).
+echo "    minifying source (comments + docstrings)…"
+python3 "${REPO_ROOT}/tools/minify_source.py" 2>&1 | tail -3 || \
+  echo "    WARN: source minify failed — leaving .py as-is" >&2
+
 # ── Diffusion deps (image/video via in-process diffusers) ────────────────────
 # Optional: only installs when CORTEXAGENT_INSTALL_DIFFUSION_DEPS=1 (heavy: torch
 # + diffusers + CUDA). Otherwise just prints what's needed so a user can install
@@ -276,6 +298,21 @@ if [ -n "$leak" ]; then
   echo "WARN: hardcoded home path found in package (review):" >&2
   echo "$leak" >&2
 fi
+
+# ── Optimization summary (printed at end so the user sees what shipped) ─────
+echo ""
+echo "Optimization summary:"
+_so_listing="$(python3 "${REPO_ROOT}/tools/build_opt.py" --check 2>/dev/null || true)"
+echo "  ${_so_listing}"
+_total_so_bytes=$(stat -c%s "${REPO_ROOT}"/lib/*.so 2>/dev/null | awk '{s+=$1} END {print s+0}')
+if [ "${_total_so_bytes:-0}" -gt 0 ]; then
+  _total_so_kb=$((_total_so_bytes / 1024))
+  echo "  → ${_total_so_kb} KB of native code (5 hot modules)"
+else
+  echo "  → no native modules — running pure-Python (functional, slower)"
+fi
+_py_count=$(find "${REPO_ROOT}/lib" -maxdepth 1 -name '*.py' | wc -l)
+echo "  → ${_py_count} .py files in lib/ (minified)"
 
 # ── Next steps ──────────────────────────────────────────────────────────────
 echo ""
