@@ -85,12 +85,19 @@ def _mic_device():
     from lib.config import CFG
     name = CFG.stt_mic_device
     if not name:
-        return None
-    try:
-        sd.query_devices(name, kind="input")
-        return name
-    except Exception:
-        return None
+        return "pipewire"
+
+
+
+    for api_name in (name, "pipewire", "pulse", "default"):
+        try:
+            sd.query_devices(api_name, kind="input")
+            if api_name != name:
+                print(f"🎙️ mic fallback: '{name}' not found, using '{api_name}'", flush=True)
+            return api_name
+        except Exception:
+            continue
+    return None
 
 
 def record_clip(seconds: float = 2.0) -> np.ndarray:
@@ -518,11 +525,12 @@ def _parse_hotkey(hotkey: str) -> set:
        return {part.strip().lower() for part in hotkey.split("+") if part.strip()}
 
 
-_clip_queue: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=8)
+_clip_queue: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=2)
 
 
 def _transcribe_worker() -> None:
 
+    import time as _time
     from lib import stt
     while True:
         try:
@@ -530,21 +538,31 @@ def _transcribe_worker() -> None:
         except queue.Empty:
             stt.unload_if_idle()
             continue
+        t0 = _time.monotonic()
         try:
-            text = stt.transcribe_and_cleanup(clip)
 
+            full_text = ""
+            seg_count = 0
+            for seg_text, is_final in stt.transcribe_streaming(clip):
+                seg_text = _strip_leading_garbage(seg_text)
+                seg_text = _strip_repeated_stutter(seg_text)
+                full_text += seg_text
+                seg_count += 1
+                if _text_is_meaningful(seg_text):
+                    type_text(seg_text + " ")
 
-
-            text = _strip_leading_garbage(text)
-            text = _strip_repeated_stutter(text)
+            full_text = _strip_leading_garbage(full_text)
+            full_text = _strip_repeated_stutter(full_text)
+            elapsed = _time.monotonic() - t0
             clip_rms = float(np.sqrt(np.mean(clip.astype(np.float32) ** 2))) if clip.size else 0.0
             duration = clip.size / SAMPLE_RATE if clip.size else 0.0
-            rms_tag = f"clip_rms={clip_rms:.4f} dur={duration:.2f}s"
-            if text and _text_is_meaningful(text):
-                print(f"  📝 {rms_tag}  text={text!r}", flush=True)
-                type_text(text)
-            elif text:
-                print(f"  🗑 {rms_tag}  dropped={text!r}", flush=True)
+            rms_tag = f"clip_rms={clip_rms:.4f} dur={duration:.2f}s t={elapsed:.2f}s segs={seg_count}"
+            if full_text and _text_is_meaningful(full_text):
+                print(f"  📝 {rms_tag}  text={full_text!r}", flush=True)
+            elif full_text:
+                print(f"  🗑 {rms_tag}  dropped={full_text!r}", flush=True)
+            else:
+                print(f"  ⏸ {rms_tag}  silence", flush=True)
         except Exception as e:
             print(f"⚠️ transcribe failed: {e}", flush=True)
         finally:
@@ -571,15 +589,12 @@ def _handle_clip(clip: np.ndarray) -> None:
     if clip_ratio > 0.01:
         print(f"⚠️ mic CLIPPING — {clip_ratio*100:.1f}% of samples at max level. "
               f"Lower the input/mic volume; maxed gain distorts STT.", flush=True)
-    try:
-        _clip_queue.put_nowait(clip)
-    except queue.Full:
-
-        try:
-            _clip_queue.get_nowait()
-        except queue.Empty:
-            pass
-        _clip_queue.put_nowait(clip)
+    # BLOCK on full instead of drop-oldest. The old drop-oldest policy silently
+    # discarded intermediate clips when the worker was busy, so the user saw
+    # only the LAST spoken chunk typed — "loses the middle, starts again from
+    # the end". Back-pressure here makes the VAD/recorder wait for the worker
+    # to finish the current clip before emitting the next one. No audio is lost.
+    _clip_queue.put(clip)
 
 
 def run_hotkey(mode_event=None, stop_event=None) -> None:
@@ -803,7 +818,14 @@ def _test() -> int:
 def run() -> int:
     import os
     import threading
+    import sys as _sys
     from lib.config import CFG
+    log_path = Path.home() / ".cortexagent" / "logs" / "stt.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_fh = open(log_path, "ab", buffering=0)
+    _sys.stdout = os.fdopen(os.dup(log_fh.fileno()), "w", buffering=1, closefd=False)
+    _sys.stderr = os.fdopen(os.dup(log_fh.fileno()), "w", buffering=1, closefd=False)
+    print(f"stt daemon pid={os.getpid()} model={CFG.stt_model} device={CFG.stt_device}", flush=True)
     stop_event = threading.Event()
     mode_events = {"hotkey": threading.Event(), "vad": threading.Event()}
 
@@ -870,9 +892,14 @@ def main() -> int:
         import subprocess
         if _daemon_alive():
             return control("status")
-        subprocess.Popen([sys.executable, str(Path(__file__).resolve())],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        log_path = Path.home() / ".cortexagent" / "logs" / "stt.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_fh = open(log_path, "ab", buffering=0)
+        subprocess.Popen([sys.executable, "-u", str(Path(__file__).resolve())],
+                         stdin=subprocess.DEVNULL,
+                         stdout=log_fh, stderr=log_fh,
                          start_new_session=True)
+        log_fh.close()
         time.sleep(0.5)
         return control("status")
     if args.command in ("stop", "status", "set-mode"):

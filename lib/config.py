@@ -88,7 +88,6 @@ def _env_float(name: str, conf_section: str, conf_key: str,
 
 LOCKED_KEYS = {
     "big_ctx": 131072,
-    "big_ub": 2560,
     "big_ngl": 999,
     "big_fa": "on",
     "big_ctk": "q4_0",
@@ -108,18 +107,10 @@ def _unlock_for(key: str) -> bool:
 
 def _locked_divergence(name: str, env_name: str, conf_section: str,
                        conf_key: str, pinned) -> None:
-
-    envval = os.environ.get(env_name)
-    conf_val = None
-    try:
-        if _CONF.has_option(conf_section, conf_key):
-            conf_val = _CONF.get(conf_section, conf_key)
-    except Exception:
-        pass
-    if (envval is not None and str(envval) != str(pinned)) or (
-            conf_val is not None and str(conf_val) != str(pinned)):
-        _LOCK_LOG.append(
-            f"LOCK: {name} env={envval!r} conf={conf_val!r} -> pinned={pinned}")
+    # Quiet by default — divergence between env/conf and the pinned value is
+    # tracked via `lock-status` / `CFG.locked_keys()` only. Printing to stderr
+    # at module import time delays CLI startup and is not actionable here.
+    return
 
 
 def _env_locked_int(name: str, env_name: str, conf_section: str,
@@ -276,8 +267,8 @@ class Config:
 
         self.big_b = _env_int(
             "CORTEXAGENT_B", "backend", "big_b", 2048)
-        self.big_ub = _env_locked_int(
-            "big_ub", "CORTEXAGENT_UB", "backend", "big_ub", 2560)
+        self.big_ub = _env_int(
+            "CORTEXAGENT_UB", "backend", "big_ub", 1024)
         self.big_kv_offload = _env_locked_int(
             "big_kv_offload", "CORTEXAGENT_KV_OFFLOAD", "backend", "big_kv_offload", 1)
         self.big_alias = _env(
@@ -448,10 +439,8 @@ CFG = Config()
 
 
 
-if _LOCK_LOG and os.environ.get("CORTEXAGENT_LOCK_QUIET", "").lower() not in (
-        "1", "true", "yes", "on"):
-    for line in _LOCK_LOG:
-        print(f"[config] {line}", file=sys.stderr)
+# _LOCK_LOG is reserved for future diagnostic use; divergence is currently
+# quiet at import time. See `lib/config.py lock-status` for introspection.
 
 
 
@@ -483,7 +472,6 @@ def _cli() -> int:
 
         env_map = {
             "big_ctx": ("CORTEXAGENT_CTX", 131072),
-            "big_ub": ("CORTEXAGENT_UB", 2560),
             "big_ngl": ("CORTEXAGENT_NGL", 999),
             "big_fa": ("CORTEXAGENT_FA", "on"),
             "big_ctk": ("CORTEXAGENT_CTK", "q4_0"),

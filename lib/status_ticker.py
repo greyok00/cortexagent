@@ -141,7 +141,7 @@ def render_line() -> str:
     proxy = _proxy_metrics()
     minify = _minify_snapshot()
 
-    brand = (str(CFG.author) if CFG else "CortexAgent") or "CortexAgent"
+    brand = (str(CFG.author) if CFG else "Cortex") or "Cortex"
     model = ""
     m = daemon.get("model")
     if isinstance(m, dict):
@@ -245,7 +245,7 @@ def _smoke() -> int:
 
     try:
         line = render_line()
-        print(line or "CortexAgent")
+        print(line or "Cortex")
         return 0
     except Exception as e:
         print(f"ticker smoke FAILED: {e}", file=sys.stderr)
