@@ -62,6 +62,12 @@ cortexagent -p "find why the daemon is unresponsive and fix it"
 ## Features
 
 - **Terminal TUI + floating Console** — chat TUI plus a tray-launched window showing the chat stream, the active task, and your open browser tabs.
+
+### The Console
+
+![CortexAgent Console](assets/cortexagent-console.png)
+
+A floating Tkinter window launched from the tray. Three panels: chat (where the agent streams its work), a tab list of the browser pages you're actively using, and the running tasks. The Console is what you watch while the agent works — start a task, switch away, glance back to see progress, jump in when you need to.
 - **Local model by default** — Qwen3.6-35B MoE on llama.cpp at `127.0.0.1:8080`. No account, no key, no cloud.
 - **Automatic memory** — hot/warm/cold tiers on local disk; sessions resume without re-explaining yourself.
 - **Token compression** — a SlimToken proxy at `127.0.0.1:8081` minifies context before the model sees it, so more fits the window.
