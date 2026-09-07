@@ -272,8 +272,55 @@ install_tray_systemd() {
   fi
 }
 
+# ── Install the stealth-Chrome user unit (Patchright automation driver) ─────
+# Patchright talks to Chrome over CDP on :9222. Chrome itself has to be a
+# long-lived process so user-data-dir state (cookies, profile, seeds) survives
+# across CLI invocations. Installed only on Linux + when the template exists.
+# Enable-only by default (starts on next login); set STEALTH_CHROME_START=1 to
+# also start it now. We do NOT auto-start on headless installs (no DISPLAY)
+# because Chrome needs Xvfb, which the worker brings up itself.
+install_stealth_chrome_systemd() {
+  if [ "${STEALTH_CHROME_SYSTEMD:-1}" != "1" ]; then return; fi
+  if [ "$(uname -s)" != "Linux" ]; then return; fi
+  if ! command -v systemctl >/dev/null 2>&1; then return; fi
+  local tmpl="${REPO_ROOT}/config/templates/cortexagent-stealth-chrome.service"
+  local dst="${HOME}/.config/systemd/user/cortexagent-stealth-chrome.service"
+  if [ ! -f "${tmpl}" ]; then
+    echo "    stealth-chrome template missing — skipping (${tmpl})" >&2
+    return
+  fi
+  local py
+  py="$(command -v python3 || echo /usr/bin/python3)"
+  local chrome_bin="${CORTEXAGENT_CHROME_BIN:-/usr/bin/google-chrome}"
+  local cdp_port="${CORTEXAGENT_CDP_PORT:-9222}"
+  local user_data_dir="${CORTEXAGENT_CHROME_USER_DATA_DIR:-${HOME}/.config/chrome-stealth-profile}"
+  mkdir -p "$(dirname "${dst}")"
+  if [ -f "${dst}" ] && [ ! -f "${dst}.bak" ]; then
+    cp -a "${dst}" "${dst}.bak"
+    echo "    backed up existing unit → ${dst}.bak"
+  fi
+  sed \
+      -e "s|{{PYTHON}}|${py}|g" \
+      -e "s|{{REPO_ROOT}}|${REPO_ROOT}|g" \
+      -e "s|{{CHROME}}|${chrome_bin}|g" \
+      -e "s|{{CDP_PORT}}|${cdp_port}|g" \
+      -e "s|{{USER_DATA_DIR}}|${user_data_dir}|g" \
+      "${tmpl}" > "${dst}"
+  echo "    wrote ${dst}"
+  if systemctl --user daemon-reload >/dev/null 2>&1; then
+    systemctl --user enable cortexagent-stealth-chrome.service >/dev/null 2>&1 \
+      && echo "    enabled cortexagent-stealth-chrome.service (Patchright automation driver, starts on login)"
+    if [ "${STEALTH_CHROME_START:-0}" = "1" ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+      systemctl --user start cortexagent-stealth-chrome.service >/dev/null 2>&1 \
+        && echo "    started cortexagent-stealth-chrome.service now"
+    fi
+  else
+    echo "    systemd not available — start stealth chrome manually: python3 -m lib.stealth.worker start"
+  fi
+}
+
 case "$(uname -s)" in
-  Linux) install_systemd; install_overseer_systemd; install_tray_systemd ;;
+  Linux) install_systemd; install_overseer_systemd; install_tray_systemd; install_stealth_chrome_systemd ;;
   *) echo "    $(uname -s): systemd install skipped — run 'cortexagent daemon start' manually" ;;
 esac
 

@@ -35,8 +35,8 @@ _LAUNCHER = _REPO_ROOT / "bin" / "cortexagent"
 
 
 
-_LABEL_START = "Start Main Model"
-_LABEL_STOP = "Stop Main Model"
+_LABEL_START = "Start Model"
+_LABEL_STOP = "Stop Model"
 
 
 
@@ -116,22 +116,22 @@ def _status_text() -> str:
 
 def _stop_big() -> str:
 
-    _log("stopping big model…", "🛑", YELLOW)
+    _log("stopping model…", "🛑", YELLOW)
     try:
         from lib import control
         r = control.send_request("unload", which="big", timeout=30)
-        return "big model stopped" if r.get("ok") else f"stop failed: {r}"
+        return "Model stopped" if r.get("ok") else f"stop failed: {r}"
     except Exception as e:
         return f"stop failed: {e}"
 
 
 def _start_big() -> str:
 
-    _log("starting big model…", "🔄", CYAN)
+    _log("starting model…", "🔄", CYAN)
     try:
         from lib import control
         r = control.send_request("load", which="big", timeout=320)
-        return "big model started" if r.get("ok") else f"start failed: {r}"
+        return "Model started" if r.get("ok") else f"start failed: {r}"
     except Exception as e:
         return f"start failed: {e}"
 
@@ -183,72 +183,6 @@ def _reload_config() -> str:
     _log("config reloaded", "✅", GREEN)
     return "\n".join(msgs)
 
-
-
-
-def _cli_command() -> list[str]:
-
-    # CORTEXAGENT_FORCE_TUI=1 forces the launched cortexagent to enter the TUI
-    # (overrides the new tray-only default for terminal invocations).
-    if shutil.which("cortexagent"):
-        return ["env", "CORTEXAGENT_FORCE_TUI=1", "cortexagent"]
-    return ["env", "CORTEXAGENT_FORCE_TUI=1", "bash", str(_LAUNCHER)]
-
-
-def _launch_cli() -> None:
-    cmd = _cli_command()
-    _log(f"launching CLI in a terminal: {' '.join(cmd)}", "🖥️", CYAN)
-    try:
-        if os.name == "nt":
-
-            subprocess.Popen(["cmd", "/c", "start", "Cortex", "cmd", "/k"] + cmd)
-            return
-        if sys.platform == "darwin":
-
-            subprocess.Popen(["open", "-a", "Terminal"] + cmd)
-            return
-
-
-
-
-
-
-
-        candidates = [
-            (["mate-terminal", "--", "bash", "-lc"],      "wrap-bash"),
-            (["gnome-terminal", "--", "bash", "-lc"],     "wrap-bash"),
-            (["xfce4-terminal", "-e", "bash", "-lc"],     "wrap-bash"),
-            (["konsole", "-e", "bash", "-lc"],            "wrap-bash"),
-            (["tilix", "-e", "bash", "-lc"],              "wrap-bash"),
-            (["terminator", "-e", "bash", "-lc"],         "wrap-bash"),
-            (["alacritty", "-e", "bash", "-lc"],          "wrap-bash"),
-            (["kitty", "bash", "-lc"],                    "wrap-bash"),
-            (["wezterm", "bash", "-lc"],                  "wrap-bash"),
-            (["xterm", "-e", "bash", "-lc"],              "wrap-bash"),
-            (["x-terminal-emulator", "-e", "bash", "-lc"], "wrap-bash"),
-        ]
-        sh_cmd = " ".join(c.replace("'", "'\\''") for c in cmd)
-        for term_args, mode in candidates:
-            term = term_args[0]
-            if not shutil.which(term):
-                continue
-            try:
-                inner = f"{sh_cmd}; exec bash"
-                full = term_args + [inner]
-                subprocess.Popen(full, start_new_session=True)
-                _log(f"opened {term}", "✅", GREEN)
-                return
-            except Exception as e:
-                _log(f"{term} failed ({e}) — trying next", "⚠️", YELLOW)
-
-        _log("no terminal emulator found — running CLI in background", "⚠️", YELLOW)
-        subprocess.Popen(cmd, start_new_session=True)
-    except Exception as e:
-        _log(f"failed to launch CLI: {e}", "❌", RED)
-
-
-
-
 _HEADLESS_HELP = (
     f"{DIM}headless keeper — keys:{RST} "
     f"{BOLD}s{RST}tatus  {BOLD}r{RST}eload models  "
@@ -277,8 +211,6 @@ def _run_headless(quit_event: threading.Event) -> None:
             print(_reload_models())
         elif key == "o":
             print("overseer restart:", "ok" if _overseer_restart() else "failed")
-        elif key == "c":
-            _launch_cli()
         elif key == "q":
             break
         else:
@@ -362,9 +294,6 @@ def _run_gui(quit_event: threading.Event) -> None:
     def on_reload_cfg(icon, item):
         _toast(icon, _reload_config(), "ok")
 
-    def on_cli(icon, item):
-        _launch_cli()
-
     def on_toggle_big(icon, item):
 
         _toast(icon, _toggle_big(), "ok")
@@ -419,37 +348,75 @@ def _run_gui(quit_event: threading.Event) -> None:
             _log(f"big model unload on quit failed: {e}", "⚠️", YELLOW)
 
 
-    def on_stt_controls(icon, item):
-
-        try:
-            import importlib
-            import lib.stt_controls as _sc
-            _sc = importlib.reload(_sc)
-            _sc.open_in_thread()
-            _toast(icon, "STT controls opened", "ok")
-        except Exception as e:
-            _toast(icon, f"Failed to open STT controls: {e}", "info")
-
-
     def on_browser_console(icon, item):
 
         try:
             import importlib
             import lib.browser_console as _bc
             _bc = importlib.reload(_bc)
-            _bc.open_in_thread()
-            _toast(icon, "Browser console opened", "ok")
+            if _bc._is_open():
+                _bc.close()
+                _toast(icon, "Console closed", "ok")
+            elif _bc.raise_existing():
+                _toast(icon, "Console raised", "ok")
+            else:
+                _bc.open_in_thread()
+                _toast(icon, "Console opened", "ok")
         except Exception as e:
-            _toast(icon, f"Failed to open browser console: {e}", "info")
+            _toast(icon, f"Failed to toggle Console: {e}", "info")
+        try:
+            icon.update_menu()
+        except Exception:
+            pass
+
+    def on_open_terminal(icon, item):
+        "Open just the plain terminal CLI in a fresh terminal window."
+        import shutil
+        import sys as _sys
+        import subprocess as _sp
+        from pathlib import Path
+        script = str(Path(__file__).resolve().parent.parent / "bin" / "cortexagent")
+        for term, flag in (
+            ("x-terminal-emulator", "-e"),
+            ("gnome-terminal", "--"),
+            ("mate-terminal", "--"),
+            ("xfce4-terminal", "--"),
+            ("konsole", "-e"),
+            ("terminator", "-x"),
+            ("xterm", "-e"),
+        ):
+            path = shutil.which(term)
+            if not path:
+                continue
+            try:
+                _sp.Popen([path, flag, "bash", script], stdout=_sp.DEVNULL,
+                          stderr=_sp.DEVNULL, stdin=_sp.DEVNULL,
+                          env={**os.environ, "CORTEXAGENT_TRAY_ONLY": "0"},
+                          start_new_session=True)
+                _toast(icon, "Terminal opened", "ok")
+            except Exception as e:
+                _toast(icon, f"Terminal launch failed: {e}", "info")
+            try:
+                icon.update_menu()
+            except Exception:
+                pass
+            return
+        _toast(icon, "No terminal emulator found", "info")
+
+    def _console_label_text(_item) -> str:
+        try:
+            import importlib, lib.browser_console as _bc
+            _bc = importlib.reload(_bc)
+            return "Close Console" if _bc._is_open() else "Open Console"
+        except Exception:
+            return "Open Console"
 
     menu = Menu(
         MI("Cortex", None, enabled=False),
         Menu.SEPARATOR,
-        MI("Open Console", on_cli),
+        MI(_console_label_text, on_browser_console),
         Menu.SEPARATOR,
-        MI("Open Browser Automation", on_browser_console),
-        Menu.SEPARATOR,
-        MI("Open STT Controls", on_stt_controls),
+        MI("Open in Terminal", on_open_terminal),
         Menu.SEPARATOR,
         MI(_big_label_text, _big_action_wrapper),
         Menu.SEPARATOR,

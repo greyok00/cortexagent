@@ -2,8 +2,11 @@
 # cortexagent-browser-health — read-only health snapshot of the browser engine.
 #
 # Reports CDP reachability, tab count, engine metrics (calls, reconnects,
-# retries, failures, last-call latency). Does NOT restart Brave, does NOT
-# touch the :9222 CDP port, does NOT close any tabs. Safe to run anytime.
+# retries, failures, last-call latency). Does NOT restart Chrome, does NOT
+# touch the :9223 CDP port, does NOT close any tabs. Safe to run anytime.
+#
+# Browser: Patchright + Google Chrome (default since 2026-08-28). For the
+# legacy websocket transport, fall back via CORTEXAGENT_BROWSER=brave.
 #
 # Usage:
 #   cortexagent-browser-health                # human summary
@@ -70,7 +73,7 @@ marker = "✅" if ok else "❌"
 print(f"{marker} Browser engine  ({h.get('browser', '?')})")
 print(f"  reachable: {'yes' if ok else 'NO'}")
 if not ok:
-    print(f"  error:     {h.get('cdp_error', '?')}")
+    print(f"  error:     {h.get('error', h.get('cdp_error', '?'))}")
 print(f"  uptime:    {h.get('uptime_sec', 0):.1f}s")
 print(f"  tabs:      {h.get('tab_count', '?')}")
 print()

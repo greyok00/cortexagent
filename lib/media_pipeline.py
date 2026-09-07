@@ -208,6 +208,7 @@ class MediaPipeline:
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 1024,
                     "temperature": 0.7,
+                    "chat_template_kwargs": {"enable_thinking": False},
                 }).encode(),
                 headers={"Content-Type": "application/json"},
                 method="POST",

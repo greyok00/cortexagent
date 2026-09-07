@@ -53,10 +53,10 @@ def _smoke() -> int:
     tools = list_tools()
     print(f"registered {n} harness tools — total registry: {len(tools)}")
     names = [t["function"]["name"] for t in tools]
-    brave = [x for x in names if x.startswith("brave_")]
+    chrome = [x for x in names if x.startswith("chrome_")]
     skills = [x for x in names if x.startswith("skill_")]
     mcp = [x for x in names if x.startswith("mcp_")]
-    print(f"  brave_*: {len(brave)}  skill_*: {len(skills)}  mcp_*: {len(mcp)}")
+    print(f"  chrome_*: {len(chrome)}  skill_*: {len(skills)}  mcp_*: {len(mcp)}")
     print("harness_tools: OK")
     return 0
 

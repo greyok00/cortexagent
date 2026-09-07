@@ -71,6 +71,103 @@ def _record_open(pid: int, vte_pid: int | None, win_id: int) -> None:
         "closed_at": None,
         "state": "open",
     })
+    clear_pending()
+
+
+def mark_pending() -> None:
+    """Mark a Console launch as imminent. raise_existing() honors this so
+    the tray menu's Open Console click doesn't open a 2nd window when the
+    auto-launch block already has one in flight."""
+    try:
+        if _OVERLAY_STATE.exists():
+            cur = json.loads(_OVERLAY_STATE.read_text()) or {}
+        else:
+            cur = {}
+    except Exception:
+        cur = {}
+    cur["state"] = "open"
+    cur["pending"] = True
+    cur["opened_at"] = time.time()
+    if not cur.get("pid"):
+        cur["pid"] = -1
+    if not cur.get("window_id"):
+        cur["window_id"] = 0
+    _write_state(cur)
+
+
+def clear_pending() -> None:
+    """Called by Console after it writes its real state."""
+    try:
+        if not _OVERLAY_STATE.exists():
+            return
+        cur = json.loads(_OVERLAY_STATE.read_text()) or {}
+    except Exception:
+        return
+    if cur.get("pending"):
+        cur.pop("pending", None)
+        _write_state(cur)
+
+
+def _is_open() -> bool:
+    """True if the Console process is alive (overlay_state has a real pid)."""
+    try:
+        if not _OVERLAY_STATE.exists():
+            return False
+        st = json.loads(_OVERLAY_STATE.read_text()) or {}
+    except Exception:
+        return False
+    pid = st.get("pid")
+    if not pid or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+    except OSError:
+        return False
+
+
+def close() -> bool:
+    """Kill the running Console process + clear overlay state. Returns True
+    if a process was found and killed."""
+    pid = None
+    try:
+        if _OVERLAY_STATE.exists():
+            st = json.loads(_OVERLAY_STATE.read_text()) or {}
+            pid = st.get("pid")
+    except Exception:
+        pass
+    if not pid or pid <= 0:
+        pid = None
+    try:
+        import subprocess as _sp
+        r = _sp.run(["pgrep", "-f", "lib/browser_console.py"],
+                    capture_output=True, text=True, timeout=2)
+        for line in (r.stdout or "").splitlines():
+            try:
+                p = int(line.strip())
+                if p != os.getpid():
+                    try:
+                        os.kill(p, 15)
+                    except (ProcessLookupError, PermissionError):
+                        pass
+            except ValueError:
+                pass
+    except Exception:
+        pass
+    if pid:
+        try:
+            os.kill(pid, 15)
+        except (ProcessLookupError, PermissionError):
+            pass
+        except OSError:
+            pass
+    try:
+        _OVERLAY_STATE.unlink()
+    except Exception:
+        pass
+    return True
 
 
 def _record_close() -> None:
@@ -376,7 +473,7 @@ def _browser_state() -> str:
 
     tabs = _fetch_cdp_tabs()
     if not tabs:
-        return "— :9222 offline —"
+        return "— :9223 offline —"
     n = len(tabs)
     active = sum(1 for t in tabs if t.get("active"))
     return f"{n} tab{'s' if n != 1 else ''} · {active} active"
@@ -469,7 +566,7 @@ def _fetch_cdp_tabs() -> list:
     try:
         r = subprocess.run(
             ["curl", "-s", "--max-time", "1",
-             "http://127.0.0.1:9222/json"],
+             "http://127.0.0.1:9223/json"],
             capture_output=True, text=True, timeout=2,
         )
         all_tabs = json.loads(r.stdout or "[]")
@@ -731,7 +828,7 @@ def _page_snapshot() -> str:
 
     tabs = _fetch_cdp_tabs()
     if not tabs:
-        return "PAGE  ·  — :9222 offline —"
+        return "PAGE  ·  — :9223 offline —"
 
 
 
@@ -879,6 +976,91 @@ def _apply_theme(name: str) -> None:
         pass
 
 
+def raise_existing(from_process: bool = False) -> bool:
+    """Raise the existing Console window if one is running.
+
+    Returns True if an existing window was found and raised. False otherwise.
+
+    Two modes:
+    - from_process=False (default): assumes this code is running in the same
+      process as the GUI. We reach into the live Tk root if exposed. If no root
+      is registered (the GUI was opened in a different process), fall through
+      to the cross-process path using _OVERLAY_STATE.
+    - from_process=True: this code is running in the launcher process and the
+      GUI is elsewhere. We use _OVERLAY_STATE (pid + window_id) + xdotool/wmctrl.
+    """
+    state = {}
+    try:
+        if _OVERLAY_STATE.exists():
+            state = json.loads(_OVERLAY_STATE.read_text())
+    except Exception:
+        state = {}
+    if not state or state.get("state") != "open":
+        return False
+    # Pending sentinel: launcher wrote this and Console hasn't opened yet.
+    # Treat as "another Console is imminent" so the tray no-ops.
+    if state.get("pending"):
+        return True
+    pid = state.get("pid")
+    win_id = state.get("window_id")
+
+    if not from_process:
+
+        try:
+            if pid and os.path.exists(f"/proc/{pid}") and _GUI_TK_ROOT is not None:
+                try:
+                    _GUI_TK_ROOT.deiconify()
+                    _GUI_TK_ROOT.lift()
+                    _GUI_TK_ROOT.focus_force()
+                    _GUI_TK_ROOT.attributes("-topmost", True)
+                    _GUI_TK_ROOT.after(
+                        250, lambda: _GUI_TK_ROOT.attributes("-topmost", False))
+                    return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+
+    try:
+        import shutil, subprocess
+        if win_id:
+
+            r = subprocess.run(
+                ["xdotool", "search", "--name", "Cortex Console"],
+                capture_output=True, text=True, timeout=1,
+            )
+            for s in (r.stdout or "").split():
+                if s.strip().isdigit():
+                    subprocess.run(
+                        ["wmctrl", "-i", "-a", s.strip()],
+                        capture_output=True, timeout=1,
+                    )
+                    return True
+
+        if pid and os.path.exists(f"/proc/{pid}"):
+            r = subprocess.run(
+                ["xdotool", "search", "--name", "Cortex Console"],
+                capture_output=True, text=True, timeout=1,
+            )
+            for s in (r.stdout or "").split():
+                if s.strip().isdigit():
+                    subprocess.run(
+                        ["wmctrl", "-i", "-a", s.strip()],
+                        capture_output=True, timeout=1,
+                    )
+                    return True
+    except FileNotFoundError:
+
+        pass
+    except Exception:
+        pass
+    return False
+
+
+_GUI_TK_ROOT = None
+
+
 def build_window() -> int:
     import gi
     gi.require_version("Gtk", "3.0")
@@ -886,7 +1068,7 @@ def build_window() -> int:
     from gi.repository import Gtk, Vte, GLib, Gdk, Pango
 
     win = Gtk.Window()
-    win.set_title("CortexAgent Console")
+    win.set_title("Cortex Console")
     win.set_keep_above(True)
 
 
@@ -991,7 +1173,7 @@ def build_window() -> int:
     existing = []
     try:
         r = subprocess.run(
-            ["xdotool", "search", "--name", "CortexAgent Console"],
+            ["xdotool", "search", "--name", "Cortex Console"],
             capture_output=True, text=True, timeout=1,
         )
         existing = [w for w in (r.stdout or "").split() if w.strip().isdigit()]
@@ -1659,6 +1841,7 @@ def build_window() -> int:
         "CORTEXAGENT_BOOT_ANIM": "0",
         "CORTEXAGENT_TICKER": "0",
         "PYTHONUNBUFFERED": "1",
+        "CORTEXAGENT_FORCE_TUI": "1",
         "PATH": safe_path,
         "HOME": os.environ.get("HOME") or str(Path.home()),
     }

@@ -68,6 +68,7 @@ def _is_vad_on() -> bool:
 
 
 def _make_window() -> None:
+    global _ROOT
     try:
         import tkinter as tk
         from tkinter import ttk
@@ -75,9 +76,20 @@ def _make_window() -> None:
         print("⚠️ Tkinter not available")
         return
 
+    if _ROOT is not None:
+        try:
+            _ROOT.deiconify()
+            _ROOT.lift()
+            _ROOT.focus_force()
+            return
+        except Exception:
+            _ROOT = None
+
     root = tk.Tk()
     root.title("CortexAgent STT")
     root.resizable(False, False)
+
+    _ROOT = root
 
 
 
@@ -336,6 +348,33 @@ def open_in_thread() -> threading.Thread:
     t = threading.Thread(target=_make_window, daemon=True, name="stt-controls")
     t.start()
     return t
+
+
+_ROOT = None
+
+
+def _is_open() -> bool:
+    r = _ROOT
+    if r is None:
+        return False
+    try:
+        return bool(r.winfo_exists())
+    except Exception:
+        return False
+
+
+def close() -> bool:
+    """Destroy the STT Controls window so the tray's toggle can re-open it later."""
+    global _ROOT
+    r = _ROOT
+    if r is None:
+        return False
+    try:
+        r.destroy()
+    except Exception:
+        pass
+    _ROOT = None
+    return True
 
 
 def main() -> int:

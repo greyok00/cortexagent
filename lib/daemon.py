@@ -316,12 +316,12 @@ def _stop_big() -> bool:
             return True
 
 
-        if _big.proc is None:
-            _log("Big not owned by daemon (adopted/external) — leaving it", "🛡️", DIM)
-            return True
         _log("Stopping big model — freeing VRAM...", "💤", YELLOW)
         ok = _big.stop()
-        _log("Big model stopped — VRAM freed", "💤", DIM)
+        if ok:
+            _log("Big model stopped — VRAM freed", "💤", DIM)
+        else:
+            _log("Big model stop returned False — pid may still be alive", "⚠️", YELLOW)
         return ok
 
 
