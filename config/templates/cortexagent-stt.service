@@ -1,0 +1,33 @@
+[Unit]
+Description=CortexAgent STT tray — separate voice-dictation system tray
+Documentation=https://github.com/greyok00/cortexagent
+# Standalone. This tray owns the STT daemon (lib/stt_daemon.py) but does NOT
+# depend on or supervise the main CortexAgent daemon / overseer / big model.
+# User can quit the CortexAgent tray (or stop cortexagent-tray.service) and
+# this tray + STT daemon keep running — dictation stays available.
+#
+# `PartOf=` is intentionally NOT set on the main CortexAgent units — the user
+# runs this tray independently of the main app.
+After=network.target graphical-session.target
+
+[Service]
+Type=simple
+# lib/stt_tray.py runs as a pystray icon, supervises the STT daemon, and
+# exposes Open/Close STT Controls + Quit. Falls back to a headless stdin
+# keeper if pystray isn't installed.
+ExecStart={{PYTHON}} -m lib.stt_tray
+WorkingDirectory={{REPO_ROOT}}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+Environment=CORTEXAGENT_REPO={{REPO_ROOT}}
+Environment=CORTEXAGENT_STATE_DIR=%h/.cortexagent
+# X11 single-seat default; for Wayland/multi-seat run instead:
+#   systemctl --user import-environment DISPLAY XAUTHORITY
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+
+[Install]
+WantedBy=graphical-session.target
+</content>
+</invoke>
