@@ -81,8 +81,8 @@ def _render_mcp(memory_cmd: str, fire_enabled: str, brave_enabled: str) -> tuple
         venv_py = os.path.expanduser("~/.cortexagent/venv/bin/python3")
         if not os.path.exists(venv_py):
             venv_py = "python3"
-        servers["playwright_brave"] = {
-            "command": f"{venv_py} {os.path.join(str(_REPO_ROOT), 'lib', 'playwright_brave_mcp.py')}"}
+        servers["patchright_chrome"] = {
+            "command": f"{venv_py} {os.path.join(str(_REPO_ROOT), 'lib', 'patchright_chrome_mcp.py')}"}
     lazy = os.path.expanduser("~/.cortexagent/config/lazy_mcp_servers.json")
     if os.path.exists(lazy):
         try:

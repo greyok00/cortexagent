@@ -111,9 +111,20 @@ def record_clip(seconds: float = 2.0) -> np.ndarray:
 
 
 def type_text(text: str) -> None:
-
-    subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "1", text],
-                   check=False)
+    # 2026-08-29: check=False silently swallowed xdotool failures, so dictation
+    # was transcribed (logged) but typed into the void with zero diagnostics.
+    # Surface failures to stderr — the daemon redirects stderr to stt.log.
+    try:
+        proc = subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "1", text],
+                              check=False, capture_output=True, text=True, timeout=15)
+        if proc.returncode != 0:
+            print(f"⚠️ xdotool type failed rc={proc.returncode} err={proc.stderr.strip()!r}",
+                  flush=True)
+    except FileNotFoundError:
+        print("⚠️ xdotool not found — STT cannot type; install xdotool", flush=True)
+    except subprocess.TimeoutExpired:
+        print("⚠️ xdotool type timed out (>15s) — target window not responding to X events",
+              flush=True)
 
 
 def _key_name(key) -> str:
@@ -546,6 +557,7 @@ def _transcribe_worker() -> None:
             for seg_text, is_final in stt.transcribe_streaming(clip):
                 seg_text = _strip_leading_garbage(seg_text)
                 seg_text = _strip_repeated_stutter(seg_text)
+                seg_text = stt.fix_homophones(seg_text)
                 full_text += seg_text
                 seg_count += 1
                 if _text_is_meaningful(seg_text):

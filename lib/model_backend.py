@@ -99,16 +99,39 @@ class LlamaServer:
             "--alias", self.alias,
             "--host", self.host,
             "--port", str(self.port),
+            "--jinja",
         ] + self.extra_args
 
         env = dict(os.environ)
         env["LD_LIBRARY_PATH"] = ":".join(
             p for p in [f"{self.llama_dir}/bin", env.get("LD_LIBRARY_PATH", "")] if p
         )
+
+        # Retry on transient port-bind races: a dying previous server briefly
+        # holds the port, so the fresh spawn exits with "couldn't bind HTTP
+        # server socket". That resolves in a second or two. Hard failures (OOM,
+        # bad model) are NOT retried — they won't resolve and each attempt is
+        # expensive. Bounded to 3 attempts with a short backoff.
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            ok = self._spawn_and_wait(cmd, env, timeout)
+            if ok:
+                return True
+            if attempt < max_attempts and self._is_transient_port_bind():
+                print(f"[model_backend] {self.name}: transient port-bind race — "
+                      f"retrying ({attempt}/{max_attempts - 1})", file=sys.stderr)
+                time.sleep(2 * attempt)
+                continue
+            return False
+        return False
+
+    def _spawn_and_wait(self, cmd: List[str], env: dict, timeout: int) -> bool:
+
+        try:
+            self._spawn_log_offset = self.log_file.stat().st_size
+        except OSError:
+            self._spawn_log_offset = 0
         log_fh = open(self.log_file, "ab")
-
-
-
         self.proc = subprocess.Popen(
             cmd, env=env, stdout=log_fh, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL, start_new_session=True,
@@ -128,6 +151,21 @@ class LlamaServer:
         print(f"[model_backend] {self.name}: not ready in {timeout}s; see {self.log_file}",
               file=sys.stderr)
         return False
+
+    def _is_transient_port_bind(self) -> bool:
+
+        try:
+            with open(self.log_file, "rb") as fh:
+                fh.seek(self._spawn_log_offset)
+                text = fh.read().decode("utf-8", errors="replace")
+        except Exception:
+            return False
+        return any(marker in text for marker in (
+            "couldn't bind HTTP server socket",
+            "Address already in use",
+            "port already in use",
+            "EADDRINUSE",
+        ))
 
     def stop(self) -> bool:
 

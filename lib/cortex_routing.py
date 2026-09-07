@@ -86,6 +86,7 @@ class CortexRouter:
             "stream": True,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         if tools:
             payload["tools"] = tools
@@ -148,6 +149,7 @@ class CortexRouter:
             "stream": False,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         if tools:
             payload["tools"] = tools

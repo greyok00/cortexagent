@@ -16,6 +16,8 @@ _MULTIMODAL = {
     "gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash",
     "qwen2-vl", "qwen2.5-vl", "qwen3-vl", "llava", "llava-llama3",
     "moondream", "minicpm-v", "internvl",
+    # GLM family is multimodal (glm5_next arch reports vision capability).
+    "glm", "glm-5.3-flash", "glm-4v", "glm-4.5v",
 }
 
 

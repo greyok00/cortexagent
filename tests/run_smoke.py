@@ -1324,7 +1324,7 @@ COVERAGE = [
     ("cross-contamination — isolated vs shared", "xcontam_isolated", True),
     ("cortexllm vector/graph/ontology — APIs", "regression_cortexllm_apis", True),
     ("lib/heartbeat_daemon.py — DELETED", "ollama dead module; covered by daemon+overseer+manager+heartbeat_service", True),
-    ("lib/firecrawl_proxy.py / playwright_brave_mcp.py — import", "static_imports", True),
+    ("lib/firecrawl_proxy.py / patchright_chrome_mcp.py — import", "static_imports", True),
     ("engine/dag.py + workflow.py — import", "static_imports", True),
     ("install.sh — bash syntax", "static_bashn", True),
     ("lib/prompt_queue.py — decompose/conflict/supersede (#25)", "prompt_queue + promptqueue_hook", True),
@@ -2010,10 +2010,10 @@ def test_harness_browser_tools() -> R:
     from lib.tool_registry import list_tools
     n = register_browser_tools()
     names = [t["function"]["name"] for t in list_tools()]
-    brave = [x for x in names if x.startswith("brave_")]
-    if len(brave) < 9:
-        return R("browser_tools register", "harness", False, f"{len(brave)} brave tools")
-    return R("browser_tools register", "harness", True, f"{len(brave)} brave tools")
+    chrome = [x for x in names if x.startswith("chrome_")]
+    if len(chrome) < 9:
+        return R("browser_tools register", "harness", False, f"{len(chrome)} chrome tools")
+    return R("browser_tools register", "harness", True, f"{len(chrome)} chrome tools")
 
 
 def test_harness_skills() -> R:

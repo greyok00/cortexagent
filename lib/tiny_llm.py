@@ -67,6 +67,7 @@ def query(prompt: str, system: str = "", max_tokens: int = 256,
         "max_tokens": int(max_tokens),
         "temperature": float(temperature),
         "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     try:
         req = urllib.request.Request(
@@ -209,6 +210,7 @@ def query_with_tools(messages: list, tools: list, max_tokens: int = 512,
         "max_tokens": int(max_tokens),
         "temperature": 0.1,
         "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     try:
         req = urllib.request.Request(

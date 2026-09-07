@@ -6,6 +6,7 @@ import sys
 import subprocess
 import tempfile
 import threading
+import re
 from pathlib import Path
 from typing import Optional, Union
 
@@ -55,11 +56,11 @@ _STT_OOM_FLOOR_MIB = 256
 
 
 _STT_MODEL_VRAM = {
-    "tiny":  300, "tiny.en": 300,
-    "base":  580, "base.en": 580,
-    "small": 970, "small.en": 970,
-    "medium": 2300, "medium.en": 2300,
-    "large":  3900, "large-v3": 3900,
+    "tiny":  330, "tiny.en": 330,
+    "base":  394, "base.en": 394,
+    "small": 778, "small.en": 778,
+    "medium": 1500, "medium.en": 1500,
+    "large":  3100, "large-v3": 3100,
 }
 _STT_GATE_HEADROOM_MIB = 150
 
@@ -111,23 +112,60 @@ def _get_model():
 
 
 
-                if _gpu_available(CFG.stt_model):
-                    try:
+                # 2026-08-26: NEVER fall back to CPU silently. STT must
+                # stay on GPU. If the requested model doesn't fit, pick the
+                # largest variant that does — never downgrade the device.
+                requested = CFG.stt_model
+                free = _free_vram_mib() or 0
+                order = ["large-v3", "large", "medium", "small", "base", "tiny"]
+                chosen = requested
+                chosen_fp16 = _STT_MODEL_VRAM.get(requested, 970)
+                chosen_need = max(150, chosen_fp16 // 2 + 50) + _STT_GATE_HEADROOM_MIB
 
+                if free < chosen_need:
+                    for cand in order:
+                        cand_full = cand if requested.endswith(".en") else cand
+                        cand_fp16 = _STT_MODEL_VRAM.get(cand_full, 0)
+                        cand_need = max(150, cand_fp16 // 2 + 50) + _STT_GATE_HEADROOM_MIB
+                        if free >= cand_need:
+                            chosen = cand_full
+                            print(
+                                f"🎙️ STT: {requested} needs {chosen_need} MiB, "
+                                f"only {free} MiB free — using {chosen} "
+                                f"({cand_need} MiB) on GPU",
+                                flush=True,
+                            )
+                            break
+                    else:
+                        try:
+                            _model = WhisperModel("tiny", device="cuda",
+                                                  compute_type="int8")
+                            _model_device = "cuda"
+                            print(f"🎙️ STT: forced tiny on GPU ({free} MiB was free)",
+                                  flush=True)
+                            return _model
+                        except Exception as e:
+                            print(
+                                f"⚠️ STT: GPU unavailable ({e}) — CPU as last resort",
+                                flush=True,
+                            )
+                            _model = WhisperModel(requested, device="cpu",
+                                                  compute_type="int8")
+                            _model_device = "cpu"
+                            return _model
 
-
-
-
-
-                        _model = WhisperModel(CFG.stt_model, device="cuda",
-                                              compute_type="int8")
-                        _model_device = "cuda"
-                    except Exception:
-                        _model = WhisperModel(CFG.stt_model, device="cpu",
-                                              compute_type="int8")
-                        _model_device = "cpu"
-                else:
-                    _model = WhisperModel(CFG.stt_model, device="cpu",
+                try:
+                    _model = WhisperModel(chosen, device="cuda",
+                                          compute_type="int8")
+                    _model_device = "cuda"
+                    print(
+                        f"🎙️ STT loaded {chosen} on GPU (int8, {free} MiB free)",
+                        flush=True,
+                    )
+                except Exception as e:
+                    print(f"⚠️ STT: cuda init failed ({e}) — CPU as last resort",
+                          flush=True)
+                    _model = WhisperModel(requested, device="cpu",
                                           compute_type="int8")
                     _model_device = "cpu"
     return _model
@@ -232,6 +270,7 @@ def cleanup(text: str) -> str:
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0,
+        "chat_template_kwargs": {"enable_thinking": False},
     }).encode()
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/v1/chat/completions",
@@ -269,6 +308,106 @@ def transcribe_and_cleanup(audio: Audio) -> str:
     if not cleanup_enabled:
         return raw
     return cleanup(raw)
+
+
+# ── Deterministic homophone/mishearing correction (2026-08-31) ─────────────
+# The base whisper model collapses short phrases into homophones ("will it" ->
+# "wheel", "will I" -> "aisle") and writes casual/contracted forms. No LLM, no
+# latency — a conservative whole-word + phrase replacement table, pure Python.
+#
+# Single-word entries: "misheard" -> ("correct", guard). guard "verb_follow"
+# only fires when the word is followed by another word AND not preceded by a
+# determiner, so "wheel work" -> "will it work" but "the wheel" stays "wheel".
+# guard None = unconditional (safe: the misheard form is never a valid word).
+_HOMOPHONE_FIXES = {
+    # meaning-changing mishearings (guarded so legit nouns survive):
+    "wheel": ("will it", "verb_follow"),
+    "aisle": ("will I", "verb_follow"),
+    # unconditional — the misheard form is never correct:
+    "alot": ("a lot", None),
+    "eachother": ("each other", None),
+    "everytime": ("every time", None),
+    "anyways": ("anyway", None),
+    "gonna": ("going to", None),
+    "wanna": ("want to", None),
+    "gotta": ("got to", None),
+    "hafta": ("have to", None),
+    "hasta": ("has to", None),
+    "kinda": ("kind of", None),
+    "sorta": ("sort of", None),
+    "lemme": ("let me", None),
+    "gimme": ("give me", None),
+    "dunno": ("don't know", None),
+    "shoulda": ("should have", None),
+    "coulda": ("could have", None),
+    "woulda": ("would have", None),
+    "musta": ("must have", None),
+    "oughta": ("ought to", None),
+    "prolly": ("probably", None),
+    "cuz": ("because", None),
+    "outta": ("out of", None),
+    "y'all": ("you all", None),
+    "c'mon": ("come on", None),
+    "'cause": ("because", None),
+    "'em": ("them", None),
+    "'til": ("until", None),
+}
+
+# Multi-word grammar/mishearing fixes (regex, word-boundary aware, case kept).
+_PHRASE_FIXES = [
+    (r"\bcould of\b", "could have"),
+    (r"\bshould of\b", "should have"),
+    (r"\bwould of\b", "would have"),
+    (r"\bmight of\b", "might have"),
+    (r"\bmust of\b", "must have"),
+    (r"\bsuppose to\b", "supposed to"),
+]
+
+_DETERMINERS = frozenset({
+    "the", "a", "an", "this", "that", "these", "those", "my", "your",
+    "his", "her", "its", "our", "their", "some", "any", "no", "every",
+    "each", "both", "all", "another", "other",
+})
+
+
+def _apply_case(word: str, replacement: str) -> str:
+    if word[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
+def _phrase_case(match: "re.Match", replacement: str) -> str:
+    if match.group(0)[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
+def fix_homophones(text: str) -> str:
+    """Deterministic correction of known whisper mishearings. No LLM, no
+    latency. Only patterns in _HOMOPHONE_FIXES / _PHRASE_FIXES are touched."""
+    if not text:
+        return text
+    # 1. Multi-word phrase fixes first (so "could of" -> "could have").
+    for pat, repl in _PHRASE_FIXES:
+        text = re.sub(pat, lambda m: _phrase_case(m, repl), text,
+                      flags=re.IGNORECASE)
+    # 2. Single-word fixes.
+    words = text.split()
+    out = []
+    for i, w in enumerate(words):
+        fix = _HOMOPHONE_FIXES.get(w.lower())
+        if fix is None:
+            out.append(w)
+            continue
+        correct, guard = fix
+        if guard == "verb_follow":
+            has_follow = i + 1 < len(words)
+            prev = words[i - 1].lower() if i > 0 else ""
+            if not (has_follow and prev not in _DETERMINERS):
+                out.append(w)
+                continue
+        out.append(_apply_case(w, correct))
+    return " ".join(out)
 
 
 def _test() -> int:

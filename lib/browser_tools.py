@@ -30,49 +30,48 @@ def _schema(description: str, properties: Dict[str, Any],
 
 
 
-
-
-
-
 _TAB = {"type": ["string", "null"],
         "description": "Target tab: URL prefix, CDP target id, or omit for the first tab."}
 
 
+# Tool names renamed from brave_* → chrome_* on 2026-08-28 as part of the
+# Patchright + Chrome default-browser migration. Same schemas, same handlers,
+# just a different prefix to reflect the actual browser underneath.
 _TOOL_DEFS = [
-    ("brave_status", "Check Brave CDP reachability and count open tabs.",
+    ("chrome_status", "Check Chrome CDP reachability and count open tabs.",
      {}, []),
-    ("brave_tabs", "List open tabs (index, title, url).", {}, []),
-    ("brave_navigate", "Navigate a tab to URL; return title+URL.",
+    ("chrome_tabs", "List open tabs (index, title, url).", {}, []),
+    ("chrome_navigate", "Navigate a tab to URL; return title+URL.",
      {"url": {"type": "string"}, "tab": _TAB}, ["url"]),
-    ("brave_fetch", "Fetch page text via Brave (use for JS-heavy sites).",
+    ("chrome_fetch", "Fetch page text via Chrome (use for JS-heavy sites).",
      {"url": {"type": "string"},
       "selector": {"type": "string", "description": "CSS selector (default body)."},
       "wait_for_text": {"type": "string"},
       "timeout": {"type": "number", "description": "Seconds (default 30)."},
       "tab": _TAB}, ["url"]),
-    ("brave_click", "Click element by CSS selector or accessible text.",
+    ("chrome_click", "Click element by CSS selector or accessible text.",
      {"target": {"type": "string"}, "by_text": {"type": "boolean"},
       "timeout": {"type": "number", "description": "Seconds (default 10)."},
       "tab": _TAB}, ["target"]),
-    ("brave_type", "Type text into an element.",
+    ("chrome_type", "Type text into an element.",
      {"target": {"type": "string"}, "text": {"type": "string"},
       "by_text": {"type": "boolean"}, "submit": {"type": "boolean"},
       "timeout": {"type": "number", "description": "Seconds (default 10)."},
       "tab": _TAB}, ["target", "text"]),
-    ("brave_evaluate", "Evaluate JS in Brave and return JSON result.",
+    ("chrome_evaluate", "Evaluate JS in Chrome and return JSON result.",
      {"expression": {"type": "string"},
       "timeout": {"type": "number", "description": "Seconds (default 10)."},
       "tab": _TAB}, ["expression"]),
-    ("brave_snapshot", "Return accessibility snapshot of a tab.",
+    ("chrome_snapshot", "Return accessibility snapshot of a tab.",
      {"depth": {"type": "number"}, "tab": _TAB}, []),
-    ("brave_fill_send", "Fill a shadow-DOM controlled component (React/LWC) and press Enter. Use for embedded chat composers.",
+    ("chrome_fill_send", "Fill a shadow-DOM controlled component (React/LWC) and press Enter. Use for embedded chat composers.",
      {"text": {"type": "string"},
       "iframe_marker": {"type": "string", "description": "Substring of the iframe src to target (e.g. 'lwc.mode'). Empty = top document."},
       "tag": {"type": "string", "description": "Element tag (default TEXTAREA)."},
       "class_fragment": {"type": "string", "description": "Substring of the element's class (e.g. 'embeddedMessagingInputFooterTextArea')."},
       "submit": {"type": "boolean", "description": "Press Enter after filling (default true)."},
       "tab": _TAB}, ["text"]),
-    ("brave_health", "Return engine health: CDP reachability, tab count, reconnect count, average call latency, cached sockets. Generic — no site data.",
+    ("chrome_health", "Return engine health: CDP reachability, tab count, reconnect count, average call latency, cached sockets. Generic — no site data.",
      {}, []),
 ]
 
@@ -80,15 +79,16 @@ _TOOL_DEFS = [
 def _handle_status(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         tabs = list_tabs()
-        return {"ok": True, "output": f"Brave reachable on {CDP_URL} — {len(tabs)} tab(s).", "error": ""}
+        return {"ok": True, "output": f"Chrome reachable on {CDP_URL} — {len(tabs)} tab(s).", "error": ""}
     except Exception as e:
-        return {"ok": False, "output": "", "error": f"Brave not reachable on {CDP_URL}: {e}"}
+        return {"ok": False, "output": "", "error": f"Chrome not reachable on {CDP_URL}: {e}"}
 
 
 def _handle_tabs(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         tabs = list_tabs()
-        lines = [f"[{t['index']}] {t['title']} — {t['url']}" for t in tabs]
+        lines = [f"[{t.get('index', i)}] {t.get('title', '')} — {t.get('url', '')}"
+                 for i, t in enumerate(tabs)]
         return {"ok": True, "output": "\n".join(lines) if lines else "No tabs open.", "error": ""}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"List tabs failed: {e}"}
@@ -105,12 +105,10 @@ def _handle_navigate(args: Dict[str, Any]) -> Dict[str, Any]:
 def _handle_fetch(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         text = fetch(tab=args.get("tab"), url=args["url"],
-                     selector=args.get("selector", "body"),
-                     wait_for_text=args.get("wait_for_text", ""),
-                     timeout=args.get("timeout", 30))
-        if not text:
+                     selector=args.get("selector", "body"))
+        if not text or not text.get("text"):
             return {"ok": False, "output": "", "error": "Page loaded but extracted text was empty."}
-        return {"ok": True, "output": text, "error": ""}
+        return {"ok": True, "output": text.get("text", ""), "error": ""}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Fetch failed: {e}"}
 
@@ -185,16 +183,16 @@ def _handle_health(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 _HANDLERS = {
-    "brave_status": _handle_status,
-    "brave_tabs": _handle_tabs,
-    "brave_navigate": _handle_navigate,
-    "brave_fetch": _handle_fetch,
-    "brave_click": _handle_click,
-    "brave_type": _handle_type,
-    "brave_evaluate": _handle_evaluate,
-    "brave_snapshot": _handle_snapshot,
-    "brave_fill_send": _handle_fill_send,
-    "brave_health": _handle_health,
+    "chrome_status": _handle_status,
+    "chrome_tabs": _handle_tabs,
+    "chrome_navigate": _handle_navigate,
+    "chrome_fetch": _handle_fetch,
+    "chrome_click": _handle_click,
+    "chrome_type": _handle_type,
+    "chrome_evaluate": _handle_evaluate,
+    "chrome_snapshot": _handle_snapshot,
+    "chrome_fill_send": _handle_fill_send,
+    "chrome_health": _handle_health,
 }
 
 
@@ -205,7 +203,6 @@ def register_browser_tools() -> int:
     for name, desc, props, required in _TOOL_DEFS:
         if name in TOOLS:
             continue
-
 
 
 
@@ -223,7 +220,7 @@ def register_browser_tools() -> int:
 
 def _smoke() -> int:
     n = register_browser_tools()
-    print(f"registered: {n} brave_* tools")
+    print(f"registered: {n} chrome_* tools")
     try:
         tabs = list_tabs()
         print(f"CDP reachable — {len(tabs)} tab(s)")

@@ -129,6 +129,8 @@ def _emit_routing() -> None:
 
 try:
     from slimtoken.pipeline import minify_request, MinifyConfig
+    from slimtoken.tokencount import count_messages, count_system, count_tools
+    from slimtoken.token_budget import enforce_budget
     _MINIFY_BACKEND = "slimtoken"
     _MINIFY_OK = True
 except Exception as _e:  # pragma: no cover — slimtoken is required
@@ -142,6 +144,17 @@ def _bool_env(name: str, default: bool) -> bool:
     if v is None:
         return default
     return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+_CONTEXT_WINDOW = int(os.environ.get("CORTEXAGENT_CONTEXT_WINDOW", "131072") or 131072)
+_COMPLETION_RESERVE = int(os.environ.get("CORTEXAGENT_COMPLETION_RESERVE", "16384") or 16384)
+_TOKENIZER_MARGIN = int(os.environ.get("CORTEXAGENT_TOKENIZER_MARGIN", "8192") or 8192)
+# 2026-09-05: the window is the ONLY hard cap llama-server enforces. Minify's
+# target must sit well below it — window - completion reserve (16384) - drift
+# margin (8192) ≈ 81% — so autocompact has room and cl100k-vs-Qwen tokenizer
+# drift can't tip a "fits" request over. _HARD_CEILING is the forward gate.
+_MINIFY_BUDGET = max(1024, _CONTEXT_WINDOW - _COMPLETION_RESERVE - _TOKENIZER_MARGIN)
+_HARD_CEILING = max(_MINIFY_BUDGET + 1, _CONTEXT_WINDOW - _TOKENIZER_MARGIN)
 
 
 def _build_minify_cfg():
@@ -162,7 +175,7 @@ def _build_minify_cfg():
 
 
 
-    _default_budget = 131072 if _MINIFY_OK else 0
+    _default_budget = _MINIFY_BUDGET if _MINIFY_OK else 0
     try:
         budget = int(os.environ.get("CORTEXAGENT_MINIFY_BUDGET", "") or _default_budget)
     except ValueError:
@@ -197,18 +210,54 @@ _MINIFY_RESPONSE = _bool_env("CORTEXAGENT_MINIFY_RESPONSE", True)
 
 
 _TOOL_RESULT_MAX = int(os.environ.get("CORTEXAGENT_TOOL_RESULT_MAX", "50000") or 50000)
+# 2026-09-06 root-cause fix: Qwen3.6 reasoning (thinking) burns the whole
+# max_completion_tokens budget, so content comes back EMPTY with
+# finish_reason="length" -> TUI shows "Response was truncated before
+# completion." -> retry loop (+2 msgs/request) -> context balloon -> compaction
+# -> "Cannot continue from message role: assistant". Cap thinking so content
+# always has at least this many tokens of room.
+_MIN_CONTENT_TOKENS = int(os.environ.get("CORTEXAGENT_MIN_CONTENT_TOKENS", "4096") or 4096)
 
 
 def _trunc_marker(removed: int) -> str:
     return f"\n...[truncated {removed} chars by cortexagent]"
 
 
-def _cap_tool_results(parsed, max_chars: int):
+def _cap_text_blocks(blocks: list, max_chars: int) -> None:
+    total = sum(len(x.get("text", "")) for x in blocks if isinstance(x, dict))
+    if total <= max_chars:
+        return
+    budget = max_chars
+    for blk in blocks:
+        if not isinstance(blk, dict) or blk.get("type") != "text":
+            continue
+        t = blk.get("text", "")
+        if len(t) <= budget:
+            budget -= len(t)
+        else:
+            blk["text"] = t[:budget] + _trunc_marker(len(t) - budget)
+            budget = 0
 
+
+def _cap_tool_results(parsed, max_chars: int):
+    # 2026-09-05 root-cause fix: the old body only matched Anthropic
+    # type:"tool_result" content blocks, but cortexagent speaks
+    # openai-completions — tool results are role:"tool" messages with plain
+    # string content. The cap never fired there, so multi-MB tool dumps rode
+    # through, keep_last=8 protected them from slimtoken's prune, and
+    # llama-server 400'd (observed: minify in=639976 → out=482233 tok).
     if not isinstance(parsed, dict):
         return parsed
     for msg in parsed.get("messages", []):
-        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+        if msg.get("role") == "tool":
+            if isinstance(content, str) and len(content) > max_chars:
+                msg["content"] = content[:max_chars] + _trunc_marker(len(content) - max_chars)
+            elif isinstance(content, list):
+                _cap_text_blocks(content, max_chars)
+            continue
         if not isinstance(content, list):
             continue
         for item in content:
@@ -219,20 +268,77 @@ def _cap_tool_results(parsed, max_chars: int):
                 if len(c) > max_chars:
                     item["content"] = c[:max_chars] + _trunc_marker(len(c) - max_chars)
             elif isinstance(c, list):
-
-                total = sum(len(x.get("text", "")) for x in c if isinstance(x, dict))
-                if total > max_chars:
-                    budget = max_chars
-                    for blk in c:
-                        if not isinstance(blk, dict) or blk.get("type") != "text":
-                            continue
-                        t = blk.get("text", "")
-                        if len(t) <= budget:
-                            budget -= len(t)
-                        else:
-                            blk["text"] = t[:budget] + _trunc_marker(len(t) - budget)
-                            budget = 0
+                _cap_text_blocks(c, max_chars)
     return parsed
+
+
+def _cap_thinking(parsed):
+    """Guarantee content always has room when thinking is enabled.
+
+    llama-server accepts a per-request ``reasoning_budget_tokens`` cap (the
+    server flag --reasoning-budget, settable per request). When the TUI sends
+    enable_thinking + max_completion_tokens, cap thinking so the completion
+    budget can never be exhausted by reasoning_content alone — otherwise
+    content returns empty (finish_reason="length") and the TUI retries forever.
+    """
+    if not isinstance(parsed, dict):
+        return parsed
+    if not parsed.get("enable_thinking"):
+        return parsed
+    mct = parsed.get("max_completion_tokens")
+    if mct is None:
+        return parsed  # no budget to exhaust -> no empty-content risk
+    budget = max(0, int(mct) - _MIN_CONTENT_TOKENS)
+    parsed["reasoning_budget_tokens"] = budget
+    return parsed
+
+
+def _context_gate(parsed):
+    """Post-minify hard gate — never forward a prompt llama-server must 400.
+
+    Counts the final body with slimtoken's cl100k tokenizer (real count, not
+    chars) plus a surcharge for OpenAI ``tool_calls`` arguments, which
+    count_message() does not inspect. Over _HARD_CEILING: one emergency
+    enforce_budget pass with keep_last=1 (drop oldest history, protect only
+    the newest message); still over → return ok=False and the caller sends a
+    llama-server-shaped overflow 400 so the client's isContextOverflow()
+    recovery compacts and retries instead of stalling.
+    """
+    if not _MINIFY_OK or not isinstance(parsed, dict):
+        return parsed, True, 0
+    msgs = parsed.get("messages")
+    if not isinstance(msgs, list) or not msgs:
+        return parsed, True, 0
+
+    def _total(body):
+        n = (count_system(body.get("system")) + count_tools(body.get("tools"))
+             + count_messages(body.get("messages", []))[0])
+        for m in body.get("messages", []):
+            tcs = m.get("tool_calls") if isinstance(m, dict) else None
+            if tcs:
+                try:
+                    n += max(1, len(json.dumps(tcs)) // 4)
+                except Exception:
+                    n += 1
+        return n
+
+    total = _total(parsed)
+    if total <= _HARD_CEILING:
+        return parsed, True, total
+    try:
+        trimmed = enforce_budget(parsed, _HARD_CEILING, keep_last=1)
+        t2 = _total(trimmed)
+        if t2 <= _HARD_CEILING:
+            print(f"[proxy] gate: emergency trim {total}→{t2} tok "
+                  f"(keep_last=1, was over {_HARD_CEILING})", file=sys.stderr)
+            return trimmed, True, t2
+        print(f"[proxy] gate: REJECT {total} tok > {_HARD_CEILING} — "
+              f"overflow 400 returned to client", file=sys.stderr)
+        return parsed, False, total
+    except Exception as e:
+        # counting/enforce failed — forward as before rather than block traffic
+        print(f"[proxy] gate bypassed: {e}", file=sys.stderr)
+        return parsed, True, total
 
 
 
@@ -746,6 +852,24 @@ class ProxyHandler:
         except Exception:
             pass
 
+    def _respond_overflow(self, n_tokens: int):
+        # llama-server-shaped overflow 400 — the body text matches the
+        # client's OVERFLOW_PATTERNS (/exceeds the available context size/i)
+        # so its existing recovery path compacts and retries.
+        body = json.dumps({"error": {
+            "message": f"request ({n_tokens} tokens) exceeds the available "
+                       f"context size ({_CONTEXT_WINDOW} tokens) [cortexagent gate]",
+            "type": "server_error",
+            "code": 400,
+        }}).encode()
+        resp = ("HTTP/1.1 400 Bad Request\r\n"
+                "Content-Type: application/json\r\n"
+                f"Content-Length: {len(body)}\r\n\r\n").encode() + body
+        try:
+            self.conn.sendall(resp)
+        except Exception:
+            pass
+
     def handle(self):
         try:
             head_bytes, body = self._read_request()
@@ -891,6 +1015,13 @@ class ProxyHandler:
                         parsed, mstats = minify_request(parsed, _MINIFY_CFG)
                         print(f"[proxy] minify: {mstats.summary()}", file=sys.stderr)
                         _record_minify(mstats, reframe_saved)
+                    parsed = _cap_thinking(parsed)
+                    parsed, gate_ok, gate_total = _context_gate(parsed)
+                    if not gate_ok:
+                        self._respond_overflow(gate_total)
+                        _diag(method, parts[1] if len(parts) > 1 else "?",
+                              cl, False, 0, parsed, "gate-overflow-400")
+                        return
                 body = json.dumps(parsed).encode()
             except Exception as e:
                 parse_err = str(e)
@@ -961,6 +1092,10 @@ class ProxyHandler:
                 parsed, mstats = minify_request(parsed, _MINIFY_CFG)
                 print(f"[proxy] minify(chunked): {mstats.summary()}", file=sys.stderr)
                 _record_minify(mstats)
+                parsed, gate_ok, gate_total = _context_gate(parsed)
+                if not gate_ok:
+                    self._respond_overflow(gate_total)
+                    return
                 dechunked = json.dumps(parsed).encode()
         except Exception as e:
             print(f"[proxy] chunked minify skipped: {e}", file=sys.stderr)
@@ -1115,7 +1250,12 @@ class ProxyHandler:
                 except socket.timeout:
 
 
-                    if not t1.is_alive() and time.monotonic() - _idle_since > 30:
+                    if not t1.is_alive() and time.monotonic() - _idle_since > 2:
+                        # 2026-08-30: upstream pipe thread is dead -> the response
+                        # is over. Old code idled 30s here, so the client SDK's own
+                        # timeout fired first and every late/long turn surfaced as
+                        # "Connection error." (123 of them in one live session).
+                        # 2s grace to drain in-flight client bytes, then EOF.
                         break
                     continue
         except Exception:

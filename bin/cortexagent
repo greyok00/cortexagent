@@ -167,33 +167,11 @@ if [ "$DAEMON_MODE" = "0" ]; then
   _cortexagent_kill_stale
 fi
 
-# ── Auto-start the system tray (linked to overseer) ────────────────────────
-# The tray is owned by the cortexagent-tray.service systemd unit. It links to
-# the overseer via Wants=/PartOf=, so starting it pulls the overseer up too
-# (and stopping the overseer stops the tray). When the user runs `cortexagent`
-# interactively we want the wolf-head tray + popout dashboard available, so we
-# ensure the unit is active. We never stop the tray from this wrapper — the
-# user quits it via the tray menu's Quit (which also stops the overseer).
-if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
-  if command -v systemctl >/dev/null 2>&1 && \
-     systemctl --user cat cortexagent-tray.service >/dev/null 2>&1; then
-    if ! systemctl --user is-active --quiet cortexagent-tray.service 2>/dev/null; then
-      systemctl --user start cortexagent-tray.service >/dev/null 2>&1 || true
-    fi
-    if systemctl --user is-active --quiet cortexagent-tray.service 2>/dev/null; then
-      : # 2026-08-20 user feedback: tray status silent
-    fi
-  else
-    # No systemd unit — fall back to a detached nohup. The tray still owns the
-    # overseer for this session; it exits when this shell exits.
-    if ! pgrep -f "python3 .*lib\.tray(\s|$)" >/dev/null 2>&1; then
-      nohup python3 -m lib.tray > "${HOME}/.cortexagent/logs/tray.log" 2>&1 &
-      disown || true
-      sleep 1
-      : # 2026-08-20 user feedback: tray status silent
-    fi
-  fi
-fi
+# ── System tray removed ────────────────────────────────────────────────────────
+# 2026-08-31 user directive: NO system tray at all. Typing `cortexagent` runs
+# the TUI/CLI directly in the current terminal and never starts the tray. The
+# overseer + tiny :8082 stay as their own always-on systemd service
+# (independent of the tray), and STT stays a separate standalone service.
 
 # ── Webui status removed 2026-08-20: WebUI (8090 pipeline + 8093 security)
 # was removed entirely — the tray + dashboard are the only interface.
@@ -432,8 +410,8 @@ if brave_enabled == "1":
     venv_python = os.path.expanduser("~/.cortexagent/venv/bin/python3")
     if not os.path.exists(venv_python):
         venv_python = "python3"
-    servers["playwright_brave"] = {
-        "command": f"{venv_python} {os.path.join(repo_root, 'lib', 'playwright_brave_mcp.py')}",
+    servers["patchright_chrome"] = {
+        "command": f"{venv_python} {os.path.join(repo_root, 'lib', 'patchright_chrome_mcp.py')}",
     }
 # Optional lazy MCP servers (configured locally, not committed)
 lazy_config = os.path.expanduser("~/.cortexagent/config/lazy_mcp_servers.json")
@@ -530,6 +508,16 @@ cleanup() {
     kill "${BRAVE_PID}" 2>/dev/null || true
     wait "${BRAVE_PID}" 2>/dev/null || true
   fi
+  if [ -n "${STEALTH_PID:-}" ] && kill -0 "${STEALTH_PID}" 2>/dev/null; then
+    : # Stealth chrome (Patchright) — kill our spawned wrapper, leave any
+    # systemd-managed chrome instance alone.
+    kill "${STEALTH_PID}" 2>/dev/null || true
+    wait "${STEALTH_PID}" 2>/dev/null || true
+  fi
+  # Belt-and-suspenders: nuke any leftover chrome-with-CDP we spawned this session
+  if [ "${BROWSER_KIND:-chrome}" = "chrome" ]; then
+    pkill -f "lib.stealth.worker" 2>/dev/null || true
+  fi
   # The overseer + tiny 0.5b are an ALWAYS-ON systemd user service — do NOT
   # stop them here. Closing cortexagent must free only the big model's ~13 GB
   # VRAM + the grammar proxy; the tiny + scheduler stay up so scheduled tasks
@@ -584,33 +572,57 @@ _on_kill() {
 trap cleanup EXIT PIPE
 trap _on_kill INT TERM
 
-# ── Start Brave CDP debugging server (for Playwright web fetch/browser tools) ──
+# ── Start browser CDP debugging server ──
+# CORTEXAGENT_BROWSER selects which browser to launch:
+#   chrome  (default) → Patchright + Google Chrome stealth stack
+#   brave             → DISABLED (2026-08-28 user directive: never launch Brave)
+#   chromium          → upstream Debian Chromium fallback
+# All branches bind to :9224 (was 9222/9223) — the
+# lib/browser_control.py facade is browser-agnostic and just talks HTTP+WS
+# to whatever owns that port.
 BRAVE_PID=""
-BRAVE_ENABLED="${CORTEXAGENT_BRAVE_ENABLED:-1}"
-if [ "${BRAVE_ENABLED}" = "1" ]; then
-  if ss -ltn 2>/dev/null | grep -q ":9222 "; then
-    : # 2026-08-20 user feedback: don't print Brave CDP status in chat area
+STEALTH_PID=""
+BROWSER_KIND="${CORTEXAGENT_BROWSER:-chrome}"
+if [ "${CORTEXAGENT_BROWSER_ENABLED:-1}" = "1" ]; then
+  if ss -ltn 2>/dev/null | grep -q ":9223 "; then
+    : # 2026-08-20 user feedback: don't print browser CDP status in chat area
   else
-    BRAVE_BIN="${CORTEXAGENT_BRAVE_BIN:-$(command -v brave-browser || command -v brave || command -v google-chrome || true)}"
-    if [ -n "${BRAVE_BIN}" ]; then
-      BRAVE_DATA_DIR="${CORTEXAGENT_BRAVE_DATA_DIR:-$HOME/.cortexagent/brave-cdp-profile}"
-      mkdir -p "${BRAVE_DATA_DIR}" "${HOME}/.cortexagent/logs"
-      : # 2026-08-20 user feedback: don't print Brave CDP status in chat area
-      nohup "${BRAVE_BIN}" --remote-debugging-port=9222 \
-        --no-first-run --no-default-browser-check \
-        --user-data-dir="${BRAVE_DATA_DIR}" \
-        --enable-automation \
-        > "${HOME}/.cortexagent/logs/brave-cdp.log" 2>&1 &
-      BRAVE_PID=$!
-      sleep 1
-      if kill -0 "${BRAVE_PID}" 2>/dev/null; then
-        : # Brave CDP up — silent
+    if [ "${BROWSER_KIND}" = "brave" ]; then
+      # ── Brave disabled 2026-08-28 (user directive: never launch Brave) ──
+      echo "Brave launch is disabled (2026-08-28 directive: use Chrome on :9223 only)." >&2
+    elif [ "${BROWSER_KIND}" = "chromium" ]; then
+      # ── Upstream Debian Chromium fallback ──
+      CHROMIUM_BIN="${CORTEXAGENT_CHROMIUM_BIN:-$(command -v chromium || command -v chromium-browser || true)}"
+      if [ -n "${CHROMIUM_BIN}" ]; then
+        CHROMIUM_DATA_DIR="${CORTEXAGENT_CHROMIUM_DATA_DIR:-$HOME/.cortexagent/chromium-cdp-profile}"
+        mkdir -p "${CHROMIUM_DATA_DIR}" "${HOME}/.cortexagent/logs"
+        nohup "${CHROMIUM_BIN}" --remote-debugging-port=9223 \
+          --no-first-run --no-default-browser-check \
+          --user-data-dir="${CHROMIUM_DATA_DIR}" \
+          --headless=new \
+          > "${HOME}/.cortexagent/logs/chromium-cdp.log" 2>&1 &
+        STEALTH_PID=$!
+        sleep 1
       else
-        echo "Brave CDP failed to start (non-fatal) — see ${HOME}/.cortexagent/logs/brave-cdp.log" >&2
-        BRAVE_PID=""
+        echo "Chromium not installed (apt install chromium); falling back to chrome" >&2
+        BROWSER_KIND=chrome
       fi
-    else
-      echo "No Brave/Chrome browser found; browser tools will not be available. Set CORTEXAGENT_BRAVE_BIN." >&2
+    fi
+    if [ "${BROWSER_KIND}" = "chrome" ]; then
+      # ── Default: stealth Chrome via lib.stealth.worker (binds :9224) ──
+      PYTHON_BIN="${PYTHON:-python3}"
+      mkdir -p "${HOME}/.cortexagent/logs"
+      (cd "${REPO_ROOT}" && \
+        nohup "${PYTHON_BIN}" -m lib.stealth.worker start \
+          > "${HOME}/.cortexagent/logs/stealth-chrome.log" 2>&1) &
+      STEALTH_PID=$!
+      sleep 2
+      if ss -ltn 2>/dev/null | grep -q ":9224 "; then
+        : # Stealth chrome CDP up — silent
+      else
+        echo "Stealth chrome CDP failed to start (non-fatal) — see ${HOME}/.cortexagent/logs/stealth-chrome.log" >&2
+        STEALTH_PID=""
+      fi
     fi
   fi
 fi
@@ -707,13 +719,13 @@ unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
 # alt-screen TUI. We want the locked-screen experience, so explicitly unset
 # any inherited value.
 unset CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN 2>/dev/null || true
-# Both match the locked server context (lib/config.py big_ctx=131072). Setting
-# them above 131072 means auto-compact (85% of the window) would fire at a point
+# Both match the locked server context (lib/config.py big_ctx=145000). Setting
+# them above 145000 means auto-compact (85% of the window) would fire at a point
 # the server can never reach → hard 400s again (the same class of bug the
-# earlier 32k overflow was). 131072 → compact at ~111k (85%), safely under the ceiling.
+# earlier 32k overflow was). 145000 → compact at ~123k (85%), safely under the ceiling.
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS="131072"
 # AUTO_COMPACT_WINDOW is what auto-compact thresholds against. If inherited as
-# 524288, the local 128k never reaches it → no compact → lock at the limit.
+# 524288, the local 145k never reaches it → no compact → lock at the limit.
 export CLAUDE_CODE_AUTO_COMPACT_WINDOW="131072"
 # Auto-compact fires at 85% of the window instead of the default (much lower).
 # Stops "compact every turn" — we want compact to fire ONLY when context is
@@ -801,74 +813,11 @@ for arg in "$@"; do
   esac
 done
 
-# ── Tray-only default ────────────────────────────────────────────────────────
-# Typing `cortexagent` in a terminal must NOT enter the TUI in that terminal
-# AND must not print any banner or "tray is running" line. It silently
-# ensures: tray daemon up, STT daemon up, TUI console open in a fresh
-# terminal, STT Controls + Browser Automation popups open. Fire-and-forget.
-# The nested console launch sets CORTEXAGENT_FORCE_TUI=1 so the recursive
-# cortexagent call DOES enter the TUI. One-shot (-p) still runs inline.
-if [ "${_CORTEXAGENT_TRAY_ONLY:-0}" = "1" ]; then
-  exit 0
-fi
-_HAS_ONE_SHOT=0
-for arg in "${FILTERED_ARGS[@]}"; do
-  if [ "$arg" = "-p" ] || [ "$arg" = "--print" ]; then
-    _HAS_ONE_SHOT=1
-    break
-  fi
-done
-if [ "$_HAS_ONE_SHOT" = "0" ] && [ "${CORTEXAGENT_TRAY_ONLY:-1}" = "1" ] && [ -z "${CORTEXAGENT_FORCE_TUI:-}" ]; then
-  # ── Auto-launch: tray + STT daemon + console + STT/Browser popups ────────
-  # All detached (start_new_session) so the launcher can exit 0 immediately
-  # without killing the children. No output to stdout/stderr — fire-and-forget.
-
-  # 1. STT daemon (idempotent — main() short-circuits if already running)
-  /usr/bin/python3 "$REPO_ROOT/lib/stt_daemon.py" start \
-    >/dev/null 2>&1 &
-
-  # 2. Tray daemon (systemd is idempotent — already-active units no-op)
-  systemctl --user start cortexagent-tray.service >/dev/null 2>&1 &
-
-  # 3. TUI console in a fresh terminal — pick the first available emulator
-  _TUI_CMD="env CORTEXAGENT_FORCE_TUI=1 bash $REPO_ROOT/bin/cortexagent"
-  _LAUNCHED=0
-  for _term in mate-terminal gnome-terminal xfce4-terminal konsole tilix \
-                terminator alacritty kitty wezterm xterm x-terminal-emulator; do
-    if command -v "$_term" >/dev/null 2>&1; then
-      case "$_term" in
-        xfce4-terminal|terminator|xterm|x-terminal-emulator)
-          setsid "$_term" -e bash -lc "$_TUI_CMD" >/dev/null 2>&1 &
-          ;;
-        konsole|tilix)
-          setsid "$_term" -e bash -lc "$_TUI_CMD" >/dev/null 2>&1 &
-          ;;
-        gnome-terminal|mate-terminal)
-          setsid "$_term" -- bash -lc "$_TUI_CMD" >/dev/null 2>&1 &
-          ;;
-        alacritty|kitty|wezterm)
-          setsid "$_term" bash -lc "$_TUI_CMD" >/dev/null 2>&1 &
-          ;;
-      esac
-      _LAUNCHED=1
-      break
-    fi
-  done
-
-  # 4. STT Controls popup (lib/stt_controls.py — tkinter GUI)
-  setsid /usr/bin/python3 -u "$REPO_ROOT/lib/stt_controls.py" \
-    >/dev/null 2>&1 &
-
-  # 5. Browser Automation popup (lib/browser_console.py — tkinter GUI)
-  setsid /usr/bin/python3 -u "$REPO_ROOT/lib/browser_console.py" \
-    >/dev/null 2>&1 &
-
-  # Wait briefly so detached children don't get reaped by cleanup(),
-  # then exit. The children survive (setsid broke the process group link).
-  sleep 0.2
-  cleanup
-  exit 0
-fi
+# ── Default launch (2026-08-31): TUI/CLI in the current terminal ──────────────
+# Typing `cortexagent` now runs the agent directly in the terminal you ran it
+# in — no tray, no nested terminal, no bash-wrapper. The tray-only / fresh-
+# terminal auto-launch was removed per user directive. STT stays a separate
+# standalone service (cortexagent-stt.service), untouched here.
 
 ${AGENT_CLI} "${FILTERED_ARGS[@]}"
 echo "cortex session ended — cleaning up..."
