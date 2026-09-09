@@ -9,7 +9,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib import tiny_llm, tool_registry, react_loop  # noqa: E402
+from lib import tool_registry, react_loop  # noqa: E402
+from lib.overseer import _query_llm_with_tools  # noqa: E402
 
 TOOL_PROMPT = "What is the current time? Use the run_command tool to check."
 SOCRATIC_PROMPT = "We got a strange alert. What should we investigate?"
@@ -19,7 +20,7 @@ LOOP_PROMPT = "Run the command echo hello and report the output."
 def _score_tool_calls() -> dict:
 
     try:
-        resp = tiny_llm.query_with_tools(
+        resp = _query_llm_with_tools(
             [{"role": "user", "content": TOOL_PROMPT}],
             tool_registry.list_tools(), max_tokens=512, timeout=60)
     except Exception as e:
@@ -40,7 +41,7 @@ def _score_tool_calls() -> dict:
 def _score_socratic() -> dict:
 
     try:
-        resp = tiny_llm.query_with_tools(
+        resp = _query_llm_with_tools(
             [{"role": "user", "content": SOCRATIC_PROMPT}],
             tool_registry.list_tools(), max_tokens=512, timeout=60)
     except Exception as e:
@@ -70,7 +71,7 @@ def _score_convergence() -> dict:
 
 def main() -> int:
     print("═" * 72)
-    print("Overseer model evaluation (model on :8082)")
+    print("Overseer model evaluation (model on :8080)")
     print("═" * 72)
     rows = [
         ("tool-call correctness", _score_tool_calls()),

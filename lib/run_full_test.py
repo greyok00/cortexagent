@@ -41,7 +41,6 @@ def run_component_health() -> Dict:
     components = {
         "Proxy (minify)": ("127.0.0.1", 8081),
         "Big model (llama-server)": ("127.0.0.1", 8080),
-        "Tiny model (llama-server)": ("127.0.0.1", 8082),
     }
 
     for name, addr in components.items():
@@ -97,7 +96,7 @@ def run_observability_test() -> Dict:
             s2.set_metric("domain", "professional")
             time.sleep(0.001)
 
-        with Span(trace.trace_id, "llm", "tiny_model_query") as s3:
+        with Span(trace.trace_id, "llm", "llm_query") as s3:
             s3.set_metric("tokens_in", 50)
             s3.set_metric("tokens_out", 100)
             time.sleep(0.01)

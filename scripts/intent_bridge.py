@@ -11,19 +11,15 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-_TINY_INTENTS = {"conversation", "memory_operation", "scheduling", "task_management"}
-
-
 def classify(prompt: str) -> dict:
     from lib.pre_flight_gate import classify_intent
     intent = classify_intent(prompt)
-    tier = "tiny" if intent in _TINY_INTENTS else "big"
-    return {"ok": True, "intent": intent, "tier": tier}
+    return {"ok": True, "intent": intent, "tier": "big"}
 
 
 def _smoke() -> int:
     fails = 0
-    for prompt, want in (("hello there", "tiny"), ("run echo hello", "big"),
+    for prompt, want in (("hello there", "big"), ("run echo hello", "big"),
                          ("investigate the osint case", "big")):
         r = classify(prompt)
         if r["tier"] != want:

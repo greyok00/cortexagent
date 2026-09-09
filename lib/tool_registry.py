@@ -145,11 +145,11 @@ def _run_command(command: str, timeout: int = 3600) -> Dict[str, Any]:
 
 def _query_llm(prompt: str, system: str = "", max_tokens: int = 256) -> Dict[str, Any]:
 
-    from lib.overseer import _query_tiny_llm
-    result = _query_tiny_llm(prompt, system, max_tokens)
+    from lib.overseer import _query_llm
+    result = _query_llm(prompt, system, max_tokens)
     if result:
         return {"ok": True, "output": result, "error": ""}
-    return {"ok": False, "output": "", "error": "tiny LLM unavailable"}
+    return {"ok": False, "output": "", "error": "LLM unavailable"}
 
 
 _ALLOWED_SUBAGENT_MODELS = {"sonnet", "opus", "haiku"}
@@ -409,16 +409,6 @@ def _coding_practices(query: str, category: str = "", limit: int = 10) -> Dict[s
                 f"coding_practices failed: {e}"}
 
 
-def _describe_image(image: str, prompt: str = "Describe this image in detail.") -> Dict[str, Any]:
-
-    try:
-        from lib.image_adapter import describe
-        text = describe(image, prompt)
-        return {"ok": bool(text), "output": text, "error": ""}
-    except Exception as e:
-        return {"ok": False, "output": "", "error": f"describe_image failed: {e}"}
-
-
 def _transcribe_audio(file: str) -> Dict[str, Any]:
 
     from pathlib import Path
@@ -460,7 +450,7 @@ def _register_all() -> None:
          "timeout": {"type": "integer", "description": "timeout seconds (default 3600)"}},
         ["command"]), _run_command, trust="low")
     register_tool("query_llm", _schema(
-        "Query the tiny LLM (overseer reasoning engine)",
+        "Query the local LLM (overseer reasoning engine)",
         {"prompt": {"type": "string", "description": "prompt"},
          "system": {"type": "string", "description": "system prompt (optional)"},
          "max_tokens": {"type": "integer", "description": "max output tokens (default 256)"}},
@@ -501,11 +491,6 @@ def _register_all() -> None:
          "category": {"type": "string", "description": "optional category filter (e.g. Network Security, Forensics)"},
          "limit": {"type": "integer", "description": "max results (default 10)"}},
         ["query"]), _coding_practices, trust="high")
-    register_tool("describe_image", _schema(
-        "Describe an image or answer a question about it (returns text)",
-        {"image": {"type": "string", "description": "path to the image file"},
-         "prompt": {"type": "string", "description": "caption request or VQA question"}},
-        ["image"]), _describe_image, trust="high")
     register_tool("transcribe_audio", _schema(
         "Transcribe an audio file to text (faster-whisper, CPU)",
         {"file": {"type": "string", "description": "path to the audio file"}},
@@ -612,9 +597,9 @@ def _smoke() -> int:
         print(f"❌ query_llm malformed: {r}")
         fails += 1
     elif r.get("ok"):
-        print("✅ query_llm works (tiny up)")
+        print("✅ query_llm works (LLM up)")
     else:
-        print("⚠️ query_llm graceful (tiny down): " + r.get("error", ""))
+        print("⚠️ query_llm graceful (LLM down): " + r.get("error", ""))
 
     names = [t.get("function", {}).get("name") for t in list_tools()]
     for want in ("spawn_subagent", "generate_image", "generate_video",
@@ -636,10 +621,6 @@ def _smoke() -> int:
         print("✅ rag_query returns well-formed result (may be empty)")
 
 
-    r = execute_tool("describe_image", {"image": "/nonexistent.png"})
-    if r.get("ok") or "failed" not in r.get("error", ""):
-        print(f"❌ describe_image error path: {r}")
-        fails += 1
     r = execute_tool("transcribe_audio", {"file": "/nonexistent.wav"})
     if r.get("ok") or "failed" not in r.get("error", ""):
         print(f"❌ transcribe_audio error path: {r}")

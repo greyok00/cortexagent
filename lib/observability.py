@@ -30,7 +30,7 @@ SPAN_TYPES = {
     "routing": "Intent classification + route decision",
     "framing": "Prompt framing + domain analysis",
     "minify":  "Token minification pass",
-    "llm":     "LLM inference (big or tiny)",
+    "llm":     "LLM inference",
     "tool":    "Tool execution",
     "beautify": "Output beautification pass",
     "output":  "Final output formatting",
@@ -396,7 +396,7 @@ def main():
             s1.set_metric("domain", "professional")
             time.sleep(0.01)
 
-        with span(trace.trace_id, "llm", "tiny_model_query") as s2:
+        with span(trace.trace_id, "llm", "llm_query") as s2:
             s1.children.append(s2.span_id)
             s2.set_metric("tokens_in", 50)
             s2.set_metric("tokens_out", 100)

@@ -226,12 +226,8 @@ def _cli() -> int:
         print("usage: model_backend.py {start|stop|health} [name]", file=sys.stderr)
         return 2
     cmd = sys.argv[1]
-    name = sys.argv[2] if len(sys.argv) > 2 else "tiny"
-    if name == "tiny":
-        srv = LlamaServer("tiny", CFG.tiny_model, port=CFG.tiny_model_port,
-                          ctx=2048, alias="cortexagent-tiny",
-                          extra_args=["-fa", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-np", "1"])
-    elif name == "big":
+    name = sys.argv[2] if len(sys.argv) > 2 else "big"
+    if name == "big":
         srv = LlamaServer("big", CFG.big_model, port=CFG.big_model_port,
                           ctx=int(CFG.big_ctx), ngl=999, alias="cortexagent")
     else:

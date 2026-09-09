@@ -120,7 +120,6 @@ def format_dashboard(state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     s = state if state is not None else read_state()
     daemon = s.get("daemon") or {}
     big = daemon.get("big") if isinstance(daemon.get("big"), dict) else {}
-    tiny = daemon.get("tiny") if isinstance(daemon.get("tiny"), dict) else {}
     vbp = daemon.get("vram_by_proc") if isinstance(daemon.get("vram_by_proc"), dict) else {}
     proxy = s.get("proxy") or {}
     ov = s.get("overseer") or {}
@@ -134,7 +133,6 @@ def format_dashboard(state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {
 
         "model_alias": big.get("alias", ""),
-        "tiny_alias": tiny.get("alias", ""),
         "active_model": _resolve_active_model(
             s.get("active_model") or {}, big.get("alias", "") or ""),
 
@@ -176,7 +174,6 @@ def format_dashboard(state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
                                if t.get("status") == "FAILED"),
 
         "vram_big_mb": int(vbp.get("big_mib", 0)),
-        "vram_tiny_mb": int(vbp.get("tiny_mib", 0)),
         "vram_other_mb": int(vbp.get("other_mib", 0)),
         "proxy_up": bool(proxy.get("proxy_up", False)),
         "current_in_tps": float(proxy.get("current_in_tps", 0) or 0),

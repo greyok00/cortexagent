@@ -951,15 +951,6 @@
     {
       "advertised_in": "lib/tool_registry.py",
       "description": "",
-      "id": "tool_registry:describe_image",
-      "kind": "registered_tool",
-      "schema": {
-        "name": "describe_image"
-      }
-    },
-    {
-      "advertised_in": "lib/tool_registry.py",
-      "description": "",
       "id": "tool_registry:transcribe_audio",
       "kind": "registered_tool",
       "schema": {

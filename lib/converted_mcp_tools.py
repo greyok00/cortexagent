@@ -353,12 +353,12 @@ def magicui_generate(description: str, format: str = "html") -> dict:
             "to render via the local model, or =template for a static template shell.")}
     try:
         if backend == "llm":
-            from lib import tiny_llm
+            from lib.overseer import _query_llm
             prompt = (
                 f"Generate clean, self-contained {format} UI for the following "
                 f"description. Output only the {format} code, no markdown fences.\n\n"
                 f"Description: {description}")
-            html = tiny_llm.query(prompt, max_tokens=1024, temperature=0.2, timeout=90)
+            html = _query_llm(prompt, max_tokens=1024, temperature=0.2, timeout=90)
             if not html:
                 return {"error": "LLM returned empty UI"}
             return {"status": "ok", "html": html, "format": format, "backend": "llm"}

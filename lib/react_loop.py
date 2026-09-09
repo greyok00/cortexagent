@@ -13,7 +13,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib import tiny_llm  # noqa: E402
+from lib.overseer import _query_llm, _query_llm_with_tools  # noqa: E402
 from lib.pre_flight_gate import classify_intent, is_ambiguous  # noqa: E402
 from lib.prompt_framing import frame_prompt  # noqa: E402
 from lib.output_frame import frame_output  # noqa: E402
@@ -151,7 +151,7 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
         nonlocal pipeline_steps
         label = {"reframe": "Reframe prompt",
                  "agent_pick": "Pick agent persona",
-                 "shrink": "Shrink via tiny model",
+                 "shrink": "Shrink via local model",
                  "memory_hint": "Decide memory hint",
                  "minify": "Minify characters"}.get(name, name)
 
@@ -179,9 +179,9 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
     if mode == "direct":
 
 
-        result = tiny_llm.query(optimized_prompt, system=framed_system, max_tokens=256)
+        result = _query_llm(optimized_prompt, system=framed_system, max_tokens=256)
         if result is None:
-            return {"ok": False, "output": "", "error": "tiny model unavailable"}
+            return {"ok": False, "output": "", "error": "LLM unavailable"}
 
         framed, _ = frame_output(result, domain)
         framed = _post_process(framed)
@@ -192,9 +192,9 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
 
 
         sys_prompt = framed_system + "\n\n" + _INJECTION_GUARD
-        result = tiny_llm.query(optimized_prompt, system=sys_prompt, max_tokens=512)
+        result = _query_llm(optimized_prompt, system=sys_prompt, max_tokens=512)
         if result is None:
-            return {"ok": False, "output": "", "error": "tiny model unavailable"}
+            return {"ok": False, "output": "", "error": "LLM unavailable"}
 
         framed, _ = frame_output(result, domain)
         framed = _post_process(framed)
@@ -220,11 +220,11 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
         steps.append({"id": step, "label": f"Thought: step {step}",
                       "status": "in_progress"})
         _publish(state, steps, step)
-        response = tiny_llm.query_with_tools(
+        response = _query_llm_with_tools(
             messages, list_tools(limit=MAX_TOOLS, stub=STUB_MODE), max_tokens=512,
             timeout=TOOL_TIMEOUT)
         if response is None:
-            return {"ok": False, "output": "", "error": "tiny model unavailable"}
+            return {"ok": False, "output": "", "error": "LLM unavailable"}
         if response["kind"] == "text":
             _publish(state, steps, None)
             output = response["content"]

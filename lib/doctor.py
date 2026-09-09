@@ -117,7 +117,7 @@ def _check_profile_at_runtime() -> Check:
 
 
     return Check("practical-reasoning profile", HEALTHY,
-                 "applied at runtime (slimtoken + tiny_llm)")
+                 "applied at runtime (slimtoken)")
 
 
 def _check_settings(cfg_dir: Path, home: str, dry: bool) -> Check:

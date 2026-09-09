@@ -34,9 +34,6 @@ _last_request = 0.0
 _active_sessions = 0
 _SHUTDOWN = False
 _proxy_proc: Optional[subprocess.Popen] = None
-_tiny_was_healthy = True
-_tiny_down_since: float = 0.0
-TINY_DEATH_GRACE_SEC = 3.0
 
 
 def _scan_active_sessions() -> List[Dict]:
@@ -73,9 +70,6 @@ def _scan_active_sessions() -> List[Dict]:
         if comm == "llama-server":
             if "--port 8080" in args or "--port=8080" in args:
                 _emit(pid_i, etime, comm, args, "big")
-                continue
-            if "--port 8082" in args or "--port=8082" in args:
-                _emit(pid_i, etime, comm, args, "tiny")
                 continue
 
         for marker, kind in (
@@ -128,7 +122,6 @@ def _vram_by_process() -> Dict[str, Any]:
 
     out: Dict[str, Any] = {
         "big_mib": 0,
-        "tiny_mib": 0,
         "other_mib": 0,
         "by_pid": [],
         "ok": False,
@@ -147,33 +140,22 @@ def _vram_by_process() -> Dict[str, Any]:
 
 
     big_pid: Optional[int] = None
-    tiny_pid: Optional[int] = None
     try:
-        for port_attr, target in (("_big.port", "big"), ("_tiny.port", "tiny")):
-
-
-
-            for line in subprocess.run(
-                ["ps", "-eo", "pid,args"],
-                capture_output=True, text=True, timeout=2,
-            ).stdout.splitlines():
-                parts = line.split(None, 1)
-                if len(parts) != 2:
-                    continue
-                try:
-                    pidi = int(parts[0])
-                except ValueError:
-                    continue
-                if "llama-server" not in parts[1]:
-                    continue
-
-
-                want_port = _big.port if target == "big" else _tiny.port
-                if f"--port {want_port}" in parts[1] or f"--port={want_port}" in parts[1]:
-                    if target == "big":
-                        big_pid = pidi
-                    else:
-                        tiny_pid = pidi
+        for line in subprocess.run(
+            ["ps", "-eo", "pid,args"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.splitlines():
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            try:
+                pidi = int(parts[0])
+            except ValueError:
+                continue
+            if "llama-server" not in parts[1]:
+                continue
+            if f"--port {_big.port}" in parts[1] or f"--port={_big.port}" in parts[1]:
+                big_pid = pidi
     except Exception:
         pass
     for line in proc.stdout.splitlines():
@@ -189,8 +171,6 @@ def _vram_by_process() -> Dict[str, Any]:
         out["by_pid"].append({"pid": pid_i, "name": name.strip(), "mib": mib})
         if big_pid is not None and pid_i == big_pid:
             out["big_mib"] += mib
-        elif tiny_pid is not None and pid_i == tiny_pid:
-            out["tiny_mib"] += mib
         else:
             out["other_mib"] += mib
     out["ok"] = True
@@ -277,26 +257,6 @@ _big = LlamaServer(
     ctx=int(CFG.big_ctx), ngl=int(CFG.big_ngl), alias=str(CFG.big_alias),
     extra_args=_big_extra_args(), log_file=str(CFG.big_log), startup_timeout=300,
 )
-_tiny = LlamaServer(
-    "tiny", str(CFG.tiny_model), port=int(CFG.tiny_model_port),
-    ctx=2048, ngl=999, alias="cortexagent-tiny",
-
-
-    extra_args=["-fa", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-np", "1"],
-    log_file=str(CFG.logs_dir / "tiny-server.log"), startup_timeout=180,
-)
-
-
-def _start_tiny() -> bool:
-    if _tiny.is_healthy():
-        return True
-    _log(f"Starting tiny model on :{_tiny.port}...", "🔄", CYAN)
-    ok = _tiny.start()
-    _log(f"Tiny model {'ready' if ok else 'FAILED'} on :{_tiny.port}",
-         "✅" if ok else "❌", GREEN if ok else RED)
-    return ok
-
-
 def _start_big(timeout: Optional[int] = None) -> bool:
 
     global _big
@@ -353,16 +313,6 @@ def _swap_big(model_path: str, ctx: int = 8192, ngl: int = 999,
         _log(f"Big model {'ready' if ok else 'FAILED'} ({Path(model_path).name})",
              "✅" if ok else "❌", GREEN if ok else RED)
         return ok
-
-
-def _stop_tiny() -> bool:
-
-
-    if _tiny.proc is None:
-        _log("Tiny not owned by daemon (adopted/external) — leaving it", "🛡️", DIM)
-        return True
-    return _tiny.stop()
-
 
 
 def _start_proxy() -> bool:
@@ -456,24 +406,6 @@ def _idle_watcher() -> None:
 
 
 
-            global _tiny_was_healthy, _tiny_down_since
-            tiny_healthy = _tiny.is_healthy(timeout=1)
-            now = time.time()
-            if tiny_healthy:
-                _tiny_down_since = 0.0
-            elif _tiny_down_since == 0.0:
-                _tiny_down_since = now
-            if (not tiny_healthy and _tiny_was_healthy and big_running):
-                _log(f"Tiny :{_tiny.port} DOWN — grace {TINY_DEATH_GRACE_SEC:.0f}s "
-                     f"before big-kill", "⚠️", YELLOW)
-            if (not tiny_healthy and big_running
-                    and _tiny_down_since > 0
-                    and (now - _tiny_down_since) >= TINY_DEATH_GRACE_SEC):
-                _log(f"Tiny :{_tiny.port} DOWN >{TINY_DEATH_GRACE_SEC:.0f}s — "
-                     f"unloading big to free VRAM (tiny-death → big-kill rule)",
-                     "🛑", YELLOW)
-                should_unload = True
-            _tiny_was_healthy = tiny_healthy
         if should_unload:
             _stop_big()
 
@@ -497,14 +429,6 @@ def _handle(req: Dict) -> Dict:
             "big": {"port": _big.port, "healthy": _big.is_healthy(timeout=1), "running": _big.running,
                     "model": str(_big.model_path),
                     "alias": str(_big.alias) if hasattr(_big, "alias") else ""},
-            "tiny": {"port": _tiny.port,
-                    "healthy": _tiny.is_healthy(timeout=1),
-
-
-
-
-
-                    "running": bool(_tiny.running) or _tiny.is_healthy(timeout=1)},
             "proxy": {"running": (lambda p: bool(p and p.poll() is None))(_proxy_proc)},
             "active_sessions": _active_sessions,
             "sessions": sessions,
@@ -542,10 +466,8 @@ def _handle(req: Dict) -> Dict:
         if which == "big":
             ok = _start_big(timeout=int(req.get("timeout") or 300))
             return {"ok": ok, "big_healthy": _big.is_healthy()}
-        if which == "tiny":
-            return {"ok": _start_tiny(), "tiny_healthy": _tiny.is_healthy()}
         if which == "all":
-            return {"ok": _start_tiny() and _start_big(), }
+            return {"ok": _start_big()}
         return {"ok": False, "error": f"unknown which: {which}"}
 
     if cmd == "swap":
@@ -567,10 +489,8 @@ def _handle(req: Dict) -> Dict:
         which = req.get("which", "big")
         if which == "big":
             return {"ok": _stop_big()}
-        if which == "tiny":
-            return {"ok": _stop_tiny()}
         if which == "all":
-            return {"ok": _stop_big() and _stop_tiny()}
+            return {"ok": _stop_big()}
         return {"ok": False, "error": f"unknown which: {which}"}
 
     if cmd == "session-start":
@@ -597,20 +517,9 @@ def _handle(req: Dict) -> Dict:
 
 
 
-        tiny_ok = True
-        try:
-            if not _tiny.is_healthy():
-                _log("Tiny :8082 down on session-start — reloading",
-                     "🛡️", DIM)
-                tiny_ok = _start_tiny()
-        except Exception as _e:
-            tiny_ok = False
-            _log(f"Tiny reload attempt failed: {_e}", "⚠️", YELLOW)
         return {"ok": ok, "active_sessions": _active_sessions,
                 "big_healthy": _big.is_healthy(), "model": model_path,
-                "fallback": is_fallback,
-                "tiny_healthy": _tiny.is_healthy(),
-                "tiny_reloaded": tiny_ok and not _tiny_was_healthy}
+                "fallback": is_fallback}
 
     if cmd == "session-end":
         with _lock:
@@ -667,10 +576,6 @@ def _run() -> None:
 
 
 
-    if _tiny.is_healthy():
-        _log(f"Tiny :{_tiny.port} up (owned by overseer — adopted)", "🛡️", DIM)
-    else:
-        _log(f"Tiny :{_tiny.port} down — overseer will keepalive it", "💤", DIM)
     _start_proxy()
 
 
@@ -783,13 +688,11 @@ def _status() -> int:
         print("status error:", s)
         return 1
     big = s["big"]
-    tiny = s["tiny"]
     from pathlib import Path as _P
     model_name = _P(big.get("model", "")).name or "?"
     print(f"CortexAgent daemon: 🟢 running")
     print(f"  big  :{big['port']}  {'🟢 healthy' if big['healthy'] else '🔴 down'}  (running={big['running']})")
     print(f"       model: {model_name} (big)")
-    print(f"  tiny :{tiny['port']}  {'🟢 healthy' if tiny['healthy'] else '🔴 down'}  (running={tiny['running']})")
     print(f"  proxy: {'🟢 up' if s['proxy']['running'] else '🔴 down'}")
     print(f"  sessions: {s['active_sessions']}  idle: {s['idle_sec']}s / {s['idle_unload_sec']}s")
     return 0

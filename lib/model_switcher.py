@@ -34,7 +34,6 @@ def status() -> dict:
     return {
         "main_model": _port_alive(8080),
         "gen_model": s["diffusers_ready"],
-        "heartbeat": _port_alive(8082),
         "diffusion": s,
     }
 

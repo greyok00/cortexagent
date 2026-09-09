@@ -196,11 +196,11 @@ install_systemd() {
   fi
 }
 
-# ── systemd user service: OVERSEER (always-on scheduler + tiny keepalive) ────
-# Installs a user unit that runs the overseer daemon — keepalives the 0.5b
-# tiny llama-server (:8082) and runs the cron scheduler + task queue + memory
-# health, independent of the cortexagent CLI (so scheduled tasks fire even
-# when no session is open). Enabled + started now: it is meant to be always on.
+# ── systemd user service: OVERSEER (always-on scheduler) ─────────────────────
+# Installs a user unit that runs the overseer daemon — runs the cron scheduler
+# + task queue + memory health, independent of the cortexagent CLI (so
+# scheduled tasks fire even when no session is open). Enabled + started now:
+# it is meant to be always on.
 install_overseer_systemd() {
   local unit_tpl="${REPO_ROOT}/config/templates/cortexagent-overseer.service"
   local unit_dir="$HOME/.config/systemd/user"
@@ -367,7 +367,7 @@ echo "Done. Make sure ${BIN_DIR} is on your PATH."
 echo "Run:    cortexagent                       # start an interactive session"
 echo "        cortexagent -p \"fix this bug\"     # one-shot"
 echo "        cortexagent daemon start         # start the persistent backend"
-echo "        cortexagent models status        # big/tiny/proxy state"
+echo "        cortexagent models status        # big/proxy state"
 echo "        cortexagent models unload big    # free ~13 GB VRAM now"
 echo "Env knobs: CORTEXAGENT_MODEL, CORTEXAGENT_PORT, CORTEXAGENT_CTX, CORTEXAGENT_NGL"
 echo "           CORTEXAGENT_IDLE_UNLOAD_SEC (default 600)"

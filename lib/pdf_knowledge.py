@@ -7,7 +7,7 @@ from datetime import datetime
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-from lib import tiny_llm
+from lib.overseer import _query_llm
 
 
 DB = Path.home() / ".config/cortexllm" / "cortexllm.db"
@@ -86,7 +86,7 @@ def chunk_text(text: str) -> list:
 def query_llm(prompt: str, max_tokens: int = 256) -> str:
 
     try:
-        result = tiny_llm.query(prompt, max_tokens=max_tokens, temperature=0.1, timeout=60)
+        result = _query_llm(prompt, max_tokens=max_tokens, temperature=0.1, timeout=60)
         return result or ""
     except Exception as e:
         print(f"  ⚠️  LLM error: {e}")

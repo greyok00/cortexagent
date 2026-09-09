@@ -315,7 +315,7 @@ def _get_video_pipe():
         if hasattr(pipe, "enable_group_offload"):
             try:
                 pipe.enable_group_offload(onload_device=torch.device(DEVICE))
-                _log("group offload enabled (fits 16 GB alongside tiny)", "💾", DIM)
+                _log("group offload enabled (fits 16 GB alongside the big model)", "💾", DIM)
                 offloaded = True
             except Exception as e:
                 _log(f"group offload failed ({e}); trying model_cpu_offload", "⚠️", YELLOW)

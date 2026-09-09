@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Sync facade over Patchright + Google Chrome (CDP on :9223).
+"""Sync facade over Patchright + Google Chrome (CDP on :9224).
 
-Browser-agnostic at the API level — talks to whatever speaks HTTP+WS on :9223.
+Browser-agnostic at the API level — talks to whatever speaks HTTP+WS on :9224.
 Public API surface (23 functions) preserved from the websocket era so the
 9 direct importers don't need to change:
   * lib/browser_tools.py
@@ -37,9 +37,17 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
-import stealth  # noqa: F401  (kept for back-compat — re-exports seed/profile/init_script)
-import injection_guard  # noqa: F401
-import browser_cdp_guard  # noqa: F401
+# Sibling modules live in lib/ — importable as top-level when lib/ is on
+# sys.path (production) or as lib.X when imported as lib.browser_control
+# (tests). Fall back so both styles work.
+try:
+    import stealth  # noqa: F401  (re-exports seed/profile/init_script)
+    import injection_guard  # noqa: F401
+    import browser_cdp_guard  # noqa: F401
+except ImportError:
+    from lib import stealth  # noqa: F401
+    from lib import injection_guard  # noqa: F401
+    from lib import browser_cdp_guard  # noqa: F401
 
 try:
     import humanizer as _humanizer_mod  # noqa: F401
@@ -52,6 +60,13 @@ try:
 except Exception:
     sync_playwright = None  # type: ignore
     _HAS_PATCHRIGHT = False
+
+try:
+    import websocket as _ws_client  # websocket-client
+    _HAS_WS_CLIENT = True
+except Exception:
+    _ws_client = None  # type: ignore
+    _HAS_WS_CLIENT = False
 
 
 CDP_HTTP = "http://127.0.0.1:9224"
@@ -69,6 +84,7 @@ _playwright = None
 _browser = None
 _ctx = None
 _playwright_lock = threading.Lock()
+_patchright_wedged = False  # set once connect_over_cdp fails; skip retries
 
 
 _TABS_TTL_SEC = 0.15
@@ -108,12 +124,20 @@ if not _atexit_registered:
 
 
 def _get_browser():
-    """Connect (or reconnect) to the Chrome CDP instance on :9223."""
-    global _playwright, _browser
+    """Connect (or reconnect) to the Chrome CDP instance on :9224.
+
+    Chrome 150 rejects Patchright's connect_over_cdp session setup
+    (Network.setCacheDisabled: session closed) when the browser already has
+    many CDP sessions — the call hangs forever and wedges the module lock.
+    Fail fast with a short timeout so callers can fall back to raw CDP.
+    """
+    global _playwright, _browser, _patchright_wedged
     if not _HAS_PATCHRIGHT:
         raise RuntimeError(
             "patchright not installed. Run: pip install --break-system-packages patchright"
         )
+    if _patchright_wedged:
+        raise RuntimeError("patchright wedged on this browser; use raw CDP")
     with _playwright_lock:
         if _browser is not None:
             try:
@@ -126,8 +150,69 @@ def _get_browser():
             _playwright = sync_playwright().start()
         with _metrics_lock:
             _metrics["reconnects"] += 1
-        _browser = _playwright.chromium.connect_over_cdp(CDP_URL)
+        try:
+            _browser = _playwright.chromium.connect_over_cdp(CDP_URL, timeout=6000)
+        except Exception:
+            _patchright_wedged = True
+            _browser = None
+            raise
     return _browser
+
+
+# ---------------------------------------------------------------------------
+# Raw CDP fallback (Chrome 150 + many sessions)
+# ---------------------------------------------------------------------------
+# Patchright's connect_over_cdp wedges on this browser (see _get_browser).
+# Raw websocket-client CDP with suppress_origin=True connects reliably, so the
+# poll-loop functions (list_tabs / evaluate / read_text / page_text) fall back
+# to it when the Patchright path fails or hangs.
+
+
+def _raw_targets() -> List[Dict[str, Any]]:
+    """List CDP targets via the HTTP /json endpoint (never wedges)."""
+    with urllib.request.urlopen(CDP_HTTP + "/json", timeout=5) as r:
+        return json.load(r)
+
+
+def _raw_ws_url(target_id: str) -> str:
+    for t in _raw_targets():
+        if t.get("id") == target_id and t.get("webSocketDebuggerUrl"):
+            return t["webSocketDebuggerUrl"]
+    raise RuntimeError(f"no raw CDP ws url for target {target_id}")
+
+
+def _raw_eval(target_id: str, expression: str, timeout: float = 10.0) -> Any:
+    """Evaluate JS on a target over raw CDP. Returns the by-value result."""
+    if not _HAS_WS_CLIENT:
+        raise RuntimeError("websocket-client not installed")
+    ws = _ws_client.create_connection(
+        _raw_ws_url(target_id), timeout=timeout, suppress_origin=True
+    )
+    try:
+        ws.send(json.dumps({
+            "id": 1,
+            "method": "Runtime.evaluate",
+            "params": {"expression": expression, "returnByValue": True},
+        }))
+        while True:
+            msg = json.loads(ws.recv())
+            if msg.get("id") == 1:
+                return msg["result"]["result"].get("value")
+    finally:
+        try:
+            ws.close()
+        except Exception:
+            pass
+
+
+def _raw_text(target_id: str, timeout: float = 10.0) -> str:
+    """Read a target's body text over raw CDP."""
+    val = _raw_eval(
+        target_id,
+        "document.body ? document.body.innerText : ''",
+        timeout=timeout,
+    )
+    return val or ""
 
 
 def _get_ctx():
@@ -257,11 +342,17 @@ def _real_ua() -> str:
 def _ensure_profile() -> None:
     global _profile, _stealth_script
     if _profile is None:
-        from stealth.profiles import derive_profile  # noqa: WPS433
+        try:
+            from stealth.profiles import derive_profile  # noqa: WPS433
+        except ImportError:
+            from lib.stealth.profiles import derive_profile  # noqa: WPS433
         seed = int(os.environ.get("STEALTH_SEED", "0"))
         _profile = derive_profile(seed=seed, real_ua=_real_ua())
     if _stealth_script is None:
-        from stealth.init_script import build_init_script  # noqa: WPS433
+        try:
+            from stealth.init_script import build_init_script  # noqa: WPS433
+        except ImportError:
+            from lib.stealth.init_script import build_init_script  # noqa: WPS433
         _stealth_script = build_init_script(_profile)
 
 
@@ -331,7 +422,25 @@ def list_tabs() -> List[Dict[str, Any]]:
     now = time.time()
     if _tabs_cache and (now - _tabs_cache_at) < _TABS_TTL_SEC:
         return list(_tabs_cache)
-    pages = _get_ctx().pages
+    try:
+        pages = _get_ctx().pages
+    except Exception:
+        pages = None
+    if pages is None:
+        # Patchright wedged — fall back to raw CDP target list.
+        try:
+            tabs = [{
+                "id": t["id"],
+                "url": t.get("url", ""),
+                "title": t.get("title", ""),
+                "type": t.get("type", "page"),
+                "webSocketDebuggerUrl": t.get("webSocketDebuggerUrl"),
+            } for t in _raw_targets() if t.get("type") == "page"]
+            _tabs_cache = tabs
+            _tabs_cache_at = now
+            return list(tabs)
+        except Exception:
+            return []
     tabs: List[Dict[str, Any]] = []
     for p in pages:
         try:
@@ -471,8 +580,20 @@ def type_text(tab: Any = None, selector: str = "", text: str = "",
 
 
 def evaluate(tab: Any = None, expression: str = "", timeout: int = 10) -> Any:
-    page = _resolve_page(tab)
-    return page.evaluate(expression)
+    try:
+        page = _resolve_page(tab)
+        return page.evaluate(expression)
+    except Exception:
+        # Patchright wedged — fall back to raw CDP. Resolve the tab id.
+        tid = tab if isinstance(tab, str) else None
+        if tid is None:
+            for t in list_tabs():
+                if t["type"] == "page":
+                    tid = t["id"]
+                    break
+        if tid is None:
+            raise
+        return _raw_eval(tid, expression, timeout=timeout)
 
 
 def snapshot(tab: Any = None, depth: int = 10) -> Any:
@@ -487,8 +608,19 @@ def snapshot(tab: Any = None, depth: int = 10) -> Any:
 
 
 def read_text(tab: Any = None, selector: str = "body") -> str:
-    page = _resolve_page(tab)
-    return page.locator(selector).first.inner_text(timeout=10_000)
+    try:
+        page = _resolve_page(tab)
+        return page.locator(selector).first.inner_text(timeout=10_000)
+    except Exception:
+        tid = tab if isinstance(tab, str) else None
+        if tid is None:
+            for t in list_tabs():
+                if t["type"] == "page":
+                    tid = t["id"]
+                    break
+        if tid is None:
+            raise
+        return _raw_text(tid)
 
 
 def _find_js(iframe_marker: str) -> str:
@@ -538,12 +670,23 @@ def clear_element(tab: Any = None, *, iframe_marker: str = "",
 
 
 def page_text(tab: Any = None, iframe_marker: str = "") -> str:
-    page = _resolve_page(tab)
-    if iframe_marker:
-        frames = page.frames
-        target = next((f for f in frames if iframe_marker in (f.url or "")), page.main_frame)
-        return target.locator("body").first.inner_text()
-    return page.locator("body").first.inner_text()
+    try:
+        page = _resolve_page(tab)
+        if iframe_marker:
+            frames = page.frames
+            target = next((f for f in frames if iframe_marker in (f.url or "")), page.main_frame)
+            return target.locator("body").first.inner_text()
+        return page.locator("body").first.inner_text()
+    except Exception:
+        tid = tab if isinstance(tab, str) else None
+        if tid is None:
+            for t in list_tabs():
+                if t["type"] == "page":
+                    tid = t["id"]
+                    break
+        if tid is None:
+            raise
+        return _raw_text(tid)
 
 
 # ---------------------------------------------------------------------------

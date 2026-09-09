@@ -206,11 +206,6 @@ class Config:
             "CORTEXAGENT_MODEL", "backend", "big_model", "")
         self.big_model_port = _env_int(
             "CORTEXAGENT_PORT", "backend", "big_model_port", 8080)
-        self.tiny_model_port = _env_int(
-            "CORTEXAGENT_TINY_PORT", "backend", "tiny_model_port", 8082)
-        self.tiny_model = _env(
-            "CORTEXAGENT_TINY_MODEL", "backend", "tiny_model",
-            str(self.models_dir / "lfm2.5-1.2b" / "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"))
 
 
 
@@ -368,7 +363,7 @@ class Config:
         self.stt_cleanup = _env_bool(
             "CORTEXAGENT_STT_CLEANUP", "stt", "cleanup", False)
         self.stt_cleanup_target = _env(
-            "CORTEXAGENT_STT_CLEANUP_TARGET", "stt", "cleanup_target", "tiny")
+            "CORTEXAGENT_STT_CLEANUP_TARGET", "stt", "cleanup_target", "big")
 
 
 
