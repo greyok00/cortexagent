@@ -195,12 +195,12 @@ def _smoke() -> int:
     check("AsyncWSConnector imported", True)
 
 
-    conn = WSConnector("ws://localhost:8082")
+    conn = WSConnector("ws://localhost:8080")
     check("WSConnector created", conn is not None)
-    check("connector URL", conn.url == "ws://localhost:8082")
+    check("connector URL", conn.url == "ws://localhost:8080")
 
 
-    async_conn = AsyncWSConnector("ws://localhost:8082")
+    async_conn = AsyncWSConnector("ws://localhost:8080")
     check("AsyncWSConnector created", async_conn is not None)
 
     print("✅ ws_connector smoke PASS" if fails == 0 else f"❌ {fails} failures")

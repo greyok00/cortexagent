@@ -47,10 +47,9 @@ def _models_status(prefetched: "dict | None" = None) -> int:
     if not s or not s.get("ok"):
         _err(f"status error: {s}")
         return 1
-    big, tiny, prox = s["big"], s["tiny"], s["proxy"]
+    big, prox = s["big"], s["proxy"]
     print(f"{BOLD}CortexAgent models{RST}")
     print(f"  big  :{big['port']}  {'🟢 healthy' if big['healthy'] else '🔴 down'}  (running={big['running']})")
-    print(f"  tiny :{tiny['port']}  {'🟢 healthy' if tiny['healthy'] else '🔴 down'}  (running={tiny['running']})")
     print(f"  proxy: {'🟢 up' if prox['running'] else '🔴 down'}")
     print(f"  sessions: {s['active_sessions']}  idle: {s['idle_sec'] or 0}s / {s['idle_unload_sec']}s")
     return 0
@@ -90,7 +89,7 @@ def _models_unload(which: str) -> int:
 
 def _models_reload(which: str) -> int:
     if which == "all":
-        seq = ["big", "tiny"]
+        seq = ["big"]
     else:
         seq = [which]
     rc = 0
@@ -349,7 +348,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "models", help="manage model backends via the daemon (status/load/unload/reload/swap)")
     mp.add_argument("action", choices=["status", "load", "unload", "reload", "swap"])
     mp.add_argument("which", nargs="?", default="big",
-                    help="which model (big|tiny|all) — or the model path for 'swap'")
+                    help="which model (big|all) — or the model path for 'swap'")
     mp.add_argument("--model", dest="model", default=None,
                     help="load an arbitrary model into the big slot (hot-swap by type)")
     mp.add_argument("--ctx", type=int, default=8192, help="context size for a swapped model")

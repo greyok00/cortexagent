@@ -59,14 +59,12 @@ fi
 # directly when nothing is using the agent but VRAM needs to be released
 # (e.g., for a game or another model).
 if [ $# -gt 0 ] && { [ "$1" = "--unload" ] || [ "$1" = "unload" ]; }; then
-  echo "🛑 Unloading big + tiny (freeing VRAM)..."
+  echo "🛑 Unloading big (freeing VRAM)..."
   python3 -c "import sys; sys.path.insert(0, '$REPO_ROOT'); from lib import control; \
               r=control.send_request('unload', which='big', timeout=30); \
               print('big:', r); \
-              r=control.send_request('unload', which='tiny', timeout=30); \
-              print('tiny:', r); \
               sys.exit(0 if r.get('ok') else 1)" || { echo "❌ unload failed" >&2; exit 1; }
-  echo "✅ VRAM released — :8080 + :8082 down. Next 'cortexagent' reloads."
+  echo "✅ VRAM released — :8080 down. Next 'cortexagent' reloads."
   exit 0
 fi
 
@@ -170,7 +168,7 @@ fi
 # ── System tray removed ────────────────────────────────────────────────────────
 # 2026-08-31 user directive: NO system tray at all. Typing `cortexagent` runs
 # the TUI/CLI directly in the current terminal and never starts the tray. The
-# overseer + tiny :8082 stay as their own always-on systemd service
+# overseer stays as its own always-on systemd service
 # (independent of the tray), and STT stays a separate standalone service.
 
 # ── Webui status removed 2026-08-20: WebUI (8090 pipeline + 8093 security)
@@ -242,7 +240,7 @@ fi
 # are opt-in via `--provider=NAME`; without the flag we FORCE settings.json back
 # to the local default so nothing else can silently overwrite it. API keys are
 # read from the conf file [provider] section and surfaced as env vars for the
-# registered cloud providers in models.ts. The overseer (tiny :8082) is never
+# registered cloud providers in models.ts. The overseer is never
 # touched — it stays local + always loaded.
 PROVIDER="${CORTEXAGENT_PROVIDER:-local}"
 for arg in "$@"; do
@@ -372,7 +370,7 @@ export CORTEX_QUIET=1
 # ── Isolate the config dir so the global ~/.claude/CLAUDE.md does NOT load ─
 #    into this local agent. cortexagent is self-contained: its own memory,
 #    its own settings, NO CLAUDE.md — the practical-reasoning profile is
-#    injected at runtime (slimtoken system_minify + lib/tiny_llm default).
+#    injected at runtime (slimtoken system_minify).
 #    We hard-removed config/CLAUDE.md and config/AGENT.md so any update to
 #    claude Code's CLAUDE.md parser can't break us.
 CONFIG_DIR="${CORTEXAGENT_CONFIG_DIR:-$HOME/.cortexagent-config}"
@@ -534,10 +532,9 @@ cleanup() {
 control.send_request('session-end', timeout=5); \
 control.send_request('unload', which='big', timeout=30)" 2>/dev/null || true
   else
-    # Stop ONLY the big-model llama-server on :8080 (port-specific — never the
-    # always-on tiny on :8082). model_backend stop big kills by port, so it
-    # can't accidentally hit the tiny (alias "cortexagent-tiny") or Ollama's
-    # llama-server.
+    # Stop ONLY the big-model llama-server on :8080 (port-specific).
+    # model_backend stop big kills by port, so it can't accidentally hit
+    # Ollama's llama-server.
     if curl -sf -m 2 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
       : # 2026-08-20 user feedback: silent — big-model stop line clutters popup chat
       python3 "${REPO_ROOT}/lib/model_backend.py" stop big >/dev/null 2>&1 || true
@@ -796,7 +793,7 @@ trap '[ -n "${_TICKER_PID}" ] && kill "${_TICKER_PID}" 2>/dev/null || true' EXIT
 # The extensions in ~/.cortex/agent/extensions/ (models.ts auto-switch,
 # skills.ts tool bridge, memory.ts prompt-save + memory inject) replace the
 # claude hooks. The practical-reasoning profile is applied via the slimtoken
-# system_minify path and the tiny_llm default — no CLAUDE.md.
+# system_minify path — no CLAUDE.md.
 # Branding: surface the cortex name so the user knows which binary is running.
 # (CORTEX_QUIET=1 silences it for one-shots / scripts.)
 # 2026-08-20 user feedback: silent — the � wolf brand line clutters the

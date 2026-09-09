@@ -255,8 +255,8 @@ def cleanup(text: str) -> str:
     target = CFG.stt_cleanup_target
     if target == "off":
         return text
-    port = CFG.tiny_model_port if target == "tiny" else CFG.big_model_port
-    model = "tiny" if target == "tiny" else "big"
+    port = CFG.big_model_port
+    model = "big"
     prompt = (
         "You are a transcription cleaner. Fix punctuation, capitalization, "
         "and expand abbreviations in the following speech-to-text transcript. "

@@ -849,11 +849,9 @@ def _metrics_line() -> str:
 
     big_ok = _port_open(8080)
     proxy_ok = _port_open(8081)
-    ovsr_ok = _port_open(8082)
     health = (
         f"{'●' if big_ok else '○'} big :8080   "
-        f"{'●' if proxy_ok else '○'} proxy :8081   "
-        f"{'●' if ovsr_ok else '○'} ovsr :8082"
+        f"{'●' if proxy_ok else '○'} proxy :8081"
     )
 
     try:

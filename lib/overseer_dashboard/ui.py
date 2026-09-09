@@ -341,8 +341,8 @@ class Dashboard(tk.Tk):
         self._health_rows: Dict[str, tk.Label] = {}
 
 
-        for key, label in (("big", "Model"), ("tiny", "Overseer"),
-                           ("proxy", "Proxy"), ("backend", "Backend")):
+        for key, label in (("big", "Model"), ("proxy", "Proxy"),
+                           ("backend", "Backend")):
             row = tk.Frame(body, bg=W.PANEL)
             row.pack(fill="x", pady=2)
             tk.Label(row, text=label, bg=W.PANEL, fg=W.DIM,
@@ -1072,9 +1072,6 @@ class Dashboard(tk.Tk):
         self._health_rows["big"].config(
             text="● healthy" if s.big_healthy else "✕ down",
             fg=W.GREEN if s.big_healthy else W.RED)
-        self._health_rows["tiny"].config(
-            text="● healthy" if s.tiny_healthy else "✕ down",
-            fg=W.GREEN if s.tiny_healthy else W.RED)
         self._health_rows["proxy"].config(
             text="● up" if s.proxy_up else "✕ down",
             fg=W.GREEN if s.proxy_up else W.RED)
@@ -1159,7 +1156,7 @@ class Dashboard(tk.Tk):
         modal.add_text(f"Connected: {s.connected} · stale: {s.stale} ({s.stale_detail})")
         modal.add_text(f"Model: {s.model.display_model()} (source: {s.model.source})")
         modal.add_text(f"Route: {s.model.route} · Backend: {s.model.backend}")
-        modal.add_text(f"Big healthy: {s.big_healthy} · Tiny: {s.tiny_healthy} · Proxy: {s.proxy_up}")
+        modal.add_text(f"Big healthy: {s.big_healthy} · Proxy: {s.proxy_up}")
         modal.add_text("")
         modal.add_text("Error chain:", W.YELLOW, W.FONT_BOLD)
         if s.error_chain:

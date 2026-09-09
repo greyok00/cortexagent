@@ -51,6 +51,12 @@ def _get_token_metrics() -> str:
                 parts.append(f"in {in_tps} t/s")
             if reqs:
                 parts.append(f"{reqs} req")
+            # Proxy-reported VRAM (nvidia-smi probe inside the proxy). Rendered
+            # as "8.2/16 GB" alongside the daemon's per-process breakdown.
+            vu = data.get("vram_used_mib")
+            vt = data.get("vram_total_mib")
+            if vu is not None and vt:
+                parts.append(f"{vu/1024:.1f}/{vt/1024:.0f} GB")
             return " · ".join(parts) if parts else ""
     except Exception:
         return ""
@@ -83,9 +89,8 @@ def _get_vram_breakdown() -> str:
     if not vbp.get("ok"):
         return ""
     big = int(vbp.get("big_mib", 0) or 0)
-    tiny = int(vbp.get("tiny_mib", 0) or 0)
     other = int(vbp.get("other_mib", 0) or 0)
-    used = big + tiny + other
+    used = big + other
     if used <= 0:
         return ""
 
@@ -94,9 +99,7 @@ def _get_vram_breakdown() -> str:
     parts = []
     if big:
         parts.append(f"big {big/1024:.1f} GB")
-    if tiny:
-        parts.append(f"tiny {tiny/1024:.1f} GB")
-    if other and not (big and tiny):
+    if other and not big:
         parts.append(f"other {other/1024:.1f} GB")
     if not parts:
         return f"{used/1024:.1f} GB"

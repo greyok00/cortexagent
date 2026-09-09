@@ -235,7 +235,7 @@ def scan() -> list[dict]:
 def project_for_slug(slug: str, projects: list[dict]) -> dict | None:
     """Map a transcript slug back to a shelved project folder if it's under one.
 
-    Claude slug for /home/grey/reframing-engine is -home-grey-reframing-engine
+    Claude slug for <repo-root>/reframing-engine is -home-grey-reframing-engine
     (path separators and the leading slash become '-'). Match exactly so the
     shelved project's resume note is attached to the resumed turn.
     """

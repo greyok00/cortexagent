@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import signal
 import subprocess
 import sys
@@ -64,8 +65,6 @@ WORKFLOW_FILE = STATE_DIR / "workflow_state.json"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 from lib.config import CFG  # noqa: E402
-from lib.model_backend import LlamaServer  # noqa: E402
-from lib import tiny_llm  # noqa: E402
 from lib import control  # noqa: E402 — daemon_present() to detect daemon mode
 from lib.errorlog import log_exception, close_dump  # noqa: E402
 
@@ -175,16 +174,6 @@ _worker_heartbeat: Deque = deque(maxlen=64)
 
 
 
-_tiny = LlamaServer(
-    name="tiny",
-    model_path=str(CFG.tiny_model),
-    port=int(CFG.tiny_model_port),
-    ctx=2048,
-    ngl=999,
-    alias="cortexagent-tiny",
-    extra_args=["-fa", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-np", "1", "-t", "4"],
-    log_file=str(CFG.logs_dir / "tiny-server.log"),
-)
 
 
 
@@ -192,7 +181,6 @@ _tiny = LlamaServer(
 
 
 
-_tiny_lock = threading.Lock()
 _queue_dispatch_lock = threading.Lock()
 
 
@@ -595,31 +583,8 @@ def task_steps_publish(state: Dict, steps: List[Dict], current: Optional[int]) -
 
 
 
-def _preload_tiny_model() -> bool:
-
-    with _tiny_lock:
-        _log(f"Starting tiny model on :{_tiny.port} (llama-server)...", "🔄", CYAN)
-        if _tiny.start():
-            _log(f"Tiny model ready on :{_tiny.port} (pid {_tiny.pid})", "✅", GREEN)
-            return True
-        _log(f"Failed to start tiny model on :{_tiny.port}", "❌", RED)
-        return False
-
-
-def _keepalive_tiny_model() -> bool:
-
-    with _tiny_lock:
-        if _tiny.is_healthy():
-            return True
-        _log("Tiny model down — restarting...", "🔄", YELLOW)
-        return _tiny.start(timeout=60)
-
-
-def _query_tiny_llm(prompt: str, system: str = "",
-                    max_tokens: int = 256) -> Optional[str]:
-
-
-
+def _query_llm(prompt: str, system: str = "", max_tokens: int = 256,
+               temperature: float = 0.1, timeout: int = 30) -> Optional[str]:
 
     frame = (
         "You are the CortexAgent overseer's reasoning engine. Plain language, "
@@ -631,20 +596,189 @@ def _query_tiny_llm(prompt: str, system: str = "",
     else:
         wrapped_system = frame
 
+    messages = [
+        {"role": "system", "content": wrapped_system},
+        {"role": "user", "content": prompt},
+    ]
+    payload = {
+        "model": CFG.big_alias,
+        "messages": messages,
+        "max_tokens": int(max_tokens),
+        "temperature": float(temperature),
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    url = f"http://127.0.0.1:{CFG.big_model_port}/v1/chat/completions"
+    try:
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(), method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read())
+        choices = data.get("choices") or [{}]
+        content = choices[0].get("message", {}).get("content", "") or ""
+        return content.strip()
+    except Exception:
+        return None
 
-    result = tiny_llm.query(prompt, system=wrapped_system, max_tokens=max_tokens)
-    if result:
-        return result
+
+def _parse_tool_calls(message: dict) -> list:
+
+    calls = []
+    for tc in message.get("tool_calls") or []:
+        fn = tc.get("function", {})
+        name = fn.get("name", "")
+        args = fn.get("arguments", {})
+        if isinstance(args, str):
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except Exception:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+        calls.append({
+            "id": tc.get("id", f"call_{len(calls)}"),
+            "name": name,
+            "arguments": args,
+        })
+    return calls
 
 
-    _log("tiny LLM returned empty — retrying once with stricter framing", "🔁", DIM)
-    strict = wrapped_system + "\n\nAnswer in plain text, one line, no preamble."
-    result = tiny_llm.query(prompt, system=strict, max_tokens=max_tokens)
-    return result
+def _parse_text_tool_calls(content: str) -> list:
+
+    if not content:
+        return []
+    text = content.strip()
+
+    m = re.search(
+        r"Action:\s*([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?:\n\s*Action Input:\s*(\{.*\}))?",
+        text, re.S)
+    if m:
+        name = m.group(1)
+        args = {}
+        if m.group(2):
+            try:
+                args = json.loads(m.group(2))
+            except Exception:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+        return [{"id": "call_text_0", "name": name, "arguments": args}]
+
+    m = re.search(r"<function_call>(.*?)</function_call>", text, re.S)
+    if m:
+        inner = m.group(1).strip()
+        try:
+            obj = json.loads(inner)
+        except Exception:
+            obj = None
+        items = obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])
+        calls = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            fn = item.get("function") if isinstance(item.get("function"), dict) else item
+            name = fn.get("name", "")
+            args = fn.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args) if args.strip() else {}
+                except Exception:
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+            if isinstance(name, str) and name:
+                calls.append({"id": f"call_tag_{len(calls)}",
+                              "name": name, "arguments": args})
+        if calls:
+            return calls
+
+    start = text.find("{")
+    if start == -1:
+        return []
+    depth = 0
+    end = -1
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end == -1:
+        return []
+    try:
+        obj = json.loads(text[start:end + 1])
+    except Exception:
+        return []
+    if not isinstance(obj, dict):
+        return []
+
+    if "tool_call" in obj and isinstance(obj["tool_call"], dict):
+        obj = obj["tool_call"]
+    name = obj.get("tool") or obj.get("name") or obj.get("function")
+    if isinstance(name, dict):
+        name = name.get("name")
+    if not isinstance(name, str) or not name:
+        return []
+    args = obj.get("arguments") or obj.get("args") or obj.get("parameters") or {}
+    if isinstance(args, str):
+        try:
+            args = json.loads(args) if args.strip() else {}
+        except Exception:
+            args = {}
+    if not isinstance(args, dict):
+        args = {}
+    return [{"id": "call_text_0", "name": name, "arguments": args}]
 
 
+def _query_llm_with_tools(messages: list, tools: list, max_tokens: int = 512,
+                          timeout: int = 60) -> Optional[dict]:
+
+    payload = {
+        "model": CFG.big_alias,
+        "messages": messages,
+        "tools": tools,
+        "max_tokens": int(max_tokens),
+        "temperature": 0.1,
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    url = f"http://127.0.0.1:{CFG.big_model_port}/v1/chat/completions"
+    try:
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(), method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read())
+        choices = data.get("choices") or [{}]
+        message = choices[0].get("message", {}) or {}
+        calls = _parse_tool_calls(message)
+        if calls:
+            return {"kind": "tool_calls", "calls": calls}
+        content = (message.get("content") or "").strip()
+        if content:
+            text_calls = _parse_text_tool_calls(content)
+            if text_calls:
+                return {"kind": "tool_calls", "calls": text_calls}
+            return {"kind": "text", "content": content}
+        return None
+    except Exception:
+        return None
 
 
+def _big_model_healthy(timeout: float = 5.0) -> bool:
+
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{CFG.big_model_port}/slots", method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
 
 
 def _get_memory_stats() -> Dict:
@@ -782,57 +916,21 @@ def _merge_minify_into_state(state: Dict) -> None:
 
 
 
-_TOKEN_TRACKER_FILE = STATE_DIR / "token_tracker.json"
-
-
 def _merge_token_stats() -> Dict:
 
     proxy_stats = _read_minify_stats()
-    tiny_stats = _load_json(_TOKEN_TRACKER_FILE, default={}) or {}
 
     return {
         "proxy": proxy_stats,
-        "tiny_model": tiny_stats,
         "total": {
-            "runs": proxy_stats.get("runs", 0) + tiny_stats.get("runs", 0),
-            "tokens_in": proxy_stats.get("tokens_in", 0) + tiny_stats.get("tokens_in", 0),
-            "tokens_out": proxy_stats.get("tokens_out", 0) + tiny_stats.get("tokens_out", 0),
-            "tokens_saved": proxy_stats.get("tokens_saved", 0) + tiny_stats.get("tokens_saved", 0),
+            "runs": proxy_stats.get("runs", 0),
+            "tokens_in": proxy_stats.get("tokens_in", 0),
+            "tokens_out": proxy_stats.get("tokens_out", 0),
+            "tokens_saved": proxy_stats.get("tokens_saved", 0),
             "ratio_pct": 0.0,
-            "last_run_ts": max(proxy_stats.get("last_run_ts", 0), tiny_stats.get("last_run_ts", 0)),
+            "last_run_ts": proxy_stats.get("last_run_ts", 0),
         },
     }
-
-
-def _track_tiny_model_run(tokens_in: int, tokens_out: int) -> None:
-
-    stats = _load_json(_TOKEN_TRACKER_FILE, default={}) or {}
-    now = time.time()
-
-    stats["runs"] = stats.get("runs", 0) + 1
-    stats["tokens_in"] = stats.get("tokens_in", 0) + tokens_in
-    stats["tokens_out"] = stats.get("tokens_out", 0) + tokens_out
-
-    stats["tokens_saved"] = 0
-    stats["ratio_pct"] = 0.0
-    stats["last_run_ts"] = now
-    hist = stats.setdefault("history_60s", [])
-    hist.append((now, tokens_in))
-    cutoff = now - 60.0
-    if len(hist) > 60:
-        hist[:] = [(t, v) for (t, v) in hist if t >= cutoff][-60:]
-
-    _save_json(_TOKEN_TRACKER_FILE, stats)
-
-
-def _track_tiny_model_query(prompt: str, result: str) -> None:
-
-    if not result:
-        return
-
-    tokens_in = max(1, len(prompt) // 4)
-    tokens_out = max(0, len(result) // 4)
-    _track_tiny_model_run(tokens_in, tokens_out)
 
 
 def _merge_minify_into_state(state: Dict) -> None:
@@ -2013,14 +2111,14 @@ def _daemon_loop(interval: int) -> None:
     signal.signal(signal.SIGTERM, _handle_stop_signal)
     signal.signal(signal.SIGINT, _handle_stop_signal)
 
-    _log(f"Overseer daemon started (interval: {interval}s, tiny: :{_tiny.port})", "🚀", CYAN)
+    _log(f"Overseer daemon started (interval: {interval}s, model: :{CFG.big_model_port})", "🚀", CYAN)
 
     state = _load_state()
     state["started_at"] = datetime.now().isoformat()
     _save_state(state)
 
 
-    has_llm = _preload_tiny_model()
+    has_llm = _big_model_healthy()
 
     tick = 0
     while not _SHUTDOWN:
@@ -2183,18 +2281,14 @@ def _daemon_loop(interval: int) -> None:
 
 
 
-            if tick % 5 == 0:
-                threading.Thread(target=_keepalive_tiny_model, daemon=True).start()
-
-
             if has_llm and tick % 10 == 0:
-                overseer_set_state(state, "querying tiny LLM for health summary")
+                overseer_set_state(state, "querying LLM for health summary")
                 prompt = (
                     f"Memory: {stats['hot']}H/{stats['warm']}W/{stats['cold']}C. "
                     f"Alerts: {len(alerts)}. Ticks: {tick}. "
                     "Is the system healthy? One short sentence."
                 )
-                summary = _query_tiny_llm(prompt, "You are a system monitor. Be concise.", 64)
+                summary = _query_llm(prompt, "You are a system monitor. Be concise.", 64)
                 if summary:
                     _log(f"LLM health: {summary}", "💬", DIM)
                     state["last_llm_summary"] = summary
@@ -2229,8 +2323,7 @@ def _daemon_loop(interval: int) -> None:
             time.sleep(1)
 
 
-    _log("Overseer shutting down — unloading tiny model...", "🛑", YELLOW)
-    _unload_tiny_model()
+    _log("Overseer shutting down...", "🛑", YELLOW)
     state = _load_state()
     state["stopped_at"] = datetime.now().isoformat()
     _save_state(state)
@@ -2292,18 +2385,6 @@ def _start(interval: int) -> None:
     _daemon_loop(interval)
 
 
-def _unload_tiny_model() -> bool:
-
-    if control.daemon_present():
-        _log("Daemon present — leaving tiny model to the daemon (not stopping)", "🛡️", DIM)
-        return True
-    with _tiny_lock:
-        if _tiny.stop():
-            _log(f"Tiny model stopped on :{_tiny.port} — VRAM freed", "💤", DIM)
-            return True
-        return False
-
-
 def _stop() -> None:
 
     pid = _is_running()
@@ -2335,12 +2416,6 @@ def _stop() -> None:
     else:
         print("Overseer not running")
         PID_FILE.unlink(missing_ok=True)
-
-
-    if _unload_tiny_model():
-        print(f"Tiny model stopped on :{_tiny.port} — VRAM freed")
-    else:
-        print(f"Tiny model on :{_tiny.port} may already be stopped")
 
 
 def _replace_emoji(text: str) -> str:
@@ -2380,7 +2455,8 @@ def _status() -> None:
             f"Overseer: RUNNING (pid {pid})",
             f"  Started: {state.get('started_at', 'unknown')}",
             f"  Ticks: {state['total_ticks']}",
-            f"  Model: tiny LFM2.5-1.2B on :{_tiny.port} ({'up' if _tiny.is_healthy() else 'down'})",
+            f"  Model: {CFG.big_alias} on :{CFG.big_model_port} "
+            f"({'up' if _big_model_healthy() else 'down'})",
         ]
 
         stats = _get_memory_stats()
@@ -2409,7 +2485,6 @@ def _status() -> None:
             lines.append(f"  Tokens out: {total.get('tokens_out', 0):,}")
             lines.append(f"  Tokens saved: {total.get('tokens_saved', 0):,} ({total.get('ratio_pct', 0):.1f}%)")
             lines.append(f"  Proxy runs: {token_stats.get('proxy', {}).get('runs', 0)}")
-            lines.append(f"  Tiny runs:  {token_stats.get('tiny_model', {}).get('runs', 0)}")
         else:
             lines.append(f"  Token tracking: no data yet")
 

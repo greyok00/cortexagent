@@ -198,11 +198,9 @@ def read_snapshot() -> M.RuntimeSnapshot:
     active_model = _read_json(STATE_DIR / "state" / "active_model.json", {}) or {}
 
     big = daemon.get("big") if isinstance(daemon.get("big"), dict) else {}
-    tiny = daemon.get("tiny") if isinstance(daemon.get("tiny"), dict) else {}
     proxy_up = bool(proxy.get("proxy_up", False)) or bool(daemon.get("proxy", {}).get("running"))
     big_healthy = bool(big.get("healthy", False))
-    tiny_healthy = bool(tiny.get("healthy", False))
-    backend_healthy = big_healthy or tiny_healthy
+    backend_healthy = big_healthy
 
     connected = bool(daemon.get("ok")) or bool(proxy)
     data_age = 0.0
@@ -236,7 +234,6 @@ def read_snapshot() -> M.RuntimeSnapshot:
         stale_detail=stale_detail,
         model=model,
         big_healthy=big_healthy,
-        tiny_healthy=tiny_healthy,
         proxy_up=proxy_up,
         backend_healthy=backend_healthy,
         inference=inference,

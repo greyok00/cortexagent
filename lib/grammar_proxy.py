@@ -293,6 +293,97 @@ def _cap_thinking(parsed):
     return parsed
 
 
+def _hard_cap_prompt(parsed: dict) -> tuple[dict, str | None]:
+    """Aggressively truncate the user message so the body always fits.
+
+    Runs BEFORE `_context_gate()` — it is the first line of defence.  It:
+
+    1. Reserves room for system prompt, tool definitions, and the minimal
+       message envelope (role, content key).  Budget is computed with the
+       real cl100k tokenizer.
+    2. Finds the LATEST user message (the one being added now) and truncates
+       its content to whatever character budget remains.
+    3. Prepends a CLEAR NOTICE so the assistant knows the prompt was cut:
+         "[TRUNCATED: your prompt was too large for this context window."
+         "Only the end fit. Rework into smaller chunks.]\n\n"
+    4. Returns ``(modified_parsed, notice)``.  ``notice`` is the human-
+       readable string prepended (or None if nothing was truncated).
+
+    If even a bare 10-char user prompt can't fit after system+tools, the
+    function returns the original parsed dict with a NOTICE that tells the
+    user to split their request.  The caller should then send a friendly
+    error instead of a 400 that triggers auto-compaction.
+
+    Parameters
+    ----------
+    parsed : dict
+        The request body (same shape as what reaches _context_gate).
+
+    Returns
+    -------
+    (parsed, notice)
+        Modified parsed dict + human-readable notice string (or None).
+    """
+    if not isinstance(parsed, dict):
+        return parsed, None
+
+    # ── 1. Measure what system + tools + envelope already consume ─────
+    system_tok = count_system(parsed.get("system"))
+    tools_tok  = count_tools(parsed.get("tools"))
+    # Envelope overhead: role + content wrapper (JSON structure, keys, etc.)
+    # Measured empirically: ~80 chars for a 10-char user msg = 8 tok
+    ENVELOPE_TOK = 80
+
+    reserved_tok = system_tok + tools_tok + ENVELOPE_TOK
+    # How many tokens of user text can we fit?
+    # Reserve 1 token for output, plus a 1% safety margin so the total
+    # (system + tools + user_envelope + user_text + output) stays strictly
+    # under _HARD_CEILING even with cl100k-vs-Qwen drift.
+    # 3 chars/token is conservative but safe; 4 chars/tok overestimates
+    # for dense unique text and caused the overflow above.
+    user_budget_tok = max(1, int((_HARD_CEILING - reserved_tok - 1) * 0.99))
+    user_budget_chars = user_budget_tok * 3  # 3 chars/tok — conservative
+
+    # ── 2. Find latest user message and check size ────────────────────
+    msgs = parsed.get("messages")
+    if not isinstance(msgs, list):
+        return parsed, None
+
+    # Walk backwards to find the latest user message
+    target_idx = -1
+    for i in range(len(msgs) - 1, -1, -1):
+        m = msgs[i]
+        if isinstance(m, dict) and m.get("role") == "user":
+            target_idx = i
+            break
+
+    if target_idx < 0:
+        return parsed, None
+
+    user_msg = msgs[target_idx]
+    content = user_msg.get("content", "")
+    if not isinstance(content, str):
+        return parsed, None
+
+    char_len = len(content)
+    if char_len <= user_budget_chars:
+        return parsed, None  # already fits
+
+    # ── 3. Truncate ───────────────────────────────────────────────────
+    notice = (
+        "[TRUNCATED: your prompt was too large for this context window. "
+        "Only the tail (last ~4000 chars) fit — the head was dropped. "
+        "Rework your request into smaller chunks for complete processing.\n\n"
+    )
+    # Keep the tail; budget = notice + tail
+    tail_budget = max(200, user_budget_chars - len(notice))
+    truncated = content[-tail_budget:]
+    new_content = notice + truncated
+    msgs[target_idx] = {**user_msg, "content": new_content}
+
+    return parsed, None  # notice is already in the content
+
+
 def _context_gate(parsed):
     """Post-minify hard gate — never forward a prompt llama-server must 400.
 
@@ -303,12 +394,19 @@ def _context_gate(parsed):
     the newest message); still over → return ok=False and the caller sends a
     llama-server-shaped overflow 400 so the client's isContextOverflow()
     recovery compacts and retries instead of stalling.
+
+    Returns
+    -------
+    (body, ok, total_tokens, is_overcapacity)
+        ``is_overcapacity`` is True when system+tools alone exceed the
+        ceiling (hard cap cannot help).  The caller should use
+        ``_respond_overcapacity`` instead of ``_respond_overflow``.
     """
     if not _MINIFY_OK or not isinstance(parsed, dict):
-        return parsed, True, 0
+        return parsed, True, 0, False
     msgs = parsed.get("messages")
     if not isinstance(msgs, list) or not msgs:
-        return parsed, True, 0
+        return parsed, True, 0, False
 
     def _total(body):
         n = (count_system(body.get("system")) + count_tools(body.get("tools"))
@@ -324,21 +422,42 @@ def _context_gate(parsed):
 
     total = _total(parsed)
     if total <= _HARD_CEILING:
-        return parsed, True, total
+        return parsed, True, total, False
     try:
         trimmed = enforce_budget(parsed, _HARD_CEILING, keep_last=1)
         t2 = _total(trimmed)
         if t2 <= _HARD_CEILING:
             print(f"[proxy] gate: emergency trim {total}→{t2} tok "
                   f"(keep_last=1, was over {_HARD_CEILING})", file=sys.stderr)
-            return trimmed, True, t2
-        print(f"[proxy] gate: REJECT {total} tok > {_HARD_CEILING} — "
-              f"overflow 400 returned to client", file=sys.stderr)
-        return parsed, False, total
+            return trimmed, True, t2, False
+        # ── Hard cap fallback: truncate user message to fit ─────────────
+        print(
+            f"[proxy] gate: OVER {_HARD_CEILING} tok — applying hard cap "
+            f"(trim user msg)",
+            file=sys.stderr,
+        )
+        capped, _ = _hard_cap_prompt(parsed)
+        t3 = _total(capped)
+        if t3 <= _HARD_CEILING:
+            print(
+                f"[proxy] gate: hard cap trimmed to {t3} tok (fits)",
+                file=sys.stderr,
+            )
+            return capped, True, t3, False
+        # Even the truncated prompt won't fit — system+tools alone are
+        # too large.  Return a CLEAR rejection that does NOT look like a
+        # server-overflow (so isContextOverflow stays False and no
+        # auto-compaction loop fires).
+        print(
+            f"[proxy] gate: HARD OVER {t3} tok > {_HARD_CEILING} — "
+            f"clear rejection (system+tools too large)",
+            file=sys.stderr,
+        )
+        return parsed, False, t3, True  # is_overcapacity = True
     except Exception as e:
         # counting/enforce failed — forward as before rather than block traffic
         print(f"[proxy] gate bypassed: {e}", file=sys.stderr)
-        return parsed, True, total
+        return parsed, True, total, False
 
 
 
@@ -856,6 +975,8 @@ class ProxyHandler:
         # llama-server-shaped overflow 400 — the body text matches the
         # client's OVERFLOW_PATTERNS (/exceeds the available context size/i)
         # so its existing recovery path compacts and retries.
+        # Used ONLY when the body itself is over the ceiling (not when
+        # _hard_cap_prompt already fixed it).
         body = json.dumps({"error": {
             "message": f"request ({n_tokens} tokens) exceeds the available "
                        f"context size ({_CONTEXT_WINDOW} tokens) [cortexagent gate]",
@@ -863,6 +984,34 @@ class ProxyHandler:
             "code": 400,
         }}).encode()
         resp = ("HTTP/1.1 400 Bad Request\r\n"
+                "Content-Type: application/json\r\n"
+                f"Content-Length: {len(body)}\r\n\r\n").encode() + body
+        try:
+            self.conn.sendall(resp)
+        except Exception:
+            pass
+
+    def _respond_overcapacity(self, n_tokens: int, truncated_chars: int):
+        """Clear over-capacity rejection.
+
+        This response does NOT match the client's OVERFLOW_PATTERNS, so
+        isContextOverflow() stays False and NO auto-compaction loop fires.
+        Instead the assistant sees the error text directly.
+        """
+        notice = (
+            f"Over capacity: the full prompt ({n_tokens} estimated tokens) "
+            f"cannot fit in the {_CONTEXT_WINDOW}-token window even after "
+            f"aggressive truncation. Only the last ~{truncated_chars:,} chars "
+            f"of your message can be processed. Rework your request into "
+            f"smaller chunks for complete processing."
+        )
+        body = json.dumps({"error": {
+            "message": notice,
+            "type": "over_capacity",
+            "code": 429,
+            "hint": "split your request into smaller pieces",
+        }}).encode()
+        resp = ("HTTP/1.1 429 Too Many Requests\r\n"
                 "Content-Type: application/json\r\n"
                 f"Content-Length: {len(body)}\r\n\r\n").encode() + body
         try:
@@ -1016,11 +1165,20 @@ class ProxyHandler:
                         print(f"[proxy] minify: {mstats.summary()}", file=sys.stderr)
                         _record_minify(mstats, reframe_saved)
                     parsed = _cap_thinking(parsed)
-                    parsed, gate_ok, gate_total = _context_gate(parsed)
+                    # Hard cap: aggressively truncate user message so it
+                    # always fits.  Runs BEFORE _context_gate so the gate
+                    # usually sees a body that already fits.
+                    parsed, _ = _hard_cap_prompt(parsed)
+                    parsed, gate_ok, gate_total, is_overcapacity = _context_gate(parsed)
                     if not gate_ok:
-                        self._respond_overflow(gate_total)
-                        _diag(method, parts[1] if len(parts) > 1 else "?",
-                              cl, False, 0, parsed, "gate-overflow-400")
+                        if is_overcapacity:
+                            self._respond_overcapacity(gate_total, len(parsed.get("messages", [{}])[-1].get("content", "") or "") // 4)
+                            _diag(method, parts[1] if len(parts) > 1 else "?",
+                                  cl, False, 0, parsed, "gate-overcapacity")
+                        else:
+                            self._respond_overflow(gate_total)
+                            _diag(method, parts[1] if len(parts) > 1 else "?",
+                                  cl, False, 0, parsed, "gate-overflow-400")
                         return
                 body = json.dumps(parsed).encode()
             except Exception as e:
@@ -1092,9 +1250,15 @@ class ProxyHandler:
                 parsed, mstats = minify_request(parsed, _MINIFY_CFG)
                 print(f"[proxy] minify(chunked): {mstats.summary()}", file=sys.stderr)
                 _record_minify(mstats)
-                parsed, gate_ok, gate_total = _context_gate(parsed)
+                # Hard cap: aggressively truncate user message so it
+                # always fits before the gate check.
+                parsed, _ = _hard_cap_prompt(parsed)
+                parsed, gate_ok, gate_total, is_overcapacity = _context_gate(parsed)
                 if not gate_ok:
-                    self._respond_overflow(gate_total)
+                    if is_overcapacity:
+                        self._respond_overcapacity(gate_total, 100)
+                    else:
+                        self._respond_overflow(gate_total)
                     return
                 dechunked = json.dumps(parsed).encode()
         except Exception as e:

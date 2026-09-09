@@ -126,7 +126,7 @@ def layer_module_smoke() -> R:
 
 
 
-            timeout = 600 if "image_adapter" in path.name else (180 if is_heavy else 30)
+            timeout = 180 if is_heavy else 30
             rc, out, err = _sys_run(
                 ["python3", str(path), "--smoke"], timeout=timeout)
             if rc == 0:
@@ -192,7 +192,6 @@ def layer_live() -> R:
     endpoints = [
         ("http://127.0.0.1:8080/health", "big model"),
         ("http://127.0.0.1:8081/health", "grammar proxy"),
-        ("http://127.0.0.1:8082/health", "tiny model"),
     ]
     for url, label in endpoints:
         code, body, err = _http_get(url)
@@ -239,14 +238,9 @@ def layer_hot_paths() -> R:
     try:
         from lib.token_tracker import merge_stats, get_status
         s = merge_stats()
-        for k in ("tiny_model", "proxy", "total", "merged_history"):
+        for k in ("proxy", "total", "merged_history"):
             if k not in s:
                 errors.append(f"token_tracker: missing key {k!r}")
-        tiny = s.get("tiny_model", {})
-        if tiny and not isinstance(tiny, dict):
-            errors.append(f"token_tracker: tiny_model is {type(tiny).__name__}, not dict")
-        if "errors" in tiny and tiny["errors"]:
-            errors.append(f"token_tracker: tiny_model errors: {tiny['errors']}")
     except Exception as e:
         errors.append(f"token_tracker: {type(e).__name__}: {e}")
 

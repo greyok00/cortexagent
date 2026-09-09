@@ -1,21 +1,20 @@
 # CortexAgent
 
-> **Your private, local AI coding agent — no cloud, no API key.**
+> **Your private, local AI coding agent — no cloud, no API key, nothing uploaded.**
 
-CortexAgent runs entirely on your machine: a local llama.cpp model, a terminal TUI plus a floating Console, automatic memory across sessions, local browser automation, local speech-to-text, and token compression. Everything binds to `127.0.0.1`. No accounts, no telemetry, nothing is ever uploaded.
+CortexAgent is an AI assistant that runs entirely on **your** computer. It helps you write and fix software, automate repetitive work in your web browser, and answer questions about your own files — all without sending anything to an outside service.
+
+**What that means for you:**
+
+- **Private by design.** Your code, files, and conversations never leave your machine.
+- **No monthly fees.** There is no cloud subscription and no API key. It uses a model stored on your own computer.
+- **Always yours.** Nothing is monitored, logged remotely, or shared. If the internet goes down, it keeps working.
 
 ---
 
 ## It verifies itself
 
-`bin/verify` is a four-layer, offline gate that ships with the repo. A release only ships when it passes — and you can run it yourself any time:
-
-| Layer | Check | Last run |
-|---|---|---|
-| 1 · Manifest | file-hash drift across **1,537 files** | ✅ no drift |
-| 2 · Contract | doc-vs-code contract | ✅ |
-| 3 · Smoke | in-process smoke harness (no live endpoints) | ✅ |
-| 4 · Features | **84** feature-catalog reachability checks | ✅ ALL GREEN |
+CortexAgent ships with its own automated self-check, and a version is only released once that check passes. The check runs through four layers — file integrity, documentation accuracy, an in-process test harness, and a feature-catalog sweep — so the version you install is the version that was tested. You can run it yourself any time:
 
 ```bash
 bin/verify
@@ -25,106 +24,102 @@ bin/verify
 
 ## Install
 
-Linux. An NVIDIA GPU with ~16 GB VRAM is recommended (CPU-only works, slower).
+CortexAgent runs on Linux. An NVIDIA graphics card with roughly 16 GB of memory is recommended for best speed (it works on CPU only, just slower).
 
 ```bash
 git clone https://github.com/greyok00/cortexagent
 cd cortexagent
-./install.sh     # config, memory dirs, systemd units, the `cortexagent` command
-cortexagent      # first run prompts you to start your local model
+./install.sh      # sets up configuration and the `cortexagent` command
+cortexagent       # first run walks you through starting your local model
 ```
 
-`install.sh` is re-runnable and non-destructive — existing config is backed up, never silently overwritten.
+`install.sh` is safe to re-run — it never overwrites your existing settings.
 
 ---
 
 ## Start in 60 seconds
 
-**Code with it** — open the TUI and give it a task:
+**Code with it.** Open the assistant and give it a task:
 
 ```bash
 cortexagent
 # → "add a --dry-run flag to bin/publish and test it"
 ```
 
-**One-shot, no session:**
+**One shot, no session:**
 
 ```bash
 cortexagent -p "find why the daemon is unresponsive and fix it"
 ```
 
-**Drive the browser** — start Brave with `--remote-debugging-port=9222`, then just ask. The agent has 10 site-agnostic CDP tools (`brave_status`, `brave_tabs`, `brave_navigate`, `brave_fetch`, `brave_click`, `brave_type`, `brave_evaluate`, `brave_snapshot`, `brave_fill_send`, `brave_health`) — it never restarts the browser, never touches the CDP port, never closes your tabs.
+**Automate your browser.** Point it at your running Chrome and just ask — to fetch a page, fill in a form, or collect data. It uses ten generic, site-neutral commands (`chrome_status`, `chrome_tabs`, `chrome_navigate`, `chrome_fetch`, `chrome_click`, `chrome_type`, `chrome_evaluate`, `chrome_snapshot`, `chrome_fill_send`, `chrome_health`) and never restarts the browser or closes your tabs.
 
-**Or dictate** — a mouse-only speech-to-text popup (Start/Stop + Enter). Audio never leaves the machine.
+**Or dictate.** A mouse-only speech-to-text popup lets you talk instead of type. Your audio never leaves the machine.
 
 ---
 
 ## Features
 
-- **Terminal TUI + floating Console** — chat TUI plus a tray-launched window showing the chat stream, the active task, and your open browser tabs.
+- **A single command-line assistant.** Everything happens in one terminal window — type a task, watch it work, and read what it changed.
+- **Remembers between sessions.** Past work is saved locally and resurfaces when it matters, so you don't re-explain yourself.
+- **Fits more in one conversation.** Long discussions are compressed automatically, so more context stays available without you having to trim it.
+- **Built-in scheduling.** A background coordinator plans and sequences work on your behalf.
+- **Frees up resources when idle.** Release the model's memory in one command to make room for other tools, then bring it back.
+- **Self-repair.** A built-in diagnostic detects and fixes configuration drift.
 
-### The Console
+### The command line
 
-![CortexAgent Console](assets/cortexagent-console.png)
+![CortexAgent CLI](assets/cortexagent-cli.png)
 
-A floating Tkinter window launched from the tray. Three panels: chat (where the agent streams its work), a tab list of the browser pages you're actively using, and the running tasks. The Console is what you watch while the agent works — start a task, switch away, glance back to see progress, jump in when you need to.
-- **Local model by default** — Qwen3.6-35B MoE on llama.cpp at `127.0.0.1:8080`. No account, no key, no cloud.
-- **Automatic memory** — hot/warm/cold tiers on local disk; sessions resume without re-explaining yourself.
-- **Token compression** — a SlimToken proxy at `127.0.0.1:8081` minifies context before the model sees it, so more fits the window.
-- **Overseer routing** — a tiny dedicated model (~1.6 GB at `127.0.0.1:8082`) plans, routes, and schedules.
-- **Local speech-to-text** — mouse-only dictation popup; audio stays on your machine.
-- **Instant VRAM release** — `cortexagent models unload big` frees ~13 GB for games and other tools; `models load big` brings it back.
-- **Self-repair** — `cortexagent doctor` detects and fixes config drift.
+Everything runs in a single terminal session. Type a task, watch the assistant work through your files and browser, and read what it changes — no window-switching, no separate panels.
 
 ---
 
 ## When it's not for you
 
-A tool that tests itself should name its own limits:
+A tool that tests itself should be honest about its limits:
 
-- **Frontier reasoning.** A 13.7 GB local MoE is capable but not frontier-class. For a genuinely novel puzzle you'll often do better with a hosted model — and nothing here stops you from exporting a conversation and running it there.
-- **It wants VRAM.** The shipped fit (128k context, default batch) is verified to fit ~16 GB. Raising context or batch beyond the documented defaults OOMs — if you change the fit, test it yourself.
-- **Text-first.** The main model is text-only; images route through the bundled vision model (`qwen3-vl`). Vision works, the text model just never sees a pixel.
-- **Single-user, Linux-only.** One agent on one machine — not a multi-user team platform.
+- **Not a frontier research system.** The local model is fast and capable, but for a genuinely novel, never-before-seen puzzle a hosted model is sometimes stronger. Nothing here stops you from exporting the conversation and running it elsewhere.
+- **It wants memory.** The recommended setup needs a graphics card with roughly 16 GB. Raising the model's context window beyond the shipped defaults can run out of memory — the shipped settings are the ones that were tested.
+- **Text-first.** The assistant works with text — it writes and fixes code, reads your files, and drives your browser — but it doesn't interpret images itself.
+- **Single user, Linux only.** One assistant on one machine — not a multi-user team platform.
 
 ---
 
 ## How it works
 
-| Service | Address | Role |
+| Component | Address | Role |
 |---|---|---|
-| Big model (llama.cpp) | `127.0.0.1:8080` | the agent's brain — Qwen3.6-35B MoE, 128k ctx |
-| SlimToken proxy | `127.0.0.1:8081` | OpenAI-compatible frontend; minifies context before the model |
-| Overseer | `127.0.0.1:8082` | tiny model — plans, routes, schedules |
-| CDP (Brave) | `127.0.0.1:9222` | page-level browser automation |
+| Model | `127.0.0.1:8080` | the assistant's "brain" — a large language model stored locally |
+| Context manager | `127.0.0.1:8081` | compresses conversation so more fits at once |
+| Browser (Chrome) | `127.0.0.1:9224` | the browser session the assistant can read and control |
 
-Everything binds to `127.0.0.1` — never `0.0.0.0`. Enforced in code, checked by `bin/verify`. A systemd user daemon owns the big-model + proxy lifecycle and idle-unloads the model to free VRAM.
+Every component binds to `127.0.0.1` — the loopback address used only by your own machine — and is never exposed to the wider network.
 
-> 💡 **VRAM:** `cortexagent models unload big` drops the model instantly; `cortexagent models load big` brings it back.
-> ⚠️ **Model fit:** raising context or batch beyond the shipped defaults OOMs on 16 GB — the shipped fit is the one that was verified.
-> 🔒 **Localhost:** these ports are local-only by design — don't forward or expose them.
+> 🔒 **Local only.** These addresses work only on your computer. Do not forward or expose them to the network.
 
 ---
 
-## CLI
+## Command line
 
 ```bash
-cortexagent                      # interactive session (TUI + tray)
-cortexagent -p "task"            # one-shot
-cortexagent daemon start         # persistent backend
-cortexagent models status        # big / tiny / proxy state
-cortexagent models unload big    # free ~13 GB VRAM
-cortexagent doctor               # detect + fix config drift
-cortexagent status               # is everything up?
+cortexagent                     # interactive session
+cortexagent -p "task"           # one-shot task
+cortexagent daemon start        # persistent backend
+cortexagent models status       # model / context state
+cortexagent models unload big   # free memory for other work
+cortexagent models load big     # bring the model back
+cortexagent doctor              # detect + fix config drift
+cortexagent status              # is everything up?
 ```
 
 ---
 
 ## Security
 
-- **Binds `127.0.0.1` only** — enforced in code, verified by `bin/verify`.
-- **No API keys stored, no telemetry, nothing uploaded.** The only network call in the whole system is yours — when you opt in to a hosted provider.
-- **Local-first by construction** — memory, browser state, and voice all live on your machine.
+- **Local only.** All components bind to `127.0.0.1` and are verified never to expose a network port.
+- **No data leaves your machine.** No API keys are stored, no telemetry is collected, and nothing is uploaded. The only network activity in the whole system is yours, if you ever choose to connect to a hosted provider.
+- **Local-first by construction.** Your memory, browser state, and voice all live on your computer.
 
 ---
 

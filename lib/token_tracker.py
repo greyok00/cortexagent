@@ -23,14 +23,6 @@ def _load_token_stats() -> Dict:
     except Exception:
         pass
     return {
-        "tiny_model": {
-            "runs": 0,
-            "tokens_in": 0,
-            "tokens_out": 0,
-            "tokens_saved": 0,
-            "ratio_pct": 0.0,
-            "last_run_ts": 0.0,
-        },
         "proxy": {
             "runs": 0,
             "tokens_in": 0,
@@ -64,18 +56,8 @@ def _save_token_stats(stats: Dict) -> None:
 
 def _normalize_token_file(stats: Dict) -> None:
 
-    if "tiny_model" not in stats and "runs" in stats:
-        stats["tiny_model"] = {
-            "runs": stats.get("runs", 0),
-            "tokens_in": stats.get("tokens_in", 0),
-            "tokens_out": stats.get("tokens_out", 0),
-            "tokens_saved": stats.get("tokens_saved", 0),
-            "ratio_pct": stats.get("ratio_pct", 0.0),
-            "last_run_ts": stats.get("last_run_ts", 0.0),
-        }
-        for k in ("runs", "tokens_in", "tokens_out", "tokens_saved",
-                  "ratio_pct", "last_run_ts"):
-            stats.pop(k, None)
+    if "tiny_model" in stats:
+        stats.pop("tiny_model", None)
 
 
 def merge_stats() -> Dict:
@@ -95,17 +77,14 @@ def merge_stats() -> Dict:
 
 
     _normalize_token_file(stats)
-    tiny = stats.get("tiny_model", {})
-
-
     proxy = stats.get("proxy", {})
     stats["total"] = {
-        "runs": proxy.get("runs", 0) + tiny.get("runs", 0),
-        "tokens_in": proxy.get("tokens_in", 0) + tiny.get("tokens_in", 0),
-        "tokens_out": proxy.get("tokens_out", 0) + tiny.get("tokens_out", 0),
-        "tokens_saved": proxy.get("tokens_saved", 0) + tiny.get("tokens_saved", 0),
+        "runs": proxy.get("runs", 0),
+        "tokens_in": proxy.get("tokens_in", 0),
+        "tokens_out": proxy.get("tokens_out", 0),
+        "tokens_saved": proxy.get("tokens_saved", 0),
         "ratio_pct": 0.0,
-        "last_run_ts": max(proxy.get("last_run_ts", 0), tiny.get("last_run_ts", 0)),
+        "last_run_ts": proxy.get("last_run_ts", 0),
     }
     if stats["total"]["tokens_in"] > 0:
         stats["total"]["ratio_pct"] = round(
@@ -114,44 +93,15 @@ def merge_stats() -> Dict:
 
 
     history = []
-    for key in ("proxy", "tiny_model"):
-        hist = stats.get(key, {}).get("history_60s", [])
-        if hist:
-            history.extend(hist)
+    hist = stats.get("proxy", {}).get("history_60s", [])
+    if hist:
+        history.extend(hist)
     history.sort(key=lambda x: x[0] if isinstance(x, (list, tuple)) else 0)
     stats["merged_history"] = history[-60:]
 
 
     _save_token_stats(stats)
     return stats
-
-
-def track_tiny_model_run(tokens_in: int, tokens_out: int) -> None:
-
-    if not _TOKEN_TRACKING_ENABLED:
-        return
-
-    stats = _load_token_stats()
-    tiny = stats.get("tiny_model", {})
-    now = time.time()
-
-    tiny["runs"] = tiny.get("runs", 0) + 1
-    tiny["tokens_in"] = tiny.get("tokens_in", 0) + tokens_in
-    tiny["tokens_out"] = tiny.get("tokens_out", 0) + tokens_out
-
-    tiny["tokens_saved"] = 0
-    tiny["ratio_pct"] = 0.0
-    tiny["last_run_ts"] = now
-
-
-    hist = tiny.setdefault("history_60s", [])
-    hist.append((now, tokens_in))
-    cutoff = now - 60.0
-    if len(hist) > 60:
-        hist[:] = [(t, v) for (t, v) in hist if t >= cutoff][-60:]
-
-    stats["tiny_model"] = tiny
-    _save_token_stats(stats)
 
 
 def get_status() -> Dict:
@@ -165,7 +115,6 @@ def get_status() -> Dict:
         "tokens_saved": total.get("tokens_saved", 0),
         "ratio_pct": total.get("ratio_pct", 0.0),
         "proxy_runs": stats.get("proxy", {}).get("runs", 0),
-        "tiny_runs": stats.get("tiny_model", {}).get("runs", 0),
     }
 
 
@@ -175,10 +124,6 @@ def main():
         print("Token tracker smoke test:")
         print(f"  Stats file: {_TOKENS_FILE}")
         print(f"  Tracking enabled: {_TOKEN_TRACKING_ENABLED}")
-
-
-        track_tiny_model_run(100, 90)
-        track_tiny_model_run(200, 180)
 
 
         stats = merge_stats()

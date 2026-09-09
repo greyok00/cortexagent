@@ -160,10 +160,6 @@ def test_overseer_dispatch(i: int) -> Dict:
         result = overseer.queue_add(
             task_type="llm",
             prompt=f"Test task #{i}: Calculate 2+2 and explain your reasoning.",
-            system="You are a helpful assistant.",
-            model="tiny",
-            timeout=30,
-            domain="professional"
         )
 
         if not result.get("ok"):
@@ -189,7 +185,7 @@ def test_overseer_dispatch(i: int) -> Dict:
 
 def run_overseer_test(count: int = 50, parallel: int = 5) -> Dict:
 
-    log("Testing overseer (tiny model path) under load...", CYAN)
+    log("Testing overseer (local model path) under load...", CYAN)
     return run_test("overseer", test_overseer_dispatch, count, parallel)
 
 
@@ -283,7 +279,7 @@ def test_e2e_request(i: int) -> Dict:
             time.sleep(0.001)
 
 
-        with Span(trace.trace_id, "llm", "tiny_model_query") as s2:
+        with Span(trace.trace_id, "llm", "llm_query") as s2:
             s2.set_metric("tokens_in", 50)
             s2.set_metric("tokens_out", 100)
             time.sleep(0.01)
@@ -319,7 +315,7 @@ def test_model_down(i: int) -> Dict:
         sock = socket.socket()
         sock.settimeout(2)
         try:
-            sock.connect(("127.0.0.1", 8082))
+            sock.connect(("127.0.0.1", 8080))
             sock.close()
             return {"ok": False, "error": "Model is still up (expected failure)"}
         except Exception:

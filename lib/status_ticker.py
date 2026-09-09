@@ -105,16 +105,13 @@ def _vram_str(daemon: dict[str, Any]) -> str:
     if not vbp.get("ok"):
         return ""
     big = int(vbp.get("big_mib", 0) or 0)
-    tiny = int(vbp.get("tiny_mib", 0) or 0)
     other = int(vbp.get("other_mib", 0) or 0)
-    used = big + tiny + other
+    used = big + other
     if used <= 0:
         return ""
     parts: list[str] = []
     if big:
         parts.append(f"big {big/1024:.1f} GB")
-    if tiny:
-        parts.append(f"tiny {tiny/1024:.1f} GB")
     if not parts:
         return f"{used/1024:.1f} GB"
     return " + ".join(parts) + f" / {used/1024:.1f} GB"

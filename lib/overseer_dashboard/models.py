@@ -320,7 +320,6 @@ class RuntimeSnapshot:
     stale_detail: str = ""
     model: ModelIdentity = field(default_factory=ModelIdentity)
     big_healthy: bool = False
-    tiny_healthy: bool = False
     proxy_up: bool = False
     backend_healthy: bool = False
     inference: InferenceTelemetry = field(default_factory=InferenceTelemetry)

@@ -28,7 +28,6 @@ import socket
 components = {
     "Proxy (minify)": ("127.0.0.1", 8081),
     "Big model (llama-server)": ("127.0.0.1", 8080),
-    "Tiny model (llama-server)": ("127.0.0.1", 8082),
 }
 for name, addr in components.items():
     try:
@@ -64,17 +63,16 @@ except Exception as e:
     print(f"  ❌ Error: {e}")
 
 
-print("\n3. TINY MODEL PATH (OVERSEER)")
+print("\n3. LLM PATH (OVERSEER)")
 print("-" * 70)
 try:
-    from lib import tiny_llm
-    print(f"  Model path:     {tiny_llm._BASE}")
-    print(f"  Port:           {tiny_llm._PORT}")
-    print(f"  Max tokens:     {tiny_llm._MAX_TOKENS}")
-    print(f"  Is healthy:     {tiny_llm._is_healthy()}")
+    from lib.config import CFG
+    from lib.overseer import _big_model_healthy
+    print(f"  Port:           {CFG.big_model_port}")
+    print(f"  Is healthy:     {_big_model_healthy()}")
 
     start = time.time()
-    result = tiny_llm._is_healthy()
+    result = _big_model_healthy()
     elapsed = time.time() - start
     print(f"  Health check:   took {elapsed:.2f}s")
 except Exception as e:

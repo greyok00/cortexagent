@@ -16,13 +16,10 @@ REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 CLI=(python3 "${REPO_ROOT}/engine/cli.py")
 
 ITEMS=(
-  "status      — show big/tiny/proxy state"
+  "status      — show big/proxy state"
   "reload big  — unload + load the main model"
   "unload big  — free ~13 GB VRAM now"
   "load big    — load the main model"
-  "unload tiny — free the 0.5b"
-  "load tiny   — load the 0.5b"
-  "reload all  — cycle both models"
   "daemon stop — shut the backend down"
 )
 
@@ -49,9 +46,6 @@ case "${CHOICE}" in
   "reload big"*) exec "${CLI[@]}" models reload big ;;
   "unload big"*) exec "${CLI[@]}" models unload big ;;
   "load big"*)   exec "${CLI[@]}" models load big ;;
-  "unload tiny"*) exec "${CLI[@]}" models unload tiny ;;
-  "load tiny"*)  exec "${CLI[@]}" models load tiny ;;
-  "reload all"*) exec "${CLI[@]}" models reload all ;;
   "daemon stop"*) exec "${CLI[@]}" daemon stop ;;
   *) echo "unknown choice: ${CHOICE}" >&2; exit 1 ;;
 esac

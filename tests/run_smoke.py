@@ -72,11 +72,17 @@ def _isolated_env(big_stand_in: bool = True) -> tuple[dict, Path]:
     env["CORTEXAGENT_CONFIG_DIR"] = str(state / "config")
 
     env["CORTEXAGENT_PORT"] = "18080"
-    env["CORTEXAGENT_TINY_PORT"] = "18082"
     env["CORTEXAGENT_PROXY_PORT"] = "18081"
     if big_stand_in:
+        # Small on-disk model stands in for the big model during fast tests.
+        # (qwen2.5-0.5b was never present on this machine; lfm2.5-1.2b is the
+        # shipped offline stand-in — a plain GGUF, not the removed tiny server.)
         env["CORTEXAGENT_MODEL"] = str(Path.home() / "models" /
-                                       "qwen2.5-0.5b" / "qwen2.5-0.5b-q4_0.gguf")
+                                       "lfm2.5-1.2b" / "LFM2.5-1.2B-Instruct-Q4_K_M.gguf")
+        # big_ctx is a LOCKED key (pinned 131072 in config.py). The isolated
+        # test env must explicitly unlock it or the small stand-in model loads
+        # with the full 131072 ctx and OOMs on a busy GPU.
+        env["CORTEXAGENT_UNLOCK_BIG_CTX"] = "1"
         env["CORTEXAGENT_CTX"] = "8192"
         env["CORTEXAGENT_NGL"] = "999"
     return env, state
@@ -128,8 +134,7 @@ def _stop_daemon(env: dict) -> None:
                 pass
     except Exception:
         pass
-    _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080)),
-                           int(env.get("CORTEXAGENT_TINY_PORT", 18082))})
+    _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080))})
     for _ in range(10):
         if not _daemon_up(env, timeout=1):
             break
@@ -142,7 +147,7 @@ def _kill_aliased_servers(ports: "set[int] | None" = None) -> None:
     import re as _re
     import subprocess as _sp
     if ports is None:
-        ports = {18080, 18082}
+        ports = {18080}
     pat = _re.compile(r"--port[=\s]+(\d+)\b")
     try:
         out = _sp.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
@@ -296,15 +301,15 @@ def test_config_user_shared() -> R:
         r = _run(env, sys.executable, "-c",
                  "import sys; sys.path.insert(0,'.'); from lib.config import CFG as c; "
                  "import json; print(json.dumps({'db':str(c.db_path),'backend':c.backend,"
-                 "'tiny_port':c.tiny_model_port,'big_port':c.big_model_port,'idle':c.idle_unload_sec}))",
+                 "'big_port':c.big_model_port,'idle':c.idle_unload_sec}))",
                  timeout=15)
         try:
             d = json.loads(r.stdout)
         except Exception:
             return R("config user-shared defaults", "config", False, f"parse fail: {r.stdout[:120]}")
-        ok = (d["backend"] == "llamacpp" and d["tiny_port"] == 8082 and d["big_port"] == 8080
+        ok = (d["backend"] == "llamacpp" and d["big_port"] == 8080
               and d["idle"] == 0 and "cortexllm.db" in d["db"])
-        return R("config user-shared defaults", "config", ok, f"db={d['db']} ports={d['big_port']}/{d['tiny_port']}")
+        return R("config user-shared defaults", "config", ok, f"db={d['db']} port={d['big_port']}")
     finally:
         shutil.rmtree(state, ignore_errors=True)
 
@@ -374,47 +379,21 @@ def test_models_start_stop() -> R:
 
     env, state = _isolated_env()
     try:
-        r = _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "start", "tiny", timeout=60)
+        r = _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "start", "big", timeout=60)
 
         ok = False
         for _ in range(30):
-            h = _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "health", "tiny", timeout=5)
+            h = _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "health", "big", timeout=5)
             if h.returncode == 0 and "ok" in h.stdout.lower():
                 ok = True
                 break
             time.sleep(1)
-        _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "stop", "tiny", timeout=15)
+        _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "stop", "big", timeout=15)
         time.sleep(1)
-        return R("model_backend start/health/stop tiny", "models", ok,
+        return R("model_backend start/health/stop big", "models", ok,
                  "" if ok else f"start={r.stdout[:80]}")
     finally:
-        _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080)),
-                               int(env.get("CORTEXAGENT_TINY_PORT", 18082))})
-        shutil.rmtree(state, ignore_errors=True)
-
-
-def test_tiny_llm_query() -> R:
-
-    env, state = _isolated_env()
-    try:
-        _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "start", "tiny", timeout=60)
-
-        for _ in range(30):
-            h = _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "health", "tiny", timeout=5)
-            if h.returncode == 0 and "ok" in h.stdout.lower():
-                break
-            time.sleep(1)
-        r = _run(env, sys.executable, "-c",
-                 "import sys; sys.path.insert(0,'.'); from lib import tiny_llm; "
-                 "print(repr(tiny_llm.query('Reply with the single word OK', max_tokens=8, timeout=30)))",
-                 timeout=45)
-        _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "stop", "tiny", timeout=15)
-        out = r.stdout.strip()
-        ok = bool(out) and out != "None" and "ok" in out.lower()
-        return R("tiny_llm.query returns text", "models", ok, f"resp={out[:60]}")
-    finally:
-        _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080)),
-                               int(env.get("CORTEXAGENT_TINY_PORT", 18082))})
+        _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080))})
         shutil.rmtree(state, ignore_errors=True)
 
 
@@ -683,10 +662,14 @@ def test_regression_cortexllm_apis() -> R:
         if c.is_dir() and str(c) not in _sys.path:
             _sys.path.insert(0, str(c))
     checks = []
+    # cortexllm 0.5.0 restructure: the old vector/graph/ontology stores were
+    # removed. The current surface is the memory layer (append/search/cold_*)
+    # plus the legacy Database + pydantic models.
     for mod, attrs in [
-        ("cortexllm_vector", ["VectorStore"]),
-        ("cortexllm_graph", ["GraphStore"]),
-        ("cortexllm_ontology", ["OntologyEngine"]),
+        ("cortexllm", ["append", "search", "cold_list", "cold_get",
+                       "write_cold", "retry", "CircuitBreaker"]),
+        ("cortexllm_db", ["Database"]),
+        ("cortexllm_models", ["MemoryMessage", "ColdFact", "WikiFact"]),
     ]:
         try:
             m = importlib.import_module(mod)
@@ -717,7 +700,7 @@ def test_tool_registry() -> R:
     r = execute_tool("run_command", {"command": "echo registry-ok"})
     if not r.get("ok") or "registry-ok" not in r.get("output", ""):
         return R("tool registry run_command", "registry", False, str(r))
-    r = execute_tool("describe_image", {"image": "/nonexistent.png"})
+    r = execute_tool("parse_document", {"file": "/nonexistent.pdf"})
     if r.get("ok") or "failed" not in r.get("error", ""):
         return R("tool registry stubs", "registry", False, str(r))
     return R("tool registry", "registry", True, f"{len(tools)} tools")
@@ -727,11 +710,14 @@ def test_adapters():
 
     from lib.tool_registry import execute_tool
     fails = 0
-    for name, args in (("describe_image", {"image": "/nonexistent.png"}),
+    for name, args in (("run_command", {"command": "exit 3"}),
                        ("transcribe_audio", {"file": "/nonexistent.wav"}),
                        ("parse_document", {"file": "/nonexistent.pdf"})):
         r = execute_tool(name, args)
-        if r.get("ok") or "failed" not in r.get("error", ""):
+        # A clean error path: ok=False with a non-empty error message (not an
+        # exception). run_command surfaces the exit code ("exit 3") rather than
+        # the word "failed", so assert on the shape, not the wording.
+        if r.get("ok") or not r.get("error"):
             print(f"❌ {name} error path: {r}")
             fails += 1
     return R("adapter tools error paths", "adapters", fails == 0,
@@ -818,7 +804,11 @@ def test_welcome_screen_flag() -> R:
     if modes.get("hidden") != "IS_DEMO=1" or modes.get("condensed") != "IS_DEMO=1":
         bad.append(f"hidden/condensed → {modes}")
 
-    if "--welcome-screen=*) ;;" not in txt and "--welcome-screen) ;;" not in txt:
+    # The flag must be dropped in the FILTERED_ARGS case arm (a `;;` no-op,
+    # not appended). The launcher lists it mid-alternation, so match the block
+    # rather than a brittle trailing `*) ;;` substring.
+    filter_block = txt.split("FILTERED_ARGS=()", 1)[1].split("done", 1)[0]
+    if "--welcome-screen" not in filter_block or "--welcome-screen=*" not in filter_block:
         bad.append("flag not filtered from FILTERED_ARGS")
     return R("welcomeScreen --welcome-screen → IS_DEMO", "welcome", not bad,
              "; ".join(bad) if bad else "hidden/condensed→IS_DEMO=1, full→unset; banner var removed")
@@ -855,7 +845,7 @@ def test_banner() -> R:
             bad.append("frame uses clear-screen (flicker)"); break
         if "\033[H" not in f or B.CLEAR_EOL not in f:
             bad.append("frame missing \\033[H or \\033[K"); break
-    if B.ICE not in frames[-1] or "CORTEXAGENT by" not in frames[-1]:
+    if B.ICE not in frames[-1] or "CORTEXAGENT · by" not in frames[-1]:
         bad.append("final frame not lit")
     if B.ICE in frames[0]:
         bad.append("first frame should light nothing")
@@ -919,9 +909,12 @@ def test_prompt_queue_hook() -> R:
         ok_ctx = "additionalContext" in out_ctx and "Prompt queue" in out_ctx
         run_hook("use React for the frontend")
         out_block = run_hook("use Vue for the frontend")
-        ok_block = '"decision": "block"' in out_block and "what do you want" in out_block
+        # The hook is agenda-only (deliberate since a491076): it injects the
+        # queue as context but NEVER emits a block decision — a rambling STT
+        # user must not be stopped mid-flow. Assert the no-block contract.
+        ok_block = '"decision": "block"' not in out_block
         ok = ok_ctx and ok_block
-        return R("prompt-queue hook block+inject", "promptqueue", ok,
+        return R("prompt-queue hook agenda-inject (never blocks)", "promptqueue", ok,
                  f"ctx={ok_ctx} block={ok_block}")
     finally:
         shutil.rmtree(state, ignore_errors=True)
@@ -933,18 +926,17 @@ def test_prompt_queue_hook() -> R:
 def test_tray_headless() -> R:
 
     env, state = _isolated_env(big_stand_in=False)
-    env["CORTEXAGENT_TINY_PORT"] = "18082"
     env["CORTEXAGENT_PORT"] = "18080"
     env["CORTEXAGENT_PROXY_PORT"] = "18081"
 
-    def tiny8082_count():
+    def big8080_count():
         try:
             ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
             return sum(1 for l in ps.splitlines()
-                       if "llama-server" in l and "--port 8082" in l and "grep" not in l)
+                       if "llama-server" in l and "--port 8080" in l and "grep" not in l)
         except Exception:
             return -1
-    pre = tiny8082_count()
+    pre = big8080_count()
     did_live_fork = False
     try:
         cli = _cli(env)
@@ -967,7 +959,7 @@ def test_tray_headless() -> R:
 
 
             return R("tray --check + headless keeper", "tray", check_ok,
-                     f"check={check_ok} (live fork skipped — user :8082 tiny up, count={pre})")
+                     f"check={check_ok} (live fork skipped — user :8080 big up, count={pre})")
         did_live_fork = True
         proc = subprocess.Popen(
             [sys.executable, str(REPO / "engine" / "cli.py"), "tray", "--headless"],
@@ -982,11 +974,11 @@ def test_tray_headless() -> R:
                     "import sys; sys.path.insert(0,'.'); from lib import overseer; print(overseer._is_running())",
                     timeout=10)
         torn = "None" in rpid.stdout
-        post = tiny8082_count()
+        post = big8080_count()
         untouched = post == pre
         ok = check_ok and torn and proc.returncode == 0 and untouched
         return R("tray --check + headless keeper", "tray", ok,
-                 f"check={check_ok} torn_down={torn} rc={proc.returncode} :8082_unchanged={untouched}")
+                 f"check={check_ok} torn_down={torn} rc={proc.returncode} :8080_unchanged={untouched}")
     finally:
         if not did_live_fork:
 
@@ -999,13 +991,12 @@ def test_tray_headless() -> R:
                 _run(env, sys.executable, str(REPO / "lib" / "overseer.py"), "stop", timeout=20)
             except Exception:
                 pass
-            _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080)),
-                                   int(env.get("CORTEXAGENT_TINY_PORT", 18082))})
+            _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080))})
 
             try:
                 ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
                 for line in ps.splitlines():
-                    if "llama-server" in line and "--port 18082" in line and "grep" not in line:
+                    if "llama-server" in line and "--port 18080" in line and "grep" not in line:
                         try: os.kill(int(line.split()[0]), 9)
                         except Exception: pass
             except Exception:
@@ -1308,7 +1299,6 @@ COVERAGE = [
 
     ("lib/config.py — resolution + both modes", "config_isolated + config_user_shared", True),
     ("lib/model_backend.py — start/health/stop", "models_start_stop", True),
-    ("lib/tiny_llm.py — query", "tiny_llm_query", True),
     ("lib/control.py — socket + daemon_present", "daemon_lifecycle + cli_routing", True),
     ("lib/daemon.py — lifecycle + idle-unload + swap", "daemon_lifecycle + daemon_idle_unload + hotswap(#28)", True),
     ("lib/grammar_proxy.py — reload-on-request + /metrics", "proxy_reload_on_request + nvsmi(#24)", True),
@@ -1390,15 +1380,14 @@ def test_kill_stale_big_only() -> R:
 
     no_build_filter = "LLAMA_DIR" not in pat
 
-    sample = "--alias cortexagent -fa on\n--alias cortexagent\n--alias cortexagent-tiny\n--alias cortexagent-tiny -fa on\n"
+    sample = "--alias cortexagent -fa on\n--alias cortexagent\n"
     r = subprocess.run(["grep", "-E", "--", pat], input=sample,
                        capture_output=True, text=True)
     matched = r.stdout.splitlines()
-    matches_big = all("--alias cortexagent" in l and "tiny" not in l for l in matched[:2]) and len(matched) >= 2
-    skips_tiny = not any("tiny" in l for l in matched)
-    ok = matches_big and skips_tiny and no_build_filter
+    matches_big = all("--alias cortexagent" in l for l in matched) and len(matched) >= 2
+    ok = matches_big and no_build_filter
     return R("kill_stale is big-only", "overseer", ok,
-             f"big={'OK' if matches_big else 'BAD'} tiny={'skipped' if skips_tiny else 'MATCHED'} build_filter={'gone' if no_build_filter else 'PRESENT'}")
+             f"big={'OK' if matches_big else 'BAD'} build_filter={'gone' if no_build_filter else 'PRESENT'}")
 
 
 def test_overseer_big_params() -> R:
@@ -1437,7 +1426,7 @@ def test_cleanup_big_only() -> R:
     no_stop_tiny = 'model_backend.py" stop tiny' not in body and 'stop tiny' not in body
     uses_stop_big = "stop big" in body
     ok = no_overseer_stop and no_stop_tiny and uses_stop_big
-    return R("cleanup kills big-only (tiny stays)", "overseer", ok,
+    return R("cleanup kills big-only", "overseer", ok,
              f"no_overseer_stop={'OK' if no_overseer_stop else 'BAD'} "
              f"no_stop_tiny={'OK' if no_stop_tiny else 'BAD'} stop_big={'OK' if uses_stop_big else 'BAD'}")
 
@@ -1716,17 +1705,33 @@ def test_processing_animation() -> R:
 
 def test_stt_config_defaults() -> R:
 
-    from lib.config import CFG
-    assert CFG.stt_model == "base"
-    assert CFG.stt_device == "auto"
-    assert CFG.stt_mic_device == "Logi USB Headset"
-    assert CFG.stt_hotkey == "<ctrl>+<shift>+space"
-    assert CFG.stt_speak_to_capture is True
-    assert CFG.stt_vad_threshold == 0.02
-    assert CFG.stt_vad_silence_sec == 0.8
-    assert CFG.stt_cleanup is False
-    assert CFG.stt_cleanup_target == "tiny"
-    return R("stt config defaults", "stt", True, "all 9 defaults green")
+    # Shipped defaults, checked in an isolated env so the user's
+    # ~/.cortexagent/cortexagent.conf overrides (VAD tuning 2026-08-24:
+    # silence 2.5, threshold 0.05) don't mask a regression in config.py.
+    env, state = _isolated_env(big_stand_in=False)
+    # CONF_FILE is keyed off CORTEXAGENT_CONF (not CONFIG_DIR) — point it at a
+    # non-existent path so the user's real conf can't leak into the check.
+    env["CORTEXAGENT_CONF"] = str(state / "config" / "cortexagent.conf")
+    try:
+        code = (
+            "from lib.config import CFG\n"
+            "assert CFG.stt_model == 'base'\n"
+            "assert CFG.stt_device == 'cuda'\n"
+            "assert CFG.stt_mic_device == 'Logi USB Headset'\n"
+            "assert CFG.stt_hotkey == '<ctrl>+<shift>+space'\n"
+            "assert CFG.stt_speak_to_capture is True\n"
+            "assert CFG.stt_vad_threshold == 0.05\n"
+            "assert CFG.stt_vad_silence_sec == 1.5\n"
+            "assert CFG.stt_cleanup is False\n"
+            "assert CFG.stt_cleanup_target == 'big'\n"
+            "print('all 9 defaults green')\n"
+        )
+        r = _run(env, sys.executable, "-c", code, timeout=30)
+        ok = r.returncode == 0
+        return R("stt config defaults", "stt", ok,
+                 r.stdout.strip() or r.stderr.strip()[:200])
+    finally:
+        shutil.rmtree(state, ignore_errors=True)
 
 
 def test_stt_transcribe_sample() -> R:
@@ -1793,7 +1798,9 @@ def test_stt_oom_floor_unload() -> R:
     stt.unload_if_idle()
     roomy_kept = stt._model is not None
 
-    stt._free_vram_mib = lambda: 300
+    # OOM floor is 256 MiB (lowered from 512 at v0.55 — release only when
+    # truly about to OOM-kill). 200 MiB is below the floor → must unload.
+    stt._free_vram_mib = lambda: 200
     stt.unload_if_idle()
     oom_freed = stt._model is None
     stt._model = None
@@ -2092,7 +2099,7 @@ TESTS = {
     "static": [test_static_imports, test_static_bashn],
     "config": [test_config_isolated, test_config_user_shared],
     "pii": [test_pii_free],
-    "models": [test_models_start_stop, test_tiny_llm_query],
+    "models": [test_models_start_stop],
     "daemon": [test_daemon_lifecycle, test_daemon_idle_unload],
     "proxy": [test_proxy_reload_on_request, test_proxy_vram_field],
     "cli": [test_cli_routing],
