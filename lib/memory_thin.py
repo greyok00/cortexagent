@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 
 try:
-    from cortexllm.atomic import atomic_append as _atomic_append
+    from slimtoken.memory.atomic import atomic_append as _atomic_append
 except ImportError:
     def _atomic_append(file_path, line):
         file_path.parent.mkdir(parents=True, exist_ok=True)

@@ -786,7 +786,7 @@ def _get_memory_stats() -> Dict:
     out = {"hot": 0, "warm": 0, "cold": 0,
            "hot_bytes": 0, "warm_bytes": 0}
     try:
-        from cortexllm.stats import stats as _cl_stats
+        from slimtoken.memory.stats import stats as _cl_stats
         from lib.memory_thin import HOT_DIR, WARM_DIR  # noqa: F401
         s = _cl_stats(platform="cortexagent", dir=HOT_DIR.parent)
         plat = s.get("hot", {}).get("by_platform", {}).get("cortexagent", {})
@@ -1152,7 +1152,7 @@ def _estimate_tokens(stats: Dict) -> str:
 
     total = stats["hot"] + stats["warm"] + stats["cold"]
     try:
-        from cortexllm.stats import estimate_tokens
+        from slimtoken.memory.stats import estimate_tokens
         est = estimate_tokens("x" * (total * 200))
     except ImportError:
         est = (total * 200) // 4
@@ -1365,7 +1365,7 @@ def _hot_to_warm_sync(state: Dict) -> None:
 def _atomic_append_bytes(file_path, data: bytes) -> None:
 
     try:
-        from cortexllm.atomic import atomic_append_bytes
+        from slimtoken.memory.atomic import atomic_append_bytes
         atomic_append_bytes(file_path, data)
         return
     except ImportError:
@@ -1997,7 +1997,7 @@ def _check_schedule() -> None:
 def _plan():
 
     try:
-        from cortexllm.plan import Plan as _Plan
+        from slimtoken.memory.plan import Plan as _Plan
         return _Plan(dir=str(STATE_DIR), name="overseer_plan")
     except ImportError:
         return None

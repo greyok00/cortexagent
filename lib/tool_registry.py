@@ -325,7 +325,7 @@ def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
     except Exception:
         pass
     try:
-        from cortexllm.engine import search as _search, cold_get as _cold_get
+        from slimtoken.memory.engine import search as _search, cold_get as _cold_get
         for tier in ("hot",):
             for hit in _search(query, tier=tier, platform="cortexagent", limit=limit):
                 results.append({"tier": tier, "source": "memory",
