@@ -179,16 +179,58 @@ A tool that tests itself should be honest about its limits:
 
 ## Command line
 
+The `cortexagent` command has two surfaces: **subcommands**, which are the control plane over the running daemon, and **session flags**, which start the interactive agent.
+
+### Subcommands
+
 ```bash
-cortexagent                     # interactive session
-cortexagent -p "task"           # one-shot task
-cortexagent daemon start        # persistent backend
+cortexagent status              # is everything up? (daemon, model, proxy)
 cortexagent models status       # model / context state
 cortexagent models unload big   # free memory for other work
 cortexagent models load big     # bring the model back
-cortexagent doctor              # detect + fix config drift
-cortexagent status              # is everything up?
+cortexagent models reload all   # bounce the model server
+cortexagent models swap /path/to/model.gguf [--ctx 8192] [--ngl 999]
+cortexagent daemon start        # persistent backend daemon
+cortexagent daemon stop
+cortexagent queue list          # prompt queue (also: done, drop, clear, context)
+cortexagent minify status       # SlimToken proxy savings: runs, tokens, trend
+cortexagent doctor              # detect + fix config drift (--dry-run to report only)
+cortexagent tray --check        # verify system-tray dependencies
+cortexagent install             # re-run the installer
 ```
+
+### Session flags
+
+```bash
+cortexagent                     # interactive session
+cortexagent -p "task"           # one-shot task
+cortexagent --restart           # restart the daemon and reload the model
+cortexagent --unload            # free the model's memory
+cortexagent voice               # mouse-only speech-to-text popup
+cortexagent --claude            # attach to a Claude Code session
+cortexagent --list-models       # list available local models
+cortexagent --model=X.gguf      # start with a specific model
+cortexagent --provider=local    # local | anthropic | openai | ollama
+```
+
+Environment: `CORTEXAGENT_MODEL` and `CORTEXAGENT_CTX` set the same things without flags.
+
+### Maintenance tools
+
+`bin/` ships the release gate and a few operational wrappers:
+
+| Tool | What it does |
+|---|---|
+| `bin/verify` | the four-layer self-check that gates every release |
+| `bin/gpu-mode gpu\|cpu` | move the big model between GPU and CPU serving |
+| `bin/cortexagent-browser-health` | read-only health snapshot of the browser engine |
+| `bin/cortexagent-cve` | CVE / MITRE threat-intel poller |
+| `bin/cortexagent-harden` | read-only hardening snapshot (nftables, sshd, sysctl, auditd) |
+| `bin/cortexagent-siem` | push CVE intel + hardening snapshots into the SIEM bridge |
+| `bin/cortexagent-rag-ingest` | ingest documents for local retrieval |
+| `bin/stt-controls` | voice-dictation control window |
+| `bin/snapshot.sh save` | full system snapshot with integrity verification |
+| `bin/safe-modify <desc> <file>` | atomic file modification with automatic backup |
 
 ---
 

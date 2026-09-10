@@ -329,7 +329,7 @@ def cmd_run(args) -> int:
     if not launcher.exists():
         _err(f"launcher not found: {launcher}")
         return 1
-    pass_through = [a for a in args.run_args if a not in ("--list-models",)]
+    pass_through = list(args.run_args)
 
     return subprocess.call(["bash", str(launcher), *pass_through])
 
@@ -404,17 +404,29 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+_LAUNCHER_SUBCOMMANDS = ("models", "daemon", "status", "queue", "minify",
+                         "tray", "install", "doctor", "run")
+
+
+def _passthrough(argv) -> int:
+    launcher = _REPO_ROOT / "bin" / "cortexagent"
+    if not launcher.exists():
+        _err(f"launcher not found: {launcher}")
+        return 1
+    return subprocess.call(["bash", str(launcher), *argv])
+
+
 def main() -> int:
     parser = _build_parser()
-    args = parser.parse_args()
+    argv = sys.argv[1:]
+    if argv and argv[0] in ("-h", "--help", "help"):
+        parser.print_help()
+        return 0
+    if argv and argv[0] not in _LAUNCHER_SUBCOMMANDS:
+        return _passthrough(argv)
+    args = parser.parse_args(argv)
     if not getattr(args, "func", None):
-
-
-        launcher = _REPO_ROOT / "bin" / "cortexagent"
-        if not launcher.exists():
-            _err(f"launcher not found: {launcher}")
-            return 1
-        return subprocess.call(["bash", str(launcher), *sys.argv[1:]])
+        return _passthrough(argv)
     return int(args.func(args) or 0)
 
 
