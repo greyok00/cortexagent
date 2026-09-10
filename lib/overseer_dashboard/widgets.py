@@ -1,7 +1,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 import tkinter as tk
 from pathlib import Path

@@ -4,11 +4,11 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from . import models as M
 from . import telemetry as TEL
@@ -41,7 +41,6 @@ FALLBACK_W, FALLBACK_H = 1280, 800
 
 SCALING_ENV = os.environ.get("CORTEXAGENT_DASHBOARD_SCALING", "auto")
 
-REF_DPI = 96.0
 
 
 def _detect_scale(root: tk.Tk) -> float:
@@ -85,15 +84,6 @@ def _detect_scale(root: tk.Tk) -> float:
         return 1.0
 
 
-def _load_pos() -> Optional[Dict[str, int]]:
-    try:
-        with POS_FILE.open(encoding="utf-8") as f:
-            d = json.load(f)
-        if isinstance(d, dict) and "x" in d and "y" in d:
-            return d
-    except Exception:
-        pass
-    return None
 
 
 def _save_pos(x: int, y: int) -> None:
@@ -1340,7 +1330,6 @@ def open_dashboard() -> None:
 
 def open_in_thread() -> "threading.Thread":
 
-    import threading
     t = threading.Thread(target=open_dashboard, daemon=True)
     t.start()
     return t

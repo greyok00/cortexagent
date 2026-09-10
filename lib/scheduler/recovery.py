@@ -1,23 +1,11 @@
 #!/usr/bin/env python3
 
 import json
-import os
-import time
-import uuid
-import fcntl
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, List
 
 
-from lib.scheduler.store import (
-    STATE_DIR, SCHEDULER_DIR, TASKS_FILE, EVENTS_FILE, EXECUTIONS_FILE,
-    STATE_FILE, LOCK_FILE, SNAPSHOT_BACKUP_DIR,
-    SCHEMA_VERSION, TASK_VERSION, VALID_STATES, TASK_KINDS,
-    _load_state, _save_state, _load_snapshot, _rebuild_snapshot,
-    _save_snapshot, _ensure_dirs, _now, _now_iso, _make_event,
-    _next_run,
-)
+from lib.scheduler.store import EVENTS_FILE, VALID_STATES, TASK_KINDS, _load_state, _save_state, _load_snapshot, _rebuild_snapshot, _save_snapshot, _ensure_dirs, _now, _now_iso, _next_run
 
 
 class Recovery:
@@ -247,9 +235,9 @@ class Recovery:
 
 
         store = Store()
-        receipt1 = store.create(title="test1", kind="user", trigger="cron",
+        store.create(title="test1", kind="user", trigger="cron",
                                 schedule_value="0 9 * * *")
-        receipt2 = store.create(title="test2", kind="test", ephemeral=True,
+        store.create(title="test2", kind="test", ephemeral=True,
                                 trigger="manual")
 
 

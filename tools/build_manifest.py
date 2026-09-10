@@ -29,7 +29,6 @@ ROOTS = [
 
 TOPLEVEL_FILES = [
     "install.sh",
-    "patch_ub2560.py",
     "README.md",
     "LICENSE",
     ".SAFETY_QUICK_REF",

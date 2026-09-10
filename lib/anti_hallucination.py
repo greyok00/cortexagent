@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import socket
 import subprocess
@@ -11,7 +10,7 @@ import sys
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 
 _CONFIG_FILE = Path.home() / ".cortexagent" / "config" / "verification.json"

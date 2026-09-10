@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 
 import json
-import os
 import sys
 import time
 import socket
-import urllib.request
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 
-BOLD = "\033[1m"
 GREEN = "\033[32m"
 RED = "\033[31m"
-YELLOW = "\033[33m"
 CYAN = "\033[36m"
-MAGENTA = "\033[35m"
 RESET = "\033[0m"
 
 
@@ -80,7 +75,7 @@ def run_observability_test() -> Dict:
     log("Running observability smoke test...", CYAN)
     results_local = {}
     try:
-        from lib.observability import Trace, Span, save_trace, evaluate_trace, metrics
+        from lib.observability import Trace, Span, save_trace, evaluate_trace
         import time
 
 
@@ -101,7 +96,7 @@ def run_observability_test() -> Dict:
             s3.set_metric("tokens_out", 100)
             time.sleep(0.01)
 
-        with Span(trace.trace_id, "beautify", "format_output") as s4:
+        with Span(trace.trace_id, "beautify", "format_output"):
             time.sleep(0.001)
 
         with Span(trace.trace_id, "output", "final_output") as s5:
@@ -199,11 +194,11 @@ def generate_report(results: Dict) -> None:
 
 
     log(f"\n{'='*70}", CYAN)
-    log(f"FULL TEST REPORT", CYAN)
+    log("FULL TEST REPORT", CYAN)
     log(f"{'='*70}", CYAN)
 
 
-    log(f"\n1. COMPONENT HEALTH", GREEN)
+    log("\n1. COMPONENT HEALTH", GREEN)
     comp_health = results.get("components_health", {}).get("components", {})
     for name, status in comp_health.items():
         if status.get("status") == "healthy":
@@ -212,25 +207,25 @@ def generate_report(results: Dict) -> None:
             log(f"  ❌ {name}: {status.get('error', 'unhealthy')}", RED)
 
 
-    log(f"\n2. CHAIN DIAGNOSTIC", GREEN)
+    log("\n2. CHAIN DIAGNOSTIC", GREEN)
     chain_diag = results.get("chain_diagnostic", {})
     if chain_diag.get("chain") == "diagnostic_completed":
-        log(f"  ✅ Chain diagnostic passed", GREEN)
+        log("  ✅ Chain diagnostic passed", GREEN)
     else:
         log(f"  ❌ Chain diagnostic failed: {chain_diag.get('chain', 'unknown')}", RED)
 
 
-    log(f"\n3. OBSERVABILITY", GREEN)
+    log("\n3. OBSERVABILITY", GREEN)
     obs = results.get("observability", {})
     if obs:
         log(f"  ✅ Trace saved: {obs.get('trace_id', 'unknown')}", GREEN)
         eval_score = obs.get('evaluation', {}).get('overall_score', 0)
         log(f"  ✅ Evaluation score: {eval_score}", GREEN)
     else:
-        log(f"  ❌ Observability test failed", RED)
+        log("  ❌ Observability test failed", RED)
 
 
-    log(f"\n4. LOAD TESTS", GREEN)
+    log("\n4. LOAD TESTS", GREEN)
     load_tests = results.get("load_tests", {})
     if load_tests:
         for test_name in ["proxy", "overseer", "e2e", "disk_io"]:
@@ -250,10 +245,10 @@ def generate_report(results: Dict) -> None:
                     f"p95: {latency_p95:.1f}ms",
                     GREEN if failures == 0 else RED)
     else:
-        log(f"  ❌ Load tests failed", RED)
+        log("  ❌ Load tests failed", RED)
 
 
-    log(f"\n5. ERROR INJECTION", GREEN)
+    log("\n5. ERROR INJECTION", GREEN)
     error_tests = results.get("error_tests", {})
     if error_tests:
         for test_name in ["model_down", "network_timeout"]:
@@ -266,7 +261,7 @@ def generate_report(results: Dict) -> None:
                     status_str += f" ({failures} failures)"
                 log(f"  {test_name:20s} {status_str}", GREEN if failures == 0 else RED)
     else:
-        log(f"  ❌ Error tests failed", RED)
+        log("  ❌ Error tests failed", RED)
 
 
     log(f"\n{'='*70}", CYAN)
@@ -318,7 +313,7 @@ def main():
 
     duration = time.time() - start_time
     log(f"\nTotal duration: {duration:.2f}s", CYAN)
-    log(f"Test suite complete!", GREEN)
+    log("Test suite complete!", GREEN)
 
 
 if __name__ == "__main__":

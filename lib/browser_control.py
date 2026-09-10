@@ -73,7 +73,6 @@ CDP_HTTP = "http://127.0.0.1:9224"
 CDP_URL = CDP_HTTP
 
 
-_PROFILE_NAME = os.environ.get("STEALTH_PROFILE", "default")
 _profile: Optional[Dict[str, Any]] = None
 _stealth_script: Optional[str] = None
 _stealth_applied: set = set()
@@ -365,12 +364,6 @@ def _ensure_stealth(target_id: str) -> None:
         _stealth_applied.add(target_id)
 
 
-def _create_isolated_world(target_id: str) -> None:
-    """No-op under Patchright — Patchright's add_init_script() injects into
-    the page's main world by default; for isolated execution, callers should
-    open a cdp_session and call Page.addScriptToEvaluateOnNewDocument with
-    worldName='ISOLATED'. Kept for back-compat."""
-    return None
 
 
 def _isolated_eval(target_id: str, expression: str, timeout: float = 8.0) -> Any:
@@ -464,11 +457,6 @@ def list_tabs() -> List[Dict[str, Any]]:
     return list(tabs)
 
 
-def find_tab(url_prefix: str) -> Optional[str]:
-    for t in list_tabs():
-        if url_prefix.lower() in t["url"].lower():
-            return t["id"]
-    return None
 
 
 def resolve_tab(tab: Any = None) -> str:
@@ -623,12 +611,6 @@ def read_text(tab: Any = None, selector: str = "body") -> str:
         return _raw_text(tid)
 
 
-def _find_js(iframe_marker: str) -> str:
-    """Back-compat: kept so callers that import it don't break."""
-    return (
-        f"Array.from(document.querySelectorAll('iframe'))"
-        f".filter(f => (f.src||'').includes({json.dumps(iframe_marker)}))[0] || null"
-    )
 
 
 def fill_and_send(tab: Any = None, text: str = "", *, iframe_marker: str = "",
@@ -647,26 +629,8 @@ def fill_and_send(tab: Any = None, text: str = "", *, iframe_marker: str = "",
     return "filled_and_sent"
 
 
-def element_value(tab: Any = None, *, iframe_marker: str = "",
-                  selector: str = "body") -> str:
-    page = _resolve_page(tab)
-    if iframe_marker:
-        frames = page.frames
-        target = next((f for f in frames if iframe_marker in (f.url or "")), page.main_frame)
-        return target.locator(selector).first.input_value()
-    return page.locator(selector).first.input_value()
 
 
-def clear_element(tab: Any = None, *, iframe_marker: str = "",
-                  selector: str = "body") -> str:
-    page = _resolve_page(tab)
-    if iframe_marker:
-        frames = page.frames
-        target = next((f for f in frames if iframe_marker in (f.url or "")), page.main_frame)
-        target.locator(selector).first.clear()
-    else:
-        page.locator(selector).first.clear()
-    return "cleared"
 
 
 def page_text(tab: Any = None, iframe_marker: str = "") -> str:

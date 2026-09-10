@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Optional, Union
 
-Audio = Union[str, Path, "numpy.ndarray"]
+Audio = Union[str, Path]
 
 _model = None
 _model_lock = threading.Lock()
@@ -78,27 +78,8 @@ def _free_vram_mib() -> Optional[int]:
         return None
 
 
-def _big_model_up() -> bool:
-
-    import socket
-    from lib.config import CFG
-    try:
-        with socket.create_connection(("127.0.0.1", CFG.big_model_port), timeout=1):
-            return True
-    except OSError:
-        return False
 
 
-def _gpu_available(model_name: str) -> bool:
-
-    free = _free_vram_mib()
-    if free is None:
-        return False
-    fp16 = _STT_MODEL_VRAM.get(model_name, 970)
-
-    int8_estimate = max(150, fp16 // 2 + 50)
-    need = int8_estimate + _STT_GATE_HEADROOM_MIB
-    return free >= need
 
 
 def _get_model():
@@ -362,6 +343,7 @@ _PHRASE_FIXES = [
     (r"\bmust of\b", "must have"),
     (r"\bsuppose to\b", "supposed to"),
 ]
+_PHRASE_FIXES_C = [(re.compile(p, re.IGNORECASE), r) for p, r in _PHRASE_FIXES]
 
 _DETERMINERS = frozenset({
     "the", "a", "an", "this", "that", "these", "those", "my", "your",
@@ -388,9 +370,8 @@ def fix_homophones(text: str) -> str:
     if not text:
         return text
     # 1. Multi-word phrase fixes first (so "could of" -> "could have").
-    for pat, repl in _PHRASE_FIXES:
-        text = re.sub(pat, lambda m: _phrase_case(m, repl), text,
-                      flags=re.IGNORECASE)
+    for pat, repl in _PHRASE_FIXES_C:
+        text = pat.sub(lambda m: _phrase_case(m, repl), text)
     # 2. Single-word fixes.
     words = text.split()
     out = []

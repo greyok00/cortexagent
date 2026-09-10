@@ -518,12 +518,11 @@ def _export_video(frames, path: str, fps: int) -> bool:
         _log(f"export_to_video unavailable ({e}); trying ffmpeg+pil", "⚠️", DIM)
     try:
         import tempfile
-        from PIL import Image
         tmp = Path(tempfile.mkdtemp(prefix="ca-ltx-"))
         for i, fr in enumerate(frames):
             fr.save(tmp / f"f{i:05d}.png")
         import subprocess
-        r = subprocess.run(
+        subprocess.run(
             ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp / "f%05d.png"),
              "-c:v", "libx264", "-pix_fmt", "yuv420p", path],
             capture_output=True, timeout=300)

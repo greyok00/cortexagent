@@ -158,7 +158,6 @@ def _call_server_tool(server: Dict[str, Any], tool_name: str,
 
 def close_all() -> None:
 
-    global _sessions
     if not _sessions:
         return
     loop = _ensure_loop()

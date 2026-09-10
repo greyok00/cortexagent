@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-import json, os, re, sqlite3, subprocess, sys, tempfile, time, urllib.request
+import json, sqlite3, subprocess, sys, time
 from pathlib import Path
-from datetime import datetime
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -157,13 +156,13 @@ def process_pdf(pdf_path: str, source_name: str = None):
     pdf_path = str(Path(pdf_path).resolve())
 
     if pdf_path in get_processed():
-        print(f"  ⏭️  Already processed")
+        print("  ⏭️  Already processed")
         return 0
 
     if not source_name:
         source_name = Path(pdf_path).stem.replace("_", " ").replace("-", " ")[:80]
 
-    print(f"  📖 Extracting text...", end=" ", flush=True)
+    print("  📖 Extracting text...", end=" ", flush=True)
     text = extract_text(pdf_path)
     if not text or len(text.strip()) < 100:
         print("❌ (too little text)")

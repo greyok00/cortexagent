@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import sys
@@ -102,7 +101,6 @@ class DomainEmbedder:
             return
         self._ensure_downloaded()
         _ensure_cuda_libs()
-        import numpy as np  # noqa: F401
         import onnxruntime as ort
         from tokenizers import Tokenizer
         self._tok = Tokenizer.from_file(str(MODEL_DIR / "tokenizer.json"))

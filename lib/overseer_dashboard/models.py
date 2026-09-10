@@ -6,11 +6,6 @@ from typing import Any, Dict, List, Optional
 
 
 
-STAGE_STATE = ("complete", "active", "queued", "skipped", "failed")
-BLOCK_CATEGORY = ("system", "user", "history", "memory", "retrieval",
-                  "tool_schema", "tool_output", "attachment", "reasoning",
-                  "output_contract", "other")
-BLOCK_PRIORITY = ("pinned", "high", "compressible", "discardable")
 
 
 

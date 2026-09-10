@@ -2,10 +2,8 @@
 
 import json
 import sys
-import time
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))

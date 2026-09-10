@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-import sys
 from typing import List, Dict, Optional, Tuple, Union
-from math import ceil
 
 
 VERTICAL_BLOCKS = "▁▂▃▄▅▆▇█"
@@ -131,7 +129,6 @@ def waffle(data: List[Union[int, float]],
 
 
         if labels and row == 0:
-            seg_start = 0
             for i, n in enumerate(cells):
                 if i < len(labels):
                     label = labels[i]
@@ -204,8 +201,6 @@ def heatmap(data: List[List[Union[int, float]]],
     if not data or not data[0]:
         return ""
 
-    rows = len(data)
-    cols = len(data[0])
 
 
     flat = [v for row in data for v in row]
@@ -441,7 +436,6 @@ def funnel(data: List[Union[int, float]], labels: Optional[List[str]] = None,
         return ""
 
     lines = []
-    n = len(data)
     for i, (val, label) in enumerate(zip(data, labels or [])):
         color, reset, glyph = _series_style(palette, i)
         width = int(val / max_val * 40)

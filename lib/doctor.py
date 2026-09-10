@@ -55,11 +55,6 @@ def _bak(path: Path) -> Path:
     return bak
 
 
-def _same(a: Path, b: Path) -> bool:
-    try:
-        return a.exists() and b.exists() and a.read_bytes() == b.read_bytes()
-    except Exception:
-        return False
 
 
 def _render_settings(home: str) -> str:

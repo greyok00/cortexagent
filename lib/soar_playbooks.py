@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -223,7 +222,6 @@ def load_history(limit: int = 50) -> list[dict]:
 
 def run_for_cve(cve_entry: dict, dry_run: bool = False) -> list[dict]:
 
-    from lib import siem_bridge
     out: list[dict] = []
 
     if cve_entry.get("kev"):

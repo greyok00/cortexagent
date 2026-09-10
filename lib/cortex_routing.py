@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
-import time
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
@@ -353,7 +351,6 @@ if __name__ == "__main__":
     if "--smoke" in sys.argv:
         sys.exit(_smoke())
     elif "--status" in sys.argv:
-        import json
         print(json.dumps(status(), indent=2))
     else:
         print("Usage: python3 lib/cortex_routing.py --smoke | --status")

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import signal
-import subprocess
 import sys
 import threading
 import time

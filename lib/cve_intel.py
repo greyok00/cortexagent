@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -15,7 +14,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -656,7 +655,7 @@ def _smoke() -> int:
         print(f"  - {t}")
     print(f"[smoke] KEV detection (offline): {'OK' if 'CVE-2024-3094' not in poll_kev() else 'cached'}")
     print(f"[smoke] Coverage: {mitre_coverage()['pct']}% of MITRE mitigations mapped locally")
-    print(f"[smoke] Fake CVE passed through enrich + lookup OK")
+    print("[smoke] Fake CVE passed through enrich + lookup OK")
     return 0
 
 

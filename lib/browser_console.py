@@ -16,7 +16,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 CORTEXAGENT_BIN = str(_REPO_ROOT / "bin" / "cortexagent")
 
 _OVERLAY_STATE = Path.home() / ".cortexagent" / "overlay_state.json"
-_SCHED_STATE_DIR = Path.home() / ".cortexagent"
 MINIFY_STATS = Path.home() / ".cortexagent" / "minify_stats.json"
 
 
@@ -42,12 +41,8 @@ REFRESH_SECS = 3
 
 
 
-_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp",
-               ".bmp", ".tif", ".tiff", ".avif"}
 
 
-def _is_image(path: str) -> bool:
-    return Path(path).suffix.lower() in _IMAGE_EXTS
 
 
 
@@ -74,25 +69,6 @@ def _record_open(pid: int, vte_pid: int | None, win_id: int) -> None:
     clear_pending()
 
 
-def mark_pending() -> None:
-    """Mark a Console launch as imminent. raise_existing() honors this so
-    the tray menu's Open Console click doesn't open a 2nd window when the
-    auto-launch block already has one in flight."""
-    try:
-        if _OVERLAY_STATE.exists():
-            cur = json.loads(_OVERLAY_STATE.read_text()) or {}
-        else:
-            cur = {}
-    except Exception:
-        cur = {}
-    cur["state"] = "open"
-    cur["pending"] = True
-    cur["opened_at"] = time.time()
-    if not cur.get("pid"):
-        cur["pid"] = -1
-    if not cur.get("window_id"):
-        cur["window_id"] = 0
-    _write_state(cur)
 
 
 def clear_pending() -> None:
@@ -200,109 +176,10 @@ def _safe_read_json(path: Path, default):
         return default
 
 
-def _compression_stats() -> str:
-    s = _safe_read_json(MINIFY_STATS, {})
-    if not s:
-        return "compression:  no data yet"
-    runs = s.get("runs", 0)
-    tin = s.get("tokens_in", 0)
-    tout = s.get("tokens_out", 0)
-    saved = s.get("tokens_saved", 0)
-    ratio = s.get("ratio_pct", 0.0)
-    return (
-        f"COMPRESSION  · runs {runs:,}  "
-        f"in {tin:,} · out {tout:,}  "
-        f"saved {saved:,}  ({ratio:.1f}%)"
-    )
 
 
-def _memory_stats() -> str:
-    hot = 0
-    cold = 0
-    cold_size = 0
-    plat_top = []
-    try:
-        hotdir = Path.home() / ".config" / "cortexllm" / "memory" / "hot"
-        if hotdir.exists():
-            for p in hotdir.glob("*.jsonl"):
-                for line in p.read_text(errors="ignore").splitlines():
-                    if line.strip():
-                        hot += 1
-                        try:
-                            o = json.loads(line)
-                            src = (o.get("source") or o.get("platform") or "?")
-                            plat_top.append(src)
-                        except Exception:
-                            pass
-        coldir = Path.home() / ".config" / "cortexllm" / "memory" / "cold"
-        if coldir.exists():
-            for p in coldir.iterdir():
-                if p.is_file():
-                    cold += 1
-                    cold_size += p.stat().st_size
-                elif p.is_dir():
-                    for f in p.rglob("*"):
-                        if f.is_file():
-                            cold += 1
-                            cold_size += f.stat().st_size
-        from collections import Counter
-        c = Counter(plat_top)
-        plat_top = ", ".join(f"{k}:{v}" for k, v in c.most_common(3))
-    except Exception:
-        pass
-    return (
-        f"MEMORY  · hot {hot:,}  cold {cold}  "
-        f"size {_human_bytes(cold_size)}"
-        + (f"  ({plat_top})" if plat_top else "")
-    )
 
 
-def _agent_status() -> str:
-
-    s = _safe_read_json(
-        Path.home() / ".cortexagent" / "active_model.json", {})
-    model = s.get("model") or s.get("name") or ""
-    port = str(s.get("port") or "")
-    started = s.get("started_at")
-    age = ""
-    if isinstance(started, (int, float)):
-        secs = int(time.time() - started)
-        if secs < 60:
-            age = f"{secs}s"
-        elif secs < 3600:
-            age = f"{secs // 60}m"
-        else:
-            age = f"{secs // 3600}h{(secs % 3600) // 60}m"
-    if not model:
-        try:
-            r = subprocess.run(
-                ["curl", "-s", "--max-time", "1",
-                 "http://127.0.0.1:8080/v1/models"],
-                capture_output=True, text=True, timeout=2,
-            )
-            data = json.loads(r.stdout or "{}")
-            models = [m.get("id") or m.get("name") for m in data.get("data", data.get("models", []))]
-            if models:
-                model = str(models[0])
-                port = "8080"
-        except Exception:
-            pass
-    if not model:
-        try:
-            r = subprocess.run(
-                ["ss", "-ltnp"], capture_output=True, text=True, timeout=1)
-            for line in r.stdout.splitlines():
-                if ":8080 " in line and "llama" in line.lower():
-                    model, port = "big (llama)", "8080"
-                    break
-        except Exception:
-            pass
-    if not model:
-        return "AGENT  ·  — no big model on :8080 —"
-
-    short_model = model if len(model) <= 32 else model[:29] + "…"
-    age_str = f"  up {age}" if age else ""
-    return f"AGENT  ·  {short_model}  :{port}{age_str}"
 
 
 def _plan_tasks() -> str:
@@ -685,10 +562,6 @@ def _focus_tab(tab: dict) -> bool:
 
 
 
-        try:
-            win.set_keep_above(False)
-        except Exception:
-            pass
         if _raise_brave_window():
             return True
 
@@ -734,10 +607,6 @@ def _focus_tab(tab: dict) -> bool:
 
 
 
-                    try:
-                        win.set_keep_above(False)
-                    except Exception:
-                        pass
                     act = subprocess.run(
                         ["xdotool", "windowactivate", best],
                         capture_output=True, timeout=2,
@@ -765,10 +634,6 @@ def _focus_tab(tab: dict) -> bool:
                 f"[focus_tab]   --classname brave-browser → {len(wids)} wid(s)")
             best = _pick_best_wid(wids, decoded)
             if best:
-                try:
-                    win.set_keep_above(False)
-                except Exception:
-                    pass
                 subprocess.run(
                     ["xdotool", "windowactivate", best],
                     capture_output=True, timeout=2,
@@ -824,57 +689,10 @@ def _pick_best_wid(wids: list[str], title: str) -> str | None:
     return best or wids[0]
 
 
-def _page_snapshot() -> str:
-
-    tabs = _fetch_cdp_tabs()
-    if not tabs:
-        return "PAGE  ·  — :9223 offline —"
 
 
 
 
-
-    focused = next((t for t in tabs if t.get("active")), tabs[0])
-    title = (focused.get("title") or "?")[:40]
-    url = focused.get("url") or "?"
-    if len(url) > 50:
-        url = url[:47] + "…"
-    return f"PAGE  ·  {title}  ·  {url}"
-
-
-
-
-def _metrics_line() -> str:
-
-
-    big_ok = _port_open(8080)
-    proxy_ok = _port_open(8081)
-    health = (
-        f"{'●' if big_ok else '○'} big :8080   "
-        f"{'●' if proxy_ok else '○'} proxy :8081"
-    )
-
-    try:
-        s = _safe_read_json(MINIFY_STATS, {})
-        runs = int(s.get("runs", 0))
-        ratio = float(s.get("ratio_pct", 0.0))
-        compress = f"compress {ratio:.0f}% ({runs} runs)"
-    except Exception:
-        compress = "compress —"
-    try:
-        hotdir = Path.home() / ".config" / "cortexllm" / "memory" / "hot"
-        coldir = Path.home() / ".config" / "cortexllm" / "memory" / "cold"
-        hot = 0
-        if hotdir.exists():
-            for p in hotdir.glob("*.jsonl"):
-                for line in p.read_text(errors="ignore").splitlines():
-                    if line.strip():
-                        hot += 1
-        cold = sum(1 for f in coldir.rglob("*") if f.is_file()) if coldir.exists() else 0
-        mem = f"mem {hot} hot / {cold} cold"
-    except Exception:
-        mem = "mem —"
-    return f"{health}\n{compress}   {mem}"
 
 
 def _port_open(port: int) -> bool:
@@ -1021,7 +839,7 @@ def raise_existing(from_process: bool = False) -> bool:
 
 
     try:
-        import shutil, subprocess
+        import subprocess
         if win_id:
 
             r = subprocess.run(
@@ -1416,15 +1234,6 @@ def build_window() -> int:
         pass
 
 
-
-    try:
-        vte.connect("button-press-event", _on_vte_button)
-    except Exception:
-        pass
-
-
-
-
     font = Pango.FontDescription("Mono 11")
     vte.set_font(font)
 
@@ -1544,8 +1353,6 @@ def build_window() -> int:
         for row in _browser_rows:
             _browser_list.remove(row)
         _browser_rows.clear()
-        has_tasks = bool(_plan_steps())
-        has_page_info = any(t.get("active") for t in tabs)
 
 
         cap = 5
@@ -1662,7 +1469,7 @@ def build_window() -> int:
                 line2.set_markup(
                     f"<span size='small' foreground='#6b7888'>"
                     f"  {state} · {short_id}{(' · ' + ts_short) if ts_short else ''}"
-                    f"</span>"
+                    "</span>"
                 )
                 line2.set_margin_start(2)
                 line2.set_margin_bottom(2)
@@ -1673,9 +1480,9 @@ def build_window() -> int:
             label = Gtk.Label()
             label.set_xalign(0.0)
             label.set_markup(
-                f"<span size='small' foreground='#8a7d68'>"
-                f"· no active plan"
-                f"</span>"
+                "<span size='small' foreground='#8a7d68'>"
+                "· no active plan"
+                "</span>"
             )
             label.set_margin_start(2)
             label.set_margin_bottom(1)
@@ -1724,74 +1531,6 @@ def build_window() -> int:
 
 
 
-    def _on_vte_button(widget, event):
-        if event.button == 2:
-            try:
-                sel = Gtk.Clipboard.get(Gdk.SELECTION_PRIMARY)
-                text = sel.wait_for_text()
-                if text:
-                    widget.feed_child(text.encode("utf-8"))
-                    return True
-            except Exception:
-                pass
-        if event.button == 3:
-            try:
-
-
-
-                menu = Gtk.Menu()
-
-                mi_copy = Gtk.MenuItem(label="Copy")
-                mi_copy.show()
-                def _do_copy(_i):
-                    try:
-                        widget.copy_clipboard()
-                    except Exception:
-                        pass
-                mi_copy.connect("activate", _do_copy)
-                menu.append(mi_copy)
-
-                mi_paste = Gtk.MenuItem(label="Paste")
-                mi_paste.show()
-                def _do_paste_cb(_i):
-                    try:
-                        widget.paste_clipboard()
-                    except Exception:
-                        pass
-                mi_paste.connect("activate", _do_paste_cb)
-                menu.append(mi_paste)
-
-                mi_paste_prim = Gtk.MenuItem(label="Paste Selection")
-                mi_paste_prim.show()
-                def _do_paste_prim(_i):
-                    try:
-                        sel = Gtk.Clipboard.get(Gdk.SELECTION_PRIMARY)
-                        text = sel.wait_for_text()
-                        if text:
-                            widget.feed_child(text.encode("utf-8"))
-                    except Exception:
-                        pass
-                mi_paste_prim.connect("activate", _do_paste_prim)
-                menu.append(mi_paste_prim)
-
-
-                toplevel = widget.get_toplevel()
-                if toplevel is not None:
-                    menu.attach_to_widget(toplevel, None)
-                menu.popup(None, None, None, None, event.button, event.time)
-                return True
-            except Exception:
-
-
-                try:
-                    sel = Gtk.Clipboard.get(Gdk.SELECTION_PRIMARY)
-                    text = sel.wait_for_text()
-                    if text:
-                        widget.feed_child(text.encode("utf-8"))
-                        return True
-                except Exception:
-                    pass
-        return False
 
 
 
@@ -1811,7 +1550,6 @@ def build_window() -> int:
 
 
 
-    import shlex
     base_path = os.environ.get("PATH") or ":".join([
         "/usr/local/sbin", "/usr/local/bin", "/usr/sbin",
         "/usr/bin", "/sbin", "/bin",

@@ -15,14 +15,12 @@ from __future__ import annotations
 
 import importlib
 import os
-import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Optional
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -318,7 +316,6 @@ def run() -> int:
     _daemon_start()
 
     try:
-        import pystray  # noqa: F401
         _log("pystray found — starting GUI tray", "🖥️", CYAN)
         _run_gui(quit_event)
     except Exception as e:

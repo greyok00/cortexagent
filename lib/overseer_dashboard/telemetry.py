@@ -7,7 +7,7 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from . import models as M
 
@@ -59,8 +59,7 @@ def _first(*candidates: Any) -> str:
     return ""
 
 
-def _resolve_model(daemon: Dict[str, Any], proxy: Dict[str, Any],
-                   active_model: Dict[str, Any]) -> M.ModelIdentity:
+def _resolve_model(daemon: Dict[str, Any], proxy: Dict[str, Any]) -> M.ModelIdentity:
 
     big = daemon.get("big") if isinstance(daemon.get("big"), dict) else {}
 
@@ -190,12 +189,9 @@ def read_snapshot() -> M.RuntimeSnapshot:
     daemon = _daemon_status()
     proxy = _proxy_metrics()
     ov = _read_json(STATE_DIR / "overseer_state.json", {}) or {}
-    steps = _read_json(STATE_DIR / "big_model_steps.json", {}) or {}
     minify = _read_json(STATE_DIR / "minify_stats.json", {}) or {}
     queue = _read_json(STATE_DIR / "overseer_queue.json", []) or []
     schedule = _read_json(STATE_DIR / "overseer_schedule.json", []) or []
-    plan = _read_json(STATE_DIR / "overseer_plan.json", {}) or {}
-    active_model = _read_json(STATE_DIR / "state" / "active_model.json", {}) or {}
 
     big = daemon.get("big") if isinstance(daemon.get("big"), dict) else {}
     proxy_up = bool(proxy.get("proxy_up", False)) or bool(daemon.get("proxy", {}).get("running"))
@@ -214,7 +210,7 @@ def read_snapshot() -> M.RuntimeSnapshot:
         stale = True
         stale_detail = f"data current {data_age:.1f}s"
 
-    model = _resolve_model(daemon, proxy, active_model)
+    model = _resolve_model(daemon, proxy)
     inference = _build_inference(daemon, proxy, big)
     scheduler = _build_scheduler(schedule)
 

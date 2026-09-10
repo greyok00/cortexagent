@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 import time
@@ -118,7 +117,6 @@ def decompose(prompt: str) -> list[str]:
 
 
     raw = re.split(r"\s*[\n;]+\s*", text)
-    verbish = re.compile(r"^\w", re.UNICODE)
     imperative = re.compile(
         r"^(?:add|build|create|make|write|fix|update|change|remove|delete|rename|"
         r"move|copy|install|run|test|deploy|refactor|implement|set|configure|"

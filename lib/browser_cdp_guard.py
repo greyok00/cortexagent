@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import socket
@@ -78,12 +77,6 @@ def assert_localhost(port: int = 9223) -> bool:
     return True
 
 
-def fix_exposed_port(port: int) -> bool:
-
-    if assert_localhost(port):
-        return True
-    alert("CDP_FIX_NEEDED", {"port": port, "note": "rebind to 127.0.0.1 in the owning compose/launcher"})
-    return False
 
 
 class CDPGuard:
@@ -172,40 +165,7 @@ def _port_of(bc: Any) -> int:
 
 
 
-BRAVE_BIN_CANDIDATES = [
-    "/opt/brave.com/brave/brave",
-    "/usr/bin/brave-browser-stable",
-    "/usr/bin/brave-browser",
-]
 
 
-def brave_binary() -> Optional[str]:
-    for p in BRAVE_BIN_CANDIDATES:
-        if os.path.exists(p):
-            return p
-    return None
 
 
-def launch_brave(user_data_dir: str, extra_args: Optional[List[str]] = None,
-                pipe: bool = True, port: int = 0) -> Dict[str, Any]:
-
-    bin_ = brave_binary()
-    if not bin_:
-        raise RuntimeError("Brave binary not found")
-    args = [bin_,
-            f"--user-data-dir={user_data_dir}",
-            "--disable-blink-features=AutomationControlled",
-            "--no-first-run", "--no-default-browser-check",
-            "--disable-features=AutomationControlled"]
-    if pipe:
-        args.append("--remote-debugging-pipe")
-    else:
-        args.append(f"--remote-debugging-port={port}")
-        args.append(f"--remote-allow-origins={','.join(ALLOWED_ORIGINS)}")
-    if extra_args:
-        args += extra_args
-    proc = subprocess.Popen(args, stdin=subprocess.PIPE if pipe else subprocess.DEVNULL,
-                            stdout=subprocess.PIPE if pipe else subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
-    return {"pid": proc.pid, "proc": proc, "pipe": pipe, "port": port,
-            "devtools_port_path": os.path.join(user_data_dir, "DevToolsActivePort") if not pipe else None}

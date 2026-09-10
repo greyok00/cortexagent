@@ -3,7 +3,7 @@
 import re
 import html
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 
 def sanitize_title(title: str, max_len: int = 40) -> str:

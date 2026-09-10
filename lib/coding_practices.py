@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sqlite3, sys, os
+import sqlite3, sys
 from pathlib import Path
 
 DB = Path.home() / ".config/cortexllm/cortexllm.db"

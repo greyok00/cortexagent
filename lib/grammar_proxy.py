@@ -146,7 +146,11 @@ def _bool_env(name: str, default: bool) -> bool:
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
-_CONTEXT_WINDOW = int(os.environ.get("CORTEXAGENT_CONTEXT_WINDOW", "131072") or 131072)
+try:
+    from lib.config import CFG as _CFG
+    _CONTEXT_WINDOW = int(_CFG.big_ctx)
+except Exception:
+    _CONTEXT_WINDOW = int(os.environ.get("CORTEXAGENT_CONTEXT_WINDOW", "131072") or 131072)
 _COMPLETION_RESERVE = int(os.environ.get("CORTEXAGENT_COMPLETION_RESERVE", "16384") or 16384)
 _TOKENIZER_MARGIN = int(os.environ.get("CORTEXAGENT_TOKENIZER_MARGIN", "8192") or 8192)
 # 2026-09-05: the window is the ONLY hard cap llama-server enforces. Minify's
@@ -564,6 +568,7 @@ def minify_response(body: bytes) -> bytes:
             out_lines.append(line)
             continue
 
+        modified = False
         try:
             choices = obj.get("choices") or []
             for ch in choices:
@@ -587,13 +592,17 @@ def minify_response(body: bytes) -> bytes:
                         if not hit:
                             break
                     if new != c:
+                        modified = True
                         if "delta" in ch:
                             ch["delta"]["content"] = new
                         else:
                             ch["message"]["content"] = new
         except Exception:
             pass
-        out_lines.append("data: " + json.dumps(obj, ensure_ascii=False))
+        if modified:
+            out_lines.append("data: " + json.dumps(obj, ensure_ascii=False))
+        else:
+            out_lines.append(line)
     if not changed:
         return body
     return ("\n".join(out_lines)).encode("utf-8")
@@ -709,7 +718,6 @@ _MINIFY_HIST_CAP = 60
 
 def _load_minify_stats() -> None:
 
-    global _minify_stats
     try:
         with _MINIFY_STATS_FILE.open(encoding="utf-8") as f:
             d = json.load(f)
@@ -867,7 +875,7 @@ def pipe(src, dst, stop, resp_buf=None):
 
 def _dechunk(data: bytes):
 
-    out = b""
+    out = []
     i = 0
     n = len(data)
     while True:
@@ -884,9 +892,9 @@ def _dechunk(data: bytes):
             break
         if i + size + 2 > n:
             return None
-        out += data[i:i + size]
+        out.append(data[i:i + size])
         i += size + 2
-    return out
+    return b"".join(out)
 
 
 class ProxyHandler:

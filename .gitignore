@@ -70,3 +70,10 @@ docs/
 prompts/pca_agent.md
 *.bak-merged
 cortex/
+
+# ── Bundled vendor blobs / one-off patch scripts — local-only ───
+three.module.min.js
+addons/controls/OrbitControls.js
+static/
+patch_ub2560.py
+profiles/
