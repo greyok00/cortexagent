@@ -67,7 +67,7 @@ def main():
     gen.add_argument("--guidance", type=float, default=8.0)
     gen.add_argument("--seed", type=int, default=None)
     gen.add_argument("--output", default=None)
-    info = sub.add_parser("info")
+    sub.add_parser("info")
     args = parser.parse_args()
     if args.command == "generate":
         w, h = map(int, args.size.split("x"))

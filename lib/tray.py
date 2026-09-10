@@ -30,7 +30,6 @@ if not sys.stderr.isatty():
 
 _OVERSEER = _REPO_ROOT / "lib" / "overseer.py"
 _CLI = _REPO_ROOT / "engine" / "cli.py"
-_LAUNCHER = _REPO_ROOT / "bin" / "cortexagent"
 
 
 
@@ -79,7 +78,7 @@ def _overseer_start() -> bool:
 
 def _overseer_stop() -> bool:
     _log("stopping overseer…", "🛑", YELLOW)
-    r = subprocess.run([sys.executable, str(_OVERSEER), "stop"],
+    subprocess.run([sys.executable, str(_OVERSEER), "stop"],
                        capture_output=True, text=True, timeout=40)
 
     stopped = _overseer_pid() is None
@@ -371,8 +370,6 @@ def _run_gui(quit_event: threading.Event) -> None:
 
     def on_open_terminal(icon, item):
         "Open just the plain terminal CLI in a fresh terminal window."
-        import shutil
-        import sys as _sys
         import subprocess as _sp
         from pathlib import Path
         script = str(Path(__file__).resolve().parent.parent / "bin" / "cortexagent")
@@ -460,7 +457,6 @@ def _run_gui(quit_event: threading.Event) -> None:
 
 def _have_pystray() -> bool:
     try:
-        import pystray  # noqa: F401
         return True
     except Exception:
         return False
@@ -470,7 +466,6 @@ def check() -> int:
 
     print(f"pystray: {'installed' if _have_pystray() else 'NOT installed (headless mode)'}")
     try:
-        import PIL  # noqa: F401
         print("Pillow: installed")
     except Exception:
         print("Pillow: NOT installed")

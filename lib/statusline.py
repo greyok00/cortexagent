@@ -34,7 +34,6 @@ def _get_token_metrics() -> str:
             data = json.loads(resp.read())
             parts = []
             ct = data.get("completion_tokens", 0)
-            pt = data.get("prompt_tokens", 0)
             reqs = data.get("requests", 0)
             in_tps = data.get("current_in_tps", 0)
             out_tps = data.get("current_out_tps") or data.get("current_tok_s", 0)

@@ -12,11 +12,10 @@ import sys
 import threading
 import time
 import urllib.request
-import collections
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Deque
+from typing import Any, Dict, List, Optional, Deque
 
 
 
@@ -31,7 +30,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 
 try:
-    from lib.scheduler import Store, Recovery, SchedulerUI
+    from lib.scheduler import Store
     SCHEDULER_AVAILABLE = True
 except ImportError as _ie:
     SCHEDULER_AVAILABLE = False
@@ -67,13 +66,6 @@ if str(REPO_ROOT) not in sys.path:
 from lib.config import CFG  # noqa: E402
 from lib import control  # noqa: E402 — daemon_present() to detect daemon mode
 from lib.errorlog import log_exception, close_dump  # noqa: E402
-
-
-try:
-    from slimtoken.pipeline import minify_request, MinifyConfig  # noqa: E402
-    SLIMTOKEN_AVAILABLE = True
-except ImportError:
-    SLIMTOKEN_AVAILABLE = False
 
 
 
@@ -238,7 +230,9 @@ def _load_json(path: Path, default: Any = None) -> Any:
 
 def _save_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 
@@ -289,74 +283,6 @@ def _queue_depth() -> int:
 
 
 
-
-
-
-class WorkerPool:
-
-    def __init__(self, max_workers: int = MAX_WORKERS):
-        self.max_workers = max_workers
-        self.workers: Dict[str, threading.Thread] = {}
-        self.heartbeats: Dict[str, float] = {}
-        self._lock = threading.Lock()
-        self._shutdown = threading.Event()
-
-    def submit(self, task: Dict) -> str:
-
-        worker_id = f"worker-{task.get('id', 'unknown')}"
-        worker = threading.Thread(
-            target=self._run_task,
-            args=(task,),
-            daemon=True,
-        )
-        worker.start()
-        with self._lock:
-            self.workers[worker_id] = worker
-            self.heartbeats[worker_id] = time.time()
-        return worker_id
-
-    def _run_task(self, task: Dict) -> None:
-
-        worker_id = f"worker-{task.get('id', 'unknown')}"
-        try:
-            while not self._shutdown.is_set():
-                self.heartbeats[worker_id] = time.time()
-
-                success = _execute_task(task)
-                if success:
-                    break
-
-                time.sleep(1)
-        except Exception as e:
-            _log(f"Worker {worker_id} crashed: {e}", "❌", RED)
-        finally:
-            with self._lock:
-                if worker_id in self.workers:
-                    del self.workers[worker_id]
-                if worker_id in self.heartbeats:
-                    del self.heartbeats[worker_id]
-
-    def heartbeat_check(self) -> List[str]:
-
-        dead = []
-        now = time.time()
-        with self._lock:
-            for worker_id, last_heartbeat in list(self.heartbeats.items()):
-                if now - last_heartbeat > WORKER_TIMEOUT:
-                    dead.append(worker_id)
-
-                    self.workers.pop(worker_id, None)
-                    self.heartbeats.pop(worker_id, None)
-        return dead
-
-    def shutdown(self) -> None:
-
-        self._shutdown.set()
-        with self._lock:
-            for worker in self.workers.values():
-                worker.join(timeout=5)
-            self.workers.clear()
-            self.heartbeats.clear()
 
 
 
@@ -473,7 +399,7 @@ def _check_context_alerts() -> List[str]:
 
 def _shutdown_signal_handler(signum, frame):
 
-    global _SHUTDOWN, _worker_pool
+    global _SHUTDOWN
     _SHUTDOWN = True
     _log(f"Shutdown signal received ({signum}) — draining...", "🛑", RED)
 
@@ -787,36 +713,16 @@ def _get_memory_stats() -> Dict:
            "hot_bytes": 0, "warm_bytes": 0}
     try:
         from slimtoken.memory.stats import stats as _cl_stats
-        from lib.memory_thin import HOT_DIR, WARM_DIR  # noqa: F401
-        s = _cl_stats(platform="cortexagent", dir=HOT_DIR.parent)
+        s = _cl_stats(platform="cortexagent")
         plat = s.get("hot", {}).get("by_platform", {}).get("cortexagent", {})
         out["hot"] = plat.get("entries", 0)
         out["hot_bytes"] = plat.get("bytes", 0)
         plat_w = s.get("warm", {}).get("by_platform", {}).get("cortexagent", {})
         out["warm"] = plat_w.get("entries", 0)
         out["warm_bytes"] = plat_w.get("bytes", 0)
-
-
         out["cold"] = len(s.get("cold", {}).get("categories", []))
     except Exception:
-
-        try:
-            sys.path.insert(0, str(REPO_ROOT))
-            from memory.db import db
-            reader = db.reader()
-            out["hot"] = reader.execute("SELECT COUNT(*) FROM Memory_Hot").fetchone()[0]
-            out["warm"] = reader.execute("SELECT COUNT(*) FROM Memory_Warm").fetchone()[0]
-            out["cold"] = reader.execute("SELECT COUNT(*) FROM Memory_Cold").fetchone()[0]
-        except Exception as e:
-            _log(f"Memory stats fallback error: {e}", "⚠️", YELLOW)
-        try:
-            from lib.memory_thin import HOT_DIR, WARM_DIR
-            for p in HOT_DIR.glob("*.jsonl"):
-                out["hot_bytes"] += p.stat().st_size
-            for p in WARM_DIR.glob("*.warm.jsonl"):
-                out["warm_bytes"] += p.stat().st_size
-        except (ImportError, OSError):
-            pass
+        pass
     return out
 
 
@@ -894,28 +800,6 @@ def _read_minify_stats() -> Dict:
         pass
     return {}
 
-
-def _merge_minify_into_state(state: Dict) -> None:
-
-    snap = _read_minify_stats()
-    if not snap:
-        return
-    prev = state.get("minify") or {}
-    prev_tokens_saved = int(prev.get("tokens_saved", 0) or 0)
-    state["minify"] = {
-        "runs": int(snap.get("runs", 0) or 0),
-        "tokens_in": int(snap.get("tokens_in", 0) or 0),
-        "tokens_out": int(snap.get("tokens_out", 0) or 0),
-        "tokens_saved": int(snap.get("tokens_saved", 0) or 0),
-        "ratio_pct": float(snap.get("ratio_pct", 0.0) or 0.0),
-        "last_run_ts": float(snap.get("last_run_ts", 0.0) or 0.0),
-        "last_saved_pct": float(snap.get("last_saved_pct", 0.0) or 0.0),
-        "history_60s": list(snap.get("history_60s") or []),
-        "errors": int(snap.get("errors", 0) or 0),
-    }
-
-
-
 def _merge_token_stats() -> Dict:
 
     proxy_stats = _read_minify_stats()
@@ -931,6 +815,8 @@ def _merge_token_stats() -> Dict:
             "last_run_ts": proxy_stats.get("last_run_ts", 0),
         },
     }
+
+
 
 
 def _merge_minify_into_state(state: Dict) -> None:
@@ -957,31 +843,6 @@ def _merge_minify_into_state(state: Dict) -> None:
         _log(f"Minify: +{delta} tok saved this tick "
              f"(lifetime {state['minify']['ratio_pct']:.0f}% across "
              f"{state['minify']['runs']} runs)", "📐", DIM)
-
-
-
-    """Check if the main model proxy is responding.
-
-    502 from the proxy = proxy is UP but the big model is idle-unloaded — the
-    normal no-session state (the daemon loads big on demand), NOT an alert.
-    Only a genuinely unreachable proxy (connection refused / 5xx other than 502)
-    is a real problem.
-    """
-    alerts = []
-    proxy_port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
-    try:
-        req = urllib.request.Request(f"http://127.0.0.1:{proxy_port}/health",
-                                     method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            if resp.status not in (200, 502):
-                alerts.append(f"Proxy health check failed (HTTP {resp.status})")
-    except urllib.error.HTTPError as e:
-        if e.code != 502:
-            alerts.append(f"Proxy health check failed (HTTP {e.code})")
-    except Exception:
-        alerts.append(f"Proxy not reachable on port {proxy_port} — main model may be down")
-    return alerts
-
 
 
 _CTX_CRITICAL_TICKS = 0
@@ -1213,7 +1074,6 @@ def _dispatch_workflow(state: Dict) -> int:
 
     try:
         sys.path.insert(0, str(REPO_ROOT))
-        from engine import WorkflowEngine
         from engine.types import TaskStatus
         from engine.workflow import _load_workflow, _save_workflow
         plan_path = WORKFLOW_FILE
@@ -1339,7 +1199,7 @@ def _hot_remediation(state: Dict, stats: Dict) -> None:
 def _hot_to_warm_sync(state: Dict) -> None:
 
     try:
-        from lib.memory_thin import HOT_DIR, WARM_DIR
+        from slimtoken.memory import HOT_DIR, WARM_DIR
         for platform in ("cortexagent", "claude", "openclaw_brain", "system"):
             hot_file = HOT_DIR / f"{platform}.jsonl"
             warm_file = WARM_DIR / f"{platform}.warm.jsonl"
@@ -1440,7 +1300,6 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
     task_type = task.get("type", "command")
     prompt = task.get("prompt", "")
     command = task.get("command", "")
-    output = task.get("output", "")
     start_time = time.time()
     max_retries = 3 if task_type in ("llm", "image", "video") else 0
 
@@ -2475,7 +2334,7 @@ def _status() -> None:
             lines.append(f"  Minify: {m['tokens_saved']:,} tok saved "
                          f"({m['ratio_pct']:.0f}%) across {m['runs']} runs")
         else:
-            lines.append(f"  Minify: no runs yet")
+            lines.append("  Minify: no runs yet")
 
 
         token_stats = _merge_token_stats()
@@ -2486,7 +2345,7 @@ def _status() -> None:
             lines.append(f"  Tokens saved: {total.get('tokens_saved', 0):,} ({total.get('ratio_pct', 0):.1f}%)")
             lines.append(f"  Proxy runs: {token_stats.get('proxy', {}).get('runs', 0)}")
         else:
-            lines.append(f"  Token tracking: no data yet")
+            lines.append("  Token tracking: no data yet")
 
 
         latency_stats = _get_latency_stats()
@@ -2495,7 +2354,7 @@ def _status() -> None:
                          f"p95={latency_stats['p95_ms']:.0f} "
                          f"p99={latency_stats.get('p99_ms', 'n/a')}")
         else:
-            lines.append(f"  Latency: no data yet")
+            lines.append("  Latency: no data yet")
 
         queue_depth_stats = _get_queue_depth_stats()
         if queue_depth_stats.get("count", 0):
@@ -2503,7 +2362,7 @@ def _status() -> None:
                          f"max={queue_depth_stats['max']} "
                          f"current={queue_depth_stats['current']}")
         else:
-            lines.append(f"  Queue depth: no data yet")
+            lines.append("  Queue depth: no data yet")
 
         ctx_stats = _get_context_stats()
         if ctx_stats.get("count", 0):
@@ -2511,15 +2370,14 @@ def _status() -> None:
                          f"max={ctx_stats['max_pct']:.1f}% "
                          f"current={ctx_stats['current_pct']:.1f}%")
         else:
-            lines.append(f"  Context usage: no data yet")
+            lines.append("  Context usage: no data yet")
 
 
-        pool = WorkerPool()
-        dead_workers = pool.heartbeat_check()
+        dead_workers = _worker_pool.heartbeat_check() if _worker_pool else []
         if dead_workers:
             lines.append(f"  Dead workers: {len(dead_workers)} (replaced)")
         else:
-            lines.append(f"  Workers: healthy")
+            lines.append("  Workers: healthy")
 
         if plan and "error" not in plan:
             step = plan.get("current_step", 0)
@@ -2983,7 +2841,6 @@ def get_worker_pool() -> Optional[WorkerPool]:
 
 def record_queue_depth(depth: int) -> None:
 
-    global _queue_depth_history
     _queue_depth_history.append((time.time(), depth))
 
 

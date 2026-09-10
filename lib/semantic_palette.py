@@ -2,11 +2,9 @@
 
 import json
 import os
-import re
 import subprocess
-import sys
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 
 def detect_color_depth() -> str:

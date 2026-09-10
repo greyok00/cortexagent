@@ -169,23 +169,15 @@ class Config:
         self.db_path = Path(_env(
             "CORTEXAGENT_DB_PATH", "memory", "db_path",
             str(home / ".config" / "cortexllm" / "cortexllm.db")))
-        self.cortexllm_db_path = Path(_env(
-            "CORTEXLLM_DB_PATH", "memory", "cortexllm_db_path",
-            str(self.db_path)))
-        self.cortexllm_memory_dir = Path(_env(
-            "CORTEXLLM_MEMORY_DIR", "memory", "cortexllm_memory_dir",
-            str(home / ".config" / "cortexllm" / "memory")))
 
 
         self.cortexllm_dir = Path(_detect_cortexllm_dir())
-        self.cortexllm_mcp_server = self.cortexllm_dir / "cortexllm_mcp_server.py"
         self.cortexllm_socket = Path(_env(
             "CORTEXLLM_SOCKET", "cortexllm", "socket",
             str(home / ".cortexllm" / "memory.sock")))
         self.cortexllm_save_script = Path(_env(
             "CORTEXLLM_SAVE_SCRIPT", "cortexllm", "save_script",
             str(home / ".cortexllm" / "scripts" / "save-context.py")))
-        self.cortexllm_hot_file = self.cortexllm_memory_dir / "hot" / "cortexagent.jsonl"
 
 
 
@@ -400,7 +392,7 @@ class Config:
     def ensure_dirs(self) -> None:
 
         for d in (self.state_dir, self.logs_dir, self.profiles_dir / "default",
-                  self.db_path.parent, self.cortexllm_memory_dir):
+                  self.db_path.parent):
             try:
                 d.mkdir(parents=True, exist_ok=True)
             except Exception:

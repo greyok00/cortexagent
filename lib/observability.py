@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 
 import json
-import os
 import re
 import sys
 import time
 import uuid
-import hashlib
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, Optional, Any, Tuple
 from collections import defaultdict
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -21,23 +18,10 @@ _OBS_DIR.mkdir(parents=True, exist_ok=True)
 
 _TRACES_FILE = _OBS_DIR / "traces.ndjson"
 _METRICS_FILE = _OBS_DIR / "metrics.ndjson"
-_EVALS_FILE = _OBS_DIR / "evals.ndjson"
 _LOGS_DIR = _OBS_DIR / "logs"
 _LOGS_DIR.mkdir(exist_ok=True)
 
 
-SPAN_TYPES = {
-    "routing": "Intent classification + route decision",
-    "framing": "Prompt framing + domain analysis",
-    "minify":  "Token minification pass",
-    "llm":     "LLM inference",
-    "tool":    "Tool execution",
-    "beautify": "Output beautification pass",
-    "output":  "Final output formatting",
-    "memory":  "Memory operation (hot/cold)",
-    "eval":    "Evaluation/guardrail check",
-    "error":   "Error/failure span",
-}
 
 SAFETY_KEYWORDS = [
     "ignore previous", "disregard", "new instructions", "system override",
@@ -114,9 +98,6 @@ class Span:
     def set_tag(self, key: str, value: str) -> None:
         self.tags[key] = value
 
-    def set_error(self, error: str) -> None:
-        self.status = "error"
-        self.error = str(error)
 
     def to_dict(self) -> Dict:
         return {
@@ -364,11 +345,6 @@ def evaluate_trace(trace: Trace) -> Dict:
 
 
 
-def log_event(trace_id: str, event: Dict) -> None:
-
-    log_file = _LOGS_DIR / f"{trace_id}.log"
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(event, default=str) + "\n")
 
 
 

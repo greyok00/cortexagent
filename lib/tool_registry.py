@@ -520,10 +520,7 @@ _register_all()
 
 
 
-from lib.converted_mcp_tools import (
-    execute_converted_tool as _exec,
-    list_converted_tools as _list_conv,
-)
+from lib.converted_mcp_tools import execute_converted_tool as _exec
 
 
 _MCP_TOOL_DEFS = [

@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 
 import json
-import os
 import sys
 import time
-import random
 import socket
-import threading
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -21,10 +18,8 @@ TEST_RESULTS_DIR = Path.home() / ".cortexagent" / "test_results"
 TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-BOLD = "\033[1m"
 GREEN = "\033[32m"
 RED = "\033[31m"
-YELLOW = "\033[33m"
 CYAN = "\033[36m"
 RESET = "\033[0m"
 
@@ -247,7 +242,7 @@ def test_disk_io(i: int) -> Dict:
 
 
         with open(test_file, "r", encoding="utf-8") as f:
-            read_data = json.loads(f.read())
+            json.loads(f.read())
 
 
         test_file.unlink(missing_ok=True)
@@ -285,7 +280,7 @@ def test_e2e_request(i: int) -> Dict:
             time.sleep(0.01)
 
 
-        with Span(trace.trace_id, "beautify", "format_output") as s3:
+        with Span(trace.trace_id, "beautify", "format_output"):
             time.sleep(0.001)
 
 

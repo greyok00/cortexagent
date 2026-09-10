@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
-import hashlib
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, Optional
 
 
 
@@ -654,11 +652,6 @@ def cve_poll_now(since: str = "7d", include_osv: bool = False) -> dict:
             from lib.memory_thin import write_cold
             from datetime import datetime
             cat = f"cve_{datetime.now().strftime('%Y-%m-%d')}"
-            top = [{"id": e["cve_id"],
-                    "cvss": e.get("cvss_v3"),
-                    "kev": e["kev"],
-                    "techniques": e.get("mitre_techniques", [])}
-                   for e in new_entries[:50]]
             write_cold(category=cat,
                        content=f"{summary}",
                        replace=False)
@@ -745,7 +738,7 @@ def capabilities_list(paths: list[str] | None = None) -> dict:
     try:
         from lib import hardening_status as hs
         if paths:
-            import shutil as _sh, subprocess as _sp
+            import shutil as _sh
             out_lines: list[str] = []
             for p in paths:
                 if not _sh.which("getcap"):

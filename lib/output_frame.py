@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-import re
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Tuple
 
 
 OUTPUT_TEMPLATES = {

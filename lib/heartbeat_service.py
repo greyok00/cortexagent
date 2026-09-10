@@ -173,7 +173,7 @@ def format_report(result: dict) -> str:
     lines.append(f"  Session: {sid}")
     lines.append(f"  Messages: {result['message_count']} | Size: {result['file_size_kb']}KB")
     if result["new_recommended"]:
-        lines.append(f"  ⚠ Run /new to reset context")
+        lines.append("  ⚠ Run /new to reset context")
     if result["locks_cleaned"]:
         lines.append(f"  Cleaned {result['locks_cleaned']} stale lock(s)")
     return "\n".join(lines)
@@ -248,14 +248,14 @@ def _smoke() -> int:
     if sess:
         print(f"  find_session: {sess.parent.name}/{sess.name[:8]}...")
     else:
-        print(f"  find_session: no session for current cwd")
+        print("  find_session: no session for current cwd")
 
 
     r = {"status": "green", "session_id": "abc123def", "message_count": 5,
          "file_size_kb": 12.3, "new_recommended": False, "locks_cleaned": 0}
     s = format_report(r)
     assert "GREEN" in s and "abc123de" in s
-    print(f"  format_report: green status + 8-char session id")
+    print("  format_report: green status + 8-char session id")
 
     print("heartbeat_service: OK")
     return 0

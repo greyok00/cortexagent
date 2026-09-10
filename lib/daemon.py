@@ -20,7 +20,7 @@ if str(_REPO_ROOT) not in sys.path:
 from lib.config import CFG  # noqa: E402
 from lib.model_backend import LlamaServer  # noqa: E402
 from lib import control  # noqa: E402
-from lib.errorlog import log_exception, close_dump  # noqa: E402
+from lib.errorlog import close_dump  # noqa: E402
 
 
 STATE_DIR = CFG.state_dir
@@ -31,6 +31,7 @@ IDLE_POLL = 5
 _lock = threading.Lock()
 _big_lock = threading.Lock()
 _last_request = 0.0
+_status_cache = {"t": 0.0, "payload": None}
 _active_sessions = 0
 _SHUTDOWN = False
 _proxy_proc: Optional[subprocess.Popen] = None
@@ -259,7 +260,6 @@ _big = LlamaServer(
 )
 def _start_big(timeout: Optional[int] = None) -> bool:
 
-    global _big
     with _big_lock:
         if _big.is_healthy():
             return True
@@ -364,8 +364,8 @@ def _stop_proxy() -> None:
 
 
 def _idle_watcher() -> None:
+    global _active_sessions
 
-    global _active_sessions, _SHUTDOWN
     while not _SHUTDOWN:
         time.sleep(IDLE_POLL)
         should_unload = False
@@ -419,12 +419,14 @@ def _handle(req: Dict) -> Dict:
         return {"ok": True}
 
     if cmd == "status":
-
-
+        now = time.time()
+        cached = _status_cache["payload"]
+        if cached is not None and now - _status_cache["t"] < 1.0:
+            return cached
 
         sessions = _scan_active_sessions()
         primary = sessions[0] if sessions else {}
-        return {
+        payload = {
             "ok": True,
             "big": {"port": _big.port, "healthy": _big.is_healthy(timeout=1), "running": _big.running,
                     "model": str(_big.model_path),
@@ -438,6 +440,9 @@ def _handle(req: Dict) -> Dict:
             "idle_sec": int(time.time() - _last_request) if _last_request else None,
             "idle_unload_sec": int(CFG.idle_unload_sec),
         }
+        _status_cache["t"] = now
+        _status_cache["payload"] = payload
+        return payload
 
     if cmd == "activity":
 
@@ -690,7 +695,7 @@ def _status() -> int:
     big = s["big"]
     from pathlib import Path as _P
     model_name = _P(big.get("model", "")).name or "?"
-    print(f"CortexAgent daemon: 🟢 running")
+    print("CortexAgent daemon: 🟢 running")
     print(f"  big  :{big['port']}  {'🟢 healthy' if big['healthy'] else '🔴 down'}  (running={big['running']})")
     print(f"       model: {model_name} (big)")
     print(f"  proxy: {'🟢 up' if s['proxy']['running'] else '🔴 down'}")

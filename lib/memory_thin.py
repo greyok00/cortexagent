@@ -2,10 +2,9 @@
 import json
 import os
 import socket
-import sys
 import time
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import List, Dict
 
 try:
     from slimtoken.memory.atomic import atomic_append as _atomic_append
@@ -25,7 +24,6 @@ CORTEXLLM_DIR = _HOME / ".config/cortexllm"
 HOT_FILE = CORTEXLLM_DIR / "memory" / "hot" / "cortexagent.jsonl"
 COLD_FILE = CORTEXLLM_DIR / "memory" / "cold" / "cortexagent.jsonl"
 DAEMON_SOCKET = _HOME / ".cortexllm" / "memory.sock"
-ENTERPRISE_DB = CORTEXLLM_DIR / "cortexllm.db"
 
 
 def _now_ts() -> str:
@@ -90,14 +88,6 @@ def read_last(n: int = 5) -> List[Dict]:
         return []
 
 
-def read_all() -> List[Dict]:
-
-    if not HOT_FILE.exists():
-        return []
-    try:
-        return [json.loads(l) for l in HOT_FILE.read_text().strip().split("\n") if l.strip()]
-    except (OSError, ValueError):
-        return []
 
 
 def search(query: str, limit: int = 10) -> List[Dict]:

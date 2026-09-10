@@ -269,17 +269,6 @@ _FILLER_WORDS = frozenset({
 
 
 
-_HALLUCINATION_TOKENS = frozenset({
-
-
-
-
-
-
-    "thank", "thanks", "you", "your", "yours", "very", "much", "watching",
-    "watch", "show", "subscribe", "subscribed", "channel", "bye", "love",
-    "see", "later", "welcome", "please", "enjoy", "appreciate", "appreciated",
-})
 
 
 
@@ -753,7 +742,6 @@ def _safe_send(conn, payload: bytes) -> None:
 def _socket_server(stop_event, mode_events) -> None:
     import json
     import socket
-    import threading
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
         SOCKET_PATH.unlink()

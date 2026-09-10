@@ -8,12 +8,9 @@ Usage:
   python3 lib/chain_diagnostic.py          # full diagnostic
   python3 lib/chain_diagnostic.py trace    # detailed trace for a test request
 """
-import json
 import sys
-import os
 import time
 from pathlib import Path
-from typing import Dict, List, Any
 
 
 print("=" * 70)
@@ -53,7 +50,7 @@ try:
     print(f"  Response minify:        {sys.modules['lib.grammar_proxy']._MINIFY_RESPONSE}")
 
     snap = _get_minify_snapshot()
-    print(f"\n  Lifetime stats:")
+    print("\n  Lifetime stats:")
     print(f"    Total runs:           {snap.get('runs', 0)}")
     print(f"    Tokens in:            {snap.get('tokens_in', 0):,}")
     print(f"    Tokens out:           {snap.get('tokens_out', 0):,}")
@@ -82,7 +79,7 @@ except Exception as e:
 print("\n4. BEAUTIFICATION PIPELINE")
 print("-" * 70)
 try:
-    from lib.beautify import beautify, beautify_html
+    from lib.beautify import beautify
 
 
     tests = [
@@ -92,7 +89,7 @@ try:
         ("Bar chart", "requests: 100\nerrors: 25"),
         ("Prose", "The investigation is complete. No issues found."),
     ]
-    print(f"  Test cases:")
+    print("  Test cases:")
     for name, text in tests:
         result = beautify(text)
         changed = "CHANGED" if result != text else "UNCHANGED"
@@ -106,14 +103,14 @@ except Exception as e:
 print("\n5. REACT LOOP")
 print("-" * 70)
 try:
-    from lib.react_loop import classify_mode, _REACT_SYSTEM, _SOCRATIC_SYSTEM
+    from lib.react_loop import classify_mode
     tests = [
         "What is 2+2?",
         "Investigate the security posture of this server",
         "Write a business plan for a coffee shop",
         "Help me with my homework",
     ]
-    print(f"  Mode classification:")
+    print("  Mode classification:")
     for text in tests:
         mode = classify_mode(text)
         print(f"    '{text[:40]:40s}' → {mode}")
@@ -126,7 +123,7 @@ print("-" * 70)
 try:
     from lib import overseer
     status = overseer._status()
-    print(f"  Overseer status:")
+    print("  Overseer status:")
     print(f"    Running:            {overseer._is_running() is not None}")
     print(f"    Queue size:         {len(overseer.queue_list())}")
     print(f"    Schedule entries:   {len(overseer.schedule_list())}")

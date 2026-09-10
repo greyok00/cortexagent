@@ -8,7 +8,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Callable, Iterable, Optional, Tuple, Type, Any
+from typing import Callable, Optional, Tuple, Type
 
 
 class CircuitBreakerOpenError(Exception):

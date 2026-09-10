@@ -2,15 +2,13 @@
 
 import json
 import os
-import time
 import uuid
 import fcntl
 import hashlib
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from collections import defaultdict
+from typing import Dict, List, Optional
 
 
 STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
@@ -624,7 +622,6 @@ class Store:
         recovered = []
         due = []
         interrupted = []
-        failed = []
 
         now = _now()
         for task_id, task in self._tasks.items():
@@ -787,7 +784,7 @@ def main():
         assert pause_receipt["ok"], "Pause failed"
         resume_receipt = store.resume(receipt["task_id"])
         assert resume_receipt["ok"], "Resume failed"
-        print(f"  ✅ Pause + Resume")
+        print("  ✅ Pause + Resume")
 
 
         run_receipt = store.run_now(receipt["task_id"])
@@ -797,7 +794,7 @@ def main():
 
         cancel_receipt = store.cancel(receipt["task_id"])
         assert cancel_receipt["ok"], "Cancel failed"
-        print(f"  ✅ Cancel")
+        print("  ✅ Cancel")
 
 
         result = store.reconcile()
@@ -805,7 +802,7 @@ def main():
         print(f"  ✅ Reconcile: {result}")
 
 
-        test_receipt = store.create(
+        store.create(
             title="smoke-test", kind="test", ephemeral=True,
             owner="test", trigger="cron", schedule_value="0 9 * * *"
         )

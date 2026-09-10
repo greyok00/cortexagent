@@ -89,7 +89,6 @@ def insert_practice(category, practice, description, source, priority="medium", 
 def parse_markdown(text: str, source: str) -> int:
 
     total = 0
-    current_category = "Penetration Testing"
     lines = text.split("\n")
 
 
@@ -125,7 +124,6 @@ def parse_markdown(text: str, source: str) -> int:
 
         for key, cat in CAT_HEADING_MAP.items():
             if key in heading_lower:
-                current_category = cat
                 break
 
 
@@ -252,7 +250,6 @@ def parse_pdf_text(text: str, source: str) -> int:
 
     total = 0
     lines = text.split("\n")
-    current_category = "Penetration Testing"
 
     for i, line in enumerate(lines):
         s = line.strip()
@@ -278,7 +275,6 @@ def parse_pdf_text(text: str, source: str) -> int:
                              ("exploit", "Penetration Testing"), ("password", "Password Cracking"),
                              ("recon", "OSINT"), ("osint", "OSINT")]:
                 if key in heading:
-                    current_category = cat
                     break
             continue
 

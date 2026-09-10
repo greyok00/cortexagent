@@ -48,16 +48,6 @@ def wait_network_idle(bc, tab: Any, timeout: float = 30.0, quiet_ms: int = 500) 
 
 def wait_selector(bc, tab: Any, selector: str, timeout: float = 15.0) -> bool:
 
-    js = f"""(() => {{
-      if (document.querySelector({json.dumps(selector)})) return true;
-      return new Promise((resolve) => {{
-        const obs = new MutationObserver(() => {{
-          if (document.querySelector({json.dumps(selector)})) {{ obs.disconnect(); resolve(true); }}
-        }});
-        obs.observe(document.documentElement, {{childList:true, subtree:true}});
-        setTimeout(() => {{ obs.disconnect(); resolve(false); }}, {int(timeout*1000)});
-      }});
-    }})()"""
 
 
     deadline = time.time() + timeout

@@ -71,7 +71,6 @@ def _make_window() -> None:
     global _ROOT
     try:
         import tkinter as tk
-        from tkinter import ttk
     except ImportError:
         print("⚠️ Tkinter not available")
         return

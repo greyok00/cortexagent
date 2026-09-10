@@ -24,11 +24,7 @@ import json
 import sys
 from typing import Any, Dict, List, Optional
 
-from browser_control import (
-    CDP_URL, close, list_tabs, navigate, fetch, click, type_text,
-    evaluate, snapshot, read_text, fill_and_send,
-    start_guard, stop_guard, stealth_status,
-)
+from browser_control import CDP_URL, close, list_tabs, navigate, fetch, click, type_text, evaluate, snapshot, fill_and_send, start_guard, stealth_status
 
 
 def _send_json(obj: Dict[str, Any]) -> None:

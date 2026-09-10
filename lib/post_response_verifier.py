@@ -87,7 +87,6 @@ def _validate_json(response: str, required_fields: Optional[List[str]] = None,
     if schema and isinstance(parsed, dict):
         for key, expected_type in schema.items():
             if key in parsed:
-                actual = type(parsed[key]).__name__
                 if expected_type == "array" and not isinstance(parsed[key], list):
                     return {"valid": False, "reason": f"Field '{key}' should be array"}
                 elif expected_type == "object" and not isinstance(parsed[key], dict):

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import List
 
 _STRIP = re.compile(r"[()\[\]{}]")
 _WS = re.compile(r"\s+")

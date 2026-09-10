@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
 
-import json
 import os
 import re
 import sys
-from typing import List, Optional, Tuple, Dict, Union
+from typing import List, Optional, Tuple, Dict
 from html import escape as html_escape
 
 
 try:
-    from lib.charts import (
-        sparkline, multi_sparkline, waffle, bar_chart, heatmap,
-        gauge, tree, gantt, box_plot, funnel, sankey, line_chart,
-        flowchart, calendar_heatmap,
-        VERTICAL_BLOCKS, HEATMAP_DENSITY,
-    )
+    from lib.charts import sparkline, multi_sparkline, waffle, gauge, flowchart
     CHARTS_AVAILABLE = True
 except ImportError:
     CHARTS_AVAILABLE = False

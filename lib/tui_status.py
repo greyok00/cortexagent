@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional, Sequence, Tuple
 
@@ -539,8 +539,6 @@ def footer_line(shortcuts: Sequence[Tuple[str, str]], width: int) -> str:
 
 
 
-    keep = ("l",)
-    keep_verbs = ("logs", "cancel", "retry")
 
     items = list(shortcuts)
     for drop_key in ("s", "m", "?"):
