@@ -13,7 +13,7 @@ import urllib.request
 
 
 
-_DASHBOARD_STEPS = Path.home() / ".cortexagent" / "big_model_steps.json"
+_DASHBOARD_STEPS = Path.home() / ".cortexagent" / "model_steps.json"
 
 
 def _emit_dashboard_step(body: bytes, elapsed: float) -> None:
@@ -88,7 +88,7 @@ def _emit_routing() -> None:
         return
     try:
         state = {
-            "route": "big",
+            "route": "model",
             "model": router.model,
             "base_url": router.base_url,
             "router_mode": router.router_mode,
@@ -128,11 +128,15 @@ def _emit_routing() -> None:
 
 
 try:
-    from slimtoken.pipeline import minify_request, MinifyConfig
-    from slimtoken.tokencount import count_messages, count_system, count_tools
-    from slimtoken.token_budget import enforce_budget
-    _MINIFY_BACKEND = "slimtoken"
-    _MINIFY_OK = True
+    import os as _os
+    if _os.environ.get("CORTEXAGENT_SLIMTOKEN") == "0":   # user toggle:
+        _MINIFY_OK = False                                # off = no rewriting
+    else:
+        from slimtoken.pipeline import minify_request, MinifyConfig
+        from slimtoken.tokencount import count_messages, count_system, count_tools
+        from slimtoken.token_budget import enforce_budget
+        _MINIFY_BACKEND = "slimtoken"
+        _MINIFY_OK = True
 except Exception as _e:  # pragma: no cover — slimtoken is required
     _MINIFY_OK = False
     print(f"[proxy] slimtoken unavailable (continuing without): {_e}",
@@ -148,7 +152,7 @@ def _bool_env(name: str, default: bool) -> bool:
 
 try:
     from lib.config import CFG as _CFG
-    _CONTEXT_WINDOW = int(_CFG.big_ctx)
+    _CONTEXT_WINDOW = int(_CFG.ctx_tokens)
 except Exception:
     _CONTEXT_WINDOW = int(os.environ.get("CORTEXAGENT_CONTEXT_WINDOW", "131072") or 131072)
 _COMPLETION_RESERVE = int(os.environ.get("CORTEXAGENT_COMPLETION_RESERVE", "16384") or 16384)
@@ -161,6 +165,25 @@ _MINIFY_BUDGET = max(1024, _CONTEXT_WINDOW - _COMPLETION_RESERVE - _TOKENIZER_MA
 _HARD_CEILING = max(_MINIFY_BUDGET + 1, _CONTEXT_WINDOW - _TOKENIZER_MARGIN)
 
 
+def _apply_extra_stages(parsed):
+    """reframe + context_prune stages (user 2026-09-19: both ON)."""
+    try:
+        # reframe handled by _reframe_user_prompt (single reframe, no doubles)
+        if "context_prune" in _MINIFY_CFG.enabled_stages:
+            from slimtoken.context_prune import strip_low_value
+            msgs = parsed.get("messages", [])
+            for m in msgs[1:-8]:                       # keep last 8 protected
+                c = m.get("content")
+                if m.get("role") == "assistant" and isinstance(c, str):
+                    pruned = strip_low_value(c)
+                    # empty assistant content = malformed stream
+                    # ("Cannot continue from message role: assistant") — skip
+                    if pruned.strip():
+                        m["content"] = pruned
+    except Exception:
+        pass
+
+
 def _build_minify_cfg():
     if not _MINIFY_OK or not _bool_env("CORTEXAGENT_MINIFY", True):
         return None
@@ -171,8 +194,11 @@ def _build_minify_cfg():
         stages.add("system")
     if _bool_env("CORTEXAGENT_MINIFY_MESSAGES", True):
         stages.add("messages")
-
         stages.update(("dedup", "distill"))
+    if _bool_env("CORTEXAGENT_REFRAME", True):          # user 2026-09-19: ON
+        stages.add("reframe")
+    if _bool_env("CORTEXAGENT_CONTEXT_PRUNE", True):    # user 2026-09-19: ON
+        stages.add("context_prune")
     skip = {s.strip() for s in os.environ.get(
         "CORTEXAGENT_MINIFY_TOOL_SKIP", "").split(",") if s.strip()}
 
@@ -243,6 +269,283 @@ def _cap_text_blocks(blocks: list, max_chars: int) -> None:
             budget = 0
 
 
+_IMAGE_ESCALATION_DIR = Path(
+    os.environ.get("CORTEXAGENT_IMAGE_ESCALATION_DIR",
+                   os.path.expanduser("~/dispatcher/data/inbox-images")))
+_seen_image_hashes: dict = {}  # sha1 -> ts, dedupes replays across turns
+_seen_image_order: list = []
+
+
+def _save_data_url_image(url: str, prompt_text: str) -> str | None:
+    """Decode a data:image/...;base64 data URL to a file for cloud vision."""
+    import base64 as _b64
+    import hashlib as _hashlib
+    try:
+        meta, _, b64 = url.partition(",")
+        if not b64:
+            return None
+        ext = "png"
+        head = (meta.split(":")[-1].split(";")[0] or "").lower()
+        for cand, e in (("png", "png"), ("jpeg", "jpg"), ("webp", "webp"),
+                        ("gif", "gif")):
+            if cand in head:
+                ext = e
+                break
+        raw = _b64.b64decode(b64, validate=False)
+        digest = _hashlib.sha1(raw).hexdigest()[:12]
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        out_dir = _IMAGE_ESCALATION_DIR
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, f"img-{ts}-{digest}.{ext}")
+        if digest in _seen_image_hashes or os.path.exists(path):
+            _seen_image_hashes[digest] = ts
+            return path
+        with open(path, "wb") as f:
+            f.write(raw)
+        _seen_image_hashes[digest] = time.time()
+        _seen_image_order.append(digest)
+        if len(_seen_image_order) > 64:
+            _seen_image_hashes.pop(_seen_image_order.pop(0), None)
+        return path
+    except Exception as e:
+        print(f"[proxy] image save failed: {e}", file=sys.stderr)
+        return None
+
+
+def _escalate_image_to_cloud(path_or_url: str, prompt_text: str) -> bool:
+    """Auto-send the image task to the cloud dispatcher queue (owner directive
+    2026-09-20: anything the local model cannot support — images, video — is
+    auto-sent to the cloud). Best-effort: on failure the injected note still
+    tells the agent to escalate manually."""
+    task = ("cloud:Vision analysis of image %s%s" % (
+        path_or_url, (" — question: " + prompt_text[:300]) if prompt_text else ""))
+    try:
+        import sys as _sys
+        _disp_dir = os.path.expanduser("~/dispatcher")
+        if _disp_dir not in _sys.path:
+            _sys.path.insert(0, _disp_dir)
+        import scheduler as _sched  # noqa
+        _sched.add(task, priority="flagged", complicated=True,
+                   note=path_or_url, source="proxy-image-escalation")
+        return True
+    except Exception as e:
+        print(f"[proxy] image escalation queue failed: {e}", file=sys.stderr)
+        return False
+
+
+_MODEL_ADDENDUM_MARKER = "You are text-only"
+_MODEL_ADDENDUM = (
+    "\n\nIMAGES: You are text-only. Never claim to view, describe, or "
+    "analyze an image locally. When a task involves an image (file, "
+    "screenshot, photo): (1) note the image path to the user; (2) the proxy "
+    "auto-queues it to the cloud dispatcher — poll mcp dispatcher queue_list "
+    "for the task id and relay the cloud's answer when it returns, "
+    "attributing it as cloud vision; (3) render_image (chafa) output gives "
+    "YOU no understanding — it is for the human's terminal preview only.\n"
+    "Default reasoning effort: low. Think briefly, answer completely.")
+
+
+_RELAY_POS = Path("/home/grey/dispatcher/data/relay_chat.pos")
+
+
+def _relay_cloud_results(parsed):
+    """2026-09-21 grey directive: finished cloud-lane tasks are PUSHED into
+    the chat — the proxy checks the dispatcher journal for done/blocked
+    cloud events past the last relayed offset and injects one note per
+    batch into the first system/developer message, so the model relays the
+    result to the user on its next turn. Idempotent (byte-offset state
+    file, survives proxy restarts). Read-only on the queue journal."""
+    if not isinstance(parsed, dict):
+        return parsed
+    try:
+        pos = int(_RELAY_POS.read_text()) if _RELAY_POS.exists() else -1
+        with open("/home/grey/dispatcher/data/queue.jsonl",
+                  errors="replace") as f:
+            size = f.seek(0, 2)
+            if pos == -1:                     # first run: anchor, no replay
+                _RELAY_POS.parent.mkdir(parents=True, exist_ok=True)
+                _RELAY_POS.write_text(str(size))
+                return parsed
+            if size <= pos:
+                return parsed
+            f.seek(pos)
+            chunk = f.read()
+        _RELAY_POS.write_text(str(size))
+        notes = []
+        for line in chunk.splitlines():
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if rec.get("op") != "state":
+                continue
+            st = rec.get("state")
+            if st == "done":
+                notes.append(f"✅ cloud task {rec.get('id')} finished: "
+                             f"{str(rec.get('result', ''))[:200]}")
+            elif st == "blocked":
+                n = str(rec.get("note", ""))[:120]
+                if n.startswith("escalated→"):
+                    notes.append(f"⚠ cloud task {rec.get('id')} failed and "
+                                 f"was auto-escalated ({n[:30]}) — the new "
+                                 f"task id is in the escalation note; report "
+                                 f"this to the user briefly.")
+                elif "escalated→" in n:
+                    continue                  # bookkeeping line, not news
+                else:
+                    notes.append(f"⚠ cloud task {rec.get('id')} needs "
+                                 f"attention: {n}")
+        if not notes:
+            return parsed
+        note = ("[CLOUD DISPATCHER UPDATE — relay to the user verbatim or "
+                "condensed: " + " | ".join(notes) + "]")
+        for msg in parsed.get("messages", []):
+            if isinstance(msg, dict) and msg.get("role") in (
+                    "system", "developer"):
+                c = msg.get("content")
+                if isinstance(c, str):
+                    msg["content"] = c + "\n" + note
+                break
+    except Exception as e:
+        print(f"[proxy] relay error: {e}", file=sys.stderr)
+    return parsed
+
+
+def _inject_model_addendum(parsed):
+    """2026-09-20 (model package §7): gpt-oss-20b-specific addendum — image
+    escalation policy + reasoning-effort default. Appended to the first
+    developer/system message; idempotent via marker check."""
+    if not isinstance(parsed, dict):
+        return parsed
+    for msg in parsed.get("messages", []):
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        if role in ("system", "developer"):
+            c = msg.get("content")
+            if isinstance(c, str):
+                if _MODEL_ADDENDUM_MARKER in c:
+                    return parsed
+                msg["content"] = c + _MODEL_ADDENDUM
+                return parsed
+            if isinstance(c, list):
+                for block in c:
+                    if isinstance(block, dict) and block.get("type") == "text" \
+                            and _MODEL_ADDENDUM_MARKER in str(block.get("text", "")):
+                        return parsed
+                c.append({"type": "text", "text": _MODEL_ADDENDUM.strip()})
+                return parsed
+    return parsed
+
+
+_REFUSAL_SNIPPETS = (
+    "I'm sorry, but I can", "I’m sorry, but I can",
+    "I cannot run the requested", "I can't execute the requested",
+)
+
+
+def _strip_refusal_replay(parsed):
+    """2026-09-20 (live finding): a transient failure once produces a
+    "I'm sorry, but I can't…" assistant turn; replaying it back makes gpt-oss
+    refuse every subsequent turn (self-reinforcing). Replace prior refusal
+    turns with a neutral retry marker so history can't keep the model
+    refusing. The CURRENT turn is never touched."""
+    if not isinstance(parsed, dict):
+        return parsed
+    msgs = parsed.get("messages", [])
+    for msg in msgs[:-1]:   # never the current (last) message
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+        c = msg.get("content")
+        if isinstance(c, str) and any(s in c for s in _REFUSAL_SNIPPETS):
+            msg["content"] = ("[previous attempt failed to start — retry "
+                              "the task with your tools]")
+    return parsed
+
+
+def _strip_reasoning_replay(parsed):
+    """2026-09-20 (model package §5): with thinkingFormat "openai", the TUI's
+    history replay includes prior-turn reasoning_content. gpt-oss tolerates
+    replaying harmony analysis but it wastes tokens and can leak stale
+    analysis into new turns. Strip it from every assistant message — the
+    CURRENT turn's reasoning is generated fresh server-side."""
+    if not isinstance(parsed, dict):
+        return parsed
+    for msg in parsed.get("messages", []):
+        if isinstance(msg, dict) and msg.get("role") == "assistant" \
+                and "reasoning_content" in msg:
+            del msg["reasoning_content"]
+    return parsed
+
+
+def _strip_images(parsed):
+    """2026-09-20 (model package §6): gpt-oss-20b is TEXT-ONLY — no vision
+    tower, no mmproj constructible. An image part reaching the server either
+    400s or silently degrades the turn. Make the failure mode impossible:
+    strip image parts from every message, AUTO-ESCALATE them to the cloud
+    dispatcher queue (owner directive: local-unsupported input auto-sent to
+    cloud), and inject one note so the agent KNOWS an image existed. Idempotent:
+    the note is only added once per request and each unique image is queued once.
+    """
+    if not isinstance(parsed, dict):
+        return parsed
+    saw_image = False
+    escalated = []
+    for msg in parsed.get("messages", []):
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        kept = []
+        msg_text = ""
+        for block in content:
+            if not isinstance(block, dict):
+                kept.append(block)
+                continue
+            btype = block.get("type", "")
+            if btype == "text" and isinstance(block.get("text"), str):
+                msg_text = block["text"]
+                if "escalate via dispatcher" in block["text"]:
+                    saw_image = True   # note already injected on a prior pass
+                kept.append(block)
+                continue
+            if btype == "image_url" or btype == "image" or (
+                    isinstance(block.get("image_url"), dict)):
+                saw_image = True
+                url = (block.get("image_url", {}).get("url")
+                       if isinstance(block.get("image_url"), dict)
+                       else block.get("url"))
+                if url:
+                    if url.startswith("data:image"):
+                        path = _save_data_url_image(url, msg_text) or \
+                            "(undecodable inline image)"
+                    else:
+                        path = url   # remote URL — pass the URL itself
+                    escalated.append((path, msg_text))
+                continue
+            kept.append(block)
+        msg["content"] = kept
+    if saw_image:
+        if escalated:
+            path, q = escalated[0]
+            if _escalate_image_to_cloud(path, q):
+                note = ("[image attached — text-only model; AUTO-SENT to cloud "
+                        "dispatcher (task queued). Poll mcp dispatcher queue_list "
+                        "and relay the cloud answer. %s]" % os.path.basename(path))
+            else:
+                note = ("[image attached — text-only model; queue failed — "
+                        "escalate manually via mcp dispatcher queue_add: %s]"
+                        % path)
+        else:
+            note = "[image attached — text-only model; escalate via dispatcher]"
+        msgs = parsed.setdefault("messages", [])
+        if not any(isinstance(m, dict) and isinstance(m.get("content"), str)
+                   and "text-only model" in m["content"] for m in msgs):
+            msgs.append({"role": "system", "content": note})
+    return parsed
+
+
 def _cap_tool_results(parsed, max_chars: int):
     # 2026-09-05 root-cause fix: the old body only matched Anthropic
     # type:"tool_result" content blocks, but cortexagent speaks
@@ -287,12 +590,25 @@ def _cap_thinking(parsed):
     """
     if not isinstance(parsed, dict):
         return parsed
-    if not parsed.get("enable_thinking"):
-        return parsed
+    # 2026-09-19: Bonsai (Ternary 27B) is now the default model and its chat
+    # template THINKS BY DEFAULT — the enable_thinking gate skipped the cap,
+    # thinking burned the whole budget again, and the TUI died with
+    # "Cannot continue from message role: assistant". Cap whenever any
+    # completion budget exists, regardless of the flag.
     mct = parsed.get("max_completion_tokens")
     if mct is None:
         return parsed  # no budget to exhaust -> no empty-content risk
-    budget = max(0, int(mct) - _MIN_CONTENT_TOKENS)
+    # 2026-09-20: gpt-oss-20b IQ2_M. Measured: reasoning_effort=medium burned
+    # 1-12k analysis tokens per turn (~2 min at 94 tok/s) — turns felt hung,
+    # long tails hit the length cap with empty content and the TUI retried.
+    # Package defaults for this model: effort=low (short analysis, fast turns)
+    # and thinking hard-capped so content always has room. Override with
+    # CORTEXAGENT_REASONING_EFFORT=medium|high.
+    effort = os.environ.get("CORTEXAGENT_REASONING_EFFORT", "low")
+    if effort and parsed.get("reasoning_effort") != "off":
+        parsed["reasoning_effort"] = effort
+    THINK_CAP = int(os.environ.get("CORTEXAGENT_THINKING_CAP", "2048"))
+    budget = min(THINK_CAP, max(0, int(mct) - _MIN_CONTENT_TOKENS))
     parsed["reasoning_budget_tokens"] = budget
     return parsed
 
@@ -859,6 +1175,7 @@ def _diag(method, path, cl, chunked, body_len, parsed, parse_err):
 
 def pipe(src, dst, stop, resp_buf=None):
     src.settimeout(0.3)
+    _resp_dump_path = os.environ.get("CORTEXAGENT_PROXY_RESP_DUMP", "")
     while not stop.is_set():
         try:
             data = src.recv(65536)
@@ -867,6 +1184,12 @@ def pipe(src, dst, stop, resp_buf=None):
             dst.sendall(data)
             if resp_buf is not None:
                 resp_buf.append(data)
+            if _resp_dump_path:
+                try:
+                    with open(_resp_dump_path, "ab") as f:
+                        f.write(data)
+                except Exception:
+                    pass
         except socket.timeout:
             continue
         except OSError:
@@ -926,18 +1249,29 @@ class ProxyHandler:
 
         if self._target_healthy(timeout=2):
             return True
+        # 2026-09-21 grey directive: llama-server must never spawn while the
+        # app is CLOSED. Reload is only allowed when a session is actually
+        # open (app in use); otherwise fail over to cloud immediately.
+        try:
+            st = control.send_request("status", timeout=3)
+            if st.get("ok") and not st.get("active_sessions"):
+                print("[proxy] target down, no open session — cloud failover "
+                      "(VRAM stays empty per user directive)", file=sys.stderr)
+                return False
+        except Exception:
+            pass
         print(f"[proxy] target {self.target} down — requesting reload...", file=sys.stderr)
         try:
-            control.send_request("load", which="big", timeout=300)
+            control.send_request("load", which="model", timeout=300)
         except Exception as e:
             print(f"[proxy] reload request failed (daemon absent?): {e}", file=sys.stderr)
-        deadline = time.time() + 300
-        while time.time() < deadline:
-            if self._target_healthy(timeout=2):
+        deadline = time.time() + 45          # 2026-09-19: 300s wait made
+        while time.time() < deadline:        # every request hang; failover
+            if self._target_healthy(timeout=2):   # to cloud is the fast path
                 print("[proxy] target back up — forwarding", file=sys.stderr)
                 return True
             time.sleep(1)
-        print("[proxy] target still down after reload — returning 503", file=sys.stderr)
+        print("[proxy] target still down — cloud failover / 503", file=sys.stderr)
         return False
 
     def _connect_with_reload(self, timeout: float = 90):
@@ -958,6 +1292,63 @@ class ProxyHandler:
                     print(f"[proxy] connect error after reload: {e}", file=sys.stderr)
                     return None
         return None
+
+    def _cloud_failover(self, body):
+        """2026-09-19: cloud = BACKUP. Local target down after reload
+        attempts -> answer from the cloud model instead of 503, so the
+        session survives outages. Non-stream JSON in; SSE synthesized if
+        the client asked to stream. Kill-switch: CORTEXAGENT_CLOUD_FAILOVER=0.
+        """
+        import os
+        if os.environ.get("CORTEXAGENT_CLOUD_FAILOVER") == "0":
+            return False
+        try:
+            parsed = json.loads(body or b"{}")
+        except ValueError:
+            return False
+        if not isinstance(parsed, dict) or "messages" not in parsed:
+            return False
+        cloud_body = {"model": "glm-5.3-flash:cloud",
+                      "messages": parsed["messages"],
+                      "stream": False,
+                      "options": {"num_predict": 4096}}
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:11435/v1/chat/completions",
+                data=json.dumps(cloud_body).encode(),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=240) as r:
+                out = json.loads(r.read())
+            content = out["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"[proxy] cloud failover failed: {e}", file=sys.stderr)
+            return False
+        print("[proxy] local down — served from CLOUD backup", file=sys.stderr)
+        want_stream = bool(parsed.get("stream"))
+        if want_stream:
+            payload = json.dumps({"id": "cloudfailover", "object":
+                "chat.completion.chunk", "choices": [{"index": 0,
+                "delta": {"content": content}, "finish_reason": None}]})
+            done = json.dumps({"id": "cloudfailover", "object":
+                "chat.completion.chunk", "choices": [{"index": 0,
+                "delta": {}, "finish_reason": "stop"}]})
+            sse = (f"data: {payload}\n\ndata: {done}\n\ndata: [DONE]\n\n").encode()
+        else:
+            full = {"id": "cloudfailover", "object": "chat.completion",
+                    "model": "glm-5.3-flash:cloud",
+                    "choices": [{"index": 0, "message": {"role":
+                        "assistant", "content": content},
+                        "finish_reason": "stop"}]}
+            sse = json.dumps(full).encode()
+        resp = (b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                if not want_stream else
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n")
+        resp += f"Content-Length: {len(sse)}\r\n\r\n".encode() + sse
+        try:
+            self.conn.sendall(resp)
+        except Exception:
+            pass
+        return True
 
     def _respond_502(self):
         body = b'{"error":"bad gateway - backend connection failed"}'
@@ -1116,6 +1507,8 @@ class ProxyHandler:
             except Exception:
                 pass
             if not self._ensure_target():
+                if self._cloud_failover(body):
+                    return
                 self._respond_503()
                 return
             self._touch_activity()
@@ -1167,9 +1560,15 @@ class ProxyHandler:
                     if "grammar" in parsed:
                         del parsed["grammar"]
                     parsed = _cap_tool_results(parsed, _TOOL_RESULT_MAX)
+                    parsed = _inject_model_addendum(parsed)
+                    parsed = _relay_cloud_results(parsed)
+                    parsed = _strip_refusal_replay(parsed)
+                    parsed = _strip_reasoning_replay(parsed)
+                    parsed = _strip_images(parsed)
                     parsed, reframe_saved = _reframe_user_prompt(parsed)
                     if _MINIFY_CFG is not None:
                         parsed, mstats = minify_request(parsed, _MINIFY_CFG)
+                        _apply_extra_stages(parsed)
                         print(f"[proxy] minify: {mstats.summary()}", file=sys.stderr)
                         _record_minify(mstats, reframe_saved)
                     parsed = _cap_thinking(parsed)
@@ -1189,6 +1588,25 @@ class ProxyHandler:
                                   cl, False, 0, parsed, "gate-overflow-400")
                         return
                 body = json.dumps(parsed).encode()
+                # 2026-09-20: the pipeline (minify / cap_thinking / gate /
+                # reframe) re-serializes the JSON, which can change its size —
+                # python's default ", " / ": " separators GROW compact bodies.
+                # The original head still carries the incoming Content-Length,
+                # so llama-server read a TRUNCATED body and streamed nothing:
+                # TUI turns after tool results came back empty (or hung). The
+                # chunked paths already rewrite Content-Length; the plain path
+                # never did. Rewrite it to match the rebuilt body.
+                new_lines = [lines[0]]
+                for k in order:
+                    if k in ("host", "content-length", "expect", "transfer-encoding"):
+                        continue
+                    if k == "user-agent":
+                        new_lines.append("User-Agent: cortexagent/1.0")
+                    else:
+                        new_lines.append(f"{orig[k]}: {hdr[k]}")
+                new_lines.append(f"Content-Length: {len(body)}")
+                new_lines.append("Host: 127.0.0.1")
+                head_bytes = ("\r\n".join(new_lines)).encode()
             except Exception as e:
                 parse_err = str(e)
                 print(f"[proxy] strip skipped: {e}", file=sys.stderr)
@@ -1256,6 +1674,7 @@ class ProxyHandler:
                     del parsed["grammar"]
                 parsed = _cap_tool_results(parsed, _TOOL_RESULT_MAX)
                 parsed, mstats = minify_request(parsed, _MINIFY_CFG)
+                _apply_extra_stages(parsed)
                 print(f"[proxy] minify(chunked): {mstats.summary()}", file=sys.stderr)
                 _record_minify(mstats)
                 # Hard cap: aggressively truncate user message so it
@@ -1392,6 +1811,31 @@ class ProxyHandler:
                 pass
 
     def _send_and_pipe(self, data):
+        _fwd = os.environ.get("CORTEXAGENT_PROXY_FWD_DUMP", "")
+        if _fwd:
+            try:
+                with open(_fwd, "ab") as f:
+                    f.write(data)
+            except Exception:
+                pass
+
+        # 2026-09-20 (last line of defence): EVERY forward passes through here.
+        # The stage pipeline re-serializes request bodies, so any stale
+        # Content-Length in the head desyncs the server's read — llama-server
+        # read a truncated body and streamed nothing (the TUI's empty-turn
+        # bug). Rewrite the header to the true body length, whatever path
+        # produced the request.
+        _sep = data.find(b"\r\n\r\n")
+        if _sep != -1:
+            import re as _re
+            _body_len = len(data) - _sep - 4
+            _head = _re.sub(rb"Content-Length: \d+",
+                            b"Content-Length: %d" % _body_len,
+                            data[:_sep], count=1, flags=_re.IGNORECASE)
+            if _head != data[:_sep]:
+                print(f"[proxy] cl-fix: header {_re.search(rb'Content-Length: \d+', data[:_sep], _re.IGNORECASE).group(0).decode()} -> {_body_len}",
+                      file=sys.stderr)
+                data = _head + data[_sep:]
 
         dst = self._connect_with_reload(timeout=5)
         _t0 = time.time()
@@ -1557,7 +2001,26 @@ class ProxyHandler:
                 pass
 
 
+class _TsStream:
+    """2026-09-20: prefix every log line with a timestamp. The proxy died
+    silently on Sep 20 and proxy.log had no clock, so the death window was
+    un-diagnosable. Wraps stdout/stderr (both go to the same log file)."""
+    def __init__(self, inner):
+        self._inner = inner
+
+    def write(self, s):
+        if s.strip():
+            self._inner.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {s}")
+        else:
+            self._inner.write(s)
+
+    def flush(self):
+        self._inner.flush()
+
+
 def main():
+    sys.stdout = _TsStream(sys.stdout)
+    sys.stderr = _TsStream(sys.stderr)
     _load_minify_stats()
     port = int(os.environ.get("CORTEXAGENT_PROXY_PORT", sys.argv[1] if len(sys.argv) > 1 else "8081"))
     target_url = os.environ.get("CORTEXAGENT_PROXY_TARGET", sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:8080")
