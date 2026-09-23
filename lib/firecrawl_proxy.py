@@ -11,6 +11,20 @@ from typing import Any, Dict, Optional, Tuple
 
 FIRECRAWL_CMD = ["npx", "-y", "firecrawl-mcp"]
 FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY", "")
+if not FIRECRAWL_API_KEY:
+    # 2026-09-23: keys moved out of ~/.mcp.json (plain JSON, any process can
+    # read them) into ~/.cortexagent/research/.env (chmod 600). Load lazily;
+    # the key stays in-process and out of configs.
+    try:
+        _env = os.path.join(os.path.expanduser("~"),
+                            ".cortexagent", "research", ".env")
+        if os.path.exists(_env):
+            for _line in open(_env):
+                if _line.strip().startswith("FIRECRAWL_API_KEY="):
+                    FIRECRAWL_API_KEY = _line.strip().split("=", 1)[1]
+                    break
+    except OSError:
+        pass
 
 FIRECRAWL_METHODS = {
     "scrape", "crawl", "map", "search", "extract", "parse",
