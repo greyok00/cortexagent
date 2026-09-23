@@ -79,7 +79,7 @@ _start_model() {
       python3 "$REPO_ROOT/scripts/pdeathspawn.py" \
         env LD_LIBRARY_PATH="$HOME/prismml/llama-prism-b10709-9a9394a" \
         "$HOME/prismml/llama-prism-b10709-9a9394a/llama-server" \
-        -m "${CORTEXAGENT_MODEL}" -c "${_ctx}" -ngl 999 -fa on -ctk q4_0 -ctv q4_0 \
+        -m "${CORTEXAGENT_MODEL}" -c "${_ctx}" -fa on -ctk q4_0 -ctv q4_0 \
         -np 1 -b 2048 -ub 1024 --kv-unified --host 127.0.0.1 --port 11599 \
         --alias cortexagent >> "${HOME}/.cortexagent/logs/llama-server.log" 2>&1 &
       _MODEL_PID=$!
