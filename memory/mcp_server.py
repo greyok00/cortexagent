@@ -95,13 +95,47 @@ def _handle_write(args: Dict[str, Any]) -> Dict[str, Any]:
     return _ok("saved")
 
 def _handle_search(args: Dict[str, Any]) -> Dict[str, Any]:
+    # 2026-09-23 fix (memory loop root cause #2): the old version ran
+    # LIKE '%<entire multi-word query>%' — an exact-substring match that
+    # almost never fires, so real queries returned [] and the agent fell
+    # back to grepping its own session files in circles. Now: per-token
+    # AND match (all tokens present, best ranked first), falling back to
+    # best-token-count OR if the strict match is empty.
     query = args.get("query", "").lower()
     limit = int(args.get("limit", 10))
-    rows = db.reader().execute(
-        "SELECT role, content, timestamp FROM Memory_Warm "
-        "WHERE profile = ? AND LOWER(content) LIKE ? ORDER BY id DESC LIMIT ?",
-        (PROFILE, f"%{query}%", limit)
-    ).fetchall()
+    import re as _re
+    tokens = _re.findall(r"\w{2,}", query)
+    if not tokens:
+        tokens = [query.strip()] if query.strip() else []
+    if not tokens:
+        return _ok("[]")
+    conn = db.reader()
+    if len(tokens) == 1:
+        rows = conn.execute(
+            "SELECT role, content, timestamp FROM Memory_Warm "
+            "WHERE profile = ? AND LOWER(content) LIKE ? "
+            "ORDER BY id DESC LIMIT ?",
+            (PROFILE, f"%{tokens[0]}%", limit),
+        ).fetchall()
+    else:
+        where = " AND ".join("LOWER(content) LIKE ?" for _ in tokens)
+        rows = conn.execute(
+            f"SELECT role, content, timestamp FROM Memory_Warm "
+            f"WHERE profile = ? AND {where} ORDER BY id DESC LIMIT ?",
+            (PROFILE, *[f"%{t}%" for t in tokens], limit),
+        ).fetchall()
+        if not rows:
+            # OR fallback, ranked by number of matched tokens
+            conds = " OR ".join("LOWER(content) LIKE ?" for _ in tokens)
+            hits = " + ".join(
+                f"(CASE WHEN LOWER(content) LIKE ? THEN 1 ELSE 0 END)"
+                for _ in tokens)
+            rows = conn.execute(
+                f"SELECT role, content, timestamp, ({hits}) AS hits "
+                f"FROM Memory_Warm WHERE profile = ? AND ({conds}) "
+                f"ORDER BY hits DESC, id DESC LIMIT ?",
+                (PROFILE, *[f"%{t}%" for t in tokens] * 2, limit),
+            ).fetchall()
     out = [{"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]} for r in rows]
     return _ok(json.dumps(out, ensure_ascii=False, default=str, indent=2))
 
