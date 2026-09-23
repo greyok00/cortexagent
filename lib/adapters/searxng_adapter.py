@@ -14,7 +14,6 @@ from .registry import register
 TIMEOUT = 15.0
 DEFAULT_URLS = ("http://127.0.0.1:9999", "http://127.0.0.1:8888")
 
-
 def _parse_rss(xml: str) -> List[Dict[str, str]]:
 
     items = re.findall(r"<item>(.*?)</item>", xml, re.S)
@@ -30,7 +29,6 @@ def _parse_rss(xml: str) -> List[Dict[str, str]]:
         })
     return out
 
-
 def _fetch_rss(base_url: str, query: str, timeout: float = TIMEOUT) -> List[Dict[str, str]]:
     url = (f"{base_url}/search?q={urllib.parse.quote(query)}"
            f"&format=rss&safesearch=0")
@@ -38,7 +36,6 @@ def _fetch_rss(base_url: str, query: str, timeout: float = TIMEOUT) -> List[Dict
     with urllib.request.urlopen(req, timeout=timeout) as r:
         xml = r.read().decode("utf-8", "replace")
     return _parse_rss(xml)
-
 
 class SearXNGAdapter(BaseAdapter):
     name = "searxng"
@@ -51,7 +48,6 @@ class SearXNGAdapter(BaseAdapter):
         else:
             self.urls = DEFAULT_URLS
         self.enabled = bool(self.urls)
-
 
     def authenticate(self) -> bool:
         return self.enabled
@@ -91,7 +87,5 @@ class SearXNGAdapter(BaseAdapter):
             except Exception as e:
                 continue
         return {"status": "error", "detail": f"no searxng reachable on {self.urls}"}
-
-
 
 register(SearXNGAdapter())

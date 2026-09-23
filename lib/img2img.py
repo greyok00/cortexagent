@@ -9,18 +9,15 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
-
 _legacy = os.environ.get("CORTEXAGENT_FLUX_MODEL", "")
 if _legacy and not os.environ.get("CORTEXAGENT_IMAGE_MODEL"):
     base = os.path.basename(_legacy)
     if base.lower().endswith(".safetensors"):
         os.environ["CORTEXAGENT_IMAGE_MODEL"] = base
 
-from lib import diffusion_backend as _db  # noqa: E402
-
+from lib import diffusion_backend as _db
 
 class GGUFImageGenerator:
-
 
     def __init__(self, model_path: Optional[str] = None):
         self.model_path = model_path
@@ -55,7 +52,6 @@ class GGUFImageGenerator:
     def unload(self):
         self._loaded = False
 
-
 def main():
     parser = argparse.ArgumentParser(description="Image generation (diffusers)")
     sub = parser.add_subparsers(dest="command")
@@ -84,7 +80,6 @@ def main():
         return 0
     parser.print_help()
     return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

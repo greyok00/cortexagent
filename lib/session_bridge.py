@@ -10,9 +10,7 @@ from typing import Dict, Optional
 
 _DEFAULT_PATH = Path.home() / ".cortexagent" / "state" / "session_bridge.jsonl"
 
-
 class SessionBridge:
-
 
     def __init__(self, path: Optional[Path] = None):
         self._path = (path or _DEFAULT_PATH).resolve()

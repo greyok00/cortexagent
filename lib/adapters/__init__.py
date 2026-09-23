@@ -13,11 +13,8 @@ from .registry import (
     reset_for_tests,
 )
 
-
-
-
-from . import google_search        # noqa: E402, F401
-from . import searxng_adapter      # noqa: E402, F401
+from . import google_search
+from . import searxng_adapter
 
 __all__ = [
     "BaseAdapter",

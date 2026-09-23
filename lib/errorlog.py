@@ -1,5 +1,4 @@
 
-
 import json
 import os
 import sys
@@ -10,15 +9,12 @@ from pathlib import Path
 
 _PROC_START = time.time()
 
-
 CRASH_DIR = Path(os.environ.get("CORTEXAGENT_CRASH_DIR", "~/.cortexagent/crashdumps")).expanduser()
-
 
 def _dump_path(component: str) -> Path:
     CRASH_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
     return CRASH_DIR / f"{component}-{ts}-{os.getpid()}.json"
-
 
 def _write_dump(dump: dict) -> Path:
     path = _dump_path(dump["component"])
@@ -27,7 +23,6 @@ def _write_dump(dump: dict) -> Path:
     except Exception:
         pass
     return path
-
 
 def _append(log_file: Path | None, line: str) -> None:
     if log_file is None:
@@ -40,13 +35,11 @@ def _append(log_file: Path | None, line: str) -> None:
     except Exception:
         pass
 
-
 def _rel(path: Path) -> str:
     try:
         return str(path.relative_to(Path.home()))
     except ValueError:
         return str(path)
-
 
 def log_exception(exc: BaseException, component: str, context: dict | None = None,
                   log_file: Path | None = None) -> Path:
@@ -65,7 +58,6 @@ def log_exception(exc: BaseException, component: str, context: dict | None = Non
     path = _write_dump(dump)
     _append(log_file, f"ERROR {type(exc).__name__}: {exc} (crashdump: {_rel(path)})")
     return path
-
 
 def close_dump(component: str, reason: str, context: dict | None = None,
                log_file: Path | None = None) -> Path:

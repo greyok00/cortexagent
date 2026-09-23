@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -16,17 +17,13 @@ if str(_REPO_ROOT) not in sys.path:
 
 MAX_TOOL_OUTPUT = None
 
-
-
 TOOLS: Dict[str, Dict[str, Any]] = {}
-
 
 def register_tool(name: str, schema: Dict[str, Any], handler: Callable,
                   priority: int = 0, trust: str = "high") -> None:
 
     TOOLS[name] = {"schema": schema, "handler": handler,
                    "priority": priority, "trust": trust}
-
 
 def list_tools(limit: Optional[int] = None, stub: bool = False) -> List[Dict[str, Any]]:
 
@@ -48,12 +45,10 @@ def list_tools(limit: Optional[int] = None, stub: bool = False) -> List[Dict[str
         tools = tools[:limit]
     return tools
 
-
 def get_schema(name: str) -> Optional[Dict[str, Any]]:
 
     tool = TOOLS.get(name)
     return tool["schema"] if tool else None
-
 
 def execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -98,7 +93,6 @@ def execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"ok": False, "output": "", "error": str(e), "trust": trust}
 
-
 def check_trust(result: Dict[str, Any]) -> str:
 
     trust = result.get("trust", "high")
@@ -107,8 +101,6 @@ def check_trust(result: Dict[str, Any]) -> str:
     if trust == "medium":
         return "[side-effect output — confirm intent before relying on it]"
     return ""
-
-
 
 def _run_command(command: str, timeout: int = 3600) -> Dict[str, Any]:
 
@@ -142,7 +134,6 @@ def _run_command(command: str, timeout: int = 3600) -> Dict[str, Any]:
         return {"ok": True, "output": output, "error": ""}
     return {"ok": False, "output": output, "error": f"exit {proc.returncode}"}
 
-
 def _query_llm(prompt: str, system: str = "", max_tokens: int = 256) -> Dict[str, Any]:
 
     from lib.overseer import _query_llm
@@ -151,18 +142,26 @@ def _query_llm(prompt: str, system: str = "", max_tokens: int = 256) -> Dict[str
         return {"ok": True, "output": result, "error": ""}
     return {"ok": False, "output": "", "error": "LLM unavailable"}
 
-
-_ALLOWED_SUBAGENT_MODELS = {"sonnet", "opus", "haiku"}
+from lib.config import CFG as _CFG
+_ALLOWED_SUBAGENT_MODELS = {os.environ.get("CORTEXAGENT_CLOUD_MODEL", "") or _CFG.model_cloud}
+_ANTHROPIC_ALIASES = {"sonnet", "opus", "haiku", "claude"}
 _MAX_SUBAGENT_TIMEOUT = 1800
 
+def _spawn_subagent(prompt: str, model: str = "",
+                    timeout: int = 600) -> Dict[str, Any]:
 
-def _spawn_subagent(prompt: str, model: str = "sonnet", timeout: int = 600) -> Dict[str, Any]:
-
+    if not model:
+        from lib.config import CFG
+        model = CFG.model_cloud
     if not isinstance(prompt, str) or not prompt.strip():
         return {"ok": False, "output": "", "error": "prompt must be a non-empty string"}
+    if model in _ANTHROPIC_ALIASES:
+        from lib.config import CFG
+        model = CFG.model_cloud
     if model not in _ALLOWED_SUBAGENT_MODELS:
         return {"ok": False, "output": "",
-                "error": f"model must be one of {sorted(_ALLOWED_SUBAGENT_MODELS)}"}
+                "error": ("model must be an ollama cloud model; one of "
+                          f"{sorted(_ALLOWED_SUBAGENT_MODELS)}")}
     try:
         timeout = int(timeout)
     except (TypeError, ValueError):
@@ -170,28 +169,6 @@ def _spawn_subagent(prompt: str, model: str = "sonnet", timeout: int = 600) -> D
     timeout = min(max(timeout, 1), _MAX_SUBAGENT_TIMEOUT)
     from lib.overseer import _spawn_subagent as _spawn
     return _spawn(prompt, model=model, timeout=timeout)
-
-
-def _generate_image(prompt: str) -> Dict[str, Any]:
-
-    from lib.media_pipeline import MediaPipeline
-    task_id = MediaPipeline().submit_async(prompt, model_type="image")
-    return {"ok": True, "output": f"queued media task {task_id} (background)", "error": ""}
-
-
-def _generate_video(prompt: str) -> Dict[str, Any]:
-
-    from lib.media_pipeline import MediaPipeline
-    task_id = MediaPipeline().submit_async(prompt, model_type="video")
-    return {"ok": True, "output": f"queued media task {task_id} (background)", "error": ""}
-
-
-def _generate_media(prompt: str) -> Dict[str, Any]:
-
-    from lib.media_pipeline import MediaPipeline
-    task_id = MediaPipeline().submit_async(prompt, model_type="auto")
-    return {"ok": True, "output": f"queued media task {task_id} (background)", "error": ""}
-
 
 def _render_image(path: str, width: int = 60) -> Dict[str, Any]:
 
@@ -208,9 +185,6 @@ def _render_image(path: str, width: int = 60) -> Dict[str, Any]:
         return {"ok": False, "output": "",
                 "error": f"could not render image: {path}"}
     return {"ok": True, "output": art, "error": ""}
-
-
-
 
 _ADD_LLM_PROVIDER_STEPS = (
     "Checklist for adding a new LLM provider to packages/ai (work in order):\n"
@@ -243,14 +217,12 @@ _ADD_LLM_PROVIDER_STEPS = (
     "an entry under [Unreleased] in packages/ai/CHANGELOG.md."
 )
 
-
 def _add_llm_provider(provider: str = "") -> Dict[str, Any]:
 
     if provider:
         return {"ok": True, "output": f"Adding provider: {provider}\n\n"
                                       f"{_ADD_LLM_PROVIDER_STEPS}", "error": ""}
     return {"ok": True, "output": _ADD_LLM_PROVIDER_STEPS, "error": ""}
-
 
 def _web_search(query: str, limit: int = 5) -> Dict[str, Any]:
 
@@ -262,7 +234,7 @@ def _web_search(query: str, limit: int = 5) -> Dict[str, Any]:
     for searxng in ("http://127.0.0.1:9999", "http://127.0.0.1:8888"):
         try:
             url = (f"{searxng}/search?q={urllib.parse.quote(query)}"
-                   f"&format=rss&safesearch=0")
+                   f"&format=rss&safesearch=0&basicauth=0")
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=15) as r:
                 xml = r.read().decode("utf-8", "replace")
@@ -309,7 +281,6 @@ def _web_search(query: str, limit: int = 5) -> Dict[str, Any]:
         return {"ok": True, "output": "\n".join(lines), "error": ""}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"web_search failed: {e}"}
-
 
 def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
 
@@ -358,7 +329,6 @@ def _rag_query(domain: str, query: str, limit: int = 10) -> Dict[str, Any]:
         return {"ok": True, "output": "(no results)", "error": ""}
     return {"ok": True, "output": "\n".join(lines), "error": ""}
 
-
 def _ingest_domain(domain: str, source: str, text: str) -> Dict[str, Any]:
 
     from lib.domain_ingest import ingest
@@ -368,7 +338,6 @@ def _ingest_domain(domain: str, source: str, text: str) -> Dict[str, Any]:
                 "output": f"ingested {r.get('chunks', 0)} chunks into {domain}",
                 "error": ""}
     return {"ok": False, "output": "", "error": r.get("error", "ingest failed")}
-
 
 def _coding_practices(query: str, category: str = "", limit: int = 10) -> Dict[str, Any]:
 
@@ -408,20 +377,6 @@ def _coding_practices(query: str, category: str = "", limit: int = 10) -> Dict[s
         return {"ok": False, "output": "", "error":
                 f"coding_practices failed: {e}"}
 
-
-def _transcribe_audio(file: str) -> Dict[str, Any]:
-
-    from pathlib import Path
-    if not Path(file).is_file():
-        return {"ok": False, "output": "", "error": f"transcribe_audio failed: file not found: {file}"}
-    try:
-        from lib import stt
-        text = stt.transcribe(file)
-        return {"ok": bool(text), "output": text, "error": ""}
-    except Exception as e:
-        return {"ok": False, "output": "", "error": f"transcribe_audio failed: {e}"}
-
-
 def _parse_document(file: str) -> Dict[str, Any]:
 
     try:
@@ -435,13 +390,41 @@ def _parse_document(file: str) -> Dict[str, Any]:
     except Exception as e:
         return {"ok": False, "output": "", "error": f"parse_document failed: {e}"}
 
-
-
 def _schema(description: str, properties: Dict[str, Any],
             required: List[str]) -> Dict[str, Any]:
     return {"description": description, "parameters": {
         "type": "object", "properties": properties, "required": required}}
 
+def _download(urls: List[str], dest: str, sha256: str = "",
+              workers: int = 6, wait: bool = False) -> Dict[str, Any]:
+    script = str(Path(__file__).resolve().parent / "download_verified.py")
+    log_dir = Path.home() / ".cortexagent" / "downloads"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log = log_dir / f"dl-{int(time.time())}.log"
+    cmd = [sys.executable, script, *urls, "--dest", dest,
+           "--workers", str(max(1, int(workers)))]
+    if sha256:
+        cmd += ["--sha256", sha256]
+    if wait:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               timeout=600)
+            (log.write_text(r.stdout + r.stderr))
+            ok = r.returncode == 0
+            return {"ok": ok, "output": (r.stdout or "")[-4000:], "error":
+                    "" if ok else f"exit {r.returncode} — see {log}"}
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "output": "", "error":
+                    f"wait=true timed out (600s) — download continues in "
+                    f"background? check {log}"}
+    proc = subprocess.Popen(cmd, stdout=open(log, "w"),
+                            stderr=subprocess.STDOUT)
+    return {"ok": True,
+            "output": (f"download started in background (pid {proc.pid}). "
+                       f"Log: {log} — poll it or read {dest}/MANIFEST.json "
+                       f"for per-file verify status (verified / "
+                       f"unverified_no_hash / hash_mismatch / failed)."),
+            "error": ""}
 
 def _register_all() -> None:
     register_tool("run_command", _schema(
@@ -458,27 +441,32 @@ def _register_all() -> None:
     register_tool("spawn_subagent", _schema(
         "Delegate to a Claude Code subagent (full tool access)",
         {"prompt": {"type": "string", "description": "task for the subagent"},
-         "model": {"type": "string", "description": "model (default sonnet)"},
+         "model": {"type": "string", "description": "ollama CLOUD model (default: conf [provider] ollama_model); Anthropic aliases are ignored"},
          "timeout": {"type": "integer", "description": "timeout seconds (default 600)"}},
         ["prompt"]), _spawn_subagent, trust="medium")
-    register_tool("generate_image", _schema(
-        "Generate an image via the media pipeline (diffusers)",
-        {"prompt": {"type": "string", "description": "image prompt"}},
-        ["prompt"]), _generate_image, trust="medium")
-    register_tool("generate_video", _schema(
-        "Generate a video via the media pipeline (diffusers)",
-        {"prompt": {"type": "string", "description": "video prompt"}},
-        ["prompt"]), _generate_video, trust="medium")
-    register_tool("generate_media", _schema(
-        "Auto-detect image vs video vs text via the media pipeline",
-        {"prompt": {"type": "string", "description": "media prompt"}},
-        ["prompt"]), _generate_media, trust="medium")
     register_tool("web_search", _schema(
         "Search the web: tries local SearXNG (:9999 then :8888) first, "
         "then Firecrawl (if FIRECRAWL_API_KEY is set), then DuckDuckGo HTML fallback",
         {"query": {"type": "string", "description": "search query"},
          "limit": {"type": "integer", "description": "max results (default 5)"}},
         ["query"]), _web_search, trust="high")
+    register_tool("download", _schema(
+        "Download ANY http(s) file(s): parallel range-chunks for speed, "
+        "resumable (.part + HTTP Range), SHA256-verified — uses the caller's "
+        "hash when given, else a sibling .sha256 file, else records the real "
+        "hash as unverified_no_hash. A hash mismatch DELETES the corrupt "
+        "file and fails. Runs in the background by default (never hangs the "
+        "chat); wait=true for small files.",
+        {"urls": {"type": "array", "items": {"type": "string"},
+                  "description": "file URLs (no repo/provider restrictions)"},
+         "dest": {"type": "string", "description": "target directory"},
+         "sha256": {"type": "string", "description":
+                    "expected sha256 (single-URL downloads; optional)"},
+         "workers": {"type": "integer", "description":
+                     "parallel workers (default 6)"},
+         "wait": {"type": "boolean", "description":
+                  "block until done (small files; 600s cap)"}},
+        ["urls", "dest"]), _download, trust="medium")
     register_tool("rag_query", _schema(
         "Search CortexLLM memory + domain knowledge for a query",
         {"domain": {"type": "string", "description": "domain category (e.g. dfir, osint)"},
@@ -491,10 +479,6 @@ def _register_all() -> None:
          "category": {"type": "string", "description": "optional category filter (e.g. Network Security, Forensics)"},
          "limit": {"type": "integer", "description": "max results (default 10)"}},
         ["query"]), _coding_practices, trust="high")
-    register_tool("transcribe_audio", _schema(
-        "Transcribe an audio file to text (faster-whisper, CPU)",
-        {"file": {"type": "string", "description": "path to the audio file"}},
-        ["file"]), _transcribe_audio, trust="high")
     register_tool("parse_document", _schema(
         "Extract text from a document (PDF/DOCX/PPTX/XLSX/scanned)",
         {"file": {"type": "string", "description": "path to the document"}},
@@ -515,20 +499,25 @@ def _register_all() -> None:
         {"provider": {"type": "string", "description": "provider name (optional)"}},
         []), _add_llm_provider, trust="high")
 
-
 _register_all()
 
-
-
 from lib.converted_mcp_tools import execute_converted_tool as _exec
-
 
 _MCP_TOOL_DEFS = [
     {"name": "memory_read", "desc": "Read from hot or cold memory (no caps)",
      "params": {"type": "object", "properties": {
          "tier": {"type": "string", "enum": ["hot", "cold"]},
-         "last_n": {"type": "integer"}
+         "limit": {"type": "integer", "description": "Max rows (default 20)."},
+         "category": {"type": "string", "description": "Cold category filter."}
      }, "required": ["tier"]}},
+    {"name": "memory_write", "desc": "Append to hot or cold memory (no caps)",
+     "params": {"type": "object", "properties": {
+         "tier": {"type": "string", "enum": ["hot", "cold"]},
+         "content": {"type": "string"},
+         "role": {"type": "string", "enum": ["user", "assistant", "system", "cold"]},
+         "category": {"type": "string", "description": "Category for cold facts."}
+     }, "required": ["tier", "content"]}},
+
     {"name": "memory_write", "desc": "Append to hot or cold memory (no caps)",
      "params": {"type": "object", "properties": {
          "tier": {"type": "string", "enum": ["hot", "cold"]},
@@ -566,7 +555,6 @@ for tdef in _MCP_TOOL_DEFS:
     }
     register_tool(tdef["name"], schema, _conv_tool(tdef["name"]), priority=5)
 
-
 def _smoke() -> int:
 
     fails = 0
@@ -599,8 +587,7 @@ def _smoke() -> int:
         print("⚠️ query_llm graceful (LLM down): " + r.get("error", ""))
 
     names = [t.get("function", {}).get("name") for t in list_tools()]
-    for want in ("spawn_subagent", "generate_image", "generate_video",
-                 "generate_media", "web_search"):
+    for want in ("spawn_subagent", "web_search"):
         if want not in names:
             print(f"❌ missing tool: {want}")
             fails += 1
@@ -617,11 +604,6 @@ def _smoke() -> int:
     else:
         print("✅ rag_query returns well-formed result (may be empty)")
 
-
-    r = execute_tool("transcribe_audio", {"file": "/nonexistent.wav"})
-    if r.get("ok") or "failed" not in r.get("error", ""):
-        print(f"❌ transcribe_audio error path: {r}")
-        fails += 1
     r = execute_tool("parse_document", {"file": "/nonexistent.pdf"})
     if r.get("ok") or "failed" not in r.get("error", ""):
         print(f"❌ parse_document error path: {r}")
@@ -634,7 +616,6 @@ def _smoke() -> int:
         fails += 1
     else:
         print("✅ unknown tool handled")
-
 
     r = execute_tool("run_command", {"command": "echo guard-ok", "timeout": "5"})
     if not r.get("ok") or "guard-ok" not in r.get("output", ""):
@@ -654,7 +635,6 @@ def _smoke() -> int:
         fails += 1
     print("✅ guardrails enforced")
 
-
     r = execute_tool("ingest_domain",
                      {"domain": "dfir", "source": "smoke.txt", "text": "blocked IP 10.0.0.5 beaconing"})
     if not r.get("ok"):
@@ -672,7 +652,6 @@ def _smoke() -> int:
     if r.get("ok") or "unknown domain" not in r.get("error", ""):
         print(f"❌ ingest_domain bad domain: {r}")
         fails += 1
-
 
     stubs = list_tools(stub=True)
     if not stubs:
@@ -693,7 +672,6 @@ def _smoke() -> int:
     else:
         print(f"✅ stub mode: {len(stubs)} tools, {stub_chars:,} chars vs {full_chars:,} full "
               f"({100 - stub_chars * 100 // full_chars}% smaller)")
-
 
     r = execute_tool("run_command", {})
     if r.get("ok") or "missing required args" not in r.get("error", ""):
@@ -716,13 +694,11 @@ def _smoke() -> int:
     print("✅ tool_registry smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
 
-
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         return _smoke()
     print("Usage: python3 lib/tool_registry.py --smoke")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

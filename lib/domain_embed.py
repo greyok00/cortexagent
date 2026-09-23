@@ -13,8 +13,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.config import CFG  # noqa: E402
-from lib import vram  # noqa: E402
+from lib.config import CFG
+from lib import vram
 
 MODEL_DIR = CFG.state_dir / "models" / "all-MiniLM-L6-v2"
 _BASE = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main"
@@ -28,11 +28,7 @@ _FILES = {
 EMBED_DIM = 384
 MAX_SEQ = 256
 
-
-
-
 EMBED_VRAM_MB = 512
-
 
 def _ensure_cuda_libs() -> None:
 
@@ -57,9 +53,7 @@ def _ensure_cuda_libs() -> None:
     except Exception:
         pass
 
-
 class DomainEmbedder:
-
 
     _instance: Optional["DomainEmbedder"] = None
 
@@ -80,8 +74,6 @@ class DomainEmbedder:
             target = MODEL_DIR / name
             if target.exists() and target.stat().st_size > 0:
                 continue
-
-
 
             part = MODEL_DIR / (name + ".part")
             print(f"[domain_embed] downloading {name}...")
@@ -107,14 +99,12 @@ class DomainEmbedder:
 
         self._tok.enable_padding(pad_id=0, pad_token="[PAD]")
 
-
         providers = ["CPUExecutionProvider"]
         provider_options = [{}]
         if vram.can_fit(EMBED_VRAM_MB):
             try:
                 if "CUDAExecutionProvider" in ort.get_available_providers():
                     providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-
 
                     provider_options = [{"gpu_mem_limit": EMBED_VRAM_MB * 1024 * 1024}, {}]
             except Exception:
@@ -143,9 +133,7 @@ class DomainEmbedder:
         emb = emb / np.clip(np.linalg.norm(emb, axis=1, keepdims=True), 1e-9, None)
         return emb.tolist()
 
-
 _EMBEDDER = DomainEmbedder()
-
 
 def _smoke() -> int:
     fails = 0
@@ -169,13 +157,11 @@ def _smoke() -> int:
     print("domain_embed smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
 
-
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         return _smoke()
     print("Usage: python3 lib/domain_embed.py --smoke")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

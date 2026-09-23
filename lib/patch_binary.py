@@ -51,23 +51,9 @@ REPLACEMENTS = [
     ("Bug fixes and improvements", "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
     ("release-notes", "\0\0\0\0\0\0\0\0\0\0\0\0\0"),
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     ("Claude Code v\x00", "CortexAgent v\x00"),
     ("Claude Code v${Ks(e.claudeVersion)}", "CortexAgent v${Ks(e.claudeVersion)}"),
 ]
-
 
 def patch_binary():
     if not CLAUDE_BIN.exists():
@@ -109,7 +95,6 @@ def patch_binary():
     print(f"Patched {patched} strings in {CLAUDE_BIN}")
     return True
 
-
 def check_patched():
     if not CLAUDE_BIN.exists():
         print(f"Binary not found: {CLAUDE_BIN}")
@@ -135,7 +120,6 @@ def check_patched():
     else:
         print("Status: UNKNOWN")
 
-
 def restore_backup():
     if not BACKUP_PATH.exists():
         print(f"No backup found: {BACKUP_PATH}")
@@ -145,7 +129,6 @@ def restore_backup():
     os.chmod(CLAUDE_BIN, 0o755)
     print(f"Restored: {CLAUDE_BIN}")
     return True
-
 
 if __name__ == "__main__":
     if "--check" in sys.argv:

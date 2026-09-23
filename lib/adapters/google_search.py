@@ -16,7 +16,6 @@ ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 TIMEOUT = 15.0
 MAX_NUM = 10
 
-
 class GoogleCustomSearchAdapter(BaseAdapter):
     name = "google_cse"
     description = "Google Custom Search JSON API (GOOGLE_API_KEY + GOOGLE_CSE_ID)"
@@ -25,7 +24,6 @@ class GoogleCustomSearchAdapter(BaseAdapter):
         self.api_key = os.environ.get("GOOGLE_API_KEY", "").strip()
         self.cse_id = os.environ.get("GOOGLE_CSE_ID", "").strip()
         self.enabled = bool(self.api_key and self.cse_id)
-
 
     def authenticate(self) -> bool:
         return self.enabled
@@ -83,7 +81,5 @@ class GoogleCustomSearchAdapter(BaseAdapter):
             return {"status": "error", "http": e.code, "detail": str(e)[:200]}
         except Exception as e:
             return {"status": "error", "detail": str(e)[:200]}
-
-
 
 register(GoogleCustomSearchAdapter())

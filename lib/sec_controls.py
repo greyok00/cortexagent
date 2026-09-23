@@ -14,7 +14,6 @@ from pathlib import Path
 
 import tkinter as tk
 
-
 HONEYPOT_LOG = Path.home() / "security-console" / "honeypot" / "alerts.log"
 EXTRA_FEED = Path(
     os.environ.get(
@@ -28,7 +27,6 @@ FIREWALL_COMMANDS = (
 FIREWALL_STATE = (
     Path.home() / "security-console" / "overseer" / ".portscan_state.json"
 )
-
 
 SEV_COLOR = {
     "critical": "#ff3b30",
@@ -46,7 +44,6 @@ SEV_ICON = {
 }
 SEV_ORDER = ("critical", "high", "medium", "low", "info")
 
-
 BG_DEEP   = "#0f0f1f"
 BG_PANEL  = "#1a1a2e"
 BG_BAR    = "#3a3a5e"
@@ -55,12 +52,6 @@ BG_ROW    = "#20203a"
 FG_DIM    = "#a8aabe"
 FG_MUTED  = "#a0a0c0"
 FG_BRIGHT = "#e0e0e0"
-
-
-
-
-
-
 
 REFRAMINGS: dict[str, dict] = {
     "port-scan": {
@@ -151,9 +142,6 @@ REFRAMINGS: dict[str, dict] = {
     },
 }
 
-
-
-
 def _read_honeypot_log(limit: int = 200) -> list[dict]:
     if not HONEYPOT_LOG.exists():
         return []
@@ -173,7 +161,6 @@ def _read_honeypot_log(limit: int = 200) -> list[dict]:
         return []
     return out
 
-
 def _read_extra_feed(limit: int = 200) -> list[dict]:
     if not EXTRA_FEED.exists():
         return []
@@ -185,9 +172,7 @@ def _read_extra_feed(limit: int = 200) -> list[dict]:
     except (OSError, json.JSONDecodeError):
         return []
 
-
 CVE_INTEL_FILE = Path.home() / "security-console" / "cve" / "intel.jsonl"
-
 
 def _read_cve_feed(limit: int = 50) -> list[dict]:
 
@@ -235,17 +220,12 @@ def _read_cve_feed(limit: int = 50) -> list[dict]:
         return []
     return out[-limit:]
 
-
 def _merge_and_sort(limit: int = 200) -> list[dict]:
     combined = _read_honeypot_log() + _read_extra_feed() + _read_cve_feed()
     combined.sort(key=lambda e: e.get("ts", ""))
     return combined[-limit:]
 
-
-
-
 _IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-
 
 def _extract_ip(text: str) -> str | None:
 
@@ -254,15 +234,11 @@ def _extract_ip(text: str) -> str | None:
     m = _IPV4.search(text)
     return m.group(0) if m else None
 
-
 def _format_hms(ts: str) -> str:
     if not ts or "T" not in ts:
         return ts or "—"
     time_part = ts.split("T", 1)[1]
     return time_part.split(".", 1)[0].rsplit("-", 1)[0].rsplit("+", 1)[0]
-
-
-
 
 def _queue_block(ip: str, reason: str) -> bool:
 
@@ -294,11 +270,6 @@ def _queue_block(ip: str, reason: str) -> bool:
         pass
     return True
 
-
-
-
-
-
 def _severity_bar(alerts: list[dict]) -> str:
 
     if not alerts:
@@ -315,13 +286,11 @@ def _severity_bar(alerts: list[dict]) -> str:
             parts.append(f"{SEV_ICON.get(sev, '•')} {n} {sev}")
     return " · ".join(parts) if parts else "All clear"
 
-
 _DEFAULT_FRAME = (
     "Something touched the system — an alert fired from {source}. "
     "This is the system flagging an event it thinks is worth your attention. "
     "Open the detail to see the exact message before deciding what to do."
 )
-
 
 def _human_frame(alert: dict) -> tuple[str, str, list[tuple[str, str]]]:
 
@@ -350,7 +319,6 @@ def _human_frame(alert: dict) -> tuple[str, str, list[tuple[str, str]]]:
         actions.append(("dismiss", "✕ Dismiss"))
     return title, body, actions
 
-
 def _block_feedback(ip: str, reason: str) -> str:
 
     if not _queue_block(ip, reason):
@@ -374,14 +342,10 @@ def _block_feedback(ip: str, reason: str) -> str:
         pass
     return f"Blocked {ip} ✓" if applied else f"Block queued for {ip} (helper applying)"
 
-
-
-
 def _make_window() -> None:
     root = tk.Tk()
     root.title("Security Tracker")
     root.configure(bg=BG_PANEL)
-
 
     root.wm_attributes("-type", "dock")
     root.attributes("-topmost", True)
@@ -433,7 +397,6 @@ def _make_window() -> None:
             _stay_topmost()
     _spam_then_quiet(8)
 
-
     _drag = {"x": 0, "y": 0, "w": 0, "h": 0}
     def _on_title_click(event: tk.Event) -> None:
         _drag["x"] = event.x_root
@@ -475,7 +438,6 @@ def _make_window() -> None:
     title.bind("<Button-1>", _on_title_click)
     title.bind("<B1-Motion>", _on_title_drag)
 
-
     outer = tk.Frame(root, bg=BG_PANEL)
     outer.pack(fill="both", expand=True)
     canvas = tk.Canvas(outer, bg=BG_PANEL, highlightthickness=0)
@@ -491,7 +453,6 @@ def _make_window() -> None:
         "<Configure>",
         lambda _e: canvas.configure(scrollregion=canvas.bbox("all")),
     )
-
 
     status_frame = tk.Frame(inner, bg=BG_PANEL)
     status_frame.pack(fill="x", padx=16, pady=(16, 4))
@@ -509,7 +470,6 @@ def _make_window() -> None:
                           font=("-size", 11), anchor="w")
     status_sub.pack(fill="x")
 
-
     plan_frame = tk.Frame(inner, bg="#1a3050", bd=1, relief="flat",
                           highlightbackground="#2a5080", highlightthickness=1)
     plan_frame.pack(fill="x", padx=16, pady=(8, 4))
@@ -521,7 +481,6 @@ def _make_window() -> None:
         padx=12, pady=10, cursor="hand2",
     )
     plan_text.pack(fill="x")
-
 
     action_row = tk.Frame(inner, bg=BG_PANEL)
     action_row.pack(fill="x", padx=16, pady=(8, 8))
@@ -613,7 +572,6 @@ def _make_window() -> None:
     _small_btn(action_row, "🗑 Clear", "#b71c1c", on_clear_logs).pack(
         side="left", padx=(4, 0), fill="x", expand=True)
 
-
     stream_label = tk.Label(inner, text="📡  Alert stream",
                             bg=BG_PANEL, fg=FG_MUTED,
                             font=("-size", 11, "-weight", "bold"), anchor="w")
@@ -649,7 +607,6 @@ def _make_window() -> None:
                              justify="left", anchor="w")
         preview_l.pack(fill="x", padx=10, pady=(6, 6))
 
-
         btn_row = tk.Frame(card, bg=BG_ROW)
         btn_row.pack(fill="x", padx=10, pady=(0, 8))
         for act_key, act_label in actions:
@@ -667,7 +624,6 @@ def _make_window() -> None:
             "card": card, "head": head, "title_l": title_l, "preview_l": preview_l,
             "all_widgets": [card, head, title_l, preview_l],
         }
-
 
     card_widgets: list = []
     dismissed_ids: set = set()
@@ -760,7 +716,6 @@ def _make_window() -> None:
         except Exception as e:
             _set_feedback(f"⚠ could not open log: {e}")
 
-
     last_action: list = ["Ready"]
 
     def _set_feedback(text: str) -> None:
@@ -773,7 +728,6 @@ def _make_window() -> None:
                       font=("-size", 11), anchor="w")
     footer.pack(fill="x", padx=16, pady=(4, 12))
 
-
     def _on_mousewheel(event):
         if event.num == 4:
             canvas.yview_scroll(-3, "units")
@@ -784,7 +738,6 @@ def _make_window() -> None:
     for w in (root, canvas, inner, list_frame):
         w.bind("<Button-4>", _on_mousewheel)
         w.bind("<Button-5>", _on_mousewheel)
-
 
     last_poll_ts: list = [time.time()]
 
@@ -841,7 +794,6 @@ def _make_window() -> None:
         alerts = _merge_and_sort(limit=200)
         last_poll_ts[0] = time.time()
 
-
         filtered = [a for a in alerts if _alert_id(a) not in dismissed_ids]
         _update_status(filtered)
         _update_footer(filtered)
@@ -860,17 +812,14 @@ def _make_window() -> None:
     root.after(2000, _refresh)
     root.mainloop()
 
-
 def open_in_thread() -> threading.Thread:
     t = threading.Thread(target=_make_window, daemon=True, name="sec-controls")
     t.start()
     return t
 
-
 def main() -> int:
     _make_window()
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

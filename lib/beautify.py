@@ -6,13 +6,11 @@ import sys
 from typing import List, Optional, Tuple, Dict
 from html import escape as html_escape
 
-
 try:
     from lib.charts import sparkline, multi_sparkline, waffle, gauge, flowchart
     CHARTS_AVAILABLE = True
 except ImportError:
     CHARTS_AVAILABLE = False
-
 
 try:
     from lib.semantic_palette import Palette
@@ -22,8 +20,6 @@ except ImportError:
     PALETTE_AVAILABLE = False
     PALETTE = None
 
-
-
 def _is_ascii_mode() -> bool:
 
     if os.environ.get("CORTEXAGENT_ASCII_FALLBACK", "0") == "1":
@@ -31,13 +27,11 @@ def _is_ascii_mode() -> bool:
     lang = os.environ.get("LANG", "")
     return "C" == lang or "POSIX" == lang
 
-
 def _color_reset() -> str:
 
     if _is_ascii_mode():
         return ""
     return "\033[0m"
-
 
 def _color_for(role: str) -> str:
 
@@ -46,10 +40,8 @@ def _color_for(role: str) -> str:
     color = getattr(PALETTE, role, "")
     return color if color else ""
 
-
 def _is_table_line(line: str) -> bool:
     return line.count("|") >= 2 and "---" not in line
-
 
 def _normalize_table(block: List[str]) -> str:
 
@@ -89,10 +81,7 @@ def _normalize_table(block: List[str]) -> str:
         out = [out[0], sep] + out[1:]
     return "\n".join(out)
 
-
-
 _CSV_RE = re.compile(r"^([^|,;\t]+)([,;\t][^|,;\t]+){1,}$")
-
 
 def _is_csv_block(lines: List[str]) -> bool:
     if len(lines) < 2:
@@ -109,7 +98,6 @@ def _is_csv_block(lines: List[str]) -> bool:
     counts = {l.count(d) for l in lines}
     return len(counts) == 1 and len(lines) >= 2
 
-
 def _csv_to_table(lines: List[str]) -> str:
     d = max((",", "\t", ";"), key=lambda x: sum(l.count(x) for l in lines))
     rows = [[c.strip() for c in l.split(d)] for l in lines]
@@ -121,14 +109,10 @@ def _csv_to_table(lines: List[str]) -> str:
     out.insert(1, "| " + " | ".join("-" * w for w in widths) + " |")
     return "\n".join(out)
 
-
-
 _KV_RE = re.compile(r"^([A-Za-z0-9_ .\-/]+):\s+(.+)$")
-
 
 def _is_kv_block(lines: List[str]) -> bool:
     return len(lines) >= 2 and all(_KV_RE.match(l) for l in lines)
-
 
 def _kv_to_table(lines: List[str]) -> str:
     rows = []
@@ -142,10 +126,7 @@ def _kv_to_table(lines: List[str]) -> str:
     out.insert(1, "| " + "-" * w0 + " | " + "-" * w1 + " |")
     return "\n".join(out)
 
-
-
 _BAR_RE = re.compile(r"^([A-Za-z0-9_ .\-/]+):\s*([0-9]+(?:\.[0-9]+)?)\s*$")
-
 
 def _is_bar_block(lines: List[str]) -> bool:
     if len(lines) < 2:
@@ -155,7 +136,6 @@ def _is_bar_block(lines: List[str]) -> bool:
         return False
     vals = [float(m.group(2)) for m in matches]
     return max(vals) > 0
-
 
 def _bar_chart(lines: List[str]) -> str:
 
@@ -172,7 +152,6 @@ def _bar_chart(lines: List[str]) -> str:
         out.append(f"{label:<24} {colored} {val:g}")
     return "\n".join(out)
 
-
 def _line_chart(lines: List[str]) -> str:
 
     matches = [_BAR_RE.match(l) for l in lines]
@@ -185,7 +164,6 @@ def _line_chart(lines: List[str]) -> str:
     range_val = mx - mn if mx > mn else 1
     height = 10
     width = 30
-
 
     chart = []
     for i in range(height, -1, -1):
@@ -202,7 +180,6 @@ def _line_chart(lines: List[str]) -> str:
     chart.append(labels)
     return "\n".join(chart)
 
-
 def _pie_chart(lines: List[str]) -> str:
 
     matches = [_BAR_RE.match(l) for l in lines]
@@ -212,7 +189,6 @@ def _pie_chart(lines: List[str]) -> str:
     total = sum(v for _, v in items)
     if total == 0:
         return _bar_chart(lines)
-
 
     chart = []
     chart.append("  Pie Chart:")
@@ -226,8 +202,6 @@ def _pie_chart(lines: List[str]) -> str:
         chart.append(f"    {label:<20} {pct:5.1f}%")
     return "\n".join(chart)
 
-
-
 def _detect_hierarchy(lines: List[str]) -> bool:
 
     if len(lines) < 2:
@@ -235,16 +209,9 @@ def _detect_hierarchy(lines: List[str]) -> bool:
     tree_pattern = re.compile(r"^(├──|└──|│\s|└|├|└|┤|├) " + r".*")
     return all(tree_pattern.match(l) or not l.strip() for l in lines)
 
-
 def _render_tree(lines: List[str]) -> str:
 
     return "\n".join(lines)
-
-
-
-
-
-
 
 def _is_numeric_series(lines: List[str]) -> bool:
 
@@ -252,7 +219,6 @@ def _is_numeric_series(lines: List[str]) -> bool:
         return False
     _KV_RE = re.compile(r'^([A-Za-z0-9_ .\-]+):\s*([0-9]+(?:\.[0-9]+)?)\s*$')
     return all(_KV_RE.match(l) for l in lines)
-
 
 def _chart_palette() -> Optional[Dict[str, str]]:
 
@@ -265,7 +231,6 @@ def _chart_palette() -> Optional[Dict[str, str]]:
         return pal if any(pal.values()) else None
     except Exception:
         return None
-
 
 def _numeric_series_to_sparkline(lines: List[str]) -> str:
 
@@ -289,7 +254,6 @@ def _numeric_series_to_sparkline(lines: List[str]) -> str:
         return multi_sparkline(data, width=30, palette=_chart_palette())
     return "\n".join(lines)
 
-
 def _is_waffle_candidate(lines: List[str]) -> bool:
 
     if len(lines) < 2:
@@ -302,7 +266,6 @@ def _is_waffle_candidate(lines: List[str]) -> bool:
             total += float(m.group(2))
 
     return total > 0 and 0.5 <= (total - 100) ** 2 / 10000 <= 1.0
-
 
 def _to_waffle(lines: List[str]) -> str:
 
@@ -320,11 +283,9 @@ def _to_waffle(lines: List[str]) -> str:
 
     return waffle(data, labels)
 
-
 def _is_gauge_candidate(lines: List[str]) -> bool:
 
     return len(lines) == 1 and _KV_RE.match(lines[0])
-
 
 def _to_gauge(lines: List[str]) -> str:
 
@@ -338,10 +299,7 @@ def _to_gauge(lines: List[str]) -> str:
         return f"{name}: {gauge(value, 0, 100)}"
     return "\n".join(lines)
 
-
-
 _FLOW_RE = re.compile(r"^\s*([^→\->]+?)\s*(?:→|->)\s*(.+?)\s*$")
-
 
 def _detect_flowchart(lines: List[str]) -> bool:
 
@@ -352,7 +310,6 @@ def _detect_flowchart(lines: List[str]) -> bool:
         if _FLOW_RE.match(l):
             edges += 1
     return edges >= 2
-
 
 def _to_flowchart(lines: List[str]) -> str:
 
@@ -372,8 +329,6 @@ def _to_flowchart(lines: List[str]) -> str:
     if not nodes:
         return "\n".join(lines)
     return flowchart(nodes, edges)
-
-
 
 def beautify(text: str) -> str:
 
@@ -405,8 +360,6 @@ def beautify(text: str) -> str:
             changed = True
             i = j
             continue
-
-
 
         if _KV_RE.match(line):
             block = []
@@ -458,7 +411,6 @@ def beautify(text: str) -> str:
             block = [line]
             i += 1
 
-
             while i < len(lines) and _detect_hierarchy([line, lines[i]]):
                 block.append(lines[i])
                 i += 1
@@ -470,7 +422,6 @@ def beautify(text: str) -> str:
     result = "\n".join(out)
     return result if changed else text
 
-
 def beautify_html(text: str) -> str:
 
     text = beautify(text)
@@ -478,8 +429,6 @@ def beautify_html(text: str) -> str:
     return f"""<div class="beautified">
 <pre>{html_escape(text)}</pre>
 </div>"""
-
-
 
 def main():
 
@@ -510,7 +459,6 @@ def main():
         print(beautify(" ".join(sys.argv[1:])))
     else:
         print("usage: beautify.py smoke | <text>", file=sys.stderr)
-
 
 if __name__ == "__main__":
     main()

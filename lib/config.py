@@ -10,17 +10,12 @@ from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-
-
-
 CONF_FILE = Path(os.environ.get(
     "CORTEXAGENT_CONF",
     str(Path.home() / ".cortexagent" / "cortexagent.conf"),
 ))
 
-
 def _load_conf() -> configparser.ConfigParser:
-
 
     cp = configparser.ConfigParser(interpolation=None)
     if CONF_FILE.exists():
@@ -30,9 +25,7 @@ def _load_conf() -> configparser.ConfigParser:
             pass
     return cp
 
-
 _CONF = _load_conf()
-
 
 def _env(name: str, conf_section: str, conf_key: str,
          default: Optional[str] = None) -> Optional[str]:
@@ -44,14 +37,12 @@ def _env(name: str, conf_section: str, conf_key: str,
         return _CONF.get(conf_section, conf_key)
     return default
 
-
 def _env_bool(name: str, conf_section: str, conf_key: str,
               default: bool) -> bool:
     val = _env(name, conf_section, conf_key)
     if val is None:
         return default
     return val.strip().lower() in ("1", "true", "yes", "on")
-
 
 def _env_int(name: str, conf_section: str, conf_key: str,
              default: int) -> int:
@@ -62,7 +53,6 @@ def _env_int(name: str, conf_section: str, conf_key: str,
         return int(val)
     except ValueError:
         return default
-
 
 def _env_float(name: str, conf_section: str, conf_key: str,
                default: Optional[float] = None) -> Optional[float]:
@@ -75,28 +65,16 @@ def _env_float(name: str, conf_section: str, conf_key: str,
     except (TypeError, ValueError):
         return default
 
-
-
-
-
-
-
-
-
-
-
-
 LOCKED_KEYS = {
-    "big_ctx": 131072,
-    "big_ngl": 999,
-    "big_fa": "on",
-    "big_ctk": "q4_0",
-    "big_ctv": "q4_0",
-    "big_kv_offload": 1,
-    "big_np": 1,
+    "ctx_tokens": 98304,
+    "model_ngl": 999,
+    "model_fa": "on",
+    "model_ctk": "q4_0",
+    "model_ctv": "q4_0",
+    "kv_offload": 1,
+    "model_np": 1,
 }
 _LOCK_LOG: list = []
-
 
 def _unlock_for(key: str) -> bool:
     if os.environ.get("CORTEXAGENT_UNLOCK", "").lower() in ("1", "true", "yes", "on"):
@@ -104,14 +82,9 @@ def _unlock_for(key: str) -> bool:
     return os.environ.get(f"CORTEXAGENT_UNLOCK_{key.upper()}", "").lower() in (
         "1", "true", "yes", "on")
 
-
 def _locked_divergence(name: str, env_name: str, conf_section: str,
                        conf_key: str, pinned) -> None:
-    # Quiet by default — divergence between env/conf and the pinned value is
-    # tracked via `lock-status` / `CFG.locked_keys()` only. Printing to stderr
-    # at module import time delays CLI startup and is not actionable here.
     return
-
 
 def _env_locked_int(name: str, env_name: str, conf_section: str,
                     conf_key: str, default: int) -> int:
@@ -121,7 +94,6 @@ def _env_locked_int(name: str, env_name: str, conf_section: str,
         return int(pinned)
     return _env_int(env_name, conf_section, conf_key, default)
 
-
 def _env_locked(name: str, env_name: str, conf_section: str,
                 conf_key: str, default: Optional[str] = None) -> Optional[str]:
     if name in LOCKED_KEYS and not _unlock_for(name):
@@ -129,7 +101,6 @@ def _env_locked(name: str, env_name: str, conf_section: str,
         _locked_divergence(name, env_name, conf_section, conf_key, pinned)
         return str(pinned)
     return _env(env_name, conf_section, conf_key, default)
-
 
 def _detect_cortexllm_dir() -> str:
 
@@ -141,13 +112,10 @@ def _detect_cortexllm_dir() -> str:
         return str(existing)
     return str(REPO_ROOT / "cortexllm")
 
-
 class Config:
-
 
     def __init__(self) -> None:
         home = Path.home()
-
 
         self.repo_root = REPO_ROOT
         self.state_dir = Path(_env(
@@ -161,15 +129,9 @@ class Config:
             str(home / ".cortexagent" / "profiles")))
         self.logs_dir = self.state_dir / "logs"
 
-
-
-
-
-
         self.db_path = Path(_env(
             "CORTEXAGENT_DB_PATH", "memory", "db_path",
             str(home / ".config" / "cortexllm" / "cortexllm.db")))
-
 
         self.cortexllm_dir = Path(_detect_cortexllm_dir())
         self.cortexllm_socket = Path(_env(
@@ -179,11 +141,6 @@ class Config:
             "CORTEXLLM_SAVE_SCRIPT", "cortexllm", "save_script",
             str(home / ".cortexllm" / "scripts" / "save-context.py")))
 
-
-
-
-        self.backend = _env(
-            "CORTEXAGENT_BACKEND", "backend", "kind", "llamacpp") or "llamacpp"
         self.llama_dir = Path(_env(
             "CORTEXAGENT_LLAMA_DIR", "backend", "llama_dir",
             str(home / "llama.cpp" / "build")))
@@ -191,16 +148,14 @@ class Config:
             "CORTEXAGENT_MODELS_DIR", "backend", "models_dir",
             str(home / "models")))
 
+        self.model_path = _env(
+            "CORTEXAGENT_MODEL", "backend", "model_path", "")
 
-
-
-        self.big_model = _env(
-            "CORTEXAGENT_MODEL", "backend", "big_model", "")
-        self.big_model_port = _env_int(
-            "CORTEXAGENT_PORT", "backend", "big_model_port", 8080)
-
-
-
+        self.local_port = _env_int(
+            "CORTEXAGENT_LOCAL_PORT", "backend", "local_port", 11599)
+        self.model_cloud = _env(
+            "CORTEXAGENT_CLOUD_MODEL", "provider", "ollama_model",
+            "glm-5.3-flash:cloud")
 
         self.cortex_router_mode = _env(
             "CORTEXAGENT_ROUTER_MODE", "cortex", "router_mode", "auto")
@@ -211,183 +166,68 @@ class Config:
         self.cortex_brand = _env(
             "CORTEXAGENT_BRAND", "branding", "name", "Cortex")
         self.cortex_author = _env(
-            "CORTEXAGENT_AUTHOR", "branding", "author", "GreyOK00")
+            "CORTEXAGENT_AUTHOR", "branding", "author", "")
 
+        self.ctx_tokens = _env_locked_int(
+            "ctx_tokens", "CORTEXAGENT_CTX", "backend", "ctx_tokens", 98304)
+        self.model_ngl = _env_locked_int(
+            "model_ngl", "CORTEXAGENT_NGL", "backend", "model_ngl", 999)
+        self.model_fa = _env_locked(
+            "model_fa", "CORTEXAGENT_FA", "backend", "model_fa", "on")
+        self.model_ctk = _env_locked(
+            "model_ctk", "CORTEXAGENT_CTK", "backend", "model_ctk", "q4_0")
+        self.model_ctv = _env_locked(
+            "model_ctv", "CORTEXAGENT_CTV", "backend", "model_ctv", "q4_0")
+        self.model_np = _env_locked_int(
+            "model_np", "CORTEXAGENT_NP", "backend", "model_np", 1)
 
+        self.model_temp = _env(
+            "CORTEXAGENT_TEMP", "backend", "model_temp", "1.0")
+        self.model_top_p = _env(
+            "CORTEXAGENT_TOP_P", "backend", "model_top_p", "0.95")
+        self.model_top_k = _env_int(
+            "CORTEXAGENT_TOP_K", "backend", "model_top_k", 20)
+        self.model_min_p = _env(
+            "CORTEXAGENT_MIN_P", "backend", "model_min_p", "0.0")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        self.big_ctx = _env_locked_int(
-            "big_ctx", "CORTEXAGENT_CTX", "backend", "big_ctx", 131072)
-        self.big_ngl = _env_locked_int(
-            "big_ngl", "CORTEXAGENT_NGL", "backend", "big_ngl", 999)
-        self.big_fa = _env_locked(
-            "big_fa", "CORTEXAGENT_FA", "backend", "big_fa", "on")
-        self.big_ctk = _env_locked(
-            "big_ctk", "CORTEXAGENT_CTK", "backend", "big_ctk", "q4_0")
-        self.big_ctv = _env_locked(
-            "big_ctv", "CORTEXAGENT_CTV", "backend", "big_ctv", "q4_0")
-        self.big_np = _env_locked_int(
-            "big_np", "CORTEXAGENT_NP", "backend", "big_np", 1)
-
-
-
-
-
-
-
-
-        self.big_b = _env_int(
-            "CORTEXAGENT_B", "backend", "big_b", 2048)
-        self.big_ub = _env_int(
-            "CORTEXAGENT_UB", "backend", "big_ub", 1024)
-        self.big_kv_offload = _env_locked_int(
-            "big_kv_offload", "CORTEXAGENT_KV_OFFLOAD", "backend", "big_kv_offload", 1)
-        self.big_alias = _env(
-            "CORTEXAGENT_ALIAS", "backend", "big_alias", "cortexagent")
-        self.big_log = Path(_env(
-            "CORTEXAGENT_LOG", "backend", "big_log",
+        self.batch_size = _env_int(
+            "CORTEXAGENT_B", "backend", "batch_size", 2048)
+        self.model_ub = _env_int(
+            "CORTEXAGENT_UB", "backend", "model_ub", 1024)
+        self.kv_offload = _env_locked_int(
+            "kv_offload", "CORTEXAGENT_KV_OFFLOAD", "backend", "kv_offload", 1)
+        self.model_alias = _env(
+            "CORTEXAGENT_ALIAS", "backend", "model_alias", "cortexagent")
+        self.model_log = Path(_env(
+            "CORTEXAGENT_LOG", "backend", "model_log",
             str(home / ".cortexagent-server.log")))
 
+        self.vram_min_gb = _env_int(
+            "CORTEXAGENT_BIG_VRAM_MIN", "backend", "vram_min_gb", 14)
 
-
-
-
-
-
-
-        self.big_vram_min_gb = _env_int(
-            "CORTEXAGENT_BIG_VRAM_MIN", "backend", "big_vram_min_gb", 14)
-
-
-
-
-
-
-
-        self.idle_unload_sec = _env_int(
-            "CORTEXAGENT_IDLE_UNLOAD_SEC", "daemon", "idle_unload_sec", 0)
-
-
-
+        self.auto_load = _env_int(
+            "CORTEXAGENT_AUTO_LOAD", "daemon", "auto_load", 0) == 1
 
         self.stale_session_sec = _env_int(
             "CORTEXAGENT_STALE_SESSION_SEC", "daemon", "stale_session_sec", 1800)
         self.control_socket = self.state_dir / "control.sock"
 
-
-
-
         self.inline_scroll = _env_bool(
             "CORTEXAGENT_INLINE_SCROLL", "display", "inline_scroll", False)
-
 
         self.browser_enabled = _env_bool(
             "CORTEXAGENT_BRAVE_ENABLED", "integrations", "browser_enabled", True)
         self.firecrawl_enabled = _env_bool(
             "CORTEXAGENT_FIRECRAWL_ENABLED", "integrations", "firecrawl_enabled", True)
 
-
         self.brand = _env("CORTEXAGENT_BRAND", "branding", "name", "CortexAgent")
-        self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "GreyOK00")
-
-
-
-
-
-
-
-
-
-
-
-        self.stt_model = _env("CORTEXAGENT_STT_MODEL", "stt", "model", "base")
-        self.stt_device = _env("CORTEXAGENT_STT_DEVICE", "stt", "device", "cuda")
-        self.stt_mic_device = _env(
-            "CORTEXAGENT_STT_MIC", "stt", "mic_device", "Logi USB Headset")
-        self.stt_hotkey = _env(
-            "CORTEXAGENT_STT_HOTKEY", "stt", "hotkey", "<ctrl>+<shift>+space")
-        self.stt_speak_to_capture = _env_bool(
-            "CORTEXAGENT_STT_SPEAK", "stt", "speak_to_capture", True)
-        self.stt_vad_threshold = _env_float(
-            "CORTEXAGENT_STT_VAD_THRESHOLD", "stt", "vad_threshold", 0.05)
-
-
-
-
-
-
-
-
-
-        self.stt_vad_silence_sec = _env_float(
-            "CORTEXAGENT_STT_VAD_SILENCE", "stt", "vad_silence_sec", 1.5)
-
-
-
-
-        self.stt_vad_max_utterance_sec = _env_float(
-            "CORTEXAGENT_STT_VAD_MAX_UTTERANCE", "stt", "vad_max_utterance_sec", 10.0)
-
-
-
-
-
-
-
-
-
-        self.stt_cleanup = _env_bool(
-            "CORTEXAGENT_STT_CLEANUP", "stt", "cleanup", False)
-        self.stt_cleanup_target = _env(
-            "CORTEXAGENT_STT_CLEANUP_TARGET", "stt", "cleanup_target", "big")
-
-
-
-        self.stt_cleanup_max_sentences = _env_int(
-            "CORTEXAGENT_STT_CLEANUP_MAX_SENTENCES", "stt",
-            "cleanup_max_sentences", 4)
-
-
-
-
-
-
-
+        self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "")
 
         self.vram_buffer_mb = _env_int(
             "CORTEXAGENT_VRAM_BUFFER_MB", "vram", "buffer_mb", 512)
 
-
-
-
         self.latency_alert_p95_ms = _env_float(
             "CORTEXAGENT_LATENCY_ALERT_P95_MS", "metrics", "latency_alert_p95_ms", 5000.0)
-
-
-
-        self.context_alert_pct = _env_float(
-            "CORTEXAGENT_CTX_ALERT_PCT", "metrics", "context_alert_pct", 76.0)
-        self.context_critical_pct = _env_float(
-            "CORTEXAGENT_CTX_CRITICAL_PCT", "metrics", "context_critical_pct", 90.0)
-        self.context_critical_ticks = _env_int(
-            "CORTEXAGENT_CTX_CRITICAL_TICKS", "metrics", "context_critical_ticks", 3)
-
 
     def ensure_dirs(self) -> None:
 
@@ -421,15 +261,7 @@ class Config:
             }
         return out
 
-
 CFG = Config()
-
-
-
-# _LOCK_LOG is reserved for future diagnostic use; divergence is currently
-# quiet at import time. See `lib/config.py lock-status` for introspection.
-
-
 
 def _cli() -> int:
     if len(sys.argv) < 2:
@@ -454,17 +286,14 @@ def _cli() -> int:
         return 0
     if cmd == "shell-locked":
 
-
-
-
         env_map = {
-            "big_ctx": ("CORTEXAGENT_CTX", 131072),
-            "big_ngl": ("CORTEXAGENT_NGL", 999),
-            "big_fa": ("CORTEXAGENT_FA", "on"),
-            "big_ctk": ("CORTEXAGENT_CTK", "q4_0"),
-            "big_ctv": ("CORTEXAGENT_CTV", "q4_0"),
-            "big_kv_offload": ("CORTEXAGENT_KV_OFFLOAD", 1),
-            "big_np": ("CORTEXAGENT_NP", 1),
+            "ctx_tokens": ("CORTEXAGENT_CTX", 131072),
+            "model_ngl": ("CORTEXAGENT_NGL", 999),
+            "model_fa": ("CORTEXAGENT_FA", "on"),
+            "model_ctk": ("CORTEXAGENT_CTK", "q8_0"),
+            "model_ctv": ("CORTEXAGENT_CTV", "q8_0"),
+            "kv_offload": ("CORTEXAGENT_KV_OFFLOAD", 1),
+            "model_np": ("CORTEXAGENT_NP", 1),
         }
         for key, (env_name, pinned) in env_map.items():
             if _unlock_for(key):
@@ -474,6 +303,9 @@ def _cli() -> int:
                 val = LOCKED_KEYS[key]
             print(f"export {env_name}={val}")
         return 0
+    if cmd == "local":
+        print(f"export CORTEXAGENT_MODEL='{CFG.model_path or ''}'")
+        return 0
     if cmd == "lock-status":
         for k, info in CFG.locked_keys().items():
             flag = "UNLOCKED" if info["unlocked"] else ("locked" if info["matches"] else "DRIFT!")
@@ -481,7 +313,6 @@ def _cli() -> int:
         return 0
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
-
 
 if __name__ == "__main__":
     sys.exit(_cli())

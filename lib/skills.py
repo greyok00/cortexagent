@@ -12,20 +12,17 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.tool_registry import register_tool  # noqa: E402
+from lib.tool_registry import register_tool
 
 DEFAULT_SKILLS_DIR = Path(os.environ.get(
     "CORTEXAGENT_SKILLS_DIR", "~/.cortexagent/skills")).expanduser()
 
-
 SKILLS: Dict[str, Dict[str, Any]] = {}
-
 
 def register_skill(name: str, description: str, schema: Dict[str, Any],
                    run: Callable) -> None:
 
     SKILLS[name] = {"description": description, "schema": schema, "run": run}
-
 
 def _load_module(path: Path) -> Optional[Dict[str, Any]]:
 
@@ -49,7 +46,6 @@ def _load_module(path: Path) -> Optional[Dict[str, Any]]:
         print(f"skills: failed to load {path.name}: {e}", file=sys.stderr)
         return None
 
-
 def load_skills_dir(path: Optional[Path] = None) -> int:
 
     d = Path(path) if path else DEFAULT_SKILLS_DIR
@@ -66,12 +62,10 @@ def load_skills_dir(path: Optional[Path] = None) -> int:
             count += 1
     return count
 
-
 def list_skills() -> List[Dict[str, Any]]:
 
     return [{"name": n, "description": s["description"]}
             for n, s in sorted(SKILLS.items())]
-
 
 def run_skill(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -87,7 +81,6 @@ def run_skill(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": f"skill {name} bad args: {e}"}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"skill {name} failed: {e}"}
-
 
 def register_skill_tools() -> int:
 
@@ -108,12 +101,10 @@ def register_skill_tools() -> int:
         count += 1
     return count
 
-
 def _make_handler(name: str):
     def _handler(**kwargs: Any) -> Dict[str, Any]:
         return run_skill(name, kwargs)
     return _handler
-
 
 def _smoke() -> int:
     n = load_skills_dir()
@@ -123,13 +114,11 @@ def _smoke() -> int:
     print("skills: OK")
     return 0
 
-
 def _list() -> int:
     load_skills_dir()
     for s in list_skills():
         print(f"skill_{s['name']}: {s['description']}")
     return 0
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":

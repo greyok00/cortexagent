@@ -13,7 +13,6 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 CATALOG = REPO_ROOT / "tools" / "feature_catalog.json"
 
-
 def _check_mcp_tool(f: Dict) -> Tuple[bool, str]:
 
     try:
@@ -27,7 +26,6 @@ def _check_mcp_tool(f: Dict) -> Tuple[bool, str]:
         return True, "reachable"
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
-
 
 def _check_registered_tool(f: Dict) -> Tuple[bool, str]:
 
@@ -51,7 +49,6 @@ def _check_registered_tool(f: Dict) -> Tuple[bool, str]:
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
 
-
 def _check_cli(f: Dict) -> Tuple[bool, str]:
 
     rel, sub = f["id"].split(":", 1)
@@ -70,7 +67,6 @@ def _check_cli(f: Dict) -> Tuple[bool, str]:
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
 
-
 def _check_control(f: Dict) -> Tuple[bool, str]:
 
     cmd = f["schema"]["cmd"]
@@ -80,14 +76,12 @@ def _check_control(f: Dict) -> Tuple[bool, str]:
         return True, "handled"
     return False, "no handler in daemon.py"
 
-
 CHECKERS = {
     "mcp_tool": _check_mcp_tool,
     "registered_tool": _check_registered_tool,
     "cli_subcommand": _check_cli,
     "control_socket_rpc": _check_control,
 }
-
 
 def main(argv: List[str] = None) -> int:
     ap = argparse.ArgumentParser(description="Verify feature catalog")
@@ -143,7 +137,6 @@ def main(argv: List[str] = None) -> int:
         elif not args.quiet:
             print("\nALL GREEN")
     return 0 if failed == 0 else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

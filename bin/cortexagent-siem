@@ -1,23 +1,7 @@
 #!/bin/bash
-# cortexagent-siem — wrapper for the CortexAgent → SIEM/SOAR bridge.
-#
-# Pushes CVE intel + hardening snapshots into ~/security-console/siem/siem.db
-# and runs SOAR playbooks on findings (critical/KEV → notify/block-IOC).
-#
-# Usage:
-#   cortexagent-siem --test                 # round-trip one fake finding
-#   cortexagent-siem --push-recent          # push recent CVEs to SIEM
-#   cortexagent-siem --push-hardening       # push hardening snapshot
-#   cortexagent-siem --soar-recent          # run SOAR on recent CVEs (dry-run default)
-#   cortexagent-siem --soar-recent --live   # actually run (writes firewall_commands.jsonl)
-#   cortexagent-siem --soar-posture         # run SOAR for hardening posture fails
-#   cortexagent-siem --stats                # show SIEM finding counts
-#   cortexagent-siem --history 10           # show last N SOAR playbook runs
-#   cortexagent-siem --install-schedule     # register daily 06:47 SIEM ingest + SOAR daily 06:53
 
 set -euo pipefail
 
-# ── Locate self (symlink-safe) ─────────────────────────────────────────────
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
@@ -72,7 +56,6 @@ PYEOF
   trap - RETURN
 }
 
-# ── Arg dispatch ───────────────────────────────────────────────────────────
 case "${1:-}" in
   --test)
     cd "$REPO_ROOT"

@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 from enum import Enum, auto
 
-
 class EngineType(Enum):
     LLM_REASONING = auto()
     LLM_CODE = auto()
@@ -13,7 +12,6 @@ class EngineType(Enum):
     DOCKER = auto()
     FILE_OPS = auto()
 
-
 class TaskStatus(Enum):
     PENDING = auto()
     RUNNING = auto()
@@ -21,7 +19,6 @@ class TaskStatus(Enum):
     FAILED = auto()
     SKIPPED = auto()
     RETRYING = auto()
-
 
 @dataclass
 class Task:
@@ -38,13 +35,11 @@ class Task:
     error: Optional[str] = None
     metadata: dict = field(default_factory=dict)
 
-
 @dataclass
 class BatchGroup:
     engine: EngineType
     tasks: list[Task]
     batch_id: str
-
 
 @dataclass
 class WorkflowPlan:
@@ -53,7 +48,6 @@ class WorkflowPlan:
     tasks: list[Task]
     batch_groups: list[BatchGroup]
     metadata: dict = field(default_factory=dict)
-
 
 @dataclass
 class ProgressEvent:

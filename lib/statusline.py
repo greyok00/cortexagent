@@ -11,24 +11,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from lib.config import CFG
 
-
-def _read_minify_snapshot() -> dict:
-
-    try:
-        p = Path.home() / ".cortexagent" / "minify_stats.json"
-        if not p.exists():
-            return {}
-        d = json.loads(p.read_text() or "{}")
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
-
-
 def _get_token_metrics() -> str:
 
-    proxy_port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
+    metrics_port = 11436
     try:
-        req = urllib.request.Request(f"http://127.0.0.1:{proxy_port}/metrics",
+        req = urllib.request.Request(f"http://127.0.0.1:{metrics_port}/metrics",
                                      method="GET")
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read())
@@ -40,8 +27,6 @@ def _get_token_metrics() -> str:
             if ct:
                 parts.append(f"{ct} tok")
 
-
-
             if in_tps and out_tps:
                 parts.append(f"in {in_tps:.0f} t/s · out {out_tps:.0f} t/s")
             elif out_tps:
@@ -50,65 +35,9 @@ def _get_token_metrics() -> str:
                 parts.append(f"in {in_tps} t/s")
             if reqs:
                 parts.append(f"{reqs} req")
-            # Proxy-reported VRAM (nvidia-smi probe inside the proxy). Rendered
-            # as "8.2/16 GB" alongside the daemon's per-process breakdown.
-            vu = data.get("vram_used_mib")
-            vt = data.get("vram_total_mib")
-            if vu is not None and vt:
-                parts.append(f"{vu/1024:.1f}/{vt/1024:.0f} GB")
             return " · ".join(parts) if parts else ""
     except Exception:
         return ""
-
-
-def _get_vram_breakdown() -> str:
-
-    import socket as _socket
-    sock = Path.home() / ".cortexagent" / "control.sock"
-    if not sock.exists():
-        return ""
-    try:
-        s = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
-        s.settimeout(1.2)
-        s.connect(str(sock))
-        s.sendall(b'{"cmd":"status"}\n')
-        buf = b""
-        while not buf.endswith(b"\n"):
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            buf += chunk
-        s.close()
-        if not buf:
-            return ""
-        payload = json.loads(buf.decode("utf-8", "replace").strip() or "{}")
-    except Exception:
-        return ""
-    vbp = payload.get("vram_by_proc") or {}
-    if not vbp.get("ok"):
-        return ""
-    big = int(vbp.get("big_mib", 0) or 0)
-    other = int(vbp.get("other_mib", 0) or 0)
-    used = big + other
-    if used <= 0:
-        return ""
-
-
-
-    parts = []
-    if big:
-        parts.append(f"big {big/1024:.1f} GB")
-    if other and not big:
-        parts.append(f"other {other/1024:.1f} GB")
-    if not parts:
-        return f"{used/1024:.1f} GB"
-
-
-
-    total_used = f"{used/1024:.1f} GB"
-    body = " + ".join(parts)
-    return f"{body} / {total_used}"
-
 
 def main():
     raw = sys.stdin.read()
@@ -133,7 +62,6 @@ def main():
         elif cwd.startswith(home + os.sep):
             cwd = "~" + cwd[len(home):]
 
-
     ctx_str = ""
     cw = d.get("context_window") or {}
     if isinstance(cw, dict):
@@ -146,35 +74,17 @@ def main():
         if isinstance(ex, dict):
             ctx_str = f"{ex.get('token_count','?')} tok"
 
-
     tok_metrics = _get_token_metrics()
-
-
-    vram_breakdown = _get_vram_breakdown()
-
-
-
-
-    minify_snapshot = _read_minify_snapshot()
-    minify_str = ""
-    try:
-        runs = int(minify_snapshot.get("runs", 0) or 0)
-        if runs > 0:
-            ratio = float(minify_snapshot.get("ratio_pct", 0.0) or 0.0)
-            saved = int(minify_snapshot.get("tokens_saved", 0) or 0)
-            if saved > 0 and ratio > 0:
-
-                shown = (f"{saved // 1000}k" if saved >= 1000
-                         else f"{saved}")
-                minify_str = f"minify -{ratio:.0f}% ({shown})"
-    except Exception:
-        minify_str = ""
-
-
-
 
     brand = str(CFG.author) or "Cortex"
     parts = [brand]
+    try:
+        from lib.cloud_state import strip_text
+        strip = strip_text()
+        if strip:
+            parts.append(strip)
+    except Exception:
+        pass
     if model and model.strip().lower() != brand.strip().lower():
         parts.append(model)
     if cwd:
@@ -183,12 +93,7 @@ def main():
         parts.append(ctx_str)
     if tok_metrics:
         parts.append(tok_metrics)
-    if vram_breakdown:
-        parts.append(vram_breakdown)
-    if minify_str:
-        parts.append(minify_str)
     print(" · ".join(str(p) for p in parts))
-
 
 if __name__ == "__main__":
     try:

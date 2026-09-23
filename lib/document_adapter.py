@@ -11,7 +11,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-
 def _extract_pdf(file: str) -> str:
 
     try:
@@ -27,14 +26,12 @@ def _extract_pdf(file: str) -> str:
     except Exception:
         return ""
 
-
 def _extract_docx(file: str) -> str:
     try:
         import docx
         return "\n".join(p.text for p in docx.Document(file).paragraphs)
     except Exception:
         return ""
-
 
 def _extract_xlsx(file: str) -> str:
     try:
@@ -50,7 +47,6 @@ def _extract_xlsx(file: str) -> str:
     except Exception:
         return ""
 
-
 def _extract_pptx(file: str) -> str:
     try:
         from pptx import Presentation
@@ -62,7 +58,6 @@ def _extract_pptx(file: str) -> str:
         return "\n".join(parts)
     except Exception:
         return ""
-
 
 def parse_document(file: str) -> Dict[str, Any]:
 
@@ -84,7 +79,6 @@ def parse_document(file: str) -> Dict[str, Any]:
         return {"ok": True, "text": "",
                 "error": "no text layer (scanned PDF? OCR unavailable)"}
     return {"ok": True, "text": text, "error": ""}
-
 
 def _smoke() -> int:
     fails = 0
@@ -119,13 +113,11 @@ def _smoke() -> int:
     print("document_adapter smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
 
-
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         return _smoke()
     print("Usage: python3 lib/document_adapter.py --smoke")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

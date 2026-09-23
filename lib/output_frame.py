@@ -3,7 +3,6 @@
 import sys
 from typing import Tuple
 
-
 OUTPUT_TEMPLATES = {
     "cybersecurity": {
         "sections": [
@@ -49,7 +48,6 @@ OUTPUT_TEMPLATES = {
     },
 }
 
-
 def classify_output_domain(output: str) -> str:
 
     lower = output.lower()
@@ -63,22 +61,18 @@ def classify_output_domain(output: str) -> str:
         return "professional"
     return max(scores, key=scores.get)
 
-
 def add_output_structure(output: str, domain: str) -> str:
 
     template = OUTPUT_TEMPLATES.get(domain, OUTPUT_TEMPLATES["professional"])
     sections = template["sections"]
 
-
     has_sections = any(section in output for section in sections)
     if has_sections:
         return output
 
-
     paragraphs = output.split("\n\n")
     if len(paragraphs) < 2:
         paragraphs = [paragraph.strip() for paragraph in output.split("\n") if paragraph.strip()]
-
 
     structured = []
     for i, section in enumerate(sections):
@@ -92,50 +86,38 @@ def add_output_structure(output: str, domain: str) -> str:
 
     return "\n\n".join(structured)
 
-
 def add_context_references(output: str) -> str:
-
 
     has_references = any(keyword in output.lower() for keyword in ["source", "reference", "citation"])
     if has_references:
         return output
 
-
     if len(output) > 100:
         output += "\n\n### REFERENCES\n\nSources and methodology used in this analysis."
     return output
 
-
 def add_action_items(output: str) -> str:
-
 
     has_actions = any(keyword in output.lower() for keyword in ["action", "next steps", "recommended"])
     if has_actions:
         return output
 
-
     if len(output) > 100:
         output += "\n\n### ACTION ITEMS\n\n1. Review the findings above\n2. Implement recommended changes\n3. Monitor for improvements"
     return output
 
-
 def frame_output(output: str, domain: str = None) -> Tuple[str, str]:
-
 
     if not domain:
         domain = classify_output_domain(output)
 
-
     framed = add_output_structure(output, domain)
 
-
     framed = add_context_references(framed)
-
 
     framed = add_action_items(framed)
 
     return framed, domain
-
 
 def main():
 
@@ -153,12 +135,10 @@ The server is running Ubuntu 20.04 with outdated packages."""
         print(f"Framed output:\n{framed}")
         return
 
-
     output = " ".join(sys.argv[1:])
     framed, domain = frame_output(output)
     print(f"Domain: {domain}")
     print(f"Framed output:\n{framed}")
-
 
 if __name__ == "__main__":
     main()

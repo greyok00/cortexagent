@@ -5,10 +5,8 @@ from pathlib import Path
 
 DB = Path.home() / ".config/cortexllm/cortexllm.db"
 
-
 _CONN = None
 _LOCK = None
-
 
 def _get_conn():
     global _CONN, _LOCK
@@ -19,7 +17,6 @@ def _get_conn():
         _CONN = sqlite3.connect(str(DB), check_same_thread=False)
     return _CONN
 
-
 def query(sql, params=()):
     conn = _get_conn()
     with _LOCK:
@@ -27,11 +24,9 @@ def query(sql, params=()):
             return conn.execute(sql, params).fetchall()
         except sqlite3.ProgrammingError:
 
-
             global _CONN
             _CONN = sqlite3.connect(str(DB), check_same_thread=False)
             return _CONN.execute(sql, params).fetchall()
-
 
 def list_categories():
     rows = query("SELECT category, COUNT(*) as c FROM Coding_Practices GROUP BY category ORDER BY c DESC")
@@ -43,7 +38,6 @@ def list_categories():
     print(f"{'─'*30} {'─'*6}")
     print(f"{'TOTAL':<30} {total:>6}")
 
-
 def list_by_category(category):
     rows = query("SELECT practice, description, source, priority FROM Coding_Practices WHERE category=? ORDER BY priority", (category,))
     print(f"\n📂 {category} ({len(rows)} practices)")
@@ -53,7 +47,6 @@ def list_by_category(category):
         print(f"     {desc[:150]}")
         print(f"     📖 {source}")
 
-
 def list_by_source(source):
     rows = query("SELECT practice, category, priority FROM Coding_Practices WHERE source LIKE ? ORDER BY category", (f"%{source}%",))
     print(f"\n📖 Source: {source} ({len(rows)} practices)")
@@ -61,13 +54,11 @@ def list_by_source(source):
         pri = {"critical": "🔴", "high": "🟡", "medium": "🟢", "low": "⚪"}.get(priority, "⚪")
         print(f"  {pri} [{category}] {practice}")
 
-
 def list_by_priority(priority):
     rows = query("SELECT practice, category, source FROM Coding_Practices WHERE priority=? ORDER BY category", (priority,))
     print(f"\n{'🔴 Critical' if priority == 'critical' else '🟡 High' if priority == 'high' else '🟢 Medium'} Practices ({len(rows)})")
     for practice, category, source in rows:
         print(f"  [{category}] {practice} ({source})")
-
 
 def search(term):
     rows = query("SELECT practice, category, description, source, priority FROM Coding_Practices WHERE practice LIKE ? OR description LIKE ? ORDER BY priority", (f"%{term}%", f"%{term}%"))
@@ -77,7 +68,6 @@ def search(term):
         print(f"\n  {pri} [{category}] {practice}")
         print(f"     {desc[:200]}")
         print(f"     📖 {source}")
-
 
 def dump_all():
     rows = query("SELECT category, practice, description, source, priority FROM Coding_Practices ORDER BY category, priority")
@@ -92,7 +82,6 @@ def dump_all():
         print(f"\n  {pri} {practice}")
         print(f"     {desc[:200]}")
         print(f"     📖 {source}")
-
 
 if __name__ == "__main__":
     if not DB.exists():

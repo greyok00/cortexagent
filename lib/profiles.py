@@ -9,9 +9,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
-
 _DEFAULT_PROFILE = "default"
-
 
 def _profiles_root() -> Path:
     raw = os.environ.get("CORTEXAGENT_PROFILES_DIR")
@@ -19,10 +17,8 @@ def _profiles_root() -> Path:
         return Path(raw).expanduser()
     return Path.home() / ".cortexagent" / "profiles"
 
-
 def default_profile_name() -> str:
     return os.environ.get("CORTEXAGENT_DEFAULT_PROFILE", _DEFAULT_PROFILE)
-
 
 def ensure_default_profile() -> Path:
 
@@ -31,12 +27,10 @@ def ensure_default_profile() -> Path:
         _create_profile_dirs(root)
     return root
 
-
 def profile_dir(name: str) -> Path:
 
     safe = _safe_name(name)
     return _profiles_root() / safe
-
 
 def list_profiles() -> List[str]:
 
@@ -46,20 +40,17 @@ def list_profiles() -> List[str]:
     return sorted(p.name for p in root.iterdir()
                   if p.is_dir() and not p.name.startswith("."))
 
-
 def create_profile(name: str) -> Path:
 
     root = profile_dir(name)
     _create_profile_dirs(root)
     return root
 
-
 def delete_profile(name: str, force: bool = False) -> bool:
 
     root = profile_dir(name)
     if not root.exists():
         return False
-
 
     root_resolved = root.resolve()
     profiles_root_resolved = _profiles_root().resolve()
@@ -70,31 +61,25 @@ def delete_profile(name: str, force: bool = False) -> bool:
     shutil.rmtree(root)
     return True
 
-
 def get_state_dir(name: str) -> Path:
 
     return profile_dir(name) / "state"
-
 
 def get_memory_dir(name: str) -> Path:
 
     return profile_dir(name) / "memory"
 
-
 def get_workspace(name: str) -> Path:
 
     return profile_dir(name) / "workspace"
-
 
 def get_sandboxes(name: str) -> Path:
 
     return profile_dir(name) / "sandboxes"
 
-
 def get_logs(name: str) -> Path:
 
     return profile_dir(name) / "logs"
-
 
 def profile_summary(name: str) -> Dict:
 
@@ -113,7 +98,6 @@ def profile_summary(name: str) -> Dict:
         "subdirs": {k: {"path": str(v), "exists": v.exists()} for k, v in subdirs.items()},
     }
 
-
 def _safe_name(name: str) -> str:
 
     if not name or not isinstance(name, str):
@@ -123,7 +107,6 @@ def _safe_name(name: str) -> str:
     if any(c for c in name if not (c.isalnum() or c in "-_.")):
         raise ValueError(f"profile name must be alnum / - / _ / .: {name!r}")
     return name
-
 
 def _create_profile_dirs(root: Path) -> None:
     for sub in ("state", "memory", "workspace", "sandboxes", "logs"):
@@ -137,12 +120,9 @@ def _create_profile_dirs(root: Path) -> None:
             "created_at": _now_iso(),
         }, indent=2))
 
-
 def _now_iso() -> str:
     from datetime import datetime
     return datetime.now().isoformat()
-
-
 
 def _cli(argv: List[str]) -> int:
     if not argv:
@@ -189,7 +169,6 @@ def _cli(argv: List[str]) -> int:
         return 0
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
-
 
 if __name__ == "__main__":
     sys.exit(_cli(sys.argv[1:]))

@@ -4,8 +4,6 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
-
-
 _PROFILES: Dict[str, List[Dict[str, Any]]] = {
     "linux": [
         {"platform": "Linux x86_64", "hardwareConcurrency": 8, "deviceMemory": 8,
@@ -43,7 +41,6 @@ _PROFILES: Dict[str, List[Dict[str, Any]]] = {
     ],
 }
 
-
 def _os_from_ua(ua: str) -> str:
 
     if not ua:
@@ -53,7 +50,6 @@ def _os_from_ua(ua: str) -> str:
     if "Macintosh" in ua or "Mac OS" in ua:
         return "macos"
     return "linux"
-
 
 def derive_profile(seed: int, real_ua: str = "") -> Dict[str, Any]:
 
@@ -65,14 +61,10 @@ def derive_profile(seed: int, real_ua: str = "") -> Dict[str, Any]:
     profile["seed"] = seed
     return profile
 
-
 def list_profiles() -> List[str]:
     return list(_PROFILES.keys())
 
-
-
 UA_OS_RE = re.compile(r"(Windows|Macintosh|Mac OS|Linux|X11|Android)")
-
 
 def ua_os(ua: str) -> str:
     m = UA_OS_RE.search(ua or "")

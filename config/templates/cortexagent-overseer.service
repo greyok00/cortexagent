@@ -2,16 +2,10 @@
 Description=CortexAgent Overseer — always-on scheduler daemon
 Documentation=https://github.com/greyok00/cortexagent
 After=network.target
-# No ollama dependency — the model runs on llama.cpp (ollama removed).
 
 [Service]
 Type=forking
 PIDFile=%h/.cortexagent/overseer.pid
-# The overseer forks (parent writes the pidfile + exits 0; child runs the tick
-# loop). Type=forking tracks the child via PIDFile. It runs the cron scheduler
-# + task queue + memory health — all independent of the cortexagent CLI, so
-# scheduled tasks fire even when no interactive session is open. Clean exit 0
-# (SIGPIPE-fixed) so systemd does NOT respawn it on a normal stop.
 ExecStart={{PYTHON}} {{REPO_ROOT}}/lib/overseer.py start --interval 30
 ExecStop={{PYTHON}} {{REPO_ROOT}}/lib/overseer.py stop
 Restart=on-failure
@@ -19,11 +13,6 @@ RestartSec=10
 TimeoutStopSec=30
 Environment=CORTEXAGENT_REPO={{REPO_ROOT}}
 Environment=CORTEXAGENT_STATE_DIR=%h/.cortexagent
-Environment=CORTEXAGENT_PROXY_PORT=8081
-# Display for the (deferred) terminal-pop-up-on-task-completion feature. X11
-# single-seat default; for Wayland/multi-seat run instead:
-#   systemctl --user import-environment DISPLAY XAUTHORITY
-# and drop these two lines. Harmless when no pop-up is requested.
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=%h/.Xauthority
 

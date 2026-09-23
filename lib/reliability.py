@@ -10,11 +10,8 @@ from dataclasses import dataclass, field
 from functools import wraps
 from typing import Callable, Optional, Tuple, Type
 
-
 class CircuitBreakerOpenError(Exception):
     pass
-
-
 
 def _retry_max() -> int:
     try:
@@ -22,13 +19,11 @@ def _retry_max() -> int:
     except ValueError:
         return 3
 
-
 def _retry_delay() -> float:
     try:
         return float(os.environ.get("CORTEXAGENT_RETRY_DELAY", "1.0"))
     except ValueError:
         return 1.0
-
 
 def _cb_threshold() -> int:
     try:
@@ -36,14 +31,11 @@ def _cb_threshold() -> int:
     except ValueError:
         return 5
 
-
 def _cb_cooldown() -> float:
     try:
         return float(os.environ.get("CORTEXAGENT_CB_COOLDOWN", "60"))
     except ValueError:
         return 60.0
-
-
 
 def retry(
     max_retries: Optional[int] = None,
@@ -80,8 +72,6 @@ def retry(
             raise last_exc
         return wrapped
     return deco
-
-
 
 @dataclass
 class CircuitBreaker:
@@ -125,11 +115,7 @@ class CircuitBreaker:
             self.record_failure()
         return False
 
-
-
-
 _REGISTRY: dict = {}
-
 
 def get_circuit_breaker(name: str, threshold: Optional[int] = None,
                         cooldown_seconds: Optional[float] = None) -> CircuitBreaker:
@@ -143,12 +129,9 @@ def get_circuit_breaker(name: str, threshold: Optional[int] = None,
         _REGISTRY[name] = cb
     return cb
 
-
-
 def _smoke() -> int:
 
     print("reliability: smoke test")
-
 
     calls = {"n": 0}
 
@@ -162,7 +145,6 @@ def _smoke() -> int:
     print(f"  retry result: {flaky()} after {calls['n']} calls")
     assert calls["n"] == 3
 
-
     calls2 = {"n": 0}
 
     @retry(max_retries=2, base_delay=0.01)
@@ -175,7 +157,6 @@ def _smoke() -> int:
     except RuntimeError as e:
         print(f"  retry exhausted: re-raised {type(e).__name__} after {calls2['n']} calls")
     assert calls2["n"] == 2
-
 
     cb = CircuitBreaker(name="smoke", threshold=2, cooldown_seconds=0.5)
     print(f"  breaker initial open? {cb.is_open}")
@@ -201,7 +182,6 @@ def _smoke() -> int:
 
     print("reliability: OK")
     return 0
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":

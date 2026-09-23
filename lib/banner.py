@@ -12,7 +12,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from lib.config import CFG
 
-
 ICE = "\033[38;2;150;220;255m"
 RED = "\033[38;2;224;88;74m"
 DIM = "\033[2m"
@@ -21,14 +20,6 @@ HOME = "\033[H"
 CLEAR_EOL = "\033[K"
 HIDE_CURSOR = "\033[?25l"
 SHOW_CURSOR = "\033[?25h"
-
-
-
-
-
-
-
-
 
 LOGO = [
     "█▄        ▄█",
@@ -44,16 +35,13 @@ LOGO_H = len(LOGO)
 LOGO_W = max(len(ln) for ln in LOGO)
 TAG_H = 2
 
-
 def _pad(ln: str) -> str:
 
     return ln.ljust(LOGO_W)
 
-
 def _color_for(line_idx: int) -> str:
 
     return RED
-
 
 def _frames() -> list[str]:
 
@@ -75,17 +63,12 @@ def _frames() -> list[str]:
         frames.append(HOME + "\n".join(rows))
     return frames
 
-
-
-
 _model_placeholder = ""
-
 
 def _frames_for(model: str) -> list[str]:
     global _model_placeholder
     _model_placeholder = model or ""
     return _frames()
-
 
 def print_banner(model: str = "", stream=None) -> None:
 
@@ -98,16 +81,11 @@ def print_banner(model: str = "", stream=None) -> None:
     stream.write("\n")
     stream.flush()
 
-
-
-
 DEVIL_LINES = LOGO
-
 
 def render_devil_plain() -> str:
 
     return "\n".join(LOGO)
-
 
 def boot(model: str = "", stream=None, delay: float = 0.06) -> None:
 
@@ -126,7 +104,6 @@ def boot(model: str = "", stream=None, delay: float = 0.06) -> None:
         stream.write(SHOW_CURSOR)
         stream.flush()
 
-
 def _is_tty() -> bool:
     if not sys.stdout.isatty():
         return False
@@ -134,7 +111,6 @@ def _is_tty() -> bool:
     if not term or term in ("dumb", "emacs", "vt100"):
         return False
     return True
-
 
 def main() -> int:
     args = sys.argv[1:]
@@ -151,7 +127,6 @@ def main() -> int:
         print_banner(model)
     return 0
 
-
 def _smoke() -> int:
 
     import io
@@ -165,7 +140,6 @@ def _smoke() -> int:
     assert "█▄        ▄█" in out, "devil horns missing"
     print(f"  static: brand+model present, devil glyph + red "
           f"({len(out.splitlines())} lines)")
-
 
     frames = _frames_for("Qwen-test")
     assert len(frames) == LOGO_H + 1, f"frame count {len(frames)} != {LOGO_H + 1}"
@@ -189,7 +163,6 @@ def _smoke() -> int:
     print(f"  plain: {LOGO_H} rows, eyes + horns intact")
     print("banner: OK")
     return 0
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":

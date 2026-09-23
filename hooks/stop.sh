@@ -1,15 +1,7 @@
 #!/bin/bash
-# stop.sh — fires when the agent finishes a turn.
-#
-# Captures the assistant's final response (the turn's "context") into CortexAgent
-# hot memory via the canonical pipeline, so recovery has what was DONE, not just
-# the user's prompts. Skips re-saving the same turn on repeat Stop fires.
-#
-# Always exits 0 (non-blocking, non-fatal). Memory failures are logged to stderr.
 set -eu
 
 REPO_ROOT="${CORTEXAGENT_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-# shellcheck source=../lib/state.sh
 . "${REPO_ROOT}/lib/state.sh"
 cc_state_init
 
@@ -25,7 +17,6 @@ except Exception:
 
 [ -n "${transcript}" ] && [ -f "${transcript}" ] || exit 0
 
-# Extract the last assistant text + its uuid from the transcript JSONL.
 read -r uuid text <<< "$(python3 - "${transcript}" <<'PY'
 import json, sys
 path = sys.argv[1]
@@ -58,15 +49,11 @@ PY
 [ -n "${text}" ] || exit 0
 [ -n "${uuid}" ] || exit 0
 
-# Skip if this turn was already saved (repeat Stop fire).
 marker="$(_cortexagent_state_dir)/last-assistant-uuid"
 if [ -f "${marker}" ] && [ "$(cat "${marker}" 2>/dev/null || true)" = "${uuid}" ]; then
   exit 0
 fi
 
-# Save the assistant context through the memory pipeline.
-# Single write path via lib/memory_thin.py — daemon first, direct fallback.
-# No caps (2026-08-11 hard rule). Mirrors to hot + warm atomically.
 PYTHONPATH="${REPO_ROOT}" python3 -c "
 from lib.memory_thin import append
 import sys

@@ -10,18 +10,13 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
-
 LOG_PATH = os.path.expanduser("~/cortexagent/logs/cdp_guard.log")
 
-
-
 ALLOWED_ORIGINS = ["http://localhost", "http://127.0.0.1"]
-
 
 def _ensure_log() -> str:
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     return LOG_PATH
-
 
 def alert(kind: str, details: Dict[str, Any]) -> None:
 
@@ -39,7 +34,6 @@ def alert(kind: str, details: Dict[str, Any]) -> None:
             pass
     except Exception:
         pass
-
 
 def _parse_proc_tcp(port: int) -> List[str]:
 
@@ -63,8 +57,7 @@ def _parse_proc_tcp(port: int) -> List[str]:
         pass
     return hits
 
-
-def assert_localhost(port: int = 9223) -> bool:
+def assert_localhost(port: int = 9224) -> bool:
 
     binds = _parse_proc_tcp(port)
     if not binds:
@@ -76,11 +69,7 @@ def assert_localhost(port: int = 9223) -> bool:
         return False
     return True
 
-
-
-
 class CDPGuard:
-
 
     def __init__(self, bc: Any, interval: float = 2.0, kill: Optional[bool] = None,
                  owned_pids: Optional[List[int]] = None) -> None:
@@ -155,17 +144,9 @@ class CDPGuard:
         except Exception:
             pass
 
-
 def _port_of(bc: Any) -> int:
     url = getattr(bc, "CDP_HTTP", "http://127.0.0.1:9224")
     try:
         return int(url.rsplit(":", 1)[1])
     except Exception:
         return 9224
-
-
-
-
-
-
-

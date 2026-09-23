@@ -19,7 +19,6 @@ WARM_LIMIT = 2000
 WARM_RECENT_RATIO = 0.7
 WARM_BUFFER_RATIO = 0.3
 
-
 class MemoryManager:
     def __init__(self):
         db.initialize()
@@ -232,22 +231,17 @@ class MemoryManager:
             "cold_categories": cold_cats,
         }
 
-
 manager = MemoryManager()
-
 
 def add_message(platform: str, content: str, role: str = "user", **kwargs):
     return manager.add_to_hot(platform, content, role, **kwargs)
-
 
 def save_knowledge(category: str, knowledge: Any, immediate: bool = True,
                    platform: str = "shared"):
     return manager.save_to_cold(category, knowledge, immediate, platform)
 
-
 def get_resume(platform: Optional[str] = None):
     return manager.get_session_resume(platform)
-
 
 def get_stats(platform: Optional[str] = None):
     return manager.get_platform_stats(platform)

@@ -20,7 +20,6 @@ except Exception as e:
     manager = None
     db = None
 
-
 def add_message(content: str, role: str = "user"):
 
     if manager is None:
@@ -32,7 +31,6 @@ def add_message(content: str, role: str = "user"):
         print(f"cortexagent_call: pipeline write failed ({e})", file=sys.stderr)
         return False
 
-
 def get_hot(limit: int = 12):
 
     if manager is None:
@@ -43,7 +41,6 @@ def get_hot(limit: int = 12):
     except Exception:
         return []
 
-
 def get_resume():
 
     if manager is None:
@@ -52,7 +49,6 @@ def get_resume():
         return manager.get_session_resume(PLATFORM) or {}
     except Exception:
         return {}
-
 
 def search(query: str, limit: int = 10):
 
@@ -67,7 +63,6 @@ def search(query: str, limit: int = 10):
         return [{"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]} for r in rows]
     except Exception:
         return []
-
 
 def _fmt_recent(limit: int):
 
@@ -91,7 +86,6 @@ def _fmt_recent(limit: int):
                 content = content[:5000] + "…"
             lines.append(f"  [{ts}] {role}: {content}")
     return "\n".join(lines)
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -118,7 +112,6 @@ def main():
             content = (r.get("content") or "").strip().replace("\n", " ")[:5000]
             ts = (r.get("timestamp") or "")[:19]
             print(f"[{ts}] {r.get('role', '?')}: {content}")
-
 
 if __name__ == "__main__":
     main()

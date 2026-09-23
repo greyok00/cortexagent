@@ -6,12 +6,6 @@ import sys
 import time
 from typing import List, Optional
 
-
-
-
-
-
-
 _STAGES: dict[str, dict] = {
     "preparing": {
 
@@ -93,11 +87,9 @@ _STAGES: dict[str, dict] = {
     },
 }
 
-
 _STAGE_ORDER = ["preparing", "slimtoken", "sending", "generating", "tool"]
 
 _FRAME_INTERVAL_MS = 180.0
-
 
 def _bar(pct: Optional[float], width: int) -> str:
 
@@ -113,13 +105,11 @@ def _bar(pct: Optional[float], width: int) -> str:
     bar = "█" * filled + "░" * (width - filled)
     return f"[{bar}] {pct:.0f}%"
 
-
 def _truncate(s: str, width: int) -> str:
 
     if len(s) <= width:
         return s
     return s[: max(0, width - 1)] + "…"
-
 
 def _pct_str(progress: Optional[float]) -> str:
 
@@ -127,7 +117,6 @@ def _pct_str(progress: Optional[float]) -> str:
         return ""
     pct = max(0.0, min(100.0, float(progress)))
     return f" {pct:.0f}%"
-
 
 def render_card(
     stage: str = "preparing",
@@ -146,7 +135,6 @@ def render_card(
     spec = _STAGES[stage]
     metrics = metrics or {}
 
-
     if terminal_width < 40:
 
         return [f"◈ {spec['short']}{_pct_str(progress)}"]
@@ -155,11 +143,9 @@ def render_card(
         short = spec["short"]
         return [f"◈  ◌ ◉ ◌  {short}{_pct_str(progress)}"]
 
-
     panel = min(72, terminal_width - 2)
     panel = max(40, panel)
     inner = panel - 2
-
 
     frames = spec["frames"]
     if reduced_motion or len(frames) == 1:
@@ -168,29 +154,23 @@ def render_card(
         frame = frame % len(frames)
     visual = frames[frame]
 
-
     rows: List[str] = []
-
 
     title = " CORTEX / ACTIVE "
     rows.append("╭─" + title + "─" * max(0, inner - len(title)) + "╮")
-
 
     for vline in visual:
         v = _truncate(vline, inner)
         pad = max(0, (inner - len(v)) // 2)
         rows.append("│" + " " * pad + v + " " * (inner - pad - len(v)) + "│")
 
-
     status = _truncate(spec["status"], inner)
     rows.append("│" + status + " " * (inner - len(status)) + "│")
-
 
     bar_width = max(8, inner - len(spec["label"]) - 4)
     bar = _bar(progress, bar_width)
     prog_row = _truncate(f"{bar}  {spec['label']}", inner)
     rows.append("│" + prog_row + " " * (inner - len(prog_row)) + "│")
-
 
     bits: List[str] = []
     if stage_index is not None:
@@ -207,11 +187,9 @@ def render_card(
     metric_row = _truncate(" · ".join(bits), inner)
     rows.append("│" + metric_row + " " * (inner - len(metric_row)) + "│")
 
-
     rows.append("╰" + "─" * inner + "╯")
 
     return rows
-
 
 def pick_frame(stage: str, reduced_motion: bool = False,
                frame_interval_ms: float = _FRAME_INTERVAL_MS) -> int:
@@ -225,9 +203,7 @@ def pick_frame(stage: str, reduced_motion: bool = False,
     interval_s = max(0.05, frame_interval_ms / 1000.0)
     return int(time.monotonic() / interval_s) % len(frames)
 
-
 class ProcessingAnimation:
-
 
     def __init__(self, stream=None) -> None:
         self.stream = stream or sys.stderr
@@ -270,9 +246,6 @@ class ProcessingAnimation:
         self.stream.flush()
         self._last_rows = []
 
-
-
-
 def stage_from_workphase(phase: str) -> str:
 
     return {
@@ -285,9 +258,6 @@ def stage_from_workphase(phase: str) -> str:
         "ready": "completion",
         "idle": "preparing",
     }.get(phase, "preparing")
-
-
-
 
 def _smoke() -> int:
 
@@ -311,7 +281,6 @@ def _smoke() -> int:
     for r in rows:
         print(r)
     return 0
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":

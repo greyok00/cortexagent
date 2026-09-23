@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -17,11 +18,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.config import CFG  # noqa: E402
-from lib.model_backend import LlamaServer  # noqa: E402
-from lib import control  # noqa: E402
-from lib.errorlog import close_dump  # noqa: E402
-
+from lib.config import CFG
+from lib import control
+from lib.errorlog import close_dump
 
 STATE_DIR = CFG.state_dir
 LOG_FILE = CFG.logs_dir / "daemon.log"
@@ -29,13 +28,57 @@ PID_FILE = STATE_DIR / "daemon.pid"
 IDLE_POLL = 5
 
 _lock = threading.Lock()
-_big_lock = threading.Lock()
 _last_request = 0.0
 _status_cache = {"t": 0.0, "payload": None}
-_active_sessions = 0
+_claims: Dict[str, Dict[str, Any]] = {}
 _SHUTDOWN = False
-_proxy_proc: Optional[subprocess.Popen] = None
+_started_at = time.time()
 
+def _pid_alive(pid: Optional[int]) -> bool:
+    if not pid or int(pid) <= 1:
+        return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (TypeError, ValueError, OSError):
+        return False
+
+def _ppid_of(pid: Optional[int]) -> Optional[int]:
+    if not pid:
+        return None
+    try:
+        with open(f"/proc/{int(pid)}/stat", "rb") as fh:
+            data = fh.read().decode("utf-8", "replace")
+        return int(data.rsplit(")", 1)[1].split()[1])
+    except Exception:
+        return None
+
+def _claim_pids(peer_pid: Optional[int]) -> List[int]:
+    pids: List[int] = []
+    try:
+        peer = int(peer_pid) if peer_pid else 0
+    except (TypeError, ValueError):
+        peer = 0
+    if peer > 1:
+        pids.append(peer)
+        parent = _ppid_of(peer)
+        if parent and parent > 1:
+            pids.append(parent)
+    return pids
+
+def _prune_claims_locked() -> int:
+    for key in [k for k, c in _claims.items()
+                if c.get("pids") and not any(_pid_alive(p) for p in c["pids"])]:
+        _claims.pop(key, None)
+    return len(_claims)
+
+def _live_sessions() -> int:
+    with _lock:
+        return _prune_claims_locked()
 
 def _scan_active_sessions() -> List[Dict]:
 
@@ -68,15 +111,9 @@ def _scan_active_sessions() -> List[Dict]:
         except ValueError:
             continue
 
-        if comm == "llama-server":
-            if "--port 8080" in args or "--port=8080" in args:
-                _emit(pid_i, etime, comm, args, "big")
-                continue
-
         for marker, kind in (
             ("/lib/daemon.py",        "daemon"),
             ("/lib/overseer.py",      "overseer"),
-            ("/lib/grammar_proxy.py", "proxy"),
             ("/lib/diffusion_backend.py", "diffusion"),
         ):
             if marker in args:
@@ -86,10 +123,8 @@ def _scan_active_sessions() -> List[Dict]:
             break
     return out
 
-
 CYAN, GREEN, YELLOW, RED, DIM, BOLD, RST = (
     "\033[36m", "\033[32m", "\033[33m", "\033[31m", "\033[2m", "\033[1m", "\033[0m")
-
 
 def _log(msg: str, emoji: str = "", color: str = "") -> None:
     ts = datetime.now().strftime("%H:%M:%S")
@@ -101,82 +136,6 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
             f.write(f"[{ts}] {msg}\n")
     except OSError:
         pass
-
-
-
-def _big_extra_args() -> list:
-    args = [
-        "-fa", str(CFG.big_fa),
-        "-ctk", str(CFG.big_ctk),
-        "-ctv", str(CFG.big_ctv),
-        "-np", str(CFG.big_np),
-        "-b", str(CFG.big_b),
-        "-ub", str(CFG.big_ub),
-        "--kv-unified",
-    ]
-    if int(CFG.big_kv_offload) == 0:
-        args.append("--no-kv-offload")
-    return args
-
-
-def _vram_by_process() -> Dict[str, Any]:
-
-    out: Dict[str, Any] = {
-        "big_mib": 0,
-        "other_mib": 0,
-        "by_pid": [],
-        "ok": False,
-    }
-    try:
-        proc = subprocess.run(
-            ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=3,
-        )
-    except Exception:
-        return out
-    if proc.returncode != 0:
-        return out
-
-
-
-    big_pid: Optional[int] = None
-    try:
-        for line in subprocess.run(
-            ["ps", "-eo", "pid,args"],
-            capture_output=True, text=True, timeout=2,
-        ).stdout.splitlines():
-            parts = line.split(None, 1)
-            if len(parts) != 2:
-                continue
-            try:
-                pidi = int(parts[0])
-            except ValueError:
-                continue
-            if "llama-server" not in parts[1]:
-                continue
-            if f"--port {_big.port}" in parts[1] or f"--port={_big.port}" in parts[1]:
-                big_pid = pidi
-    except Exception:
-        pass
-    for line in proc.stdout.splitlines():
-
-        try:
-
-            first, rest = line.split(",", 1)
-            name, mib_s = rest.rsplit(",", 1)
-            pid_i = int(first.strip())
-            mib = int(mib_s.strip())
-        except Exception:
-            continue
-        out["by_pid"].append({"pid": pid_i, "name": name.strip(), "mib": mib})
-        if big_pid is not None and pid_i == big_pid:
-            out["big_mib"] += mib
-        else:
-            out["other_mib"] += mib
-    out["ok"] = True
-    return out
-
 
 def _free_vram_gb(samples: int = 3, interval: float = 0.7) -> Optional[float]:
 
@@ -198,221 +157,17 @@ def _free_vram_gb(samples: int = 3, interval: float = 0.7) -> Optional[float]:
             time.sleep(interval)
     return best
 
-
-def _probe_big_n_ctx() -> Optional[int]:
-
-    try:
-        import urllib.request
-        with urllib.request.urlopen(f"http://127.0.0.1:{_big.port}/v1/models",
-                                    timeout=2) as r:
-            data = json.loads(r.read().decode("utf-8", errors="replace"))
-
-        for entry in data.get("data", []):
-            meta = entry.get("meta") or {}
-            n_ctx = meta.get("n_ctx")
-            if isinstance(n_ctx, int) and n_ctx > 0:
-                return n_ctx
-    except Exception:
-        return None
-    return None
-
-
-def _load_session_model() -> tuple:
-
-    if _big.is_healthy():
-        actual_ctx = _probe_big_n_ctx()
-        if actual_ctx is not None and actual_ctx < int(CFG.big_ctx):
-            _log(f"Big model running with too-small n_ctx (got {actual_ctx}, "
-                 f"want at least {int(CFG.big_ctx)}) — reloading", "🔁", YELLOW)
-
-
-            if _big.proc is not None:
-                _big.stop()
-
-            else:
-                _log(f"Big is externally-owned with too-small n_ctx — please "
-                     f"restart it manually with --ctx-size {int(CFG.big_ctx)}",
-                     "⚠️", YELLOW)
-                return True, str(_big.model_path), False
-        else:
-            _log(f"Model already up: {Path(_big.model_path).name} "
-                 f"(n_ctx={actual_ctx})", "▶️", DIM)
-            return True, str(_big.model_path), False
-    free_gb = _free_vram_gb()
-    if free_gb is None:
-        why = "VRAM probe failed"
-    else:
-        why = f"VRAM free {free_gb:.1f}GB"
-    _log(f"{why} — loading big model {Path(CFG.big_model).name}", "🔄", CYAN)
-    if Path(_big.model_path).resolve() != Path(CFG.big_model).resolve():
-        ok = _swap_big(str(CFG.big_model), ctx=int(CFG.big_ctx),
-                       ngl=int(CFG.big_ngl), alias=str(CFG.big_alias),
-                       extra_args=_big_extra_args())
-    else:
-        ok = _start_big()
-    return ok, str(_big.model_path), False
-
-
-_big = LlamaServer(
-    "big", str(CFG.big_model), port=int(CFG.big_model_port),
-    ctx=int(CFG.big_ctx), ngl=int(CFG.big_ngl), alias=str(CFG.big_alias),
-    extra_args=_big_extra_args(), log_file=str(CFG.big_log), startup_timeout=300,
-)
-def _start_big(timeout: Optional[int] = None) -> bool:
-
-    with _big_lock:
-        if _big.is_healthy():
-            return True
-        _log(f"Loading big model on :{_big.port} (this can take ~60s)...", "🔄", CYAN)
-        ok = _big.start(timeout=timeout)
-        _log(f"Big model {'ready' if ok else 'FAILED'} on :{_big.port} (pid {_big.pid})",
-             "✅" if ok else "❌", GREEN if ok else RED)
-        return ok
-
-
-def _stop_big() -> bool:
-    with _big_lock:
-        if not _big.running and not _big.is_healthy():
-            return True
-
-
-        _log("Stopping big model — freeing VRAM...", "💤", YELLOW)
-        ok = _big.stop()
-        if ok:
-            _log("Big model stopped — VRAM freed", "💤", DIM)
-        else:
-            _log("Big model stop returned False — pid may still be alive", "⚠️", YELLOW)
-        return ok
-
-
-def _swap_big(model_path: str, ctx: int = 8192, ngl: int = 999,
-              alias: str = "cortexagent", extra_args: Optional[list] = None) -> bool:
-
-    global _big
-    with _big_lock:
-        if _big.running or _big.is_healthy():
-
-            if _big.proc is None:
-
-
-
-
-                _log("Big not owned by daemon (adopted/external) — refusing swap", "🛡️", DIM)
-                return False
-            _log(f"Swapping — stopping current big ({Path(_big.model_path).name})",
-                 "💤", YELLOW)
-            _big.stop()
-        _big = LlamaServer(
-            "big", str(model_path), port=int(CFG.big_model_port),
-            ctx=int(ctx), ngl=int(ngl), alias=str(alias),
-            extra_args=list(extra_args or []),
-            log_file=str(CFG.big_log), startup_timeout=300,
-        )
-        _log(f"Loading big model: {Path(model_path).name} on :{_big.port}", "🔄", CYAN)
-        ok = _big.start()
-        _log(f"Big model {'ready' if ok else 'FAILED'} ({Path(model_path).name})",
-             "✅" if ok else "❌", GREEN if ok else RED)
-        return ok
-
-
-def _start_proxy() -> bool:
-
-    global _proxy_proc
-    proxy_script = _REPO_ROOT / "lib" / "grammar_proxy.py"
-    if not proxy_script.exists():
-        _log("grammar_proxy.py not found — proxy disabled", "⚠️", YELLOW)
-        return False
-    port = int(os.environ.get("CORTEXAGENT_PROXY_PORT", "8081"))
-    log = CFG.logs_dir / "proxy.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ)
-    env["CORTEXAGENT_PROXY_PORT"] = str(port)
-    env["CORTEXAGENT_PROXY_TARGET"] = f"http://127.0.0.1:{_big.port}"
-    try:
-        log_fh = open(log, "ab")
-    except OSError as e:
-        _log(f"Proxy log open error: {e}", "❌", RED)
-        return False
-    try:
-        _proxy_proc = subprocess.Popen(
-            [sys.executable, str(proxy_script), str(port)],
-            env=env, stdout=log_fh, stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL, start_new_session=True,
-        )
-    except Exception as e:
-        log_fh.close()
-        _log(f"Proxy start error: {e}", "❌", RED)
-        return False
-    log_fh.close()
-    time.sleep(1)
-    ok = _proxy_proc.poll() is None
-    _log(f"Grammar proxy {'ready' if ok else 'FAILED'} on :{port} (pid {_proxy_proc.pid if _proxy_proc else '?'})",
-         "✅" if ok else "❌", GREEN if ok else RED)
-    return ok
-
-
-def _stop_proxy() -> None:
-    global _proxy_proc
-    if _proxy_proc and _proxy_proc.poll() is None:
-        try:
-            _proxy_proc.terminate()
-            _proxy_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            _proxy_proc.kill()
-    _proxy_proc = None
-
-
-
-def _idle_watcher() -> None:
-    global _active_sessions
+def _claim_pruner() -> None:
 
     while not _SHUTDOWN:
         time.sleep(IDLE_POLL)
-        should_unload = False
-
-
-
-
-        with _big_lock:
-            big_running = _big.running
-            with _lock:
-                last = _last_request
-                sessions = _active_sessions
-
-
-
-
-
-            if big_running and sessions > 0 and last:
-                idle = time.time() - last
-                if idle > CFG.stale_session_sec:
-                    _log(f"Session claim stale ({int(idle)}s no request > "
-                         f"{CFG.stale_session_sec}s) — releasing {sessions} leaked "
-                         f"session(s) so big model can idle-unload",
-                         "🧹", YELLOW)
-                    with _lock:
-                        _active_sessions = 0
-                    sessions = 0
-            if big_running and sessions == 0 and last and CFG.idle_unload_sec > 0:
-                idle = time.time() - last
-                if idle > CFG.idle_unload_sec:
-                    _log(f"Idle {int(idle)}s > {CFG.idle_unload_sec}s — unloading big model",
-                         "💤", YELLOW)
-                    should_unload = True
-
-
-
-
-
-
-
-        if should_unload:
-            _stop_big()
-
-
+        with _lock:
+            n = _prune_claims_locked()
+        if n:
+            _log(f"Pruned {n} dead session claim(s)", "\U0001f9f9", DIM)
 
 def _handle(req: Dict) -> Dict:
-    global _active_sessions, _last_request, _SHUTDOWN
+    global _last_request, _SHUTDOWN
     cmd = req.get("cmd", "")
 
     if cmd == "ping":
@@ -428,17 +183,12 @@ def _handle(req: Dict) -> Dict:
         primary = sessions[0] if sessions else {}
         payload = {
             "ok": True,
-            "big": {"port": _big.port, "healthy": _big.is_healthy(timeout=1), "running": _big.running,
-                    "model": str(_big.model_path),
-                    "alias": str(_big.alias) if hasattr(_big, "alias") else ""},
-            "proxy": {"running": (lambda p: bool(p and p.poll() is None))(_proxy_proc)},
-            "active_sessions": _active_sessions,
+            "active_sessions": _live_sessions(),
+            "raw_claims": sorted(_claims.keys()),
             "sessions": sessions,
             "session": primary,
-            "vram_by_proc": _vram_by_process(),
             "last_request": _last_request,
-            "idle_sec": int(time.time() - _last_request) if _last_request else None,
-            "idle_unload_sec": int(CFG.idle_unload_sec),
+            "idle_sec": int(time.time() - (_last_request or _started_at)),
         }
         _status_cache["t"] = now
         _status_cache["payload"] = payload
@@ -448,102 +198,34 @@ def _handle(req: Dict) -> Dict:
 
         with _lock:
             _last_request = time.time()
-        return {"ok": True, "big_healthy": _big.is_healthy()}
-
-    if cmd == "load":
-        which = req.get("which", "big")
-
-
-
-        with _lock:
-            _last_request = time.time()
-
-
-
-        model = req.get("model")
-        if model and which in ("big", None):
-            ok = _swap_big(model, ctx=int(req.get("ctx") or 8192),
-                           ngl=int(req.get("ngl") or 999),
-                           alias=req.get("alias", "cortexagent"),
-                           extra_args=req.get("extra_args"))
-            return {"ok": ok, "big_healthy": _big.is_healthy(),
-                    "model": str(_big.model_path)}
-        if which == "big":
-            ok = _start_big(timeout=int(req.get("timeout") or 300))
-            return {"ok": ok, "big_healthy": _big.is_healthy()}
-        if which == "all":
-            return {"ok": _start_big()}
-        return {"ok": False, "error": f"unknown which: {which}"}
-
-    if cmd == "swap":
-
-
-        model = req.get("model")
-        if not model:
-            return {"ok": False, "error": "swap requires 'model' path"}
-        with _lock:
-            _last_request = time.time()
-        ok = _swap_big(model, ctx=int(req.get("ctx") or 8192),
-                       ngl=int(req.get("ngl") or 999),
-                       alias=req.get("alias", "cortexagent"),
-                       extra_args=req.get("extra_args"))
-        return {"ok": ok, "big_healthy": _big.is_healthy(),
-                "model": str(_big.model_path)}
-
-    if cmd == "unload":
-        which = req.get("which", "big")
-        if which == "big":
-            return {"ok": _stop_big()}
-        if which == "all":
-            return {"ok": _stop_big()}
-        return {"ok": False, "error": f"unknown which: {which}"}
+        return {"ok": True}
 
     if cmd == "session-start":
+        pids = _claim_pids(req.get("_peer_pid"))
+        anchor = pids[-1] if pids else None
+        key = f"pid:{anchor}" if anchor else f"anon:{time.time()}"
         with _lock:
-            _active_sessions += 1
+            _claims[key] = {"pids": pids, "ts": time.time()}
             _last_request = time.time()
-
-
-
-
-
-        ok, model_path, is_fallback = _load_session_model()
-        if not ok:
-
-
-
-
-            with _lock:
-                _active_sessions = max(0, _active_sessions - 1)
-
-
-
-
-
-
-
-        return {"ok": ok, "active_sessions": _active_sessions,
-                "big_healthy": _big.is_healthy(), "model": model_path,
-                "fallback": is_fallback}
+        return {"ok": True, "active_sessions": _live_sessions()}
 
     if cmd == "session-end":
         with _lock:
-            _active_sessions = max(0, _active_sessions - 1)
+            _prune_claims_locked()
+            if _claims:
+                oldest = min(_claims.items(), key=lambda kv: kv[1]["ts"])[0]
+                _claims.pop(oldest, None)
             _last_request = time.time()
-        _log(f"Session end (active={_active_sessions}) — big idles in {CFG.idle_unload_sec}s",
-             "⏹️", DIM)
-        return {"ok": True, "active_sessions": _active_sessions}
+            remaining = len(_claims)
+        _log(f"Session end (active={remaining})", "⏹️", DIM)
+        return {"ok": True, "active_sessions": remaining}
 
     if cmd == "session-reset":
-
-
-
         with _lock:
-            _active_sessions = 0
+            _claims.clear()
             _last_request = time.time()
-        _log("Session reset (stale session detected by overseer watchdog) — unloading big model",
+        _log("Session reset (stale session detected by overseer watchdog)",
              "🧹", YELLOW)
-        _stop_big()
         return {"ok": True, "active_sessions": 0}
 
     if cmd == "shutdown":
@@ -551,23 +233,31 @@ def _handle(req: Dict) -> Dict:
         _log("Shutdown requested", "🛑", YELLOW)
         return {"ok": True}
 
-    if cmd == "proxy-metrics":
-
-
-
-        try:
-            import urllib.request
-            port = int(os.environ.get("CORTEXAGENT_PROXY_PORT", "8081"))
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/metrics", timeout=2
-            ) as resp:
-                return json.loads(resp.read())
-        except Exception as exc:
-            return {"ok": False, "error": f"proxy metrics: {exc}"}
-
     return {"ok": False, "error": f"unknown cmd: {cmd}"}
 
-
+def _panel_writer_loop() -> None:
+    import os as _os
+    import subprocess as _sp
+    writers = [
+        ("dispatcher", ["python3", os.path.expanduser("~/dispatcher/server.py"),
+                        "--write-status"]),
+        ("secops", ["python3", os.path.expanduser("~/security-hardening/secops-mcp.py"),
+                    "--write-status"]),
+        ("messenger", ["python3", os.path.expanduser("~/messenger/bin/messenger-server"),
+                       "--write-status"]),
+    ]
+    env = dict(_os.environ,
+               CORTEXAGENT_STATUS_DIR=str(STATE_DIR / "panel-status"))
+    while not _SHUTDOWN:
+        for name, cmd in writers:
+            try:
+                _sp.run(cmd, env=env, capture_output=True, timeout=60)
+            except Exception as exc:
+                _log(f"panel writer {name}: {exc}", "⚠️", YELLOW)
+        for _ in range(60):
+            if _SHUTDOWN:
+                return
+            time.sleep(1)
 
 def _run() -> None:
 
@@ -576,35 +266,18 @@ def _run() -> None:
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     (CFG.logs_dir).mkdir(parents=True, exist_ok=True)
-    _log(f"CortexAgent daemon starting (idle_unload={CFG.idle_unload_sec}s)", "🚀", CYAN)
+    _log("CortexAgent daemon starting (control + session tracking; "
+         "lanes :11435/:11436 → :11600 live outside the daemon)", "🚀", CYAN)
 
-
-
-
-    _start_proxy()
-
-
-
-
-
-    if not _big.running and _big.is_healthy(timeout=1):
-        _log(f"Orphaned big model detected on :{_big.port} — killing it", "🧹", YELLOW)
-        _big._kill_port_server()
-    elif _big.running:
-        _log(f"Big model :{_big.port} up (pid {_big.pid})", "▶️", DIM)
-
-    threading.Thread(target=_idle_watcher, daemon=True).start()
+    threading.Thread(target=_claim_pruner, daemon=True).start()
     threading.Thread(target=control.serve, args=(_handle,), daemon=True).start()
+    threading.Thread(target=_panel_writer_loop, daemon=True).start()
 
     _log("Daemon ready — control socket listening", "✅", GREEN)
     while not _SHUTDOWN:
         time.sleep(1)
 
-
-
-    _log("Daemon shutting down — stopping proxy + big model...", "🛑", YELLOW)
-    _stop_proxy()
-    _stop_big()
+    _log("Daemon shutting down", "🛑", YELLOW)
     try:
         PID_FILE.unlink(missing_ok=True)
     except Exception:
@@ -614,15 +287,12 @@ def _run() -> None:
     except Exception:
         pass
 
-
     close_dump(component="daemon", reason="SIGINT/SIGTERM clean shutdown", log_file=LOG_FILE)
     _log("Daemon stopped cleanly (exit 0)", "✅", GREEN)
-
 
 def _request_shutdown() -> None:
     global _SHUTDOWN
     _SHUTDOWN = True
-
 
 def _is_running() -> Optional[int]:
     if not PID_FILE.exists():
@@ -634,7 +304,6 @@ def _is_running() -> Optional[int]:
     except (ProcessLookupError, ValueError, OSError):
         PID_FILE.unlink(missing_ok=True)
         return None
-
 
 def _start_bg() -> int:
 
@@ -654,7 +323,6 @@ def _start_bg() -> int:
         os.dup2(null.fileno(), 2)
     _run()
     return 0
-
 
 def _stop() -> int:
     pid = _is_running()
@@ -682,7 +350,6 @@ def _stop() -> int:
     print("Daemon stopped")
     return 0
 
-
 def _status() -> int:
     try:
         s = control.send_request("status", timeout=5)
@@ -692,16 +359,10 @@ def _status() -> int:
     if not s.get("ok"):
         print("status error:", s)
         return 1
-    big = s["big"]
-    from pathlib import Path as _P
-    model_name = _P(big.get("model", "")).name or "?"
     print("CortexAgent daemon: 🟢 running")
-    print(f"  big  :{big['port']}  {'🟢 healthy' if big['healthy'] else '🔴 down'}  (running={big['running']})")
-    print(f"       model: {model_name} (big)")
-    print(f"  proxy: {'🟢 up' if s['proxy']['running'] else '🔴 down'}")
-    print(f"  sessions: {s['active_sessions']}  idle: {s['idle_sec']}s / {s['idle_unload_sec']}s")
+    print("  lanes : slimtoken :11435/:11436 → ollama :11600")
+    print(f"  sessions: {s['active_sessions']}  idle: {s['idle_sec']}s")
     return 0
-
 
 def main() -> int:
     if len(sys.argv) < 2:
@@ -728,7 +389,6 @@ def main() -> int:
     print(f"unknown command: {cmd}\n", file=sys.stderr)
     print(__doc__)
     return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

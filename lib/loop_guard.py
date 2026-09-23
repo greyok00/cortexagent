@@ -10,13 +10,11 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
-
 try:
     from profiles import profile_dir, default_profile_name
-except Exception:  # pragma: no cover
-    profile_dir = None  # type: ignore
-    default_profile_name = lambda: "default"  # type: ignore
-
+except Exception:
+    profile_dir = None
+    default_profile_name = lambda: "default"
 
 def _max_attempts() -> int:
     try:
@@ -24,13 +22,11 @@ def _max_attempts() -> int:
     except ValueError:
         return 3
 
-
 def _window_minutes() -> int:
     try:
         return int(os.environ.get("CORTEXAGENT_LOOP_GUARD_WINDOW_MIN", "10"))
     except ValueError:
         return 10
-
 
 def _known_approaches_file() -> Path:
     raw = os.environ.get("CORTEXAGENT_KNOWN_APPROACHES_FILE")
@@ -38,15 +34,12 @@ def _known_approaches_file() -> Path:
         return Path(raw).expanduser()
     return Path.home() / ".cortexagent" / "config" / "loop_guard_known_approaches.json"
 
-
 def _state_path(profile: str) -> Path:
     if profile_dir is not None:
         return profile_dir(profile) / "state" / "loop_guard.json"
     return Path.home() / ".cortexagent" / "state" / "loop_guard.json"
 
-
 class LoopGuard:
-
 
     def __init__(self, max_attempts: Optional[int] = None,
                  window_minutes: Optional[int] = None,
@@ -56,9 +49,6 @@ class LoopGuard:
         self.profile = profile or default_profile_name()
         self.state_file = _state_path(self.profile)
         self.attempts = self._load_state()
-
-
-
 
     def _load_state(self) -> Dict:
         try:
@@ -88,9 +78,6 @@ class LoopGuard:
         except Exception as e:
             print(f"LoopGuard: failed to save state: {e}", file=sys.stderr)
 
-
-
-
     def record_attempt(self, task_key: str, approach: str,
                        success: bool, error: Optional[str] = None) -> None:
         if task_key not in self.attempts:
@@ -115,7 +102,6 @@ class LoopGuard:
 
         in_loop = False
         recommendation = ""
-
 
         same_approach_failures = [e for e in entries
                                   if e["approach"] == approach and not e["success"]]
@@ -166,9 +152,6 @@ class LoopGuard:
             return {task_key: self.check_loop(task_key, "current")}
         return {key: self.check_loop(key, "unknown") for key in self.attempts}
 
-
-
-
     def _cleanup_old_entries(self, task_key: str) -> None:
         if task_key not in self.attempts:
             return
@@ -177,7 +160,6 @@ class LoopGuard:
             e for e in self.attempts[task_key]
             if e.get("timestamp", 0) > cutoff
         ]
-
 
 def _load_known_approaches() -> Dict:
     f = _known_approaches_file()
@@ -188,10 +170,7 @@ def _load_known_approaches() -> Dict:
     except Exception:
         return {}
 
-
-
 _default_guard: Optional[LoopGuard] = None
-
 
 def _guard(profile: Optional[str] = None) -> LoopGuard:
     global _default_guard
@@ -199,18 +178,14 @@ def _guard(profile: Optional[str] = None) -> LoopGuard:
         _default_guard = LoopGuard()
     if profile is not None:
         return LoopGuard(profile=profile)
-    return _default_guard  # type: ignore
-
+    return _default_guard
 
 def record(task: str, approach: str, success: bool,
            error: Optional[str] = None, profile: Optional[str] = None) -> None:
     _guard(profile).record_attempt(task, approach, success, error)
 
-
 def check(task: str, approach: str, profile: Optional[str] = None) -> Dict:
     return _guard(profile).check_loop(task, approach)
-
-
 
 def _cli(argv: List[str]) -> int:
     if not argv:
@@ -218,7 +193,6 @@ def _cli(argv: List[str]) -> int:
         return 0
     cmd = argv[0]
     args = argv[1:]
-
 
     kwargs: Dict[str, str] = {}
     positional: List[str] = []
@@ -283,7 +257,6 @@ def _cli(argv: List[str]) -> int:
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
 
-
 def _smoke() -> int:
 
     import tempfile
@@ -292,13 +265,11 @@ def _smoke() -> int:
 
         g = LoopGuard(max_attempts=3, window_minutes=10)
 
-
         g.record_attempt("smoke_a", "approach_x", False, "err1")
         g.record_attempt("smoke_a", "approach_x", False, "err2")
         r = g.check_loop("smoke_a", "approach_x")
         assert r["in_loop"], f"expected in_loop, got {r}"
         print(f"  cond1 same-approach: in_loop={r['in_loop']}  rec={r['recommendation'][:50]}…")
-
 
         g2 = LoopGuard(max_attempts=3, window_minutes=10)
         for i in range(3):
@@ -307,7 +278,6 @@ def _smoke() -> int:
         assert r["in_loop"]
         print(f"  cond2 total-failure: in_loop={r['in_loop']}  rec={r['recommendation'][:50]}…")
 
-
         g3 = LoopGuard(max_attempts=99, window_minutes=60)
         for i in range(3):
             g3.record_attempt("smoke_c", "rapid", False, "x")
@@ -315,13 +285,11 @@ def _smoke() -> int:
         assert r["in_loop"]
         print(f"  cond3 rapid-retry:  in_loop={r['in_loop']}  rec={r['recommendation'][:50]}…")
 
-
         g4 = LoopGuard(max_attempts=3, window_minutes=10)
         g4.record_attempt("smoke_d", "ok", True)
         r = g4.check_loop("smoke_d", "ok")
         assert not r["in_loop"]
         print(f"  no-loop on success: in_loop={r['in_loop']}")
-
 
         g4.reset_task("smoke_d")
         r = g4.check_loop("smoke_d", "ok")
@@ -330,7 +298,6 @@ def _smoke() -> int:
 
     print("loop_guard: OK")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(_cli(sys.argv[1:]))

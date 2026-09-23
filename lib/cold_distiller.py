@@ -19,8 +19,6 @@ from memory.manager import manager
 
 SEEN_FILE = Path.home() / ".cortexagent" / "state" / "cold_distiller_seen.json"
 
-
-
 KNOWLEDGE_PATTERNS = {
     "configuration": [
         r"(?:api|endpoint|base)\s*[=:]\s*[^\"'\s]+",
@@ -66,8 +64,6 @@ LOW_VALUE_PATTERNS = [
     r"^Token usage:.*$",
 ]
 
-
-
 def _load_seen_facts() -> Set[str]:
     try:
         if SEEN_FILE.exists():
@@ -76,7 +72,6 @@ def _load_seen_facts() -> Set[str]:
         pass
     return set()
 
-
 def _save_seen_facts(seen: Set[str]) -> None:
     try:
         SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -84,8 +79,6 @@ def _save_seen_facts(seen: Set[str]) -> None:
         SEEN_FILE.write_text(json.dumps(facts))
     except Exception:
         pass
-
-
 
 def _read_hot_entries(profile: Optional[str] = None) -> List[Dict]:
 
@@ -127,7 +120,6 @@ def _read_hot_entries(profile: Optional[str] = None) -> List[Dict]:
     if ndjson_entries:
         return ndjson_entries
 
-
     try:
         if profile:
             rows = manager.get_hot_messages(platform=profile, limit=10000)
@@ -153,8 +145,6 @@ def _read_hot_entries(profile: Optional[str] = None) -> List[Dict]:
         })
     return entries
 
-
-
 def _write_cold_fact(category: str, fact: Dict, profile: str = "shared") -> bool:
 
     if profile and not profile.startswith("platform:") and profile != "shared":
@@ -174,8 +164,6 @@ def _write_cold_fact(category: str, fact: Dict, profile: str = "shared") -> bool
         return True
     except Exception:
         return False
-
-
 
 class ColdDistiller:
     def __init__(self, min_confidence: float = 0.5):
@@ -289,8 +277,6 @@ class ColdDistiller:
                 return True
         return False
 
-
-
 def _print_stats(stats: Dict) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] "
           f"Scanned: {stats['scanned']} | "
@@ -301,7 +287,6 @@ def _print_stats(stats: Dict) -> None:
     if stats["categories"]:
         cats = ", ".join(f"{k}: {v}" for k, v in stats["categories"].items())
         print(f"  Categories: {cats}")
-
 
 def _cli(argv: List[str]) -> int:
     if not argv:
@@ -339,7 +324,6 @@ def _cli(argv: List[str]) -> int:
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
 
-
 def _smoke() -> int:
     d = ColdDistiller(min_confidence=0.0)
 
@@ -370,7 +354,6 @@ def _smoke() -> int:
 
     print("cold_distiller: OK")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(_cli(sys.argv[1:]))

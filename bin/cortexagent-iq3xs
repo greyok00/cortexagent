@@ -1,0 +1,2 @@
+#!/bin/bash
+CORTEXAGENT_START_MODEL=opus-iq3xs exec "${0%-iq3xs}" "${@}"

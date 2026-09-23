@@ -1,21 +1,7 @@
 #!/bin/bash
-# cortexagent-browser-health — read-only health snapshot of the browser engine.
-#
-# Reports CDP reachability, tab count, engine metrics (calls, reconnects,
-# retries, failures, last-call latency). Does NOT restart Chrome, does NOT
-# touch the :9223 CDP port, does NOT close any tabs. Safe to run anytime.
-#
-# Browser: Patchright + Google Chrome (default since 2026-08-28). For the
-# legacy websocket transport, fall back via CORTEXAGENT_BROWSER=brave.
-#
-# Usage:
-#   cortexagent-browser-health                # human summary
-#   cortexagent-browser-health --json         # machine-readable JSON
-#   cortexagent-browser-health --watch 2      # repeat every 2s (Ctrl-C to stop)
 
 set -euo pipefail
 
-# ── Locate self (symlink-safe) ─────────────────────────────────────────────
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
@@ -35,7 +21,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Render one snapshot ─────────────────────────────────────────────────────
 _snapshot() {
   "$PY" - "$JSON" <<'PYEOF'
 import json

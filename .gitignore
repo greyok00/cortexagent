@@ -77,3 +77,22 @@ addons/controls/OrbitControls.js
 static/
 patch_ub2560.py
 profiles/
+
+# ── Personal one-off research/session scripts (2026-09-21 audit) ────────────
+# Session-mentioned scripts that became code but nothing in cortexagent uses.
+# KEEP LOCALLY — banned from upload. Not deleted (user directive).
+scripts/ingest_*.py
+scripts/e2e_integration.py
+scripts/eval_overseer.py
+scripts/watch_tab_spawner.py
+scripts/nvidia-smi
+actions/earnings_tick.py
+tools/build_feature_catalog.py
+tools/accessibility_test_protocol.py
+lib/pdf_knowledge.py
+lib/prompt_schema.py
+lib/tkinter_strip/generate_icons.py
+addons/
+three.module.min.js
+patch_ub2560.py
+analysis.txt

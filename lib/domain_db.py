@@ -15,7 +15,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.config import CFG  # noqa: E402
+from lib.config import CFG
 
 DOMAINS_DIR = CFG.state_dir / "domains"
 ALLOWED_DOMAINS = ("business", "dfir", "law", "osint", "programming")
@@ -25,13 +25,10 @@ EMBED_DIM = 384
 _VEC_FLAG: Dict[str, bool] = {}
 _CONN_CACHE: Dict[str, sqlite3.Connection] = {}
 
-
 _CONN_LOCK = threading.RLock()
-
 
 def _db_path(domain: str) -> Path:
     return DOMAINS_DIR / f"{domain}.db"
-
 
 def _connect(domain: str) -> sqlite3.Connection:
 
@@ -62,7 +59,6 @@ def _connect(domain: str) -> sqlite3.Connection:
     _CONN_CACHE[path] = con
     return con
 
-
 def _close_all() -> None:
     with _CONN_LOCK:
         for con in _CONN_CACHE.values():
@@ -72,12 +68,10 @@ def _close_all() -> None:
                 pass
         _CONN_CACHE.clear()
 
-
 def _vec_available(con: sqlite3.Connection) -> bool:
 
     path = con.execute("PRAGMA database_list").fetchone()[2]
     return _VEC_FLAG.get(path, False)
-
 
 def _init_schema(con: sqlite3.Connection) -> None:
     con.executescript(
@@ -97,7 +91,6 @@ def _init_schema(con: sqlite3.Connection) -> None:
             f"embedding float[{EMBED_DIM}], +doc_id INTEGER)")
     con.commit()
 
-
 def _store_chunk(con: sqlite3.Connection, source: str, index: int,
                  chunk: str, emb: Optional[List[float]]) -> None:
 
@@ -115,7 +108,6 @@ def _store_chunk(con: sqlite3.Connection, source: str, index: int,
                 "INSERT INTO documents_vec (embedding, doc_id) VALUES (?, ?)",
                 (json.dumps(emb), rowid))
         con.commit()
-
 
 def search(domain: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
 
@@ -158,7 +150,6 @@ def search(domain: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
              "score": r["score"], "rank": i + 1}
             for i, r in enumerate(ranked)]
 
-
 def count(domain: str) -> int:
     db = _db_path(domain)
     if not db.exists():
@@ -166,7 +157,6 @@ def count(domain: str) -> int:
     con = _connect(domain)
     with _CONN_LOCK:
         return con.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
-
 
 def _smoke() -> int:
 
@@ -188,7 +178,6 @@ def _smoke() -> int:
             c1a_emb, c1b_emb, c2_emb = _emb(c1a), _emb(c1b), _emb(c2)
         except Exception:
 
-
             c1a_emb = c1b_emb = c2_emb = None
         _store_chunk(con, "case1.txt", 0, c1a, c1a_emb)
         _store_chunk(con, "case1.txt", 1, c1b, c1b_emb)
@@ -205,7 +194,6 @@ def _smoke() -> int:
         if not r or r[0]["source"] != "case1.txt":
             print(f"❌ FTS5 hit: {r}")
             fails += 1
-
 
         r = search("osint", "beaconing host", limit=2)
         if not r or r[0]["source"] != "case1.txt":
@@ -229,13 +217,11 @@ def _smoke() -> int:
     print("domain_db smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
 
-
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         return _smoke()
     print("Usage: python3 lib/domain_db.py --smoke")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

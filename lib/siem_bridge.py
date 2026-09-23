@@ -7,16 +7,13 @@ import json
 import sys
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-
 _SIEM_PATH = Path.home() / "security-console" / "siem-soar"
 if str(_SIEM_PATH) not in sys.path:
     sys.path.insert(0, str(_SIEM_PATH))
-
 
 def _import_siem_db():
 
@@ -28,7 +25,6 @@ def _import_siem_db():
             f"Cannot import siem.db from {_SIEM_PATH}: {exc}. "
             "Ensure ~/security-console is on sys.path."
         ) from exc
-
 
 def _severity_for_cve(entry: dict) -> str:
 
@@ -44,7 +40,6 @@ def _severity_for_cve(entry: dict) -> str:
     if cvss > 0:
         return "low"
     return "n/a"
-
 
 def push_cve_finding(entry: dict, db_mod=None, auto_soar: bool = True) -> int | None:
 
@@ -89,18 +84,15 @@ def push_cve_finding(entry: dict, db_mod=None, auto_soar: bool = True) -> int | 
                       severity=severity, detail=detail, raw=raw)
     return finding_id
 
-
 def _trigger_soar(finding_id: int, **finding_fields) -> list:
 
     try:
-        from siem import soar  # type: ignore
-
+        from siem import soar
 
         try:
             soar.seed_default_playbooks()
         except Exception:
             pass
-
 
         finding = {
             "id": finding_id,
@@ -111,10 +103,9 @@ def _trigger_soar(finding_id: int, **finding_fields) -> list:
             "raw": finding_fields.get("raw"),
         }
         return soar.run_playbooks(finding)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
 
         return [{"playbook": "<unavailable>", "error": str(exc)}]
-
 
 def push_hardening_snapshot(snap: dict | None = None, db_mod=None,
                            auto_soar: bool = True) -> list[int]:
@@ -151,7 +142,6 @@ def push_hardening_snapshot(snap: dict | None = None, db_mod=None,
             pass
     return ids
 
-
 def push_recent_cves(since: str = "7d", db_mod=None) -> int:
 
     from lib import cve_intel
@@ -166,12 +156,9 @@ def push_recent_cves(since: str = "7d", db_mod=None) -> int:
             print(f"  ⚠ skip {e.get('cve_id')}: {exc}", file=sys.stderr)
     return pushed
 
-
-
 def _stats(db_mod=None) -> dict:
     db_mod = db_mod or _import_siem_db()
     return db_mod.finding_counts()
-
 
 def _test(db_mod=None) -> int:
 
@@ -203,7 +190,6 @@ def _test(db_mod=None) -> int:
     print(f"  ✓ counts: {_stats(db_mod)}")
     return 0
 
-
 def main() -> int:
     ap = argparse.ArgumentParser(description="CortexAgent → SIEM bridge")
     ap.add_argument("--test", action="store_true", help="round-trip smoke")
@@ -227,7 +213,6 @@ def main() -> int:
         return 0
     ap.print_help()
     return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

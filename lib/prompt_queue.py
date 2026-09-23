@@ -14,11 +14,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.config import CFG  # noqa: E402
+from lib.config import CFG
 
 QUEUE_FILE = CFG.state_dir / "prompt_queue.json"
-
-
 
 class ItemStatus:
     QUEUED = "queued"
@@ -26,7 +24,6 @@ class ItemStatus:
     DONE = "done"
     SUPERSEDED = "superseded"
     DROPPED = "dropped"
-
 
 @dataclass
 class Item:
@@ -45,7 +42,6 @@ class Item:
                    created_at=float(d.get("created_at", 0.0) or 0.0),
                    superseded_by=d.get("superseded_by"))
 
-
 def _load() -> list[Item]:
     if not QUEUE_FILE.exists():
         return []
@@ -55,13 +51,11 @@ def _load() -> list[Item]:
     except Exception:
         return []
 
-
 def _save(items: list[Item]) -> None:
     QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
     QUEUE_FILE.write_text(json.dumps(
         {"items": [i.to_dict() for i in items], "updated_at": time.time()},
         indent=2))
-
 
 def _next_id(items: list[Item]) -> str:
     n = 0
@@ -71,9 +65,6 @@ def _next_id(items: list[Item]) -> str:
             n = max(n, int(m.group(1)))
     return f"Q-{n + 1:03d}"
 
-
-
-
 _NUM = re.compile(r"^\s*(\d+)[.)]\s+(.+)$")
 _BUL = re.compile(r"^\s*[-*•·▪◦]\s+(.+)$")
 _SEQ_WORDS = re.compile(
@@ -81,13 +72,11 @@ _SEQ_WORDS = re.compile(
     r"also|additionally|once that(?:'s)? done|when done)\b[:,]?\s*",
     re.IGNORECASE)
 
-
 def decompose(prompt: str) -> list[str]:
 
     text = prompt.strip()
     if not text:
         return []
-
 
     num_items = []
     for line in text.splitlines():
@@ -97,7 +86,6 @@ def decompose(prompt: str) -> list[str]:
     if len(num_items) >= 2:
         return num_items
 
-
     bul_items = []
     for line in text.splitlines():
         m = _BUL.match(line)
@@ -106,7 +94,6 @@ def decompose(prompt: str) -> list[str]:
     if len(bul_items) >= 2:
         return bul_items
 
-
     if _SEQ_WORDS.search(text):
 
         parts = _SEQ_WORDS.split(text)
@@ -114,7 +101,6 @@ def decompose(prompt: str) -> list[str]:
 
         if len(parts) >= 2:
             return parts
-
 
     raw = re.split(r"\s*[\n;]+\s*", text)
     imperative = re.compile(
@@ -127,16 +113,7 @@ def decompose(prompt: str) -> list[str]:
     if len(imp_items) >= 2:
         return imp_items
 
-
     return [text]
-
-
-
-
-
-
-
-
 
 _VERB_POLARITY = {
 
@@ -153,10 +130,6 @@ _REVISION = re.compile(
     r"rather|change\s+(?:it|that|the)|update\s+(?:it|that|the)|forget\s+(?:it|that))\b",
     re.IGNORECASE)
 
-
-
-
-
 _STOP_TARGET = {
     "the", "a", "an", "it", "them", "this", "that", "these", "those", "to", "for",
     "and", "or", "of", "in", "on", "at", "with", "from", "by", "my", "your", "our",
@@ -171,7 +144,6 @@ _STOP_TARGET = {
     "again", "further", "once", "too", "very", "im", "youre", "that",
 }
 
-
 _ROLE_CHOICE = re.compile(
     r"\b(?:use|install|switch\s+to|go\s+with|adopt)\s+([A-Za-z0-9_.\-]+)", re.IGNORECASE)
 
@@ -180,11 +152,9 @@ _ROLE = re.compile(r"\b(?:for|as|to|in)\s+(?:the\s+|a\s+|an\s+)?([A-Za-z0-9_.\-]
 _RENAME = re.compile(
     r"\brename\s+(.+?)\s+to\s+(.+)$|call\s+(?:it|them|the\s+\S+)\s+(.+)$", re.IGNORECASE)
 
-
 def _role_of(text: str) -> Optional[str]:
     m = _ROLE.search(text.lower())
     return m.group(1).lower() if m else None
-
 
 def _directive(text: str) -> dict:
 
@@ -199,15 +169,10 @@ def _directive(text: str) -> dict:
             verb = w
             vi = i
 
-
-
-
             window = words[max(0, i - 3):i + 4]
             neg = any(_NEGATION.search(w2) for w2 in window)
             polarity = _VERB_POLARITY[w] * (-1 if neg else 1)
             break
-
-
 
     target = None
     if verb and vi >= 0:
@@ -228,10 +193,7 @@ def _directive(text: str) -> dict:
         "rename_val": (rename.group(2) or rename.group(3) or "").strip().lower() if rename else None,
     }
 
-
 def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) -> Optional[str]:
-
-
 
     if (new_d["target"] and new_d["target"] == old_d["target"]
             and new_d["polarity"] and old_d["polarity"]
@@ -239,7 +201,6 @@ def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) ->
         return (f"earlier you said '{old_text}' but you just said '{new_text}', "
                 f"and that conflicts (opposite direction on '{new_d['target']}'). "
                 f"what do you want?")
-
 
     exclusive = {("add", "remove"), ("create", "delete"), ("start", "stop"),
                  ("enable", "disable"), ("include", "exclude")}
@@ -249,9 +210,6 @@ def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) ->
             return (f"earlier you said '{old_text}' but you just said '{new_text}', "
                     f"and that conflicts ({pair[0]} vs {pair[1]} on '{new_d['target']}'). "
                     f"what do you want?")
-
-
-
 
     if (new_d["choice"] and old_d["choice"]
             and new_d["choice"] != old_d["choice"]
@@ -264,7 +222,6 @@ def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) ->
                 f"and that conflicts (for '{new_d['role']}' you wanted "
                 f"'{old_d['choice']}', now '{new_d['choice']}'). what do you want?")
 
-
     if (new_d["rename_subj"] and old_d["rename_subj"]
             and new_d["rename_subj"] == old_d["rename_subj"]
             and new_d["rename_val"] and old_d["rename_val"]
@@ -274,7 +231,6 @@ def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) ->
                 f"different values). what do you want?")
 
     return None
-
 
 def _supersede_target(new_text: str, new_d: dict, live: list[Item]) -> Optional[Item]:
 
@@ -299,9 +255,6 @@ def _supersede_target(new_text: str, new_d: dict, live: list[Item]) -> Optional[
             best, best_score = it, score
     return best if best_score >= 2 else None
 
-
-
-
 @dataclass
 class SubmitResult:
     enqueued: list[Item]
@@ -317,7 +270,6 @@ class SubmitResult:
             "queue_size": self.queue_size,
         }
 
-
 def submit(prompt: str) -> SubmitResult:
 
     items = _load()
@@ -327,11 +279,8 @@ def submit(prompt: str) -> SubmitResult:
 
     is_revision = bool(_REVISION.match(prompt.strip()))
 
-
     live = [it for it in items
             if it.status not in (ItemStatus.DONE, ItemStatus.SUPERSEDED, ItemStatus.DROPPED)]
-
-
 
     superseded_ids: list[str] = []
     compare_set = live
@@ -343,7 +292,6 @@ def submit(prompt: str) -> SubmitResult:
             target.superseded_by = None
             superseded_ids.append(target.id)
             compare_set = [it for it in live if it.id != target.id]
-
 
     new_items: list[Item] = []
     conflicts: list[str] = []
@@ -360,31 +308,24 @@ def submit(prompt: str) -> SubmitResult:
             continue
         new_items.append(Item(id=_next_id(items + new_items), text=part))
 
-
     if superseded_ids and new_items:
         for it in items:
             if it.id == superseded_ids[0]:
                 it.superseded_by = new_items[0].id
                 break
 
-
     items.extend(new_items)
     _save(items)
 
     return SubmitResult(new_items, conflicts, superseded_ids, len(items))
 
-
-
-
 def list_items() -> list[Item]:
     return _load()
-
 
 def clear() -> int:
     n = len(_load())
     _save([])
     return n
-
 
 def mark_done(item_id: str) -> bool:
     items = _load()
@@ -395,7 +336,6 @@ def mark_done(item_id: str) -> bool:
             return True
     return False
 
-
 def drop(item_id: str) -> bool:
     items = _load()
     for it in items:
@@ -404,7 +344,6 @@ def drop(item_id: str) -> bool:
             _save(items)
             return True
     return False
-
 
 def agenda_context(max_items: int = 12) -> str:
 
@@ -421,12 +360,8 @@ def agenda_context(max_items: int = 12) -> str:
     lines.append("Work the queue in order; mark items done with `cortexagent queue done <id>`.")
     return "\n".join(lines)
 
-
-
-
 def _print_json(obj) -> None:
     print(json.dumps(obj, indent=2, default=str))
-
 
 def main() -> int:
     args = sys.argv[1:]
@@ -492,7 +427,6 @@ def main() -> int:
     print(f"unknown command: {cmd}\n", file=sys.stderr)
     print(__doc__)
     return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -5,17 +5,9 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-
-
-
-
-
-
-
 _THEMES_CSS_REL = Path("lib/themes/themes.css")
 _FALLBACK_CSS_REL = Path("ui-framework/themes")
 _HOME_FALLBACK = Path.home() / "ui-framework" / "themes"
-
 
 def _find_themes_css() -> Path | None:
 
@@ -24,27 +16,11 @@ def _find_themes_css() -> Path | None:
     here = Path(__file__).resolve().parent.parent
     candidates.append(here / _THEMES_CSS_REL)
 
-
     candidates.append(_HOME_FALLBACK / "themes.css")
     for p in candidates:
         if p.exists():
             return p
     return None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 DEFAULT_THEMES: Dict[str, Dict[str, str]] = {
     "polaroid": {
@@ -137,20 +113,13 @@ DEFAULT_THEMES: Dict[str, Dict[str, str]] = {
     },
 }
 
-
-
-
 THEMES_ORDER: Tuple[str, ...] = tuple(DEFAULT_THEMES.keys())
-
-
-
 
 _VAR_RE = re.compile(r"--el-([a-z0-9-]+)\s*:\s*([^;]+);")
 _BLOCK_RE = re.compile(
     r'\[data-theme="(?P<slug>[a-z0-9-]+)"\]\s*\{(?P<body>[^}]*)\}',
     re.DOTALL,
 )
-
 
 def _reload_from_css() -> Dict[str, Dict[str, str]]:
 
@@ -187,21 +156,15 @@ def _reload_from_css() -> Dict[str, Dict[str, str]]:
             "on_accent": tokens.get("on-accent", "#0a1218"),
         }
 
-
     if order:
         globals()["THEMES_ORDER"] = tuple(order)
     return out or dict(DEFAULT_THEMES)
-
 
 def get_themes() -> Dict[str, Dict[str, str]]:
 
     return _reload_from_css()
 
-
 THEMES = get_themes()
-
-
-
 
 RESOLUTIONS: Tuple[Tuple[int, int], ...] = (
     (1500, 300),
@@ -209,9 +172,6 @@ RESOLUTIONS: Tuple[Tuple[int, int], ...] = (
     (1000, 400),
     (800,  300),
 )
-
-
-
 
 POPUP_SETTINGS = Path.home() / ".cortexagent" / "popup_settings.json"
 
@@ -222,7 +182,6 @@ DEFAULT_SETTINGS = {
     "sidebar_pct": 27,
     "right_pct":   3,
 }
-
 
 def load_settings() -> Dict:
 
@@ -239,7 +198,6 @@ def load_settings() -> Dict:
         pass
     return out
 
-
 def save_settings(settings: Dict) -> None:
 
     import json
@@ -250,7 +208,6 @@ def save_settings(settings: Dict) -> None:
         tmp.replace(POPUP_SETTINGS)
     except Exception:
         pass
-
 
 def get_palette(name: str) -> Dict[str, str]:
 

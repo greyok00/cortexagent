@@ -12,7 +12,6 @@ from collections import defaultdict
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
-
 _OBS_DIR = Path.home() / ".cortexagent" / "observability"
 _OBS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -21,8 +20,6 @@ _METRICS_FILE = _OBS_DIR / "metrics.ndjson"
 _LOGS_DIR = _OBS_DIR / "logs"
 _LOGS_DIR.mkdir(exist_ok=True)
 
-
-
 SAFETY_KEYWORDS = [
     "ignore previous", "disregard", "new instructions", "system override",
     "developer mode", "ignore safety", "bypass", "unleash", "jailbreak",
@@ -30,15 +27,8 @@ SAFETY_KEYWORDS = [
     "prompt injection", "malicious", "attack", "exploit",
 ]
 
-
-
-
-
-
-
 _TRACES: Dict[str, "Trace"] = {}
 _TRACES_MAX = 200
-
 
 def _get_trace(trace_id: str, session_id: str = None) -> "Trace":
 
@@ -50,8 +40,6 @@ def _get_trace(trace_id: str, session_id: str = None) -> "Trace":
             oldest = next(iter(_TRACES))
             _TRACES.pop(oldest, None)
     return trace
-
-
 
 class Span:
 
@@ -76,7 +64,6 @@ class Span:
         self.payload = {}
         self.children = []
 
-
         _get_trace(trace_id).add_span(self)
 
     def __enter__(self):
@@ -98,7 +85,6 @@ class Span:
     def set_tag(self, key: str, value: str) -> None:
         self.tags[key] = value
 
-
     def to_dict(self) -> Dict:
         return {
             "span_id": self.span_id,
@@ -116,7 +102,6 @@ class Span:
             "payload": self.payload,
             "children": self.children,
         }
-
 
 class Trace:
 
@@ -143,8 +128,6 @@ class Trace:
             "spans": [s.to_dict() for s in self.spans],
         }
 
-
-
 def _append_ndjson(path: Path, data: Dict) -> None:
 
     try:
@@ -153,7 +136,6 @@ def _append_ndjson(path: Path, data: Dict) -> None:
             f.flush()
     except Exception:
         pass
-
 
 def save_trace(trace: Trace) -> None:
 
@@ -168,7 +150,6 @@ def save_trace(trace: Trace) -> None:
     if trace.session_id and trace.session_id != reg.session_id:
         reg.session_id = trace.session_id
     _append_ndjson(_TRACES_FILE, reg.to_dict())
-
 
 def _get_span(trace_id: str, span_id: str) -> Optional[Span]:
 
@@ -191,10 +172,7 @@ def _get_span(trace_id: str, span_id: str) -> Optional[Span]:
         pass
     return None
 
-
-
 class MetricsCollector:
-
 
     def __init__(self):
         self.metrics = defaultdict(lambda: {
@@ -242,8 +220,6 @@ class MetricsCollector:
             "metrics": self.get_summary(),
         })
 
-
-
 def detect_injection(text: str) -> Tuple[bool, float]:
 
     if not text:
@@ -252,7 +228,6 @@ def detect_injection(text: str) -> Tuple[bool, float]:
     text_lower = text.lower()
     hits = sum(1 for kw in SAFETY_KEYWORDS if kw in text_lower)
     confidence = min(hits * 0.2, 1.0)
-
 
     injection_patterns = [
         r"(?i)ignore\s+previous\s+(instructions|prompts|system)",
@@ -271,7 +246,6 @@ def detect_injection(text: str) -> Tuple[bool, float]:
 
     return confidence > 0.5, confidence
 
-
 def assess_safety(text: str) -> Dict:
 
     is_injection, confidence = detect_injection(text)
@@ -286,10 +260,7 @@ def assess_safety(text: str) -> Dict:
         "confidence": round(confidence, 2),
     }
 
-
-
 def evaluate_trace(trace: Trace) -> Dict:
-
 
     outputs = []
     for span in trace.spans:
@@ -297,7 +268,6 @@ def evaluate_trace(trace: Trace) -> Dict:
             outputs.append(span.payload.get("content", ""))
 
     combined = " ".join(outputs)
-
 
     groundedness = 0.5
     if combined:
@@ -307,15 +277,12 @@ def evaluate_trace(trace: Trace) -> Dict:
         if has_citations or has_hedging:
             groundedness = 0.8
 
-
     hallucination_rate = 0.1
     if combined:
         uncertain_terms = sum(1 for word in ["possibly", "maybe", "could be", "might be", "unclear"] if word in combined.lower())
         hallucination_rate = min(uncertain_terms * 0.1, 0.5)
 
-
     safety = assess_safety(combined)
-
 
     performance = 0.5
     llm_spans = [s for s in trace.spans if s.span_type == "llm"]
@@ -325,7 +292,6 @@ def evaluate_trace(trace: Trace) -> Dict:
         if total_time > 0:
             tps = total_tokens / (total_time / 1000)
             performance = min(tps / 50, 1.0)
-
 
     overall = (
         groundedness * 0.3 +
@@ -343,21 +309,12 @@ def evaluate_trace(trace: Trace) -> Dict:
         "safety_flags": safety["flags"],
     }
 
-
-
-
-
-
 metrics = MetricsCollector()
-
-
 
 def span(trace_id: str, span_type: str, name: str, parent_id: str = None,
          tags: Dict = None) -> Span:
 
     return Span(trace_id, span_type, name, parent_id, tags)
-
-
 
 def main():
 
@@ -366,7 +323,6 @@ def main():
 
         trace = Trace(trace_id="test", session_id="test",
                       user_input="test prompt", workflow="test")
-
 
         with span(trace.trace_id, "framing", "domain_classification") as s1:
             s1.set_metric("domain", "professional")
@@ -381,7 +337,6 @@ def main():
         with span(trace.trace_id, "beautify", "format_output") as s3:
             s1.children.append(s3.span_id)
             time.sleep(0.01)
-
 
         eval_result = evaluate_trace(trace)
         print(f"  Trace saved: {trace.trace_id}")
@@ -448,7 +403,6 @@ def main():
                     return
         print(f"Trace {trace_id} not found.")
         return
-
 
 if __name__ == "__main__":
     main()

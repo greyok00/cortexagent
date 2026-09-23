@@ -20,7 +20,6 @@ SOAR_DIR = Path.home() / "security-console" / "soar"
 PLAYBOOK_RUNS = SOAR_DIR / "playbook_runs.jsonl"
 FIREWALL_COMMANDS = Path.home() / "security-console" / "overseer" / "firewall_commands.jsonl"
 
-
 DEFAULT_PLAYBOOKS = [
     ("cve_critical_notify", "CVE critical — desktop notification",
      "critical", "notify"),
@@ -36,10 +35,7 @@ DEFAULT_PLAYBOOKS = [
      "high", "audit-review"),
 ]
 
-
-
 _IPV4 = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
-
 
 def _action_notify(finding: dict) -> str:
 
@@ -71,7 +67,6 @@ def _action_notify(finding: dict) -> str:
         except FileNotFoundError:
             return "no notify-send; skipped"
 
-
 def _open_log() -> None:
 
     import subprocess
@@ -83,7 +78,6 @@ def _open_log() -> None:
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except FileNotFoundError:
             pass
-
 
 def _action_block_ioc(finding: dict) -> str:
 
@@ -99,10 +93,8 @@ def _action_block_ioc(finding: dict) -> str:
             appended.append(ip)
     return f"queued blocks for {', '.join(appended)} → {FIREWALL_COMMANDS.name}"
 
-
 def _action_log_only(finding: dict) -> str:
     return f"logged only (severity={finding.get('severity')})"
-
 
 def _action_audit_review(finding: dict) -> str:
 
@@ -122,7 +114,6 @@ def _action_audit_review(finding: dict) -> str:
     except Exception as exc:
         return f"audit review scheduling failed: {exc}"
 
-
 def _action_auto_block_kev(finding: dict) -> str:
 
     import json
@@ -141,7 +132,6 @@ def _action_auto_block_kev(finding: dict) -> str:
         for ip in sorted(set(ips))[:5]:
             f.write(f"iptables -I INPUT -s {ip} -j DROP  # SOAR:KEV {finding.get('id', '?')}\n")
     return f"auto-blocked {len(set(ips))} IOC IPs from KEV raw data"
-
 
 def _action_isolate_cpe(finding: dict) -> str:
 
@@ -179,7 +169,6 @@ def _action_isolate_cpe(finding: dict) -> str:
         msg += ": " + "; ".join(matched[:3])
     return msg
 
-
 ACTIONS = {
     "notify": _action_notify,
     "block-ioc": _action_block_ioc,
@@ -189,19 +178,15 @@ ACTIONS = {
     "isolate-affected-cpe": _action_isolate_cpe,
 }
 
-
-
 def _ensure_soar_dir() -> None:
     SOAR_DIR.mkdir(parents=True, exist_ok=True)
     if not PLAYBOOK_RUNS.exists():
         PLAYBOOK_RUNS.touch()
 
-
 def _append_run(record: dict) -> None:
     _ensure_soar_dir()
     with PLAYBOOK_RUNS.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, default=str, ensure_ascii=False) + "\n")
-
 
 def load_history(limit: int = 50) -> list[dict]:
     if not PLAYBOOK_RUNS.exists():
@@ -217,8 +202,6 @@ def load_history(limit: int = 50) -> list[dict]:
             except json.JSONDecodeError:
                 continue
     return out[-limit:][::-1]
-
-
 
 def run_for_cve(cve_entry: dict, dry_run: bool = False) -> list[dict]:
 
@@ -257,7 +240,6 @@ def run_for_cve(cve_entry: dict, dry_run: bool = False) -> list[dict]:
         out.append({"playbook": pb_id, "action": action, "severity": severity})
     return out
 
-
 def run_for_posture(snap: dict, dry_run: bool = False) -> list[dict]:
 
     out: list[dict] = []
@@ -291,7 +273,6 @@ def run_for_posture(snap: dict, dry_run: bool = False) -> list[dict]:
             out.append({"playbook": pb_id, "subsystem": name})
     return out
 
-
 def run_on_recent(since: str = "7d", dry_run: bool = False) -> dict:
 
     from lib import cve_intel
@@ -301,14 +282,11 @@ def run_on_recent(since: str = "7d", dry_run: bool = False) -> dict:
         out.extend(run_for_cve(e, dry_run=dry_run))
     return {"cves_scanned": len(entries), "playbook_runs": out}
 
-
 def run_on_posture(dry_run: bool = False) -> dict:
     from lib import hardening_status as hs
     snap = hs.hardening_snapshot()
     runs = run_for_posture(snap, dry_run=dry_run)
     return {"fails_triggered": len(runs), "playbook_runs": runs}
-
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="CortexAgent → SOAR dispatcher")
@@ -342,7 +320,6 @@ def main() -> int:
         return 0
     ap.print_help()
     return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

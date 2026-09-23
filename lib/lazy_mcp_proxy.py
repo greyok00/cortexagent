@@ -10,9 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-
 CONFIG_PATH = Path(os.environ.get("CORTEXAGENT_LAZY_MCP_CONFIG", "~/.cortexagent/config/lazy_mcp_servers.json")).expanduser()
-
 
 def _load_config(name: Optional[str] = None) -> List[Dict[str, Any]]:
     if not CONFIG_PATH.exists():
@@ -27,11 +25,9 @@ def _load_config(name: Optional[str] = None) -> List[Dict[str, Any]]:
         print(f"lazy_mcp_proxy: config error: {e}", file=sys.stderr)
         return []
 
-
 def _send_json(obj: Dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
     sys.stdout.flush()
-
 
 def _read_json(stream) -> Optional[Dict[str, Any]]:
     line = stream.readline()
@@ -42,7 +38,6 @@ def _read_json(stream) -> Optional[Dict[str, Any]]:
     except Exception:
         return None
 
-
 def _proxy_server(command: List[str]) -> Tuple[subprocess.Popen, int]:
     proc = subprocess.Popen(
         command,
@@ -52,7 +47,6 @@ def _proxy_server(command: List[str]) -> Tuple[subprocess.Popen, int]:
         text=True,
         cwd=str(Path(__file__).resolve().parent.parent),
     )
-
 
     hello = _read_json(proc.stdout)
     if hello and hello.get("method") == "initialize":
@@ -80,14 +74,12 @@ def _proxy_server(command: List[str]) -> Tuple[subprocess.Popen, int]:
     proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
     proc.stdin.flush()
 
-
     proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "tools/list", "id": 2}) + "\n")
     proc.stdin.flush()
     tools_resp = _read_json(proc.stdout)
     real_tools = (tools_resp or {}).get("result", {}).get("tools", [])
 
     return proc, len(real_tools)
-
 
 def _call_real(proc: subprocess.Popen, name: str, arguments: Dict[str, Any], req_id: Any) -> Dict[str, Any]:
     proc.stdin.write(json.dumps({
@@ -103,7 +95,6 @@ def _call_real(proc: subprocess.Popen, name: str, arguments: Dict[str, Any], req
         return {"jsonrpc": "2.0", "id": req_id, "error": resp["error"]}
     return {"jsonrpc": "2.0", "id": req_id, "result": resp.get("result", {})}
 
-
 def _shutdown(proc: subprocess.Popen) -> None:
     try:
         proc.stdin.close()
@@ -115,7 +106,6 @@ def _shutdown(proc: subprocess.Popen) -> None:
             proc.wait(timeout=2)
     except Exception:
         pass
-
 
 def _build_stub(entry: Dict[str, Any]) -> Dict[str, Any]:
     name = entry["name"]
@@ -133,7 +123,6 @@ def _build_stub(entry: Dict[str, Any]) -> Dict[str, Any]:
             "required": ["real_tool"],
         },
     }
-
 
 def _run_server(name: str) -> None:
     entries = _load_config(name)
@@ -197,7 +186,6 @@ def _run_server(name: str) -> None:
         else:
             _send_json({"jsonrpc": "2.0", "id": _id, "error": {"code": -32601, "message": f"Method not found: {method}"}})
 
-
 def _smoke() -> int:
     entries = _load_config()
     print(f"config entries: {len(entries)}")
@@ -206,7 +194,6 @@ def _smoke() -> int:
         print(f"stub tool: {stub['name']}")
     print("lazy_mcp_proxy: OK")
     return 0
-
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -222,7 +209,6 @@ def main() -> None:
         sys.exit(2)
 
     _run_server(args.name)
-
 
 if __name__ == "__main__":
     main()

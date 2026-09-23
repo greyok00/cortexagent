@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-
 FIRECRAWL_CMD = ["npx", "-y", "firecrawl-mcp"]
 FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY", "")
 
@@ -26,12 +25,10 @@ FIRECRAWL_METHODS = {
 TOOL_NAME = "firecrawl"
 TOOL_DESCRIPTION = "Lazy Firecrawl proxy. Call with {method, args}. Methods: " + ", ".join(sorted(FIRECRAWL_METHODS)) + "."
 
-
 def _send_json(obj: Dict[str, Any]) -> None:
     raw = json.dumps(obj, ensure_ascii=False) + "\n"
     sys.stdout.write(raw)
     sys.stdout.flush()
-
 
 def _read_json() -> Optional[Dict[str, Any]]:
     line = sys.stdin.readline()
@@ -41,7 +38,6 @@ def _read_json() -> Optional[Dict[str, Any]]:
         return json.loads(line)
     except Exception as e:
         return {"_parse_error": str(e), "_raw": line.strip()}
-
 
 def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
 
@@ -94,12 +90,12 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
 
     def read_line(timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         try:
-            ready, _, _ = _select.select([proc.stdout], [], [], timeout)  # type: ignore
+            ready, _, _ = _select.select([proc.stdout], [], [], timeout)
             if not ready:
                 return None
         except Exception:
             return None
-        line = proc.stdout.readline()  # type: ignore
+        line = proc.stdout.readline()
         if not line:
             return None
         try:
@@ -108,16 +104,15 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
             return None
 
     def rpc(method_name: str, params: Dict[str, Any], id: int) -> None:
-        proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method_name, "params": params, "id": id}) + "\n")  # type: ignore
-        proc.stdin.flush()  # type: ignore
+        proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method_name, "params": params, "id": id}) + "\n")
+        proc.stdin.flush()
 
     try:
-
 
         hello = read_line(timeout=15.0)
         if hello and hello.get("method") == "initialize":
             _send_id = hello.get("id")
-            proc.stdin.write(json.dumps({  # type: ignore
+            proc.stdin.write(json.dumps({
                 "jsonrpc": "2.0", "id": _send_id,
                 "result": {
                     "protocolVersion": "2024-11-05",
@@ -125,8 +120,7 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
                     "serverInfo": {"name": "firecrawl-proxy", "version": "1.0"},
                 }
             }) + "\n")
-            proc.stdin.flush()  # type: ignore
-
+            proc.stdin.flush()
 
         rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "cortexagent-firecrawl-proxy", "version": "1.0"}}, 1)
         resp = read_line(timeout=10.0)
@@ -139,7 +133,6 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
         if not resp or "result" not in resp:
             err = _read_stderr_bounded(proc.stderr)
             return (False, f"firecrawl-mcp tools/list failed: {resp or err}")
-
 
         native_tool = f"firecrawl_{method}"
         rpc("tools/call", {"name": native_tool, "arguments": args or {}}, 3)
@@ -160,7 +153,7 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
         return (False, f"firecrawl-mcp runtime error: {e}")
     finally:
         try:
-            proc.stdin.close()  # type: ignore
+            proc.stdin.close()
             proc.terminate()
             try:
                 proc.wait(timeout=3)
@@ -169,7 +162,6 @@ def _call_firecrawl(method: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
                 proc.wait(timeout=2)
         except Exception:
             pass
-
 
 def _build_tool() -> Dict[str, Any]:
     return {
@@ -184,7 +176,6 @@ def _build_tool() -> Dict[str, Any]:
             "required": ["method"],
         },
     }
-
 
 def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     method = req.get("method")
@@ -236,13 +227,11 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             "error": {"code": -32000, "message": str(payload)},
         }
 
-
     return {
         "jsonrpc": "2.0",
         "id": _id,
         "error": {"code": -32601, "message": f"Method not found: {method}"},
     }
-
 
 def _smoke() -> int:
     tool = _build_tool()
@@ -250,7 +239,6 @@ def _smoke() -> int:
     print(f"methods: {len(FIRECRAWL_METHODS)}")
     print("firecrawl_proxy: OK (no live npx test — requires network)")
     return 0
-
 
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
@@ -263,7 +251,6 @@ def main() -> None:
         resp = _handle_request(req)
         if resp is not None:
             _send_json(resp)
-
 
 if __name__ == "__main__":
     main()

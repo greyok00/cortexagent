@@ -15,18 +15,15 @@ if str(_REPO_ROOT) not in sys.path:
 STUB_MODE = os.environ.get("CORTEXAGENT_TOOL_STUBS", "0") == "1"
 MAX_TOOLS = int(os.environ.get("CORTEXAGENT_MAX_TOOLS", "16"))
 
-
 def _emit(obj: Any, code: int = 0) -> int:
     print(json.dumps(obj, ensure_ascii=False))
     return code
-
 
 def _list_tools(stub: bool, limit: Optional[int]) -> List[Dict[str, Any]]:
     from lib.harness_tools import ensure_registered
     from lib.tool_registry import list_tools
     ensure_registered()
     tools = list_tools(limit=limit, stub=stub)
-
 
     out: List[Dict[str, Any]] = []
     for t in tools:
@@ -44,13 +41,11 @@ def _list_tools(stub: bool, limit: Optional[int]) -> List[Dict[str, Any]]:
             })
     return out
 
-
 def _run_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     from lib.harness_tools import ensure_registered
     from lib.tool_registry import execute_tool
     ensure_registered()
     return execute_tool(name, args)
-
 
 def _smoke() -> int:
     fails = 0
@@ -74,7 +69,6 @@ def _smoke() -> int:
         print("✅ run_command OK")
     print("tool_bridge smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
-
 
 def main(argv: List[str]) -> int:
     if not argv or argv[0] == "--smoke":
@@ -102,7 +96,6 @@ def main(argv: List[str]) -> int:
             return _emit({"ok": False, "error": "args must be a JSON object"}, 1)
         return _emit(_run_tool(name, args))
     return _emit({"ok": False, "error": f"unknown command: {cmd}"}, 1)
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

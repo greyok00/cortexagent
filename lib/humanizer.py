@@ -10,27 +10,21 @@ from typing import Any, Dict, Optional, Tuple
 
 import humanize
 
-
 def _enabled() -> bool:
     return os.environ.get("STEALTH_HUMANIZER", "1") not in ("0", "false", "False")
-
-
 
 MISCICK_RATE = 0.04
 MISTYPE_RATE = 0.03
 IDLE_BREAK_RATE = 0.05
 IDLE_BREAK_BAND = (2.0, 6.0)
 
-
 class Humanizer:
-
 
     def __init__(self, bc: Any, enabled: Optional[bool] = None) -> None:
         self.bc = bc
         self.enabled = _enabled() if enabled is None else enabled
 
         self._cursor: Dict[str, Tuple[float, float]] = {}
-
 
     def _dispatch(self, target_id: str, method: str, params: Dict[str, Any]) -> Any:
         return self.bc._cmd(target_id, method, params, timeout=10.0)
@@ -79,7 +73,6 @@ class Humanizer:
     def _maybe_break(self) -> None:
         if random.random() < IDLE_BREAK_RATE:
             time.sleep(random.uniform(*IDLE_BREAK_BAND))
-
 
     def click(self, tab: Any, selector: str, by_text: bool = False, timeout: int = 10) -> bool:
         target_id = self.bc.resolve_tab(tab)
@@ -164,10 +157,7 @@ class Humanizer:
             time.sleep(humanize.get_action_delay("navigate"))
         return self.bc.navigate_raw(tab, url, wait_until=wait_until, timeout=timeout)
 
-
-
 _H: Optional[Humanizer] = None
-
 
 def get_humanizer(bc: Any) -> Humanizer:
     global _H

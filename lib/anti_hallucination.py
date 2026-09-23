@@ -12,7 +12,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-
 _CONFIG_FILE = Path.home() / ".cortexagent" / "config" / "verification.json"
 
 _DEFAULT_CONFIG: Dict = {
@@ -24,11 +23,10 @@ _DEFAULT_CONFIG: Dict = {
     },
 
     "services": {
-        "llama_server": {"port": 8080, "process": "llama-server"},
+        "llama_server": {"port": 11599, "process": "llama-server"},
         "cortexagent_memory_mcp": {"port": None, "process": "mcp_server.py"},
     },
 }
-
 
 def _load_config() -> Dict:
     if not _CONFIG_FILE.exists():
@@ -46,8 +44,6 @@ def _load_config() -> Dict:
         return cfg
     except Exception:
         return json.loads(json.dumps(_DEFAULT_CONFIG))
-
-
 
 class VerificationResult:
     def __init__(self):
@@ -87,8 +83,6 @@ class VerificationResult:
             "web_search_needed": self.web_search_needed,
             "web_search_query": self.web_search_query,
         }
-
-
 
 def verify_cli_command(command: str) -> VerificationResult:
 
@@ -132,7 +126,6 @@ def verify_cli_command(command: str) -> VerificationResult:
         result.add_warning(f"Could not verify flags: {e}")
     return result
 
-
 def verify_command_arguments(command: str, paths: Optional[List[str]] = None) -> VerificationResult:
 
     result = verify_cli_command(command)
@@ -151,8 +144,6 @@ def verify_command_arguments(command: str, paths: Optional[List[str]] = None) ->
                     result.add_warning(f"Argument path may not exist: {part}")
     return result
 
-
-
 def verify_service_running(service_name: str) -> VerificationResult:
 
     result = VerificationResult()
@@ -165,7 +156,6 @@ def verify_service_running(service_name: str) -> VerificationResult:
         )
         return result
     config = services[service_name]
-
 
     port = config.get("port")
     if port is not None:
@@ -200,7 +190,6 @@ def verify_service_running(service_name: str) -> VerificationResult:
                                     False, f"Port {port} not listening")
             result.add_recommendation(f"Start {service_name} service")
 
-
     proc_pattern = config.get("process")
     if proc_pattern:
         try:
@@ -217,7 +206,6 @@ def verify_service_running(service_name: str) -> VerificationResult:
             result.add_verification(f"Service {service_name} process",
                                     False, f"Could not check process: {e}")
 
-
     health_url = config.get("health_url")
     if health_url:
         try:
@@ -233,8 +221,6 @@ def verify_service_running(service_name: str) -> VerificationResult:
                                     False, f"Cannot reach {health_url}: {e}")
 
     return result
-
-
 
 def verify_file_exists(path: str, must_be_readable: bool = True) -> VerificationResult:
 
@@ -255,8 +241,6 @@ def verify_file_exists(path: str, must_be_readable: bool = True) -> Verification
         except Exception as e:
             result.add_verification(f"File readable: {path}", False, f"Error: {e}")
     return result
-
-
 
 def verify_user_claim(claim: str, context: Optional[Dict] = None) -> VerificationResult:
 
@@ -289,8 +273,6 @@ def verify_user_claim(claim: str, context: Optional[Dict] = None) -> Verificatio
         result.web_search_query = claim
     return result
 
-
-
 def verify_before_code(user_prompt: str,
                        context: Optional[Dict] = None) -> VerificationResult:
 
@@ -299,7 +281,6 @@ def verify_before_code(user_prompt: str,
     cfg = _load_config()
     services = cfg.get("services", {})
     prompt_lower = user_prompt.lower()
-
 
     commands = list(context.get("commands", []))
 
@@ -320,7 +301,6 @@ def verify_before_code(user_prompt: str,
             result.blocker = f"CLI verification failed: {cmd}"
             result.passed = False
 
-
     for service_name in services:
         if service_name in prompt_lower:
             sr = verify_service_running(service_name)
@@ -334,18 +314,15 @@ def verify_before_code(user_prompt: str,
         result.verifications.extend(sr.verifications)
         result.warnings.extend(sr.warnings)
 
-
     for path in context.get("files_mentioned", []):
         fr = verify_file_exists(path)
         result.verifications.extend(fr.verifications)
         result.warnings.extend(fr.warnings)
 
-
     if "claim" in context:
         cr = verify_user_claim(context["claim"], context)
         result.verifications.extend(cr.verifications)
         result.warnings.extend(cr.warnings)
-
 
     if result.web_search_needed:
         result.add_recommendation(f"Web search recommended: {result.web_search_query}")
@@ -354,7 +331,6 @@ def verify_before_code(user_prompt: str,
         suffix = "; Verification failed - address issues before code generation"
         result.blocker = (result.blocker or "Verification failed") + suffix
     return result
-
 
 def format_report(result: VerificationResult) -> str:
     lines = []
@@ -380,8 +356,6 @@ def format_report(result: VerificationResult) -> str:
         lines.append("")
         lines.append(f"🔍 Web search recommended: {result.web_search_query}")
     return "\n".join(lines)
-
-
 
 def _cli(argv: List[str]) -> int:
     if not argv:
@@ -441,17 +415,14 @@ def _cli(argv: List[str]) -> int:
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
 
-
 def _smoke() -> int:
 
     r = verify_cli_command("ls --help")
     print(f"  ls --help: passed={r.passed}")
 
-
     r = verify_cli_command("definitely-not-a-real-binary-xyz")
     assert not r.passed
     print(f"  fake binary: passed={r.passed}  blocker={r.blocker[:50]}…")
-
 
     r = verify_file_exists("/etc/hostname")
     assert r.passed
@@ -460,10 +431,8 @@ def _smoke() -> int:
     assert not r.passed
     print(f"  nonexistent: passed={r.passed}")
 
-
     r = verify_service_running("llama_server")
     print(f"  llama_server: passed={r.passed}  verifications={len(r.verifications)}")
-
 
     r = verify_before_code("Run definitely-not-a-real-binary-xyz", context={
         "files_mentioned": ["/etc/hostname", "/this/does/not/exist"],
@@ -472,7 +441,6 @@ def _smoke() -> int:
     print(f"  integration: passed={r.passed}  blocker={r.blocker[:60]}…")
     print("anti_hallucination: OK")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(_cli(sys.argv[1:]))

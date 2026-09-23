@@ -9,27 +9,24 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from lib.config import CFG
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
-
 TEST_RESULTS_DIR = Path.home() / ".cortexagent" / "test_results"
 TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
 
 GREEN = "\033[32m"
 RED = "\033[31m"
 CYAN = "\033[36m"
 RESET = "\033[0m"
 
-
 def log(msg: str, color: str = RESET) -> None:
 
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"\u001b[33m🧪 \u001b[1mload_test\u001b[0m \u001b[2m[{ts}]\u001b[0m \u001b[{color}m{msg}\u001b[0m",
           file=sys.stderr, flush=True)
-
 
 def run_test(name: str, func, count: int = 10, parallel: int = 5) -> Dict:
 
@@ -68,7 +65,6 @@ def run_test(name: str, func, count: int = 10, parallel: int = 5) -> Dict:
             results["errors"].append(str(e))
             return {"ok": False, "error": str(e)}
 
-
     with ThreadPoolExecutor(max_workers=parallel) as executor:
         futures = [executor.submit(run_single_test, i) for i in range(count)]
         for future in as_completed(futures):
@@ -83,7 +79,6 @@ def run_test(name: str, func, count: int = 10, parallel: int = 5) -> Dict:
     results["duration_seconds"] = round(elapsed, 2)
     results["throughput"] = round(count / elapsed, 2) if elapsed > 0 else 0
 
-
     if results["latencies"]:
         results["latency_avg_ms"] = round(sum(results["latencies"]) / len(results["latencies"]), 2)
         results["latency_p95_ms"] = sorted(results["latencies"])[int(len(results["latencies"]) * 0.95)]
@@ -93,11 +88,9 @@ def run_test(name: str, func, count: int = 10, parallel: int = 5) -> Dict:
         results["latency_p95_ms"] = 0
         results["latency_max_ms"] = 0
 
-
     test_file = TEST_RESULTS_DIR / f"{name}_{int(time.time())}.json"
     with open(test_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False, default=str)
-
 
     log(f"Test '{name}' complete:", GREEN)
     log(f"  Successes: {results['successes']}/{results['count']}",
@@ -111,15 +104,15 @@ def run_test(name: str, func, count: int = 10, parallel: int = 5) -> Dict:
 
     return results
 
-
-
 def test_proxy_request(i: int) -> Dict:
 
     try:
 
-        url = "http://127.0.0.1:8081/completions"
+        url = "http://127.0.0.1:11436/v1/chat/completions"
         data = json.dumps({
-            "model": "qwen3-35b",
+            "model": CFG.model_cloud,
+            "messages": [{"role": "user",
+                          "content": f"This is test prompt #{i} for load testing."}],
             "prompt": f"This is test prompt #{i} for load testing.",
             "max_tokens": 100,
             "temperature": 0.7,
@@ -134,23 +127,21 @@ def test_proxy_request(i: int) -> Dict:
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             response = json.loads(resp.read())
-            return {"ok": True, "response": response.get("choices", [{}])[0].get("text", "")[:50]}
+            choice = response.get("choices", [{}])[0]
+            text = choice.get("message", {}).get("content") or choice.get("text", "")
+            return {"ok": True, "response": text[:50]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-
 def run_proxy_test(count: int = 100, parallel: int = 10) -> Dict:
 
-    log("Testing proxy (big model path) under load...", CYAN)
+    log("Testing proxy (model path) under load...", CYAN)
     return run_test("proxy", test_proxy_request, count, parallel)
-
-
 
 def test_overseer_dispatch(i: int) -> Dict:
 
     try:
         from lib import overseer
-
 
         result = overseer.queue_add(
             task_type="llm",
@@ -159,7 +150,6 @@ def test_overseer_dispatch(i: int) -> Dict:
 
         if not result.get("ok"):
             return {"ok": False, "error": result.get("error", "queue_add failed")}
-
 
         state = overseer._load_state()
         success = overseer._execute_task(
@@ -177,13 +167,10 @@ def test_overseer_dispatch(i: int) -> Dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-
 def run_overseer_test(count: int = 50, parallel: int = 5) -> Dict:
 
     log("Testing overseer (local model path) under load...", CYAN)
     return run_test("overseer", test_overseer_dispatch, count, parallel)
-
-
 
 def test_memory_pressure(duration: int = 60) -> Dict:
 
@@ -218,12 +205,9 @@ def test_memory_pressure(duration: int = 60) -> Dict:
     results["final_samples"] = results["samples"][-10:]
     return results
 
-
 def run_memory_test(duration: int = 60) -> Dict:
 
     return run_test("memory", lambda i: test_memory_pressure(duration)["ok"], 1, 1)
-
-
 
 def test_disk_io(i: int) -> Dict:
 
@@ -235,15 +219,12 @@ def test_disk_io(i: int) -> Dict:
             "data": "x" * 1000,
         }
 
-
         tmp = test_file.with_suffix(".tmp")
         tmp.write_text(json.dumps(data))
         tmp.replace(test_file)
 
-
         with open(test_file, "r", encoding="utf-8") as f:
             json.loads(f.read())
-
 
         test_file.unlink(missing_ok=True)
         tmp.unlink(missing_ok=True)
@@ -252,13 +233,10 @@ def test_disk_io(i: int) -> Dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-
 def run_disk_test(count: int = 1000, parallel: int = 20) -> Dict:
 
     log("Testing disk I/O under pressure...", CYAN)
     return run_test("disk_io", test_disk_io, count, parallel)
-
-
 
 def test_e2e_request(i: int) -> Dict:
 
@@ -268,26 +246,21 @@ def test_e2e_request(i: int) -> Dict:
         trace = Trace(trace_id=f"e2e-{i}", session_id=f"session-{i}",
                       user_input=f"Test e2e request #{i}", workflow="load_test")
 
-
         with Span(trace.trace_id, "framing", "domain_classification") as s1:
             s1.set_tag("domain", "professional")
             time.sleep(0.001)
-
 
         with Span(trace.trace_id, "llm", "llm_query") as s2:
             s2.set_metric("tokens_in", 50)
             s2.set_metric("tokens_out", 100)
             time.sleep(0.01)
 
-
         with Span(trace.trace_id, "beautify", "format_output"):
             time.sleep(0.001)
-
 
         with Span(trace.trace_id, "output", "final_output") as s4:
             s4.payload["content"] = f"Test output #{i}: This is the final result."
             time.sleep(0.001)
-
 
         save_trace(trace)
 
@@ -295,13 +268,10 @@ def test_e2e_request(i: int) -> Dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-
 def run_e2e_test(count: int = 100, parallel: int = 10) -> Dict:
 
     log("Testing end-to-end chain under load...", CYAN)
     return run_test("e2e", test_e2e_request, count, parallel)
-
-
 
 def test_model_down(i: int) -> Dict:
 
@@ -310,14 +280,13 @@ def test_model_down(i: int) -> Dict:
         sock = socket.socket()
         sock.settimeout(2)
         try:
-            sock.connect(("127.0.0.1", 8080))
+            sock.connect(("127.0.0.1", 11599))
             sock.close()
             return {"ok": False, "error": "Model is still up (expected failure)"}
         except Exception:
             return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-
 
 def test_network_timeout(i: int) -> Dict:
 
@@ -334,7 +303,6 @@ def test_network_timeout(i: int) -> Dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-
 def run_error_test(injection: str = "model_down") -> Dict:
 
     log(f"Testing error injection: {injection}...", CYAN)
@@ -344,8 +312,6 @@ def run_error_test(injection: str = "model_down") -> Dict:
         return run_test("error_network_timeout", test_network_timeout, 5, 1)
     else:
         return {"ok": False, "error": f"Unknown injection: {injection}"}
-
-
 
 def run_all_tests(count: int = 500, parallel: int = 20) -> Dict:
 
@@ -358,7 +324,6 @@ def run_all_tests(count: int = 500, parallel: int = 20) -> Dict:
         "tests": {},
         "summary": {},
     }
-
 
     tests = [
         ("proxy", lambda: run_proxy_test(count // 10, parallel)),
@@ -376,7 +341,6 @@ def run_all_tests(count: int = 500, parallel: int = 20) -> Dict:
     results["end_time"] = datetime.now().isoformat()
     results["duration_seconds"] = round(time.time() - start_time, 2)
 
-
     total = len(results["tests"])
     passed = sum(1 for t in results["tests"].values() if t.get("ok", False))
     results["summary"] = {
@@ -391,8 +355,6 @@ def run_all_tests(count: int = 500, parallel: int = 20) -> Dict:
         GREEN if results["summary"]["pass_rate"] == 100 else RED)
 
     return results
-
-
 
 def main():
 
@@ -442,7 +404,6 @@ def main():
     else:
         print("Usage: load_test.py [proxy|overseer|memory|disk|e2e|error|all] [count] [parallel]")
         print(__doc__)
-
 
 if __name__ == "__main__":
     main()

@@ -17,17 +17,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Deque
 
-
-
-
-
-
-
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-
 
 try:
     from lib.scheduler import Store
@@ -35,7 +27,6 @@ try:
 except ImportError as _ie:
     SCHEDULER_AVAILABLE = False
     print(f"[overseer] scheduler import failed: {_ie}", file=sys.stderr)
-
 
 def _fromiso(s: str) -> datetime:
 
@@ -48,7 +39,6 @@ def _fromiso(s: str) -> datetime:
             s2 = s2.split(".")[0]
         return datetime.fromisoformat(s2)
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
                  str(Path.home() / ".cortexagent")))
@@ -60,16 +50,11 @@ SCHEDULE_FILE = STATE_DIR / "overseer_schedule.json"
 PLAN_FILE = STATE_DIR / "overseer_plan.json"
 WORKFLOW_FILE = STATE_DIR / "workflow_state.json"
 
-
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-from lib.config import CFG  # noqa: E402
-from lib import control  # noqa: E402 — daemon_present() to detect daemon mode
-from lib.errorlog import log_exception, close_dump  # noqa: E402
-
-
-
-
+from lib.config import CFG
+from lib import control
+from lib.errorlog import log_exception, close_dump
 
 def _bridge_emit(kind: str, content: str, **extra) -> None:
 
@@ -88,42 +73,21 @@ def _bridge_emit(kind: str, content: str, **extra) -> None:
     except Exception:
         pass
 
-
 DEFAULT_INTERVAL = 30
 WARM_CAP = 2000
 HOT_CAP = 300
 COMPACT_THRESHOLD = 0.85
 COLD_DISTILL_INTERVAL = 3600
 
-
-
-
-
-
-
-
 HOT_SOFT_PCT = 1.00
 HOT_HARD_PCT = 2.00
 HOT_CRITICAL_PCT = 3.00
 HOT_SUSTAINED_TICKS_FORCE = 5
 
-
-
-
-
-
 HOT_HARD_LIMIT_MB = 500
 HOT_WARM_LIMIT_MB = 2000
 
-
-
-
 WORKFLOW_DISPATCH_MAX = 2
-
-
-
-
-
 
 MAX_QUEUE_SIZE = 500
 MAX_WORKERS = 4
@@ -131,22 +95,13 @@ WORKER_TIMEOUT = 120
 QUEUE_METRICS_FILE = STATE_DIR / "queue_metrics.json"
 WORKER_POOL_FILE = STATE_DIR / "worker_pool.json"
 
-
-
-
-
 _MAX_LLM_CALLS = 2
 _llm_call_semaphore = threading.Semaphore(_MAX_LLM_CALLS)
-
-
-
 
 _BACKOFF_BASE = 0.5
 _BACKOFF_MAX = 30
 _BACKOFF_FACTOR = 1.5
 _BACKOFF_JITTER = 0.25
-
-
 
 _latency_history: Deque = deque(maxlen=1000)
 _token_history: Deque = deque(maxlen=1000)
@@ -154,41 +109,19 @@ _queue_depth_history: Deque = deque(maxlen=500)
 _context_history: Deque = deque(maxlen=500)
 _metrics_lock = threading.Lock()
 
-
-
-
 CONTEXT_WARN_PCT = 85
 CONTEXT_CRIT_PCT = 95
 
-
 _worker_heartbeat: Deque = deque(maxlen=64)
-
-
-
-
-
-
-
-
-
-
 
 _queue_dispatch_lock = threading.Lock()
 
-
-
-
-
-
 _SHUTDOWN = False
-
 
 def _handle_stop_signal(signum, frame):
 
     global _SHUTDOWN
     _SHUTDOWN = True
-
-
 
 CYAN = "\033[36m"
 GREEN = "\033[32m"
@@ -199,11 +132,6 @@ BOLD = "\033[1m"
 DIM = "\033[2m"
 RST = "\033[0m"
 
-
-
-
-
-
 def _log(msg: str, emoji: str = "", color: str = "") -> None:
     ts = datetime.now().strftime("%H:%M:%S")
     line = f"{color}{emoji} {BOLD}overseer{RST} {DIM}{color}[{ts}]{RST} {color}{msg}{RST}"
@@ -211,11 +139,6 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"[{ts}] {msg}\n")
-
-
-
-
-
 
 def _load_json(path: Path, default: Any = None) -> Any:
     if default is None:
@@ -227,24 +150,17 @@ def _load_json(path: Path, default: Any = None) -> Any:
             pass
     return default
 
-
 def _save_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
     os.replace(tmp, path)
 
-
-
-
-
-
 def _backoff_delay(retry_count: int) -> float:
 
     base = _BACKOFF_BASE * (_BACKOFF_FACTOR ** retry_count)
     jitter = random.uniform(1 - _BACKOFF_JITTER, 1 + _BACKOFF_JITTER)
     return min(base * jitter, _BACKOFF_MAX)
-
 
 def retry_with_backoff(func, *args, max_retries: int = 3, **kwargs) -> Any:
 
@@ -260,11 +176,6 @@ def retry_with_backoff(func, *args, max_retries: int = 3, **kwargs) -> Any:
                 time.sleep(delay)
     raise last_exc
 
-
-
-
-
-
 def _queue_add_backpressure(task: Dict) -> bool:
 
     queue = _load_queue()
@@ -275,44 +186,31 @@ def _queue_add_backpressure(task: Dict) -> bool:
     _save_queue(queue)
     return True
 
-
 def _queue_depth() -> int:
 
     queue = _load_queue()
     return len(queue)
-
-
-
-
-
-
-
-
 
 def _record_latency(task_type: str, duration_ms: float) -> None:
 
     with _metrics_lock:
         _latency_history.append((time.time(), task_type, duration_ms))
 
-
 def _record_tokens(tokens_in: int, tokens_out: int) -> None:
 
     with _metrics_lock:
         _token_history.append((time.time(), tokens_in, tokens_out))
-
 
 def _record_queue_depth(depth: int) -> None:
 
     with _metrics_lock:
         _queue_depth_history.append((time.time(), depth))
 
-
 def _record_context_usage(context_len: int, max_ctx: int) -> None:
 
     with _metrics_lock:
         pct = (context_len / max_ctx * 100) if max_ctx > 0 else 0
         _context_history.append((time.time(), pct))
-
 
 def _get_latency_stats() -> Dict:
 
@@ -332,7 +230,6 @@ def _get_latency_stats() -> Dict:
             "max_ms": round(sorted_lat[-1], 2),
         }
 
-
 def _get_token_stats() -> Dict:
 
     with _metrics_lock:
@@ -347,7 +244,6 @@ def _get_token_stats() -> Dict:
             "tokens_out": total_out,
             "ratio": round(total_out / total_in * 100, 1) if total_in > 0 else 0,
         }
-
 
 def _get_queue_depth_stats() -> Dict:
 
@@ -364,7 +260,6 @@ def _get_queue_depth_stats() -> Dict:
             "current": depths[-1] if depths else 0,
         }
 
-
 def _get_context_stats() -> Dict:
 
     with _metrics_lock:
@@ -380,7 +275,6 @@ def _get_context_stats() -> Dict:
             "current_pct": pcts[-1] if pcts else 0,
         }
 
-
 def _check_context_alerts() -> List[str]:
 
     alerts = []
@@ -392,36 +286,25 @@ def _check_context_alerts() -> List[str]:
         alerts.append(f"WARN: Context at {current_pct:.1f}% — approaching limit")
     return alerts
 
-
-
-
-
-
 def _shutdown_signal_handler(signum, frame):
 
     global _SHUTDOWN
     _SHUTDOWN = True
     _log(f"Shutdown signal received ({signum}) — draining...", "🛑", RED)
 
-
     if _worker_pool:
         _worker_pool.stop()
         _log("Worker pool stopped", "🛑", DIM)
 
-
     _drain_queue()
-
 
     try:
         _save_metrics()
     except Exception:
         pass
 
-
-
 signal.signal(signal.SIGTERM, _shutdown_signal_handler)
 signal.signal(signal.SIGINT, _shutdown_signal_handler)
-
 
 def _drain_queue() -> None:
 
@@ -444,11 +327,6 @@ def _drain_queue() -> None:
     _save_queue(queue)
     _log("Queue drain complete", "🧹", GREEN)
 
-
-
-
-
-
 def _save_metrics() -> None:
 
     metrics = {
@@ -464,7 +342,6 @@ def _save_metrics() -> None:
     except Exception:
         pass
 
-
 def _load_state() -> Dict:
     return _load_json(STATE_FILE, {
         "last_compact": None,
@@ -474,40 +351,22 @@ def _load_state() -> Dict:
         "started_at": None,
         "total_ticks": 0,
 
-
-
-
-
         "overseer_state": {"label": "idle", "since": None},
         "task_steps": [],
         "current_step": None,
     })
 
-
 def _save_state(state: Dict) -> None:
     _save_json(STATE_FILE, state)
-
-
-
-
-
-
-
 
 def overseer_set_state(state: Dict, label: str) -> None:
 
     state["overseer_state"] = {"label": label, "since": datetime.now().isoformat()}
 
-
 def task_steps_publish(state: Dict, steps: List[Dict], current: Optional[int]) -> None:
 
     state["task_steps"] = list(steps)
     state["current_step"] = current
-
-
-
-
-
 
 def _query_llm(prompt: str, system: str = "", max_tokens: int = 256,
                temperature: float = 0.1, timeout: int = 30) -> Optional[str]:
@@ -527,14 +386,13 @@ def _query_llm(prompt: str, system: str = "", max_tokens: int = 256,
         {"role": "user", "content": prompt},
     ]
     payload = {
-        "model": CFG.big_alias,
+        "model": CFG.model_cloud,
         "messages": messages,
         "max_tokens": int(max_tokens),
         "temperature": float(temperature),
         "stream": False,
-        "chat_template_kwargs": {"enable_thinking": False},
     }
-    url = f"http://127.0.0.1:{CFG.big_model_port}/v1/chat/completions"
+    url = "http://127.0.0.1:11436/v1/chat/completions"
     try:
         req = urllib.request.Request(
             url, data=json.dumps(payload).encode(), method="POST",
@@ -547,7 +405,6 @@ def _query_llm(prompt: str, system: str = "", max_tokens: int = 256,
         return content.strip()
     except Exception:
         return None
-
 
 def _parse_tool_calls(message: dict) -> list:
 
@@ -569,7 +426,6 @@ def _parse_tool_calls(message: dict) -> list:
             "arguments": args,
         })
     return calls
-
 
 def _parse_text_tool_calls(content: str) -> list:
 
@@ -659,20 +515,18 @@ def _parse_text_tool_calls(content: str) -> list:
         args = {}
     return [{"id": "call_text_0", "name": name, "arguments": args}]
 
-
 def _query_llm_with_tools(messages: list, tools: list, max_tokens: int = 512,
                           timeout: int = 60) -> Optional[dict]:
 
     payload = {
-        "model": CFG.big_alias,
+        "model": CFG.model_cloud,
         "messages": messages,
         "tools": tools,
         "max_tokens": int(max_tokens),
         "temperature": 0.1,
         "stream": False,
-        "chat_template_kwargs": {"enable_thinking": False},
     }
-    url = f"http://127.0.0.1:{CFG.big_model_port}/v1/chat/completions"
+    url = "http://127.0.0.1:11436/v1/chat/completions"
     try:
         req = urllib.request.Request(
             url, data=json.dumps(payload).encode(), method="POST",
@@ -695,17 +549,15 @@ def _query_llm_with_tools(messages: list, tools: list, max_tokens: int = 512,
     except Exception:
         return None
 
-
-def _big_model_healthy(timeout: float = 5.0) -> bool:
+def _model_healthy(timeout: float = 5.0) -> bool:
 
     try:
         req = urllib.request.Request(
-            f"http://127.0.0.1:{CFG.big_model_port}/slots", method="GET")
+            "http://127.0.0.1:11436/metrics", method="GET")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
     except Exception:
         return False
-
 
 def _get_memory_stats() -> Dict:
 
@@ -725,7 +577,6 @@ def _get_memory_stats() -> Dict:
         pass
     return out
 
-
 def _check_health(stats: Dict) -> List[str]:
 
     alerts = []
@@ -738,7 +589,6 @@ def _check_health(stats: Dict) -> List[str]:
         mb = stats.get("hot_bytes", 0) / (1024 * 1024)
         alerts.append(f"Hot at {pct}% ({stats['hot']} rows, {mb:.1f}MB) — advisory only")
     return alerts
-
 
 def _check_memory_writes() -> List[str]:
 
@@ -761,145 +611,18 @@ def _check_memory_writes() -> List[str]:
         alerts.append(f"Memory read error: {e}")
     return alerts
 
-
 def _check_session_health() -> List[str]:
 
     alerts = []
-    proxy_port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
     try:
-        req = urllib.request.Request(f"http://127.0.0.1:{proxy_port}/health",
+        req = urllib.request.Request("http://127.0.0.1:11600/api/version",
                                      method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
-            if resp.status not in (200, 502):
-                alerts.append(f"Proxy health check failed (HTTP {resp.status})")
-    except urllib.error.HTTPError as e:
-        if e.code != 502:
-            alerts.append(f"Proxy health check failed (HTTP {e.code})")
+            if resp.status != 200:
+                alerts.append(f"Ollama backend health check failed (HTTP {resp.status})")
     except Exception:
-        alerts.append(f"Proxy not reachable on port {proxy_port} — main model may be down")
+        alerts.append("Ollama :11600 not reachable — model lanes may be down")
     return alerts
-
-
-
-
-
-
-
-
-MINIFY_STATS_FILE = STATE_DIR / "minify_stats.json"
-
-
-def _read_minify_stats() -> Dict:
-
-    try:
-        with MINIFY_STATS_FILE.open(encoding="utf-8") as f:
-            d = json.load(f)
-        if isinstance(d, dict):
-            return d
-    except Exception:
-        pass
-    return {}
-
-def _merge_token_stats() -> Dict:
-
-    proxy_stats = _read_minify_stats()
-
-    return {
-        "proxy": proxy_stats,
-        "total": {
-            "runs": proxy_stats.get("runs", 0),
-            "tokens_in": proxy_stats.get("tokens_in", 0),
-            "tokens_out": proxy_stats.get("tokens_out", 0),
-            "tokens_saved": proxy_stats.get("tokens_saved", 0),
-            "ratio_pct": 0.0,
-            "last_run_ts": proxy_stats.get("last_run_ts", 0),
-        },
-    }
-
-
-
-
-def _merge_minify_into_state(state: Dict) -> None:
-
-    snap = _read_minify_stats()
-    if not snap:
-        return
-    prev = state.get("minify") or {}
-    prev_tokens_saved = int(prev.get("tokens_saved", 0) or 0)
-    state["minify"] = {
-        "runs": int(snap.get("runs", 0) or 0),
-        "tokens_in": int(snap.get("tokens_in", 0) or 0),
-        "tokens_out": int(snap.get("tokens_out", 0) or 0),
-        "tokens_saved": int(snap.get("tokens_saved", 0) or 0),
-        "ratio_pct": float(snap.get("ratio_pct", 0.0) or 0.0),
-        "last_run_ts": float(snap.get("last_run_ts", 0.0) or 0.0),
-        "last_saved_pct": float(snap.get("last_saved_pct", 0.0) or 0.0),
-        "history_60s": list(snap.get("history_60s") or []),
-        "errors": int(snap.get("errors", 0) or 0),
-    }
-
-    delta = state["minify"]["tokens_saved"] - prev_tokens_saved
-    if delta > 0:
-        _log(f"Minify: +{delta} tok saved this tick "
-             f"(lifetime {state['minify']['ratio_pct']:.0f}% across "
-             f"{state['minify']['runs']} runs)", "📐", DIM)
-
-
-_CTX_CRITICAL_TICKS = 0
-
-
-
-
-def _check_context_window() -> List[str]:
-
-    global _CTX_CRITICAL_TICKS
-    alert_pct = CFG.context_alert_pct
-    critical_pct = CFG.context_critical_pct
-    port = CFG.big_model_port
-    try:
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/slots")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            slots = json.loads(resp.read().decode() or "[]")
-    except Exception:
-
-        _CTX_CRITICAL_TICKS = 0
-        return []
-    alerts: List[str] = []
-    critical = False
-    for s in slots:
-        n_past = int(s.get("n_past") or 0)
-        n_ctx = int(s.get("n_ctx") or 0)
-        if n_ctx <= 0 or n_past <= 0:
-            continue
-        pct = n_past / n_ctx * 100
-        if pct >= critical_pct:
-            critical = True
-            alerts.append(f"CONTEXT WINDOW at {pct:.0f}% ({n_past}/{n_ctx} tok) — "
-                          f"auto-compact failed, ceiling imminent")
-        elif pct >= alert_pct:
-            alerts.append(f"Context window at {pct:.0f}% ({n_past}/{n_ctx} tok) — near ceiling")
-    if critical:
-        _CTX_CRITICAL_TICKS += 1
-    else:
-        _CTX_CRITICAL_TICKS = 0
-    return alerts
-
-
-def _context_failsafe() -> None:
-
-    global _CTX_CRITICAL_TICKS
-    needed = CFG.context_critical_ticks
-    if _CTX_CRITICAL_TICKS < needed:
-        return
-    _CTX_CRITICAL_TICKS = 0
-    _log(f"Context window pegged ≥{CFG.context_critical_pct:.0f}% for "
-         f"{needed} ticks — resetting session so the next "
-         f"launch starts with fresh context (avoiding a hard 400)", "🔥", RED)
-    try:
-        control.send_request("session-reset", timeout=5)
-    except Exception:
-        _log("context failsafe: session-reset failed", "❌", RED)
-
 
 def _check_latency_alert() -> List[str]:
 
@@ -914,7 +637,6 @@ def _check_latency_alert() -> List[str]:
         return [f"LATENCY p95 {p95:.0f}ms > {threshold:.0f}ms threshold "
                 f"({stats.get('count', 0)} samples, avg {stats.get('avg_ms', 0):.0f}ms)"]
     return []
-
 
 def _cortexagent_active() -> bool:
 
@@ -939,11 +661,6 @@ def _cortexagent_active() -> bool:
         return True
     for line in out.splitlines():
 
-
-
-
-
-
         parts = line.split(None, 2)
         if len(parts) != 3:
             continue
@@ -954,7 +671,6 @@ def _cortexagent_active() -> bool:
         except ValueError:
             continue
 
-
         if "bin/cortexagent" in args:
             return True
 
@@ -962,15 +678,13 @@ def _cortexagent_active() -> bool:
             return True
     return False
 
-
 def _watchdog_cortexagent() -> None:
+    return
+
+def _watchdog_cortexagent_retired_body() -> None:
 
     if _cortexagent_active():
         return
-
-
-
-
 
     watchdog_stale_sec = 300
     try:
@@ -983,16 +697,13 @@ def _watchdog_cortexagent() -> None:
             return
         if idle is not None and idle < watchdog_stale_sec:
 
-
-
             return
         _log("cortexagent closed AND daemon idle > "
              f"{watchdog_stale_sec}s with active session — "
-             "resetting + unloading big model", "🧹", YELLOW)
+             "resetting + unloading model", "🧹", YELLOW)
         control.send_request("session-reset", timeout=5)
     except Exception:
         pass
-
 
 def _check_db_integrity() -> List[str]:
 
@@ -1008,7 +719,6 @@ def _check_db_integrity() -> List[str]:
         alerts.append(f"DB integrity check failed: {e}")
     return alerts
 
-
 def _estimate_tokens(stats: Dict) -> str:
 
     total = stats["hot"] + stats["warm"] + stats["cold"]
@@ -1023,7 +733,6 @@ def _estimate_tokens(stats: Dict) -> str:
         return f"{est/1_000:.0f}K"
     return str(est)
 
-
 def _cold_distill() -> bool:
 
     try:
@@ -1037,38 +746,69 @@ def _cold_distill() -> bool:
         _log(f"Cold distill failed: {e}", "⚠️", YELLOW)
         return False
 
+CLOUD_SUBAGENT_MODEL = CFG.model_cloud
+_MAX_SUBAGENT_TIMEOUT = 1800
+_SUBAGENT_MAX_TOKENS = 2048
+_SUBAGENT_SYSTEM = (
+    "You are a subagent dispatched by a Cortex agent. You get ONE focused "
+    "task. Answer it directly and completely in the fewest tokens that fully "
+    "cover it. No preamble, no restating the task. If you need a fact you do "
+    "not have, say what is missing in one line rather than guessing. Your "
+    "reply is the return value handed back to the parent agent, so write the "
+    "answer itself, not a message to a person."
+)
 
-def _spawn_subagent(prompt: str, model: str = "sonnet", timeout: int = 600) -> Dict:
+def _subagent_targets():
+    lane = os.environ.get("CORTEXAGENT_CLOUD_LANE", "http://127.0.0.1:11435")
+    direct = os.environ.get("CORTEXAGENT_OLLAMA_DIRECT", "http://127.0.0.1:11600")
+    return [
+        (lane + "/v1/chat/completions", "lane:11435"),
+        (direct + "/v1/chat/completions", "ollama:11600"),
+    ]
 
+def _spawn_subagent(prompt: str, model: str = CLOUD_SUBAGENT_MODEL, timeout: int = 600) -> Dict:
+    if not isinstance(prompt, str) or not prompt.strip():
+        return {"ok": False, "output": "", "error": "prompt must be a non-empty string"}
     try:
+        timeout = min(max(int(timeout), 1), _MAX_SUBAGENT_TIMEOUT)
+    except (TypeError, ValueError):
+        return {"ok": False, "output": "", "error": "timeout must be an integer"}
 
+    import json as _json
+    import urllib.request as _urlreq
 
+    body = _json.dumps({
+        "model": CLOUD_SUBAGENT_MODEL,
+        "messages": [
+            {"role": "system", "content": _SUBAGENT_SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": _SUBAGENT_MAX_TOKENS,
+        "stream": False,
+    }).encode("utf-8")
 
-
-
-
-        cmd = [
-            "claude", "-p", prompt,
-            "--model", model,
-            "--output-format", "text",
-            "--bare",
-            "--dangerously-skip-permissions",
-        ]
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
-        )
-        if proc.returncode == 0:
-            return {"ok": True, "output": proc.stdout, "error": ""}
-        return {"ok": False, "output": proc.stdout,
-                "error": proc.stderr or f"exit {proc.returncode}"}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "output": "", "error": f"timeout after {timeout}s"}
-    except FileNotFoundError:
-        return {"ok": False, "output": "",
-                "error": "claude CLI not found on PATH"}
-    except Exception as e:
-        return {"ok": False, "output": "", "error": str(e)}
-
+    last = "no target attempted"
+    for url, via in _subagent_targets():
+        try:
+            req = _urlreq.Request(
+                url, data=body,
+                headers={"Content-Type": "application/json"},
+            )
+            with _urlreq.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read().decode("utf-8", "replace"))
+            if data.get("error"):
+                last = f"{via}: {str(data['error'])[:160]}"
+                continue
+            choices = data.get("choices") or []
+            text = ""
+            if choices:
+                text = (choices[0].get("message") or {}).get("content") or ""
+            if text.strip():
+                return {"ok": True, "output": text.strip(), "error": ""}
+            last = f"{via} returned empty content"
+        except Exception as e:
+            last = f"{via}: {str(e)[:160]}"
+    return {"ok": False, "output": "", "error": f"cloud subagent failed ({last})"}
 
 def _dispatch_workflow(state: Dict) -> int:
 
@@ -1082,7 +822,6 @@ def _dispatch_workflow(state: Dict) -> int:
         plan = _load_workflow()
         if not plan:
             return 0
-
 
         completed = {t.id for t in plan.tasks if t.status.name == "COMPLETED"}
         ready = [
@@ -1099,9 +838,7 @@ def _dispatch_workflow(state: Dict) -> int:
         for task in ready[:WORKFLOW_DISPATCH_MAX]:
             if task.engine.name in ("LLM_REASONING", "LLM_CODE"):
 
-
-                model = "opus" if task.engine.name == "LLM_REASONING" else "sonnet"
-
+                model = CLOUD_SUBAGENT_MODEL
 
                 dep_context = ""
                 for dep_id in (task.depends_on or []):
@@ -1160,24 +897,13 @@ def _dispatch_workflow(state: Dict) -> int:
         _log(f"Workflow dispatch error: {e}", "⚠️", YELLOW)
         return 0
 
-
-
-
-
-
-
-
 def _hot_remediation(state: Dict, stats: Dict) -> None:
 
     hot_bytes = stats.get("hot_bytes", 0)
     warm_bytes = stats.get("warm_bytes", 0)
     sustained = int(state.get("hot_overflow_ticks", 0))
 
-
-
-
     _hot_to_warm_sync(state)
-
 
     hot_mb = hot_bytes / (1024 * 1024)
     warm_mb = warm_bytes / (1024 * 1024)
@@ -1194,7 +920,6 @@ def _hot_remediation(state: Dict, stats: Dict) -> None:
     else:
         if sustained:
             state["hot_overflow_ticks"] = 0
-
 
 def _hot_to_warm_sync(state: Dict) -> None:
 
@@ -1221,7 +946,6 @@ def _hot_to_warm_sync(state: Dict) -> None:
     except ImportError:
         pass
 
-
 def _atomic_append_bytes(file_path, data: bytes) -> None:
 
     try:
@@ -1238,18 +962,11 @@ def _atomic_append_bytes(file_path, data: bytes) -> None:
     finally:
         _os.close(fd)
 
-
-
-
-
-
 def _load_queue() -> List[Dict]:
     return _load_json(QUEUE_FILE, [])
 
-
 def _save_queue(queue: List[Dict]) -> None:
     _save_json(QUEUE_FILE, queue)
-
 
 def queue_add(task_type: str, prompt: str = "", command: str = "",
               output: str = "", priority: int = 0,
@@ -1274,15 +991,12 @@ def queue_add(task_type: str, prompt: str = "", command: str = "",
     _log(f"Queued {task_type} task: {prompt[:60] or command[:60]}", "📋", CYAN)
     return task
 
-
 def queue_list() -> List[Dict]:
     return _load_queue()
-
 
 def queue_clear() -> None:
     _save_queue([])
     _log("Queue cleared", "🗑️", YELLOW)
-
 
 def queue_remove(task_id: str) -> bool:
     queue = _load_queue()
@@ -1293,7 +1007,6 @@ def queue_remove(task_id: str) -> bool:
         _log(f"Removed task {task_id}", "🗑️", YELLOW)
         return True
     return False
-
 
 def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
 
@@ -1321,7 +1034,6 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
             return False
 
     elif task_type == "llm":
-
 
         from lib.react_loop import run_react
 
@@ -1355,8 +1067,7 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
 
     elif task_type == "subagent":
 
-
-        model = task.get("model", "sonnet")
+        model = task.get("model", CLOUD_SUBAGENT_MODEL)
         timeout = int(task.get("timeout", 600))
         try:
             result = retry_with_backoff(
@@ -1377,46 +1088,12 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
 
     elif task_type in ("image", "video"):
 
-        tool = "generate_image" if task_type == "image" else "generate_video"
-        try:
-            result = retry_with_backoff(
-                execute_tool,
-                tool,
-                {"prompt": prompt},
-                max_retries=2,
-            )
-            if result.get("ok"):
-                _log(f"Media task completed ({task_type})", "✅", GREEN)
-                return True
-            _log(f"Media task {task_type}: {result.get('error', 'unknown')}",
-                 "⚠️", YELLOW)
-            return False
-        except Exception as e:
-            _log(f"Media task error: {e}", "⚠️", YELLOW)
-            return False
-
+        _log(f"Media task ({task_type}) disabled locally — route to cloud dispatcher", "🚫", YELLOW)
+        return False
     elif task_type == "media":
 
-        try:
-            result = execute_tool("generate_media", {"prompt": prompt})
-            if result.get("ok"):
-
-
-                out = result.get("output", "")
-                task_id = out
-                for tok in out.split():
-                    if tok.startswith("T-"):
-                        task_id = tok
-                        break
-                _log(f"Media task queued ({task_id})", "✅", GREEN)
-                return True
-            _log(f"Media task auto: {result.get('error', 'unknown')}",
-                 "⚠️", YELLOW)
-            return False
-        except Exception as e:
-            _log(f"Media task error: {e}", "⚠️", YELLOW)
-            return False
-
+        _log("Media task (media) disabled locally — route to cloud dispatcher", "🚫", YELLOW)
+        return False
     elif task_type == "ingest":
 
         try:
@@ -1439,7 +1116,6 @@ def _execute_task(task: Dict, state: Optional[Dict] = None) -> bool:
             return False
 
     return False
-
 
 def _sync_scheduler_result(task: Dict, success: bool) -> None:
 
@@ -1466,7 +1142,6 @@ def _sync_scheduler_result(task: Dict, success: bool) -> None:
     except Exception as e:
         _log(f"Scheduler sync failed for {sched_task_id}: {e}", "⚠️", YELLOW)
 
-
 def _process_queue(state: Optional[Dict] = None) -> None:
 
     if _SHUTDOWN:
@@ -1479,7 +1154,6 @@ def _process_queue(state: Optional[Dict] = None) -> None:
             return
 
     if not _queue_dispatch_lock.acquire(blocking=False):
-
 
         return
     try:
@@ -1515,7 +1189,6 @@ def _process_queue(state: Optional[Dict] = None) -> None:
                 success = _execute_task(task, state)
             except Exception as e:
 
-
                 _log(f"Task {task['id']} crashed: {e}", "❌", RED)
                 _bridge_emit("task_crash", f"❌ Task {task['id']} crashed: {e}",
                              task_id=task["id"])
@@ -1526,7 +1199,6 @@ def _process_queue(state: Optional[Dict] = None) -> None:
             task["result"] = "success" if success else "failed"
             _save_queue(queue)
             _record_queue_depth(len([t for t in queue if t["status"] in ("queued", "running")]))
-
 
             _sync_scheduler_result(task, success)
 
@@ -1540,7 +1212,6 @@ def _process_queue(state: Optional[Dict] = None) -> None:
                              task_id=task["id"])
     finally:
         _queue_dispatch_lock.release()
-
 
 def _cleanup_queue() -> None:
 
@@ -1568,18 +1239,11 @@ def _cleanup_queue() -> None:
         _save_queue(kept)
         _log(f"Queue cleanup: removed {removed} old completed tasks", "🧹", DIM)
 
-
-
-
-
-
 def _load_schedule() -> List[Dict]:
     return _load_json(SCHEDULE_FILE, [])
 
-
 def _save_schedule(schedule: List[Dict]) -> None:
     _save_json(SCHEDULE_FILE, schedule)
-
 
 def _cron_matches(expr: str, now: datetime) -> bool:
     fields = expr.split()
@@ -1610,13 +1274,11 @@ def _cron_matches(expr: str, now: datetime) -> bool:
                 return False
     return True
 
-
 def _scheduler() -> Optional[Store]:
 
     if SCHEDULER_AVAILABLE:
         return Store()
     return None
-
 
 def _check_schedule_legacy() -> None:
 
@@ -1682,7 +1344,6 @@ def _check_schedule_legacy() -> None:
                 task_type=task["type"],
             )
 
-
 def schedule_add(name: str, task_type: str, schedule_type: str,
                  schedule_value: str, prompt: str = "", command: str = "",
                  output: str = "", system: str = "") -> Dict:
@@ -1710,7 +1371,6 @@ def schedule_add(name: str, task_type: str, schedule_type: str,
         _log(f"Scheduled '{name}' ({schedule_type}: {schedule_value})", "📅", CYAN)
         return entry
 
-
     receipt = sched.create(
         title=name,
         kind="user",
@@ -1729,14 +1389,12 @@ def schedule_add(name: str, task_type: str, schedule_type: str,
     _log(f"📅 Failed to schedule '{name}': {receipt.get('error')}", "❌", RED)
     return receipt
 
-
 def schedule_list() -> List[Dict]:
 
     sched = _scheduler()
     if sched is None:
         return _load_schedule()
     return sched.list()
-
 
 def schedule_remove(name: str) -> bool:
 
@@ -1751,7 +1409,6 @@ def schedule_remove(name: str) -> bool:
             return True
         return False
 
-
     for task in sched.list():
         if task.get("title") == name or name in task.get("title", ""):
             result = sched.cancel(task["id"])
@@ -1762,7 +1419,6 @@ def schedule_remove(name: str) -> bool:
     _log(f"Schedule '{name}' not found", "🗑️", YELLOW)
     return False
 
-
 def _check_schedule() -> None:
 
     sched = _scheduler()
@@ -1770,7 +1426,6 @@ def _check_schedule() -> None:
 
         _check_schedule_legacy()
         return
-
 
     tasks = sched.list(visible_only=False)
     now = datetime.now()
@@ -1781,7 +1436,6 @@ def _check_schedule() -> None:
         if task.get("state") != "scheduled":
             continue
 
-
         last_run = task.get("last_run")
         if last_run:
             try:
@@ -1789,7 +1443,6 @@ def _check_schedule() -> None:
                     continue
             except Exception:
                 pass
-
 
         should_run = False
         trigger = task.get("trigger", "manual")
@@ -1828,7 +1481,6 @@ def _check_schedule() -> None:
                       output=payload.get("output", ""),
                       scheduler_task_id=task["id"])
 
-
             sched.update(task["id"], task.get("version", 0),
                         state="queued", updated_at=now.isoformat())
 
@@ -1841,18 +1493,6 @@ def _check_schedule() -> None:
                 task_type=task_type,
             )
 
-
-
-
-
-
-
-
-
-
-
-
-
 def _plan():
 
     try:
@@ -1860,7 +1500,6 @@ def _plan():
         return _Plan(dir=str(STATE_DIR), name="overseer_plan")
     except ImportError:
         return None
-
 
 def plan_set(name: str, total_steps: int, context: str = "",
              steps: Optional[List[str]] = None) -> Dict:
@@ -1887,7 +1526,6 @@ def plan_set(name: str, total_steps: int, context: str = "",
     _save_json(PLAN_FILE, local)
     _log(f"Plan set: '{name}' ({total_steps} steps)", "📋", CYAN)
     return local
-
 
 def plan_step(n: Optional[int] = None) -> Dict:
 
@@ -1928,7 +1566,6 @@ def plan_step(n: Optional[int] = None) -> Dict:
          f"{data['steps'][data['current_step']-1]}", "➡️", CYAN)
     return data
 
-
 def plan_status() -> Dict:
 
     plan = _plan()
@@ -1938,7 +1575,6 @@ def plan_status() -> Dict:
     if not data:
         return {"error": "No plan set. Use plan-set first."}
     return data
-
 
 def plan_complete() -> Dict:
 
@@ -1957,27 +1593,19 @@ def plan_complete() -> Dict:
     _log(f"Plan '{data['name']}' marked complete", "🎉", GREEN)
     return data
 
-
-
-
-
-
 def _daemon_loop(interval: int) -> None:
-
-
-
 
     signal.signal(signal.SIGTERM, _handle_stop_signal)
     signal.signal(signal.SIGINT, _handle_stop_signal)
 
-    _log(f"Overseer daemon started (interval: {interval}s, model: :{CFG.big_model_port})", "🚀", CYAN)
+    _log(f"Overseer daemon started (interval: {interval}s, "
+         f"lanes: :11435/:11436 → :11600)", "🚀", CYAN)
 
     state = _load_state()
     state["started_at"] = datetime.now().isoformat()
     _save_state(state)
 
-
-    has_llm = _big_model_healthy()
+    has_llm = _model_healthy()
 
     tick = 0
     while not _SHUTDOWN:
@@ -1987,8 +1615,6 @@ def _daemon_loop(interval: int) -> None:
             now = datetime.now().strftime("%H:%M:%S")
             _log(f"── Tick {tick} @ {now} ─────────────────────", "⏱️", DIM)
 
-
-
             task_steps_publish(state, [
                 {"id": 1, "label": "Memory health checks",       "status": "in_progress"},
                 {"id": 2, "label": "Watchdog (every 2nd tick)",  "status": "pending"},
@@ -1997,7 +1623,6 @@ def _daemon_loop(interval: int) -> None:
                 {"id": 5, "label": "LLM health summary",         "status": "pending"},
             ], current=1)
 
-
             overseer_set_state(state, "watching memory health")
             stats = _get_memory_stats()
             _log(f"Memory: {stats['hot']}H / {stats['warm']}W / {stats['cold']}C", "📊", DIM)
@@ -2005,33 +1630,14 @@ def _daemon_loop(interval: int) -> None:
             alerts += _check_memory_writes()
             alerts += _check_session_health()
 
-
-            ctx_alerts = _check_context_window()
-            alerts += ctx_alerts
-            _context_failsafe()
-            if ctx_alerts:
-                _log("Context: " + " | ".join(ctx_alerts), "📏", YELLOW)
-
-
-
             lat_alerts = _check_latency_alert()
             alerts += lat_alerts
             if lat_alerts:
                 _log("Latency: " + " | ".join(lat_alerts), "⏱️", YELLOW)
 
-
-
-
             if tick % 2 == 0:
                 overseer_set_state(state, "watchdogging cortexagent session")
                 _watchdog_cortexagent()
-
-
-
-
-            overseer_set_state(state, "merging minify stats")
-            _merge_minify_into_state(state)
-
 
             if tick % 10 == 0:
                 alerts += _check_db_integrity()
@@ -2046,9 +1652,6 @@ def _daemon_loop(interval: int) -> None:
                 })
                 state["health_events"] = state["health_events"][-100:]
 
-
-
-
                 if stats["warm"] > WARM_CAP * COMPACT_THRESHOLD:
                     overseer_set_state(
                         state,
@@ -2056,10 +1659,7 @@ def _daemon_loop(interval: int) -> None:
                         f"no auto-compact per hard rule)"
                     )
 
-
-
             _hot_remediation(state, stats)
-
 
             last_distill = state.get("last_distill")
             if stats["warm"] > 100 and (
@@ -2070,23 +1670,18 @@ def _daemon_loop(interval: int) -> None:
                 _cold_distill()
                 state["last_distill"] = datetime.now().isoformat()
 
-
             pool = get_worker_pool()
             if pool:
                 actions = pool.heartbeat_check()
                 for action in actions:
                     _log(f"Worker pool: {action}", "⚠️", YELLOW)
 
-
             overseer_set_state(state, "checking schedule + queue")
-
-
 
             _sched = _scheduler()
             sched_count = len(_sched.list(visible_only=False)) if _sched else len(_load_schedule())
             _log(f"Schedule: {sched_count} entries", "📅", DIM)
             _check_schedule()
-
 
             q = _load_queue()
             pending = len([t for t in q if t["status"] == "queued"])
@@ -2094,9 +1689,7 @@ def _daemon_loop(interval: int) -> None:
                 _log(f"Queue: {pending} pending tasks", "📦", DIM)
             _process_queue(state)
 
-
             _record_queue_depth(len(q))
-
 
             try:
                 sys.path.insert(0, str(REPO_ROOT))
@@ -2109,11 +1702,6 @@ def _daemon_loop(interval: int) -> None:
                     if pending_wf > 0 or running_wf > 0:
                         _log(f"Workflow: {pending_wf} pending, {running_wf} running", "⚙️", DIM)
 
-
-
-
-
-
                 if wf_status.get("pending", 0) > 0:
                     threading.Thread(
                         target=_dispatch_workflow, args=(state,),
@@ -2121,7 +1709,6 @@ def _daemon_loop(interval: int) -> None:
                     ).start()
             except Exception:
                 pass
-
 
             if tick % 5 == 0:
                 _record_queue_depth(len([t for t in _load_queue()]))
@@ -2135,11 +1722,6 @@ def _daemon_loop(interval: int) -> None:
                         "alerts": ctx_alerts,
                     })
 
-
-
-
-
-
             if has_llm and tick % 10 == 0:
                 overseer_set_state(state, "querying LLM for health summary")
                 prompt = (
@@ -2152,20 +1734,16 @@ def _daemon_loop(interval: int) -> None:
                     _log(f"LLM health: {summary}", "💬", DIM)
                     state["last_llm_summary"] = summary
 
-
             if tick % 5 == 0:
                 est = _estimate_tokens(stats)
                 _log(f"Memory: {stats['hot']}H/{stats['warm']}W/{stats['cold']}C (~{est} tok)  "
                      f"Alerts: {len(alerts)}  Ticks: {tick}", "📊", DIM)
-
 
             overseer_set_state(state, "idle")
             task_steps_publish(state, [], None)
             _save_state(state)
 
         except Exception as e:
-
-
 
             _log(f"Daemon error: {e}", "❌", RED)
             log_exception(
@@ -2174,19 +1752,15 @@ def _daemon_loop(interval: int) -> None:
                 log_file=LOG_FILE,
             )
 
-
-
         for _ in range(interval):
             if _SHUTDOWN:
                 break
             time.sleep(1)
 
-
     _log("Overseer shutting down...", "🛑", YELLOW)
     state = _load_state()
     state["stopped_at"] = datetime.now().isoformat()
     _save_state(state)
-
 
     close_dump(
         component="overseer",
@@ -2197,11 +1771,6 @@ def _daemon_loop(interval: int) -> None:
     PID_FILE.unlink(missing_ok=True)
     _log("Overseer stopped cleanly (exit 0)", "✅", GREEN)
     sys.exit(0)
-
-
-
-
-
 
 def _is_running() -> Optional[int]:
 
@@ -2214,7 +1783,6 @@ def _is_running() -> Optional[int]:
     except (ProcessLookupError, ValueError, OSError):
         PID_FILE.unlink(missing_ok=True)
         return None
-
 
 def _start(interval: int) -> None:
 
@@ -2230,12 +1798,7 @@ def _start(interval: int) -> None:
         print(f"Overseer started (pid {pid})")
         return
 
-
     os.setsid()
-
-
-
-
 
     with open(os.devnull, 'w') as null:
         os.dup2(null.fileno(), 0)
@@ -2243,16 +1806,12 @@ def _start(interval: int) -> None:
         os.dup2(null.fileno(), 2)
     _daemon_loop(interval)
 
-
 def _stop() -> None:
 
     pid = _is_running()
     if pid:
         try:
             os.kill(pid, signal.SIGTERM)
-
-
-
 
             exited = False
             for _ in range(450):
@@ -2264,7 +1823,6 @@ def _stop() -> None:
                     break
             if not exited:
 
-
                 os.kill(pid, signal.SIGKILL)
                 PID_FILE.unlink(missing_ok=True)
                 print(f"Overseer force-killed (pid {pid})")
@@ -2275,7 +1833,6 @@ def _stop() -> None:
     else:
         print("Overseer not running")
         PID_FILE.unlink(missing_ok=True)
-
 
 def _replace_emoji(text: str) -> str:
 
@@ -2300,7 +1857,6 @@ def _replace_emoji(text: str) -> str:
         text = text.replace(emoji, glyph)
     return text
 
-
 def _status() -> None:
 
     pid = _is_running()
@@ -2314,8 +1870,8 @@ def _status() -> None:
             f"Overseer: RUNNING (pid {pid})",
             f"  Started: {state.get('started_at', 'unknown')}",
             f"  Ticks: {state['total_ticks']}",
-            f"  Model: {CFG.big_alias} on :{CFG.big_model_port} "
-            f"({'up' if _big_model_healthy() else 'down'})",
+            f"  Lanes: slimtoken :11435/:11436 → ollama :11600 "
+            f"({'up' if _model_healthy() else 'down'})",
         ]
 
         stats = _get_memory_stats()
@@ -2326,27 +1882,6 @@ def _status() -> None:
         pending = len([t for t in queue if t["status"] == "queued"])
         lines.append(f"  Queue: {len(queue)} total ({pending} pending)")
         lines.append(f"  Schedule: {len(schedule)} entries")
-
-
-
-        m = state.get("minify") or _read_minify_stats()
-        if m and m.get("runs", 0):
-            lines.append(f"  Minify: {m['tokens_saved']:,} tok saved "
-                         f"({m['ratio_pct']:.0f}%) across {m['runs']} runs")
-        else:
-            lines.append("  Minify: no runs yet")
-
-
-        token_stats = _merge_token_stats()
-        total = token_stats.get("total", {})
-        if total.get("runs", 0):
-            lines.append(f"  Tokens in:  {total.get('tokens_in', 0):,}")
-            lines.append(f"  Tokens out: {total.get('tokens_out', 0):,}")
-            lines.append(f"  Tokens saved: {total.get('tokens_saved', 0):,} ({total.get('ratio_pct', 0):.1f}%)")
-            lines.append(f"  Proxy runs: {token_stats.get('proxy', {}).get('runs', 0)}")
-        else:
-            lines.append("  Token tracking: no data yet")
-
 
         latency_stats = _get_latency_stats()
         if latency_stats.get("count", 0):
@@ -2372,7 +1907,6 @@ def _status() -> None:
         else:
             lines.append("  Context usage: no data yet")
 
-
         dead_workers = _worker_pool.heartbeat_check() if _worker_pool else []
         if dead_workers:
             lines.append(f"  Dead workers: {len(dead_workers)} (replaced)")
@@ -2386,12 +1920,10 @@ def _status() -> None:
             done = "✅" if plan.get("completed") else "➡️"
             lines.append(f"  Plan: {done} '{name}' — step {step}/{total}")
 
-
         output = "\n".join(lines)
         print(_beautify_status(output))
     else:
         print("Overseer: STOPPED")
-
 
 def _beautify_status(text: str) -> str:
 
@@ -2402,7 +1934,6 @@ def _beautify_status(text: str) -> str:
     except Exception:
         return text
 
-
 def _smoke() -> int:
 
     print(f"{BOLD}Overseer Smoke Test{RST}")
@@ -2411,42 +1942,11 @@ def _smoke() -> int:
     print(f"{'─'*50}")
     return 0
 
-
-
-
-
-
-def _minify_status_cli(args: List[str]) -> None:
-
-    snap = _read_minify_stats()
-    if not snap:
-        print("Minify: no data yet (proxy hasn't served a minified request)")
-        return
-    runs = int(snap.get("runs", 0) or 0)
-    print(f"  Minify: {runs} run(s)")
-    print(f"    tokens in:    {int(snap.get('tokens_in', 0) or 0):,}")
-    print(f"    tokens out:   {int(snap.get('tokens_out', 0) or 0):,}")
-    saved = int(snap.get("tokens_saved", 0) or 0)
-    ratio = float(snap.get("ratio_pct", 0.0) or 0.0)
-    print(f"    tokens saved: {saved:,}  ({ratio:.1f}%)")
-    print(f"    last run:     {float(snap.get('last_saved_pct', 0.0) or 0.0):.1f}% saved "
-          f"@ {snap.get('last_run_ts', 0)}")
-    history = snap.get("history_60s") or []
-    if history:
-        if history:
-            last = history[-1]
-            pct = f"{last[1]:.1f}% saved" if isinstance(last, (list, tuple)) and len(last) >= 2 else "n/a"
-        else:
-            pct = "n/a"
-        print(f"    60s samples:  {len(history)} (last {pct})")
-
-
 def _parse_interval(args: List[str]) -> int:
     for i, arg in enumerate(args):
         if arg == "--interval" and i + 1 < len(args):
             return int(args[i + 1])
     return DEFAULT_INTERVAL
-
 
 def main() -> int:
     if len(sys.argv) < 2:
@@ -2454,7 +1954,6 @@ def main() -> int:
         return 1
 
     cmd = sys.argv[1]
-
 
     if cmd == "start":
         interval = _parse_interval(sys.argv[2:])
@@ -2466,12 +1965,8 @@ def main() -> int:
     elif cmd == "status":
         _status()
         return 0
-    elif cmd == "minify":
-        _minify_status_cli(sys.argv[2:])
-        return 0
     elif cmd == "smoke":
         return _smoke()
-
 
     elif cmd == "plan-set":
         if len(sys.argv) < 3:
@@ -2505,7 +2000,6 @@ def main() -> int:
         result = plan_complete()
         print(json.dumps(result, indent=2))
         return 0
-
 
     elif cmd == "queue":
         if len(sys.argv) < 3:
@@ -2548,7 +2042,6 @@ def main() -> int:
             _cleanup_queue()
             print("Prune completed")
         return 0
-
 
     elif cmd == "schedule":
         if len(sys.argv) < 3:
@@ -2599,7 +2092,6 @@ def main() -> int:
             else:
                 print(f"Schedule '{name}' not found")
         return 0
-
 
     elif cmd == "workflow":
         if len(sys.argv) < 3:
@@ -2654,13 +2146,7 @@ def main() -> int:
         print(__doc__)
         return 1
 
-
-
-
-
-
 class WorkerPool:
-
 
     def __init__(self, max_workers: int = 5, heartbeat_interval: int = 60):
         self.max_workers = max_workers
@@ -2724,7 +2210,6 @@ class WorkerPool:
                     time.sleep(1)
                     continue
 
-
                 self._update_heartbeat(True, task["id"])
 
                 try:
@@ -2739,7 +2224,6 @@ class WorkerPool:
                                 (time.time(), duration_ms))
                         else:
                             self._metrics["total_failed"] += 1
-
 
                     queue = _load_queue()
                     for i, t in enumerate(queue):
@@ -2825,10 +2309,7 @@ class WorkerPool:
                 "p50_latency": sorted(durations)[len(durations) // 2] if durations else 0,
             }
 
-
-
 _worker_pool: Optional[WorkerPool] = None
-
 
 def get_worker_pool() -> Optional[WorkerPool]:
 
@@ -2838,20 +2319,9 @@ def get_worker_pool() -> Optional[WorkerPool]:
         _worker_pool.start()
     return _worker_pool
 
-
 def record_queue_depth(depth: int) -> None:
 
     _queue_depth_history.append((time.time(), depth))
 
-
-
-
-
-
-
-
-
 if __name__ == "__main__":
     sys.exit(main())
-
-

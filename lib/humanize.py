@@ -8,7 +8,6 @@ import sys
 import time
 from typing import List, Tuple
 
-
 _ACTION_BANDS = {
     "click":      (0.3, 1.5),
     "type":       (0.05, 0.20),
@@ -23,20 +22,17 @@ _ACTION_BANDS = {
     "hover":      (0.2, 0.8),
 }
 
-
 def _multiplier() -> float:
     try:
         return float(os.environ.get("HUMANIZE_BASE_MULT", "1.0"))
     except ValueError:
         return 1.0
 
-
 def get_action_delay(action: str = "click") -> float:
 
     band = _ACTION_BANDS.get(action, (0.5, 2.0))
     base = random.uniform(*band) * _multiplier()
     return round(base, 3)
-
 
 def get_typing_delay(text: str) -> float:
 
@@ -45,7 +41,6 @@ def get_typing_delay(text: str) -> float:
     chars = max(1, len(text))
     total = per_char * chars * random.uniform(0.8, 1.2) * _multiplier()
     return round(total, 3)
-
 
 def get_variable_sleep(base_seconds: float, variance: float = 0.3) -> float:
 
@@ -56,13 +51,11 @@ def get_variable_sleep(base_seconds: float, variance: float = 0.3) -> float:
     jitter = base_seconds * var
     return round(base_seconds + random.uniform(-jitter, jitter), 3)
 
-
 def human_sleep(base_seconds: float, variance: float = 0.3) -> float:
 
     s = get_variable_sleep(base_seconds, variance)
     time.sleep(s)
     return s
-
 
 def bezier_path(x0: float, y0: float, x1: float, y1: float,
                 steps: int = 12, curve: float = 0.25) -> List[Tuple[float, float]]:
@@ -88,8 +81,6 @@ def bezier_path(x0: float, y0: float, x1: float, y1: float,
         y += random.uniform(-0.5, 0.5)
         points.append((round(x, 2), round(y, 2)))
     return points
-
-
 
 def _cli(argv: List[str]) -> int:
     if not argv:
@@ -121,7 +112,6 @@ def _cli(argv: List[str]) -> int:
         print(f"unknown command: {cmd}", file=sys.stderr)
         return 2
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(_cli(sys.argv[1:]))

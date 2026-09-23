@@ -10,42 +10,22 @@ import threading
 import time
 from pathlib import Path
 
-
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 CORTEXAGENT_BIN = str(_REPO_ROOT / "bin" / "cortexagent")
 
 _OVERLAY_STATE = Path.home() / ".cortexagent" / "overlay_state.json"
 MINIFY_STATS = Path.home() / ".cortexagent" / "minify_stats.json"
 
-
-
 WIN_W_PCT, WIN_H_PCT = 0.625, 0.25
 WIN_W, WIN_H = 0, 0
 MARGIN = 16
 
-
 SIDEBAR_W = 280
-
-
-
-
-
-
 
 KEY_STRIP_W = 120
 KEY_BTN_W = 110
 
 REFRESH_SECS = 3
-
-
-
-
-
-
-
-
-
 
 def _write_state(state: dict) -> None:
     try:
@@ -55,7 +35,6 @@ def _write_state(state: dict) -> None:
         os.replace(tmp, _OVERLAY_STATE)
     except Exception:
         pass
-
 
 def _record_open(pid: int, vte_pid: int | None, win_id: int) -> None:
     _write_state({
@@ -68,11 +47,7 @@ def _record_open(pid: int, vte_pid: int | None, win_id: int) -> None:
     })
     clear_pending()
 
-
-
-
 def clear_pending() -> None:
-    """Called by Console after it writes its real state."""
     try:
         if not _OVERLAY_STATE.exists():
             return
@@ -83,9 +58,7 @@ def clear_pending() -> None:
         cur.pop("pending", None)
         _write_state(cur)
 
-
 def _is_open() -> bool:
-    """True if the Console process is alive (overlay_state has a real pid)."""
     try:
         if not _OVERLAY_STATE.exists():
             return False
@@ -103,10 +76,7 @@ def _is_open() -> bool:
     except OSError:
         return False
 
-
 def close() -> bool:
-    """Kill the running Console process + clear overlay state. Returns True
-    if a process was found and killed."""
     pid = None
     try:
         if _OVERLAY_STATE.exists():
@@ -145,7 +115,6 @@ def close() -> bool:
         pass
     return True
 
-
 def _record_close() -> None:
     try:
         if _OVERLAY_STATE.exists():
@@ -158,9 +127,6 @@ def _record_close() -> None:
     cur["state"] = "closed"
     _write_state(cur)
 
-
-
-
 def _human_bytes(n: int | float) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024:
@@ -168,19 +134,11 @@ def _human_bytes(n: int | float) -> str:
         n /= 1024
     return f"{n:.1f}PB"
 
-
 def _safe_read_json(path: Path, default):
     try:
         return json.loads(path.read_text())
     except Exception:
         return default
-
-
-
-
-
-
-
 
 def _plan_tasks() -> str:
 
@@ -196,7 +154,6 @@ def _plan_tasks() -> str:
     if sched:
         return sched
     return "TASKS  ·  ✓ idle"
-
 
 def _scheduler_summary() -> str:
 
@@ -214,7 +171,6 @@ def _scheduler_summary() -> str:
         title = (running[0].get("title") or "running")[:30]
         return f"SCHED  ·  ▶ {title}  ·  +{len(queued)} queued"
     return f"SCHED  ·  {len(queued)} queued"
-
 
 def _plan_steps() -> list:
 
@@ -253,15 +209,12 @@ def _plan_steps() -> list:
         out.append((i, text, status))
     return out
 
-
 def _live_primary_task() -> dict | None:
 
     try:
         sched_path = Path.home() / ".cortexagent" / "scheduler" / "tasks.json"
         events_path = Path.home() / ".cortexagent" / "scheduler" / "tasks.events.jsonl"
         by_id: dict[str, dict] = {}
-
-
 
         snap = _safe_read_json(sched_path, None)
         if isinstance(snap, dict):
@@ -285,7 +238,6 @@ def _live_primary_task() -> dict | None:
                     "ts": str(t.get("next_run_at") or t.get("last_run_at")
                               or t.get("updated_at") or ""),
                 }
-
 
         try:
             if events_path.exists():
@@ -333,7 +285,6 @@ def _live_primary_task() -> dict | None:
         if not by_id:
             return None
 
-
         running = [t for t in by_id.values() if t["state"] == "running"]
         if running:
             return max(running, key=lambda t: t["ts"])
@@ -345,7 +296,6 @@ def _live_primary_task() -> dict | None:
     except Exception:
         return None
 
-
 def _browser_state() -> str:
 
     tabs = _fetch_cdp_tabs()
@@ -355,9 +305,7 @@ def _browser_state() -> str:
     active = sum(1 for t in tabs if t.get("active"))
     return f"{n} tab{'s' if n != 1 else ''} · {active} active"
 
-
 _SCHED_EVENTS = Path.home() / ".cortexagent" / "scheduler" / "tasks.events.jsonl"
-
 
 def _active_task_for_browser() -> str:
 
@@ -365,10 +313,6 @@ def _active_task_for_browser() -> str:
         if not _SCHED_EVENTS.exists():
             return "✓ idle"
         lines = _SCHED_EVENTS.read_text(errors="ignore").splitlines()
-
-
-
-
 
         ACTIONABLE = {"running", "start", "done", "completed",
                       "failed", "cancel", "cancelled"}
@@ -406,9 +350,6 @@ def _active_task_for_browser() -> str:
 
         top = max(last_by_id.values(), key=lambda v: v["ts"])
 
-
-
-
         title = (top.get("title") or "").strip()
         if not title:
             return "✓ idle"
@@ -423,7 +364,6 @@ def _active_task_for_browser() -> str:
     except Exception:
         return "✓ idle"
 
-
 def _markup_escape(text: str) -> str:
 
     return (text.replace("&", "&amp;")
@@ -431,12 +371,10 @@ def _markup_escape(text: str) -> str:
                 .replace(">", "&gt;")
                 .replace('"', "&quot;"))
 
-
 def _html_decode(text: str) -> str:
 
     import html as _html
     return _html.unescape(text)
-
 
 def _fetch_cdp_tabs() -> list:
 
@@ -453,14 +391,13 @@ def _fetch_cdp_tabs() -> list:
     pages.reverse()
     return pages
 
-
 def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
 
     ws_url = tab.get("webSocketDebuggerUrl")
     if not ws_url:
         return False
     try:
-        import websocket  # type: ignore
+        import websocket
     except Exception:
         return False
     try:
@@ -486,7 +423,6 @@ def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
                         return True
             except Exception:
 
-
                 return True
         finally:
             try:
@@ -496,11 +432,7 @@ def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
     except Exception:
         return False
 
-
 def _raise_brave_window() -> bool:
-
-
-
 
     for pattern in ("Brave-browser", "brave-browser.Brave-browser",
                     "google-chrome.Google-chrome", "Chromium"):
@@ -520,8 +452,6 @@ def _raise_brave_window() -> bool:
             return True
     except FileNotFoundError:
         pass
-
-
 
     try:
         for pat in ("Brave", "brave", "google-chrome", "Chromium"):
@@ -544,28 +474,19 @@ def _raise_brave_window() -> bool:
         return False
     return False
 
-
 def _focus_tab(tab: dict) -> bool:
-
 
     _ft_dprint = (lambda *a, **k:
                   print(*a, file=sys.stderr, **k)
                   if os.environ.get("CORTEXAGENT_CONSOLE_DEBUG") == "1"
                   else None)
 
-
-
-
     cdp_ok = _bring_tab_to_front_via_cdp(tab)
     _ft_dprint(f"[focus_tab] CDP bringToFront: {cdp_ok}")
     if cdp_ok:
 
-
-
         if _raise_brave_window():
             return True
-
-
 
     title = (tab.get("title") or "").strip()
     if title:
@@ -599,14 +520,6 @@ def _focus_tab(tab: dict) -> bool:
                 best = _pick_best_wid(wids, decoded)
                 if best:
 
-
-
-
-
-
-
-
-
                     act = subprocess.run(
                         ["xdotool", "windowactivate", best],
                         capture_output=True, timeout=2,
@@ -622,7 +535,6 @@ def _focus_tab(tab: dict) -> bool:
             except Exception as e:
                 _ft_dprint(f"[focus_tab]   xdotool error: {e}")
                 continue
-
 
         try:
             r = subprocess.run(
@@ -646,15 +558,10 @@ def _focus_tab(tab: dict) -> bool:
         except Exception:
             pass
 
-
     cdp_ok = _bring_tab_to_front_via_cdp(tab)
-
-
-
 
     _raise_brave_window()
     return cdp_ok or True
-
 
 def _pick_best_wid(wids: list[str], title: str) -> str | None:
 
@@ -677,7 +584,6 @@ def _pick_best_wid(wids: list[str], title: str) -> str | None:
         if not name:
             continue
 
-
         score = 0
         for n in range(min(len(needle), len(name)), 0, -1):
             if needle[:n] in name:
@@ -688,13 +594,6 @@ def _pick_best_wid(wids: list[str], title: str) -> str | None:
             best = w
     return best or wids[0]
 
-
-
-
-
-
-
-
 def _port_open(port: int) -> bool:
 
     import socket
@@ -703,7 +602,6 @@ def _port_open(port: int) -> bool:
             return True
     except Exception:
         return False
-
 
 def _apply_theme(name: str) -> None:
 
@@ -791,20 +689,7 @@ def _apply_theme(name: str) -> None:
     except Exception:
         pass
 
-
 def raise_existing(from_process: bool = False) -> bool:
-    """Raise the existing Console window if one is running.
-
-    Returns True if an existing window was found and raised. False otherwise.
-
-    Two modes:
-    - from_process=False (default): assumes this code is running in the same
-      process as the GUI. We reach into the live Tk root if exposed. If no root
-      is registered (the GUI was opened in a different process), fall through
-      to the cross-process path using _OVERLAY_STATE.
-    - from_process=True: this code is running in the launcher process and the
-      GUI is elsewhere. We use _OVERLAY_STATE (pid + window_id) + xdotool/wmctrl.
-    """
     state = {}
     try:
         if _OVERLAY_STATE.exists():
@@ -813,8 +698,6 @@ def raise_existing(from_process: bool = False) -> bool:
         state = {}
     if not state or state.get("state") != "open":
         return False
-    # Pending sentinel: launcher wrote this and Console hasn't opened yet.
-    # Treat as "another Console is imminent" so the tray no-ops.
     if state.get("pending"):
         return True
     pid = state.get("pid")
@@ -836,7 +719,6 @@ def raise_existing(from_process: bool = False) -> bool:
                     pass
         except Exception:
             pass
-
 
     try:
         import subprocess
@@ -873,9 +755,7 @@ def raise_existing(from_process: bool = False) -> bool:
         pass
     return False
 
-
 _GUI_TK_ROOT = None
-
 
 def build_window() -> int:
     import gi
@@ -887,27 +767,9 @@ def build_window() -> int:
     win.set_title("Cortex Console")
     win.set_keep_above(True)
 
-
-
-
-
-
-
-
-
-
-
-
-
     global WIN_W, WIN_H
     explicit_size = None
     try:
-
-
-
-
-
-
 
         _REPO = str(Path(__file__).resolve().parent.parent)
         if _REPO not in sys.path:
@@ -919,10 +781,6 @@ def build_window() -> int:
             try:
                 w, h = int(res[0]), int(res[1])
 
-
-
-
-
                 if w >= 100 and h >= 80:
                     explicit_size = (w, h)
             except (TypeError, ValueError):
@@ -932,8 +790,6 @@ def build_window() -> int:
             import traceback
             print(f"[browser_console] load_settings FAILED: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-
-
 
     if explicit_size is not None:
         WIN_W, WIN_H = explicit_size
@@ -950,7 +806,6 @@ def build_window() -> int:
                 print(f"[browser_console] monitor FAILED: {e}", file=sys.stderr)
             WIN_W, WIN_H = 1200, 500
 
-
     try:
         if os.environ.get("CORTEXAGENT_CONSOLE_DEBUG") == "1":
             print(f"[browser_console] WIN_W={WIN_W} WIN_H={WIN_H}", file=sys.stderr)
@@ -959,13 +814,6 @@ def build_window() -> int:
 
     win.set_default_size(WIN_W, WIN_H)
     win.set_size_request(WIN_W, WIN_H)
-
-
-
-
-
-
-
 
     try:
         win.set_titlebar(None)
@@ -976,15 +824,7 @@ def build_window() -> int:
     except Exception:
         pass
 
-
-
     win.set_resizable(True)
-
-
-
-
-
-
 
     existing = []
     try:
@@ -995,8 +835,6 @@ def build_window() -> int:
         existing = [w for w in (r.stdout or "").split() if w.strip().isdigit()]
     except Exception:
         existing = []
-
-
 
     try:
         state = _safe_read_json(_OVERLAY_STATE, {})
@@ -1019,36 +857,17 @@ def build_window() -> int:
                 continue
         return 0
 
-
-
-
-
-
-
-
-
-
-
-
-
     window_ovl = Gtk.Overlay()
     win.add(window_ovl)
 
-
     outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
     window_ovl.add(outer)
-
-
-
-
-
 
     top_strip = Gtk.EventBox()
     top_strip.get_style_context().add_class("top-strip")
     top_strip.set_size_request(-1, 24)
     top_strip.set_above_child(False)
     outer.pack_start(top_strip, False, False, 0)
-
 
     _drag_state = {"x": 0, "y": 0, "button": 0}
 
@@ -1073,7 +892,6 @@ def build_window() -> int:
     top_strip.connect("button-press-event", _on_strip_press)
     top_strip.connect("button-release-event", _on_strip_release)
 
-
     strip_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
     strip_row.set_border_width(2)
     top_strip.add(strip_row)
@@ -1091,9 +909,7 @@ def build_window() -> int:
     title_lbl.set_xalign(0.0)
     strip_row.pack_start(title_lbl, True, True, 0)
 
-
     strip_row.pack_start(Gtk.Box(), True, True, 0)
-
 
     def _on_minimize(_btn):
         try:
@@ -1107,7 +923,6 @@ def build_window() -> int:
     min_btn.get_style_context().add_class("corner-btn")
     min_btn.connect("clicked", _on_minimize)
     strip_row.pack_start(min_btn, False, False, 0)
-
 
     def _on_close_x(_btn):
         _record_close()
@@ -1127,19 +942,14 @@ def build_window() -> int:
     close_btn.connect("clicked", _on_close_x)
     strip_row.pack_start(close_btn, False, False, 0)
 
-
     body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
     body.set_border_width(0)
     outer.pack_start(body, True, True, 0)
-
 
     bottom_strip = Gtk.Box()
     bottom_strip.set_size_request(-1, 4)
     bottom_strip.get_style_context().add_class("body-strip")
     outer.pack_start(bottom_strip, False, False, 0)
-
-
-
 
     sidebar_scroll = Gtk.ScrolledWindow()
     sidebar_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -1190,9 +1000,6 @@ def build_window() -> int:
         body_lbl.set_margin_bottom(2)
         sidebar.pack_start(body_lbl, False, False, 0)
 
-
-
-
         active_lbl = None
         if name == "browser":
             active_lbl = Gtk.Label()
@@ -1209,30 +1016,21 @@ def build_window() -> int:
         list_box.set_margin_bottom(4)
         sidebar.pack_start(list_box, False, False, 0)
         _sidebar_labels[name] = body_lbl
-        _sidebar_labels[name + "_list"] = list_box  # type: ignore[assignment]
+        _sidebar_labels[name + "_list"] = list_box
         return body_lbl, list_box
-
-
-
-
-
 
     _browser_lbl, _browser_list = _add_panel_box("browser", "BROWSER")
     _tasks_lbl, _tasks_list = _add_panel_box("tasks", "TASKS")
-
 
     vte = Vte.Terminal()
     vte.set_scrollback_lines(2000)
     vte.set_audible_bell(False)
     vte.set_mouse_autohide(True)
 
-
-
     try:
         vte.set_input_enabled(True)
     except Exception:
         pass
-
 
     font = Pango.FontDescription("Mono 11")
     vte.set_font(font)
@@ -1241,12 +1039,6 @@ def build_window() -> int:
     vte_frame.set_shadow_type(Gtk.ShadowType.IN)
     vte_frame.get_style_context().add_class("terminal-frame")
     vte_frame.add(vte)
-
-
-
-
-
-
 
     vte_overlay = Gtk.Overlay()
     vte_overlay.add(vte_frame)
@@ -1270,12 +1062,6 @@ def build_window() -> int:
         btn.connect("clicked", on_click)
         return btn
 
-
-
-
-
-
-
     def _on_enter(_btn):
         try:
             vte.feed_child(b"\r")
@@ -1284,31 +1070,13 @@ def build_window() -> int:
 
     enter_btn = _make_corner_btn("↵", None, _on_enter)
 
-
-
-
-
-
     def _on_escape(_btn):
         try:
             vte.feed_child(b"\x1b")
         except Exception:
             pass
 
-
-
     esc_btn = _make_corner_btn("Esc.", None, _on_escape, size=KEY_BTN_W)
-
-
-
-
-
-
-
-
-
-
-
 
     ctrl_strip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
     ctrl_strip.set_size_request(KEY_STRIP_W, -1)
@@ -1318,11 +1086,8 @@ def build_window() -> int:
     ctrl_strip.set_margin_bottom(6)
     ctrl_strip.set_margin_end(6)
 
-
     spacer = Gtk.Box()
     ctrl_strip.pack_start(spacer, True, True, 0)
-
-
 
     esc_btn.set_halign(Gtk.Align.CENTER)
     ctrl_strip.pack_start(esc_btn, False, False, 0)
@@ -1331,20 +1096,15 @@ def build_window() -> int:
     ctrl_strip.pack_start(enter_btn, False, False, 0)
     body.pack_start(ctrl_strip, False, False, 0)
 
-
-
-
     def _resize_keys(_win=None, _alloc=None):
         alloc_h = ctrl_strip.get_allocated_height()
         if alloc_h <= 0:
             return
 
-
         key_h = max(40, (alloc_h - 12 - 6) // 2)
         esc_btn.set_size_request(KEY_BTN_W, key_h)
         enter_btn.set_size_request(KEY_BTN_W, key_h)
     win.connect("size-allocate", _resize_keys)
-
 
     def _refresh_browser_rows():
 
@@ -1354,15 +1114,12 @@ def build_window() -> int:
             _browser_list.remove(row)
         _browser_rows.clear()
 
-
         cap = 5
         for t in tabs[:cap]:
             title = (t.get("title") or "?")[:42]
             url = (t.get("url") or "?")
             if len(url) > 42:
                 url = url[:39] + "…"
-
-
 
             title = _markup_escape(_html_decode(title))
             url = _markup_escape(_html_decode(url))
@@ -1381,17 +1138,6 @@ def build_window() -> int:
                 btn.get_style_context().add_class("sidebar-tab-active")
             def _on_tab_click(_b, tab=t):
 
-
-
-
-
-
-
-
-
-
-
-
                 try:
                     win.unfocus()
                 except Exception:
@@ -1401,8 +1147,6 @@ def build_window() -> int:
                 except Exception:
                     pass
                 _focus_tab(tab)
-
-
 
             btn.connect("clicked", _on_tab_click)
             _browser_list.pack_start(btn, False, False, 0)
@@ -1420,20 +1164,10 @@ def build_window() -> int:
 
         rows = []
 
-
-
-
-
         for idx, text, status in _plan_steps()[:8]:
             rows.append((idx, text, status))
 
         if not rows:
-
-
-
-
-
-
 
             live_task = _live_primary_task()
             if live_task:
@@ -1448,7 +1182,6 @@ def build_window() -> int:
                     "succeeded":"#7fb069",
                     "cancelled":"#8a7d68",
                 }.get(state, "#8a7d68")
-
 
                 if len(title) > 38:
                     title = title[:35] + "…"
@@ -1500,7 +1233,6 @@ def build_window() -> int:
             label.set_xalign(0.0)
             prefix = f"{idx}." if idx is not None else "·"
 
-
             safe_text = _markup_escape(text[:48])
             label.set_markup(
                 f"<span foreground='{color}' font_weight='bold'>{mark}</span> "
@@ -1527,15 +1259,6 @@ def build_window() -> int:
     GLib.timeout_add_seconds(REFRESH_SECS, _refresh_sidebar)
     GLib.idle_add(_refresh_sidebar)
 
-
-
-
-
-
-
-
-
-
     def _on_win_keypress(_widget, event):
         try:
             if event.keyval == Gdk.KEY_Escape:
@@ -1544,11 +1267,6 @@ def build_window() -> int:
         except Exception:
             pass
         return False
-
-
-
-
-
 
     base_path = os.environ.get("PATH") or ":".join([
         "/usr/local/sbin", "/usr/local/bin", "/usr/sbin",
@@ -1594,11 +1312,6 @@ def build_window() -> int:
         except Exception:
             pass
 
-
-
-
-
-
     def _on_escape():
         pid = vte_pid_holder[0]
         if pid is None:
@@ -1631,15 +1344,6 @@ def build_window() -> int:
     except Exception as e:
         vte.feed(b"\x1b[1;31mPTY spawn failed:\x1b[0m " + str(e).encode() + b"\r\n")
 
-
-
-
-
-
-
-
-
-
     import atexit as _atexit
     import signal as _signal
 
@@ -1661,9 +1365,6 @@ def build_window() -> int:
     except Exception:
         pass
 
-
-
-
     def _record_lifecycle():
         try:
             wid = win.get_window().get_xid() if win.get_window() else 0
@@ -1673,7 +1374,6 @@ def build_window() -> int:
         return False
 
     GLib.idle_add(_record_lifecycle)
-
 
     def _on_destroy(*_a):
         _record_close()
@@ -1685,10 +1385,6 @@ def build_window() -> int:
     win.connect("destroy", _on_destroy)
     win.connect("key-press-event", _on_win_keypress)
 
-
-
-
-
     def _on_window_click(_w, _event):
         try:
             win.set_keep_above(True)
@@ -1697,8 +1393,6 @@ def build_window() -> int:
         return False
     win.connect("button-press-event", _on_window_click)
 
-
-
     try:
         from lib.popup_themes import load_settings
         _apply_theme(load_settings().get("theme", "amber"))
@@ -1706,11 +1400,7 @@ def build_window() -> int:
         pass
     win.show_all()
 
-
-
-
     def _dprint(*a):
-
 
         if os.environ.get("CORTEXAGENT_CONSOLE_DEBUG") == "1":
             print("[browser_console]", *a, file=sys.stderr)
@@ -1756,13 +1446,11 @@ def build_window() -> int:
     Gtk.main()
     return 0
 
-
 def open_in_thread() -> threading.Thread:
     t = threading.Thread(target=build_window, daemon=True,
                          name="browser-console")
     t.start()
     return t
-
 
 def main() -> int:
     try:
@@ -1770,7 +1458,6 @@ def main() -> int:
     except Exception as e:
         print(f"⚠️ browser console failed: {e}", file=sys.stderr)
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

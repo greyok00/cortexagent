@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 from typing import Any, Dict
 
-
-
 _JS = r"""
 (() => {
   if (window.__stealth_patched__) return;   // idempotent: never double-patch a document
@@ -115,7 +113,6 @@ _JS = r"""
   window.__stealth_seed__ = SEED;
 })();
 """
-
 
 def build_init_script(profile: Dict[str, Any]) -> str:
 

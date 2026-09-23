@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-
 STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
                                   str(Path.home() / ".cortexagent")))
 SCHEDULER_DIR = STATE_DIR / "scheduler"
@@ -21,10 +20,8 @@ STATE_FILE = SCHEDULER_DIR / "state.json"
 LOCK_FILE = SCHEDULER_DIR / "lock"
 SNAPSHOT_BACKUP_DIR = SCHEDULER_DIR / "snapshots"
 
-
 SCHEMA_VERSION = 2
 TASK_VERSION = 1
-
 
 VALID_STATES = {"scheduled", "queued", "running", "succeeded", "failed",
                 "paused", "canceled", "archived", "interrupted", "retry_wait"}
@@ -33,29 +30,20 @@ PAYLOAD_TYPES = {"command", "llm", "subagent", "image", "video", "browser",
                  "filesystem", "network", "custom"}
 TRIGGER_TYPES = {"cron", "daily", "weekly", "date", "interval", "manual"}
 
-
 def _ensure_dirs() -> None:
 
     SCHEDULER_DIR.mkdir(parents=True, exist_ok=True)
     SNAPSHOT_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
-
 def _now_iso() -> str:
 
     return datetime.now(timezone.utc).isoformat()
-
 
 def _now() -> datetime:
 
     return datetime.now(timezone.utc)
 
-
-
-
-
-
 class SchedulerLock:
-
 
     def __init__(self, lock_path: Path = LOCK_FILE):
         self.lock_path = lock_path
@@ -92,11 +80,6 @@ class SchedulerLock:
     def __exit__(self, *args):
         self.release()
 
-
-
-
-
-
 def _load_state() -> Dict:
 
     try:
@@ -111,7 +94,6 @@ def _load_state() -> Dict:
         pass
     return {"generation": 0, "schema_version": SCHEMA_VERSION, "last_reconciled": None}
 
-
 def _save_state(state: Dict) -> None:
 
     _ensure_dirs()
@@ -119,25 +101,20 @@ def _save_state(state: Dict) -> None:
     state["updated_at"] = _now_iso()
     _atomic_write_json(STATE_FILE, state)
 
-
 def _atomic_write_json(path: Path, data: Dict) -> None:
 
     tmp_path = path.with_suffix(".tmp")
     bak_path = path.with_suffix(".bak")
-
 
     with tmp_path.open('w') as f:
         json.dump(data, f, indent=2, default=str)
         f.flush()
         os.fsync(f.fileno())
 
-
     if path.exists():
         shutil.copy2(str(path), str(bak_path))
 
-
     os.replace(str(tmp_path), str(path))
-
 
     try:
         dir_fd = os.open(str(path.parent), os.O_RDONLY)
@@ -146,7 +123,6 @@ def _atomic_write_json(path: Path, data: Dict) -> None:
     except Exception:
         pass
 
-
 def _atomic_append_ndjson(path: Path, record: Dict) -> None:
 
     _ensure_dirs()
@@ -154,11 +130,6 @@ def _atomic_append_ndjson(path: Path, record: Dict) -> None:
         f.write(json.dumps(record, default=str) + '\n')
         f.flush()
         os.fsync(f.fileno())
-
-
-
-
-
 
 def _make_task(**overrides) -> Dict:
 
@@ -190,7 +161,6 @@ def _make_task(**overrides) -> Dict:
     task.update(overrides)
     return task
 
-
 def _next_run(overrides: Dict) -> Optional[str]:
 
     now = _now()
@@ -221,11 +191,6 @@ def _next_run(overrides: Dict) -> Optional[str]:
 
     return None
 
-
-
-
-
-
 def _make_event(event_type: str, task_id: str, **fields) -> Dict:
 
     version = fields.get("version", 1)
@@ -244,7 +209,6 @@ def _make_event(event_type: str, task_id: str, **fields) -> Dict:
         "checksum": checksum,
     }
 
-
 def _append_event(event: Dict) -> None:
 
     _atomic_append_ndjson(EVENTS_FILE, event)
@@ -252,7 +216,6 @@ def _append_event(event: Dict) -> None:
     state = _load_state()
     state["generation"] = state.get("generation", 0) + 1
     _save_state(state)
-
 
 def _load_events() -> List[Dict]:
 
@@ -270,11 +233,6 @@ def _load_events() -> List[Dict]:
         pass
     return events
 
-
-
-
-
-
 def _load_snapshot() -> Dict:
 
     try:
@@ -286,11 +244,9 @@ def _load_snapshot() -> Dict:
     except Exception:
         return {}
 
-
 def _save_snapshot(tasks: Dict) -> None:
 
     _atomic_write_json(TASKS_FILE, tasks)
-
 
     backups = sorted(SNAPSHOT_BACKUP_DIR.glob("tasks-*.tmp.json"))
     if len(backups) > 5:
@@ -299,7 +255,6 @@ def _save_snapshot(tasks: Dict) -> None:
                 old.unlink()
             except Exception:
                 pass
-
 
 def _rebuild_snapshot(events: List[Dict]) -> Dict:
 
@@ -353,13 +308,7 @@ def _rebuild_snapshot(events: List[Dict]) -> Dict:
 
     return tasks
 
-
-
-
-
-
 class Store:
-
 
     def __init__(self):
         _ensure_dirs()
@@ -373,7 +322,6 @@ class Store:
 
             _append_event(event)
 
-
             if event["type"] == "create":
                 self._tasks[task_id] = {**event["data"], "id": task_id}
             elif event["type"] in ("update", "pause", "resume", "cancel"):
@@ -385,9 +333,7 @@ class Store:
                     self._tasks[task_id]["state"] = "archived"
                     self._tasks[task_id]["version"] = event.get("version", 1)
 
-
             _save_snapshot(self._tasks)
-
 
             return {
                 "ok": True,
@@ -401,13 +347,11 @@ class Store:
                 ).hexdigest()[:12],
             }
 
-
     def create(self, title: str = "", kind: str = "user",
                trigger: str = "manual", schedule_value: str = "",
                payload_type: str = "command", payload: Dict = None,
                owner: str = "cli", ephemeral: bool = False,
                visible: bool = True, idempotency_key: str = "") -> Optional[Dict]:
-
 
         if kind not in TASK_KINDS:
             return {"ok": False, "error": f"Invalid kind: {kind}", "no_change": True}
@@ -416,7 +360,6 @@ class Store:
         if trigger not in TRIGGER_TYPES:
             return {"ok": False, "error": f"Invalid trigger: {trigger}", "no_change": True}
 
-
         if idempotency_key:
             for tid, task in self._tasks.items():
                 if task.get("idempotency_key") == idempotency_key:
@@ -424,7 +367,6 @@ class Store:
                         "ok": False, "error": "Duplicate idempotency key",
                         "no_change": True, "duplicate_of": tid
                     }
-
 
         task = _make_task(
             title=title, kind=kind, payload_type=payload_type,
@@ -445,11 +387,9 @@ class Store:
 
         return self._write(task["id"], event)
 
-
     def get(self, task_id: str) -> Optional[Dict]:
 
         return self._tasks.get(task_id)
-
 
     def list(self, state: Optional[str] = None, kind: Optional[str] = None,
              visible_only: bool = True) -> List[Dict]:
@@ -462,7 +402,6 @@ class Store:
         if visible_only:
             results = [t for t in results if t.get("visible", True)]
         return sorted(results, key=lambda t: t.get("next_run_at") or "")
-
 
     def update(self, task_id: str, expected_version: int, **fields) -> Dict:
 
@@ -484,7 +423,6 @@ class Store:
         event = _make_event("update", task_id, **fields, version=new_version)
         return self._write(task_id, event)
 
-
     def pause(self, task_id: str) -> Dict:
 
         if task_id not in self._tasks:
@@ -497,7 +435,6 @@ class Store:
 
         event = _make_event("pause", task_id, version=new_version)
         return self._write(task_id, event)
-
 
     def resume(self, task_id: str) -> Dict:
 
@@ -514,14 +451,12 @@ class Store:
                             version=new_version)
         return self._write(task_id, event)
 
-
     def run_now(self, task_id: str) -> Dict:
 
         if task_id not in self._tasks:
             return {"ok": False, "error": "Task not found", "no_change": True}
 
         execution_id = str(uuid.uuid4())
-
 
         _atomic_append_ndjson(EXECUTIONS_FILE, {
             "id": execution_id,
@@ -557,7 +492,6 @@ class Store:
         })
         return {"ok": True, "task_id": task_id, "status": status}
 
-
     def cancel(self, task_id: str) -> Dict:
 
         if task_id not in self._tasks:
@@ -572,7 +506,6 @@ class Store:
         event = _make_event("cancel", task_id, version=new_version)
         return self._write(task_id, event)
 
-
     def archive(self, task_id: str) -> Dict:
 
         if task_id not in self._tasks:
@@ -586,7 +519,6 @@ class Store:
 
         event = _make_event("archive", task_id, version=new_version)
         return self._write(task_id, event)
-
 
     def clear_test_tasks(self) -> Dict:
 
@@ -605,19 +537,14 @@ class Store:
 
         return {"ok": True, "removed_count": len(removed), "removed_ids": removed}
 
-
     def reconcile(self) -> Dict:
-
 
         state = _load_state()
 
-
         events = _load_events()
-
 
         if not self._tasks:
             self._tasks = _rebuild_snapshot(events)
-
 
         recovered = []
         due = []
@@ -631,17 +558,14 @@ class Store:
                 task["enabled"] = True
                 recovered.append(task_id)
 
-
             if task.get("kind") not in TASK_KINDS:
                 task["kind"] = "user"
                 recovered.append(task_id)
-
 
             if task.get("state") == "running":
                 task["state"] = "interrupted"
                 task["enabled"] = True
                 interrupted.append(task_id)
-
 
             if task.get("state") == "scheduled" and task.get("enabled", True):
                 if not task.get("next_run_at") or task.get("next_run_at") < now.isoformat():
@@ -655,11 +579,9 @@ class Store:
                     task["next_run_at"] = _next_run(task)
                     task["updated_at"] = _now_iso()
 
-
         for task_id in due:
             if task_id in self._tasks:
                 self._tasks[task_id]["state"] = "queued"
-
 
         _save_snapshot(self._tasks)
         state["generation"] = state.get("generation", 0) + 1
@@ -667,7 +589,6 @@ class Store:
         state["recovered_count"] = len(recovered)
         state["interrupted_count"] = len(interrupted)
         _save_state(state)
-
 
         summary = {
             "ok": True,
@@ -680,13 +601,11 @@ class Store:
         }
         return summary
 
-
     def migrate_from_json(self, schedule_file: Optional[Path] = None,
                           queue_file: Optional[Path] = None) -> Dict:
 
         migrated = 0
         errors = []
-
 
         if schedule_file is None:
             schedule_file = STATE_DIR / "overseer_schedule.json"
@@ -714,7 +633,6 @@ class Store:
             pass
         except Exception as e:
             errors.append(f"Schedule migration error: {e}")
-
 
         if queue_file is None:
             queue_file = STATE_DIR / "overseer_queue.json"
@@ -747,18 +665,12 @@ class Store:
             "errors": errors,
         }
 
-
-
-
-
-
 def main():
 
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
         print("Scheduler store smoke tests:")
-
 
         store = Store()
         receipt = store.create(
@@ -769,16 +681,13 @@ def main():
         assert receipt["ok"], f"Create failed: {receipt}"
         print(f"  ✅ Create: {receipt['task_id'][:8]}")
 
-
         task = store.get(receipt["task_id"])
         assert task is not None, "Get returned None"
         print(f"  ✅ Get: title={task['title']}")
 
-
         tasks = store.list()
         assert len(tasks) >= 1, "List returned no tasks"
         print(f"  ✅ List: {len(tasks)} tasks")
-
 
         pause_receipt = store.pause(receipt["task_id"])
         assert pause_receipt["ok"], "Pause failed"
@@ -786,21 +695,17 @@ def main():
         assert resume_receipt["ok"], "Resume failed"
         print("  ✅ Pause + Resume")
 
-
         run_receipt = store.run_now(receipt["task_id"])
         assert run_receipt["ok"], "Run now failed"
         print(f"  ✅ Run now: execution_id={run_receipt['execution_id'][:8]}")
-
 
         cancel_receipt = store.cancel(receipt["task_id"])
         assert cancel_receipt["ok"], "Cancel failed"
         print("  ✅ Cancel")
 
-
         result = store.reconcile()
         assert result["ok"], "Reconcile failed"
         print(f"  ✅ Reconcile: {result}")
-
 
         store.create(
             title="smoke-test", kind="test", ephemeral=True,
@@ -814,7 +719,6 @@ def main():
         return
 
     print("usage: store.py smoke", file=sys.stderr)
-
 
 if __name__ == "__main__":
     main()

@@ -11,14 +11,12 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib import domain_ingest, domain_db  # noqa: E402
-from lib.config import CFG  # noqa: E402
-
+from lib import domain_ingest, domain_db
+from lib.config import CFG
 
 def source_dir(domain: str) -> Path:
 
     return CFG.state_dir / "domains" / "sources" / domain
-
 
 def ingest_dir(domain: str, src_dir: Path) -> int:
 
@@ -33,7 +31,6 @@ def ingest_dir(domain: str, src_dir: Path) -> int:
             total += r.get("chunks", 0)
             if not r.get("ok"):
 
-
                 print(f"  {f.name}: {r.get('error', 'ingest failed')}", file=sys.stderr)
             else:
                 print(f"  {f.name}: {r.get('chunks', 0)} chunks")
@@ -41,7 +38,6 @@ def ingest_dir(domain: str, src_dir: Path) -> int:
             print(f"  {f.name}: ERROR {e}", file=sys.stderr)
     print(f"{domain} ingest done — {total} chunks stored")
     return total
-
 
 def _smoke() -> int:
     fails = 0
@@ -76,13 +72,11 @@ def _smoke() -> int:
     print("ingest_common smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
 
-
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         return _smoke()
     print("Usage: python3 scripts/ingest_common.py --smoke")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

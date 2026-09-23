@@ -11,7 +11,6 @@ if _REPO_ROOT not in sys.path:
 
 _registered = False
 
-
 def ensure_registered() -> int:
 
     global _registered
@@ -33,9 +32,6 @@ def ensure_registered() -> int:
     except Exception as e:
         print(f"harness_tools: skills skipped: {e}", file=sys.stderr)
 
-
-
-
     if os.environ.get("CORTEXAGENT_MCP_SERVERS", "").strip():
         try:
             from lib.mcp_client import register_mcp_tools
@@ -44,7 +40,6 @@ def ensure_registered() -> int:
             print(f"harness_tools: MCP tools skipped: {e}", file=sys.stderr)
     _registered = True
     return total
-
 
 def _smoke() -> int:
     n = ensure_registered()
@@ -58,7 +53,6 @@ def _smoke() -> int:
     print(f"  chrome_*: {len(chrome)}  skill_*: {len(skills)}  mcp_*: {len(mcp)}")
     print("harness_tools: OK")
     return 0
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
