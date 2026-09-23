@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "purpose": "Curated reputable-site registry for the research MCP server. Primary = cite-first sources (official documents, standards, primary data). Secondary = reliable reporting/reference. Edit by hand; agents never write this file.",
+    "updated": "2026-09-23"
+  },
+  "categories": {
+    "general": [
+      {"domain": "wikipedia.org", "tier": "secondary", "notes": "reference summary; follow its citations to primary sources"},
+      {"domain": "wikidata.org", "tier": "primary", "notes": "structured facts with references"},
+      {"domain": "archive.org", "tier": "primary", "notes": "archived documents; good for changed/removed pages"},
+      {"domain": "reuters.com", "tier": "secondary", "notes": "wire reporting"},
+      {"domain": "apnews.com", "tier": "secondary", "notes": "wire reporting"},
+      {"domain": "npr.org", "tier": "secondary", "notes": "public radio, editorial standards"},
+      {"domain": "bbc.com", "tier": "secondary", "notes": "international coverage"}
+    ],
+    "law": [
+      {"domain": "congress.gov", "tier": "primary", "notes": "US federal bills/laws"},
+      {"domain": "ecfr.gov", "tier": "primary", "notes": "current Code of Federal Regulations"},
+      {"domain": "law.cornell.edu", "tier": "secondary", "notes": "US Code + CFR mirrors, state statutes; annotated"},
+      {"domain": "govinfo.gov", "tier": "primary", "notes": "Federal Register, US Code, Congressional Record"},
+      {"domain": "courtlistener.com", "tier": "primary", "notes": "free case law (RECAP archive of PACER)"},
+      {"domain": "supremecourt.gov", "tier": "primary", "notes": "SCOTUS slip opinions"},
+      {"domain": "justia.com", "tier": "secondary", "notes": "case law + statutes"},
+      {"domain": "osec.doc.gov", "tier": "primary", "notes": "agency guidance"},
+      {"domain": "usa.gov", "tier": "primary", "notes": "official federal agency directory"}
+    ],
+    "osint": [
+      {"domain": "whois.arin.net", "tier": "primary", "notes": "IP/ASN registry"},
+      {"domain": "rdap.org", "tier": "primary", "notes": "registration data access protocol"},
+      {"domain": "crt.sh", "tier": "primary", "notes": "certificate transparency logs"},
+      {"domain": "shodan.io", "tier": "secondary", "notes": "internet-exposed device index"},
+      {"domain": "censys.io", "tier": "secondary", "notes": "internet asset search"},
+      {"domain": "dnsdumpster.com", "tier": "secondary", "notes": "DNS recon"},
+      {"domain": "haveibeenpwned.com", "tier": "primary", "notes": "breach corpus"},
+      {"domain": "sec.gov", "tier": "primary", "notes": "EDGAR filings, ownership, enforcement"}
+    ],
+    "dfir": [
+      {"domain": "nvd.nist.gov", "tier": "primary", "notes": "CVE NVD with CVSS/KEV/EPSS"},
+      {"domain": "cve.org", "tier": "primary", "notes": "CVE program records"},
+      {"domain": "attackerck.com", "tier": "primary", "notes": "MITRE ATT&CK techniques"},
+      {"domain": "attack.mitre.org", "tier": "primary", "notes": "MITRE ATT&CK framework"},
+      {"domain": "cisa.gov", "tier": "primary", "notes": "advisories, KEV catalog, shields-up guidance"},
+      {"domain": "first.org", "tier": "primary", "notes": "CVSS specification"},
+      {"domain": "osv.dev", "tier": "primary", "notes": "open-source vulnerability database"},
+      {"domain": "github.com/advisories", "tier": "primary", "notes": "GHSA advisories"}
+    ],
+    "programming": [
+      {"domain": "developer.mozilla.org", "tier": "primary", "notes": "web platform reference"},
+      {"domain": "docs.python.org", "tier": "primary", "notes": "language + stdlib docs"},
+      {"domain": "github.com", "tier": "primary", "notes": "source code; check licenses"},
+      {"domain": "stackoverflow.com", "tier": "secondary", "notes": "community answers; verify against docs"},
+      {"domain": "arxiv.org", "tier": "primary", "notes": "preprints (CS/AI papers)"},
+      {"domain": "rfc-editor.org", "tier": "primary", "notes": "internet standards"},
+      {"domain": "pyproject.readthedocs.io", "tier": "secondary", "notes": "packaging reference"}
+    ],
+    "business": [
+      {"domain": "sec.gov", "tier": "primary", "notes": "filings, financial data"},
+      {"domain": "bea.gov", "tier": "primary", "notes": "economic accounts"},
+      {"domain": "census.gov", "tier": "primary", "notes": "demographic + business data"},
+      {"domain": "bls.gov", "tier": "primary", "notes": "labor statistics"},
+      {"domain": "federalreserve.gov", "tier": "primary", "notes": "monetary data, FOMC"},
+      {"domain": "oecd.org", "tier": "primary", "notes": "international economic data"},
+      {"domain": "worldbank.org", "tier": "primary", "notes": "development indicators"}
+    ]
+  },
+  "excluded": ["pinterest.com", "quora.com", "medium.com", "reddit.com"]
+}
