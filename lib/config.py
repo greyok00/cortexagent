@@ -66,7 +66,7 @@ def _env_float(name: str, conf_section: str, conf_key: str,
         return default
 
 LOCKED_KEYS = {
-    "ctx_tokens": 98304,
+    "ctx_tokens": 131072,
     "model_ngl": 999,
     "model_fa": "on",
     "model_ctk": "q4_0",
@@ -169,7 +169,7 @@ class Config:
             "CORTEXAGENT_AUTHOR", "branding", "author", "")
 
         self.ctx_tokens = _env_locked_int(
-            "ctx_tokens", "CORTEXAGENT_CTX", "backend", "ctx_tokens", 98304)
+            "ctx_tokens", "CORTEXAGENT_CTX", "backend", "ctx_tokens", 131072)
         self.model_ngl = _env_locked_int(
             "model_ngl", "CORTEXAGENT_NGL", "backend", "model_ngl", 999)
         self.model_fa = _env_locked(
