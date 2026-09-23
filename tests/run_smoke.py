@@ -707,53 +707,6 @@ def test_nvidia_smi_toks() -> R:
     finally:
         srv.shutdown()
 
-def test_diffusion_backend() -> R:
-
-    env = dict(os.environ)
-
-    empty_ckpt = Path(tempfile.mkdtemp(prefix="ca-ckpt-"))
-    fake_hf = Path(tempfile.mkdtemp(prefix="ca-hf-"))
-    env["CORTEXAGENT_CHECKPOINT_DIR"] = str(empty_ckpt)
-    env["HUGGINGFACE_HUB_CACHE"] = str(fake_hf / "hub")
-    env["CORTEXAGENT_IMAGE_MODEL"] = "v1-5-pruned-emaonly.safetensors"
-    env["CORTEXAGENT_VIDEO_MODEL"] = "Lightricks/LTX-Video"
-    out_img = Path(tempfile.mkdtemp(prefix="ca-diff-")) / "out.png"
-    out_vid = Path(tempfile.mkdtemp(prefix="ca-diffv-")) / "out.mp4"
-    script = (
-        f"import sys; sys.path.insert(0,{str(REPO)!r}); "
-        f"from lib import diffusion_backend as db; "
-        f"results=[]; "
-        f"results.append(('kind_sd15', db._detect_kind('v1-5-pruned-emaonly.safetensors')=='sd15')); "
-        f"results.append(('kind_sdxl', db._detect_kind('sd_xl_base_1.0.safetensors')=='sdxl')); "
-        f"results.append(('defaults', db._defaults_for('sd_xl_base_1.0.safetensors')==(3840,2160,40,7.0))); "
-        f"results.append(('native_sdxl_4k', db._native_gen_size(3840,2160,'sdxl')==(1920,1088))); "
-        f"results.append(('native_sd15_small', db._native_gen_size(512,512,'sd15')==(512,512))); "
-        f"results.append(('ckpt_complete_miss', db._ckpt_complete(__import__('pathlib').Path('{str(empty_ckpt)}'+'/x.safetensors'))==False)); "
-        f"results.append(('img_model', db._resolve_image_model()=='v1-5-pruned-emaonly.safetensors')); "
-        f"results.append(('vid_model', db._resolve_video_model()=='Lightricks/LTX-Video')); "
-        f"results.append(('hf_repo', db._video_is_hf_repo('Lightricks/LTX-Video')==True)); "
-        f"results.append(('hf_cached_miss', db._hf_repo_cached('Lightricks/LTX-Video')==False)); "
-        f"st=db.status(); "
-        f"results.append(('status_keys', all(k in st for k in ['diffusers_ready','image_model','image_kind','video_model','video_cached','cudnn_enabled']))); "
-        f"results.append(('img_path_miss', db._resolve_image_path() is None)); "
-        f"gi=db.gen_image('a zebra in a pink sweater', output={str(out_img)!r}, steps=2, timeout=10); "
-        f"results.append(('img_honest', gi==False)); "
-        f"gv=db.gen_video('waves', output={str(out_vid)!r}, timeout=10); "
-        f"results.append(('vid_honest', gv==False)); "
-        f"print(' '.join(f'{{k}}={{int(v)}}' for k,v in results))")
-    r = subprocess.run([sys.executable, "-c", script], env=env,
-                      capture_output=True, text=True, timeout=90)
-    checks = {}
-    for tok in r.stdout.split():
-        if "=" in tok:
-            k, v = tok.split("=", 1)
-            checks[k] = (v == "1")
-    ok = bool(checks) and all(checks.values())
-    detail = " ".join(f"{k}={'OK' if v else 'BAD'}" for k, v in checks.items())
-    if not ok and r.stderr:
-        detail += f" err={r.stderr[-240:]}"
-    return R("diffusion_backend diffusers (offline)", "diffusion", ok, detail)
-
 def test_patch_binary_wired() -> R:
 
     bad = []
@@ -890,8 +843,6 @@ COVERAGE = [
     ("engine/dag.py + workflow.py — import", "static_imports", True),
     ("install.sh — bash syntax", "static_bashn", True),
     ("lib/prompt_queue.py — decompose/conflict/supersede (#25)", "prompt_queue + promptqueue_hook", True),
-    ("lib/tray.py — headless keeper + overseer ownership (#26)", "tray_headless", True),
-    ("lib/diffusion_backend.py — diffusers in-process (#30/#31/#33)", "diffusion_backend", True),
     ("lib/banner.py — ANSI in-place boot banner + static fallback", "banner", True),
     ("lib/patch_binary.py — install.sh post-install wiring + module", "patch_binary_wired", True),
     ("lib/doctor.py — settings drift repair + idempotent + non-destructive", "doctor_drift_repair", True),
@@ -1449,7 +1400,7 @@ def test_harness_stub_mode() -> R:
     return R("harness stub mode", "harness", True,
              f"{len(stubs)} stubs, {s_chars:,} chars vs {f_chars:,} full")
 
-LIVE_AREAS = {"daemon", "cli", "tray"}
+LIVE_AREAS = {"daemon", "cli"}
 TESTS = {
     "static": [test_static_imports, test_static_bashn],
     "config": [test_config_isolated, test_config_user_shared],
@@ -1464,7 +1415,6 @@ TESTS = {
     "banner": [test_banner],
     "promptqueue": [test_prompt_queue, test_prompt_queue_hook],
     "nvsmi": [test_nvidia_smi_toks],
-    "diffusion": [test_diffusion_backend],
     "patch": [test_patch_binary_wired],
     "doctor": [test_doctor_drift_repair],
     "overseer": [test_overseer_unit_template, test_launch_model_lifecycle,

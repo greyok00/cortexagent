@@ -170,22 +170,6 @@ def _spawn_subagent(prompt: str, model: str = "",
     from lib.overseer import _spawn_subagent as _spawn
     return _spawn(prompt, model=model, timeout=timeout)
 
-def _render_image(path: str, width: int = 60) -> Dict[str, Any]:
-
-    from lib.terminal_image import render_image, render_image_available
-    if not render_image_available():
-        return {"ok": False, "output": "",
-                "error": "chafa unavailable or no image protocol detected"}
-    try:
-        width = int(width)
-    except (TypeError, ValueError):
-        width = 60
-    art = render_image(path, width=width)
-    if not art:
-        return {"ok": False, "output": "",
-                "error": f"could not render image: {path}"}
-    return {"ok": True, "output": art, "error": ""}
-
 _ADD_LLM_PROVIDER_STEPS = (
     "Checklist for adding a new LLM provider to packages/ai (work in order):\n"
     "1. Core types (packages/ai/src/types.ts): add API identifier to the Api type "
@@ -489,11 +473,6 @@ def _register_all() -> None:
          "source": {"type": "string", "description": "file path / URL / title"},
          "text": {"type": "string", "description": "content to ingest"}},
         ["domain", "source", "text"]), _ingest_domain, trust="medium")
-    register_tool("render_image", _schema(
-        "Render an image file in the terminal via chafa (Sixel/Kitty/ANSI)",
-        {"path": {"type": "string", "description": "path to the image file"},
-         "width": {"type": "integer", "description": "target width in cells (default 60)"}},
-        ["path"]), _render_image, trust="high")
     register_tool("add_llm_provider", _schema(
         "Return the step-by-step checklist for adding a new LLM provider to packages/ai",
         {"provider": {"type": "string", "description": "provider name (optional)"}},

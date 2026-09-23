@@ -41,17 +41,6 @@ echo "    minifying source (comments + docstrings)…"
 python3 "${REPO_ROOT}/tools/minify_source.py" 2>&1 | tail -3 || \
   echo "    WARN: source minify failed — leaving .py as-is" >&2
 
-_diff_deps="diffusers transformers accelerate sentencepiece imageio imageio-ffmpeg opencv-python"
-if [ "${CORTEXAGENT_INSTALL_DIFFUSION_DEPS:-0}" = "1" ]; then
-  echo "    installing diffusion deps (torch + ${_diff_deps})…"
-  python3 -m pip install --break-system-packages --user torch "${_diff_deps}" 2>&1 | tail -2 || \
-    echo "    WARN: diffusion deps install failed — see README" >&2
-else
-  echo "    diffusion deps (not auto-installed): torch ${_diff_deps}"
-  echo "      install with: CORTEXAGENT_INSTALL_DIFFUSION_DEPS=1 ${REPO_ROOT}/install.sh"
-  echo "      (needed for: cortexagent gen-image / gen-video)"
-fi
-
 python3 - "${REPO_ROOT}/config" "${CONFIG_DIR}" "${MEMORY_CMD}" "${HOME}" "${REPO_ROOT}" <<'PY'
 import json, os, sys, shutil
 config_dir, isolated_dir, memory_cmd, home, repo_root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
@@ -172,35 +161,6 @@ install_overseer_systemd() {
   fi
 }
 
-install_tray_systemd() {
-  if [ "$(uname -s)" != "Linux" ]; then return; fi
-  if ! command -v systemctl >/dev/null 2>&1; then return; fi
-  if [ ! -f "${REPO_ROOT}/lib/tray.py" ]; then return; fi
-  unit_tpl="${REPO_ROOT}/config/templates/cortexagent-tray.service"
-  unit_out="${HOME}/.config/systemd/user/cortexagent-tray.service"
-  if [ ! -f "${unit_tpl}" ]; then
-    echo "    tray template missing — skipping (${unit_tpl})" >&2
-    return
-  fi
-  if [ -f "${unit_out}" ] && [ ! -f "${unit_out}.bak" ]; then
-    cp -a "${unit_out}" "${unit_out}.bak"
-    echo "    backed up existing unit → ${unit_out}.bak"
-  fi
-  sed -e "s|{{PYTHON}}|${py}|g" -e "s|{{REPO_ROOT}}|${REPO_ROOT}|g" \
-      "${unit_tpl}" > "${unit_out}"
-  echo "    wrote ${unit_out}"
-  if systemctl --user daemon-reload >/dev/null 2>&1; then
-    systemctl --user enable cortexagent-tray.service >/dev/null 2>&1 \
-      && echo "    enabled cortexagent-tray.service (wolf-head tray on login)"
-    if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
-      systemctl --user start cortexagent-tray.service >/dev/null 2>&1 \
-        && echo "    started cortexagent-tray.service (linked to overseer)"
-    else
-      echo "    no DISPLAY/WAYLAND_DISPLAY — skipping tray start (will autostart on next graphical login)"
-    fi
-  fi
-}
-
 install_stealth_chrome_systemd() {
   if [ "${STEALTH_CHROME_SYSTEMD:-1}" != "1" ]; then return; fi
   if [ "$(uname -s)" != "Linux" ]; then return; fi
@@ -242,7 +202,7 @@ install_stealth_chrome_systemd() {
 }
 
 case "$(uname -s)" in
-  Linux) install_systemd; install_overseer_systemd; install_tray_systemd; install_stealth_chrome_systemd ;;
+  Linux) install_systemd; install_overseer_systemd; install_stealth_chrome_systemd ;;
   *) echo "    $(uname -s): systemd install skipped — run 'cortexagent daemon start' manually" ;;
 esac
 

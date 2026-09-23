@@ -108,11 +108,7 @@ def layer_module_smoke() -> R:
 
         if has_main_smoke:
 
-            is_heavy = any(s in path.name for s in
-                           ("diffusion_backend",
-                            "diffusers", "img2img"))
-
-            timeout = 180 if is_heavy else 30
+            timeout = 30
             rc, out, err = _sys_run(
                 ["python3", str(path), "--smoke"], timeout=timeout)
             if rc == 0:
@@ -243,10 +239,6 @@ def layer_hot_paths() -> R:
             ("memory_ontology", {"action": "stats"}),
             ("slimtoken_minify", {"messages": [{"role": "user", "content": "smoke"}] * 2}),
             ("slimtoken_maxify", {"messages": [{"role": "user", "content": "smoke"}]}),
-            ("magicui_generate", {"description": "smoke", "format": "html"}),
-            ("alpaca_get_account", {}),
-            ("ibkr_get_positions", {}),
-            ("quant_trader_strategy", {"symbol": "AAPL"}),
         ]:
             try:
                 result = TOOL_MAP[name](**args)

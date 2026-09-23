@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#d29922"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="860" fill="#0d1117"/>
+  <text x="48" y="52" font-size="26" font-weight="700" fill="#e6edf3">CortexAgent — every piece, and where it runs</text>
+  <text x="48" y="78" font-size="14" fill="#8b949e">Everything on the left lives on your machine and binds to 127.0.0.1. The right side is opt-in — configure nothing and it does not exist.</text>
+
+  <!-- ==================== LOCAL (always) ==================== -->
+  <rect x="24" y="100" width="788" height="524" rx="12" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="48" y="132" font-size="13" font-weight="700" fill="#58a6ff" letter-spacing="1.5">YOUR MACHINE — 127.0.0.1 ONLY, NO ACCOUNTS, NO TELEMETRY</text>
+
+  <!-- session -->
+  <rect x="48" y="152" width="252" height="62" rx="8" fill="#0d1117" stroke="#58a6ff"/>
+  <text x="64" y="176" font-size="14" font-weight="700" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">cortexagent</text>
+  <text x="64" y="196" font-size="11.5" fill="#8b949e">terminal session · one-shot -p · daemon</text>
+
+  <!-- launcher -->
+  <rect x="48" y="252" width="252" height="92" rx="8" fill="#0d1117" stroke="#58a6ff"/>
+  <text x="64" y="276" font-size="14" font-weight="700" fill="#e6edf3">Launcher</text>
+  <text x="64" y="296" font-size="11.5" fill="#8b949e">spawns the model as its own child</text>
+  <text x="64" y="314" font-size="11.5" fill="#8b949e">model dies with the app — VRAM free</text>
+  <text x="64" y="332" font-size="11.5" fill="#8b949e">context auto-fits VRAM: 98304→32768</text>
+
+  <!-- llama.cpp -->
+  <rect x="48" y="382" width="252" height="92" rx="8" fill="#0d1117" stroke="#58a6ff"/>
+  <text x="64" y="406" font-size="14" font-weight="700" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">llama.cpp · 127.0.0.1:11599</text>
+  <text x="64" y="426" font-size="11.5" fill="#8b949e">35B-class MoE, GGUF, on your GPU</text>
+  <text x="64" y="444" font-size="11.5" fill="#8b949e">the brain — no API key, no upload</text>
+  <text x="64" y="462" font-size="11.5" fill="#8b949e">nothing leaves the box</text>
+
+  <!-- slimtoken local -->
+  <rect x="338" y="252" width="216" height="92" rx="8" fill="#0d1117" stroke="#58a6ff"/>
+  <text x="354" y="276" font-size="14" font-weight="700" fill="#e6edf3">SlimToken</text>
+  <text x="354" y="296" font-size="11.5" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">127.0.0.1:11436</text>
+  <text x="354" y="316" font-size="11.5" fill="#8b949e">full compression pipeline</text>
+  <text x="354" y="334" font-size="11.5" fill="#8b949e">real tokenizer-counted budgets</text>
+
+  <!-- memory -->
+  <rect x="338" y="382" width="216" height="92" rx="8" fill="#0d1117" stroke="#58a6ff"/>
+  <text x="354" y="406" font-size="14" font-weight="700" fill="#e6edf3">Memory tiers</text>
+  <text x="354" y="426" font-size="11.5" fill="#8b949e">hot / warm / cold on local disk</text>
+  <text x="354" y="444" font-size="11.5" fill="#8b949e">graph · ontology · BM25 search</text>
+  <text x="354" y="462" font-size="11.5" fill="#8b949e">sessions resume without re-explaining</text>
+
+  <!-- overseer -->
+  <rect x="586" y="252" width="202" height="92" rx="8" fill="#0d1117" stroke="#58a6ff"/>
+  <text x="602" y="276" font-size="14" font-weight="700" fill="#e6edf3">Overseer</text>
+  <text x="602" y="296" font-size="11.5" fill="#8b949e">plans and sequences work</text>
+  <text x="602" y="314" font-size="11.5" fill="#8b949e">worker pool · heartbeats</text>
+  <text x="602" y="332" font-size="11.5" fill="#8b949e">dead workers replaced</text>
+
+  <!-- browser -->
+  <rect x="586" y="382" width="202" height="92" rx="8" fill="#0d1117" stroke="#58a6ff"/>
+  <text x="602" y="406" font-size="14" font-weight="700" fill="#e6edf3">Your browser</text>
+  <text x="602" y="426" font-size="11.5" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">CDP 127.0.0.1:9224</text>
+  <text x="602" y="444" font-size="11.5" fill="#8b949e">10 site-agnostic tools</text>
+  <text x="602" y="462" font-size="11.5" fill="#8b949e">never restarts · never closes tabs</text>
+
+  <!-- local arrows -->
+  <line x1="174" y1="214" x2="174" y2="248" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+  <line x1="174" y1="344" x2="174" y2="378" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+  <line x1="300" y1="192" x2="352" y2="290" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+  <line x1="446" y1="344" x2="262" y2="416" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+  <line x1="322" y1="192" x2="600" y2="290" stroke="#8b949e" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+  <line x1="322" y1="198" x2="600" y2="420" stroke="#8b949e" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+  <text x="368" y="238" font-size="11" fill="#8b949e" transform="rotate(15 368 238)">tools: shell · web · docs · RAG · CVE · SIEM · hardening</text>
+
+  <!-- ==================== CLOUD (opt-in) ==================== -->
+  <rect x="836" y="100" width="420" height="524" rx="12" fill="#161b22" stroke="#d29922" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="860" y="132" font-size="13" font-weight="700" fill="#d29922" letter-spacing="1.5">HYBRID LANE — OPT-IN, SEPARATE, NEVER INTERRUPTS</text>
+
+  <!-- dispatcher -->
+  <rect x="860" y="152" width="372" height="70" rx="8" fill="#0d1117" stroke="#d29922"/>
+  <text x="876" y="176" font-size="14" font-weight="700" fill="#e6edf3">Dispatcher MCP</text>
+  <text x="876" y="196" font-size="11.5" fill="#8b949e" font-family="ui-monospace, Menlo, monospace">stdio — holds no port at all</text>
+
+  <!-- queue -->
+  <rect x="860" y="254" width="372" height="70" rx="8" fill="#0d1117" stroke="#d29922"/>
+  <text x="876" y="278" font-size="14" font-weight="700" fill="#e6edf3">Cloud queue</text>
+  <text x="876" y="298" font-size="11.5" fill="#8b949e">priority red / flagged / routine · complexity-graded</text>
+
+  <!-- optimizer -->
+  <rect x="860" y="356" width="372" height="70" rx="8" fill="#0d1117" stroke="#d29922"/>
+  <text x="876" y="380" font-size="14" font-weight="700" fill="#e6edf3">Cloud optimizer</text>
+  <text x="876" y="400" font-size="11.5" fill="#8b949e">batched jobs run alongside the local model</text>
+
+  <!-- egress -->
+  <rect x="860" y="458" width="372" height="86" rx="8" fill="#0d1117" stroke="#d29922"/>
+  <text x="876" y="482" font-size="14" font-weight="700" fill="#e6edf3">Egress (only if a cloud backend is configured)</text>
+  <text x="876" y="502" font-size="11.5" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">SlimToken 127.0.0.1:11435</text>
+  <text x="876" y="520" font-size="11.5" fill="#8b949e">distill + dedup, tool schemas untouched →</text>
+  <text x="876" y="538" font-size="11.5" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">raw ollama backend 127.0.0.1:11600</text>
+
+  <!-- cloud arrows -->
+  <line x1="1046" y1="222" x2="1046" y2="250" stroke="#d29922" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
+  <line x1="1046" y1="324" x2="1046" y2="352" stroke="#d29922" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
+  <line x1="1046" y1="426" x2="1046" y2="454" stroke="#d29922" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
+
+  <!-- escalation arrow across -->
+  <line x1="687" y1="188" x2="856" y2="188" stroke="#d29922" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrowAmber)"/>
+  <text x="700" y="178" font-size="11" fill="#d29922">struggle detector escalates</text>
+
+  <!-- ==================== BOTTOM BAND ==================== -->
+  <rect x="24" y="656" width="620" height="128" rx="12" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="48" y="686" font-size="13" font-weight="700" fill="#3fb950" letter-spacing="1.5">bin/verify — SIX-LAYER GATE, SHIPS WITH THE REPO</text>
+  <text x="48" y="712" font-size="12" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">0 native build · 1 manifest · 2 contract · 3 smoke</text>
+  <text x="48" y="734" font-size="12" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">4 features (70 reachability checks) · 5 model package</text>
+  <text x="48" y="762" font-size="11.5" fill="#8b949e">the catalog is generated from live handlers — count can't drift from code</text>
+
+  <rect x="668" y="656" width="588" height="128" rx="12" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="692" y="686" font-size="13" font-weight="700" fill="#3fb950" letter-spacing="1.5">cortexagent doctor — SELF-REPAIR</text>
+  <text x="692" y="712" font-size="12" fill="#e6edf3">detects config drift and repairs it in place</text>
+  <text x="692" y="734" font-size="12" fill="#e6edf3">expensive settings (context, quant, KV offload) locked at startup</text>
+  <text x="692" y="762" font-size="11.5" fill="#8b949e" font-family="ui-monospace, Menlo, monospace">cortexagent doctor --dry-run</text>
+
+  <text x="48" y="826" font-size="13" fill="#8b949e">Everything binds to <tspan fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">127.0.0.1</tspan> — never <tspan fill="#e6edf3" font-family="ui-monospace, Menlo, monospace">0.0.0.0</tspan>. Enforced in code, checked by bin/verify.</text>
+</svg>
