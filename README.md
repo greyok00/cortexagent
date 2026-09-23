@@ -2,6 +2,19 @@
 
 > **Your private, local AI coding agent — no cloud required, no API key.**
 
+**v0.7.3.1 (2026-09-23) — memory loop fix.** Fixed the bug that made the
+agent loop forever instead of working: `memory_search` in the bundled memory
+MCP server (`memory/mcp_server.py`) matched the *entire multi-word query as
+one exact substring* (`LIKE '%whole query%'` in SQLite), so real queries
+returned `[]` every time and the agent kept re-asking memory, then grepping
+its own session logs in circles. Search is now per-token (AND across tokens,
+best-ranked-first, OR fallback when the strict match is empty) and returns
+in <0.1s. Verified end-to-end over the real MCP protocol. The same disease
+was fixed in the CortexLLM universal-memory server
+(`cortexllm_mcp_server.py`, deployed at `~/.config/cortexllm`) — its search
+never saw the `.jsonl` hot tier and required whole-query substring matches;
+both are covered by this release.
+
 ![CortexAgent session](assets/cortexagent-cli.png)
 
 CortexAgent runs on your machine: a local llama.cpp model spawned and owned by the launcher, a terminal session pinned to it, automatic memory across sessions, local browser automation, and token compression. Everything binds to `127.0.0.1`. No accounts, no telemetry.
