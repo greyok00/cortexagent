@@ -288,7 +288,7 @@ export CLAUDE_CODE_DISABLE_UPDATE=1
 export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
 printf '\033]0;Cortex\007'
 
-python3 "${REPO_ROOT}/lib/banner.py" --model "cortexagent" 2>/dev/null || true
+python3 "${REPO_ROOT}/lib/banner.py" --model "$(basename "${CORTEXAGENT_MODEL:-}" .gguf 2>/dev/null)" 2>/dev/null || true
 
 _TICKER_PID=""
 if [ "${CORTEXAGENT_TICKER:-1}" = "1" ] && [ -z "${CORTEXAGENT_ONE_SHOT:-}" ] && [ -t 1 ]; then
