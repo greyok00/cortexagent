@@ -16,7 +16,6 @@ for p in (ROOT, os.path.join(ROOT, "lib")):
 
 CDP_HTTP = "http://127.0.0.1:9222"
 
-
 def _reap_blank_tabs() -> None:
 
     try:
@@ -35,6 +34,5 @@ def _reap_blank_tabs() -> None:
                 ).read()
             except Exception:
                 pass
-
 
 atexit.register(_reap_blank_tabs)

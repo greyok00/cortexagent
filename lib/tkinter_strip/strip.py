@@ -11,11 +11,8 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 
-
 _HERE = Path(__file__).resolve().parent
 ICON_DIR = _HERE / "icons"
-
-
 
 def _load_icon(name: str, size: tuple[int, int] = (28, 28)):
 
@@ -23,7 +20,7 @@ def _load_icon(name: str, size: tuple[int, int] = (28, 28)):
     if not p.exists():
         return None
     try:
-        from PIL import Image, ImageTk  # type: ignore
+        from PIL import Image, ImageTk
         img = Image.open(p)
         img = img.resize(size, Image.LANCZOS)
         return ImageTk.PhotoImage(img)
@@ -32,8 +29,6 @@ def _load_icon(name: str, size: tuple[int, int] = (28, 28)):
             return tk.PhotoImage(file=str(p))
         except Exception:
             return None
-
-
 
 def _send_key(key: str) -> bool:
 
@@ -48,7 +43,6 @@ def _send_key(key: str) -> bool:
     except Exception:
         return False
 
-
 def _send_ctrlandc() -> bool:
 
     if not shutil.which("xdotool"):
@@ -62,9 +56,7 @@ def _send_ctrlandc() -> bool:
     except Exception:
         return False
 
-
 def _copy_from_clipboard() -> str:
-
 
     if shutil.which("xclip"):
         try:
@@ -108,13 +100,10 @@ def _copy_from_clipboard() -> str:
             ).stdout.strip()
             if wid:
 
-
-
                 pass
         except Exception:
             pass
     return ""
-
 
 def _attach_file() -> None:
 
@@ -135,10 +124,7 @@ def _attach_file() -> None:
     except Exception:
         pass
 
-
-
 class _IconButton(tk.Frame):
-
 
     def __init__(self, parent, icon_name: str, label: str, command,
                  fg: str = "#e8e0d0", bg: str = "#0d0a07",
@@ -150,14 +136,12 @@ class _IconButton(tk.Frame):
         self._border = border
         self._fg = fg
 
-
         self.icon_img = _load_icon(icon_name)
         self._icon_label = tk.Label(self, image=self.icon_img, bg=bg, cursor="hand2")
         self._icon_label.pack(side="top", pady=(2, 2))
         self._icon_label.bind("<Button-1>", self._on_click)
         self._icon_label.bind("<Enter>", self._on_enter)
         self._icon_label.bind("<Leave>", self._on_leave)
-
 
         self._lbl = tk.Label(self, text=label, bg=bg, fg=fg,
                              font=("Mono", 9, "bold"))
@@ -187,16 +171,9 @@ class _IconButton(tk.Frame):
     def _original_bg(self):
         return getattr(self, "_bg_orig", "#0d0a07")
 
-
-
 class CortexStrip(tk.Frame):
 
-
     def __init__(self, parent, on_copy=None, **kwargs):
-
-
-
-
 
         try:
             from lib.popup_themes import load_settings, get_palette
@@ -220,32 +197,23 @@ class CortexStrip(tk.Frame):
         sep = tk.Frame(self, bg=self._border, height=1)
         sep.pack(side="top", fill="x")
 
-
         row = tk.Frame(self, bg=self._bg)
         row.pack(side="top", fill="x", padx=8, pady=4)
-
-
-
-
-
 
         _IconButton(
             row, "esc.png", "Esc.",
             command=lambda: _send_key("Escape"),
         ).pack(side="left", expand=True, fill="x", padx=4)
 
-
         _IconButton(
             row, "ctrl_c.png", "Ctrl+C",
             command=self._on_copy_click,
         ).pack(side="left", expand=True, fill="x", padx=4)
 
-
         _IconButton(
             row, "clip.png", "Attach",
             command=lambda: _attach_file(),
         ).pack(side="left", expand=True, fill="x", padx=4)
-
 
         _IconButton(
             row, "enter.png", "Enter",
@@ -263,8 +231,6 @@ class CortexStrip(tk.Frame):
                 self._on_copy(text)
             except Exception:
                 pass
-
-
 
 def _smoke() -> int:
     fails = 0
@@ -285,7 +251,6 @@ def _smoke() -> int:
     strip = CortexStrip(root)
     strip.pack(side="bottom", fill="x")
 
-
     tk.Label(root, text="(smoke test — close to exit)", bg="#0d0a07",
              fg="#8a7d68").pack(expand=True, fill="both")
     root.update()
@@ -293,7 +258,6 @@ def _smoke() -> int:
     root.destroy()
     print(f"{'✅ PASS' if fails == 0 else f'❌ {fails} failures'}")
     return 1 if fails else 0
-
 
 if __name__ == "__main__":
     sys.exit(_smoke())

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import struct
 import sys
 import threading
 from pathlib import Path
@@ -14,24 +15,20 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.config import CFG  # noqa: E402
+from lib.config import CFG
 
 SOCK_PATH = str(CFG.control_socket)
 PING_TIMEOUT = 2.0
 DEFAULT_TIMEOUT = 15.0
 
-
 TCP_FALLBACK_HOST = "127.0.0.1"
 TCP_FALLBACK_PORT = int(os.environ.get("CORTEXAGENT_CONTROL_PORT", "0"))
-
 
 def _is_unix() -> bool:
     return hasattr(socket, "AF_UNIX") and TCP_FALLBACK_PORT <= 0
 
-
 def _socket_path() -> str:
     return os.environ.get("CORTEXAGENT_CONTROL_SOCK", SOCK_PATH)
-
 
 def daemon_present(timeout: float = PING_TIMEOUT) -> bool:
 
@@ -39,7 +36,6 @@ def daemon_present(timeout: float = PING_TIMEOUT) -> bool:
         return bool(send_request("ping", timeout=timeout).get("ok"))
     except Exception:
         return False
-
 
 def send_request(cmd: str, timeout: float = DEFAULT_TIMEOUT, **params) -> Dict:
 
@@ -72,7 +68,6 @@ def send_request(cmd: str, timeout: float = DEFAULT_TIMEOUT, **params) -> Dict:
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         raise RuntimeError(f"control: malformed JSON from daemon: {e}") from e
 
-
 def serve(handler: Callable[[Dict], Dict],
           sock_path: Optional[str] = None) -> None:
 
@@ -94,13 +89,18 @@ def serve(handler: Callable[[Dict], Dict],
     while True:
         conn, _ = srv.accept()
 
-
         threading.Thread(target=_serve_one, args=(conn, handler), daemon=True).start()
 
+def _peer_pid(conn) -> Optional[int]:
+    try:
+        raw = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                              struct.calcsize("3i"))
+        pid, _uid, _gid = struct.unpack("3i", raw)
+        return pid or None
+    except (AttributeError, OSError, struct.error):
+        return None
 
 def _serve_one(conn, handler):
-
-
 
     conn.settimeout(30)
     try:
@@ -112,6 +112,7 @@ def _serve_one(conn, handler):
             buf += chunk
         data = bytes(buf)
         req = json.loads(data.decode().strip().splitlines()[0]) if data.strip() else {}
+        req["_peer_pid"] = _peer_pid(conn)
         resp = handler(req)
     except Exception as e:
         resp = {"ok": False, "error": str(e)}
@@ -121,7 +122,6 @@ def _serve_one(conn, handler):
         pass
     finally:
         conn.close()
-
 
 if __name__ == "__main__":
 

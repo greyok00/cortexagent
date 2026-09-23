@@ -5,13 +5,11 @@ import shutil
 import subprocess
 from typing import Optional
 
-
 def detect_protocol() -> str:
 
     term = os.environ.get("TERM", "")
     term_program = os.environ.get("TERM_PROGRAM", "")
     colorterm = os.environ.get("COLORTERM", "")
-
 
     if term_program.lower() == "kitty" or "kitty" in term.lower():
         return "kitty"
@@ -26,7 +24,6 @@ def detect_protocol() -> str:
         return "ansi"
     return ""
 
-
 def render_image(path: str, width: int = 60, height: Optional[int] = None) -> str:
 
     if not path or not os.path.exists(path):
@@ -36,7 +33,6 @@ def render_image(path: str, width: int = 60, height: Optional[int] = None) -> st
         return ""
 
     protocol = detect_protocol()
-
 
     size = f"{width}x{height}" if height else str(width)
     cmd = [chafa, "--format=symbols", "--size", size]
@@ -55,7 +51,6 @@ def render_image(path: str, width: int = 60, height: Optional[int] = None) -> st
     except (subprocess.TimeoutExpired, OSError):
         pass
     return ""
-
 
 def render_image_available() -> bool:
 

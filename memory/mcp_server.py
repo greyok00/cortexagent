@@ -18,11 +18,9 @@ from memory.db import db
 PLATFORM = os.environ.get("CORTEXAGENT_PLATFORM", "cortexagent")
 PROFILE = f"platform:{PLATFORM}"
 
-
 def _send_json(obj: Dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
     sys.stdout.flush()
-
 
 def _read_json() -> Optional[Dict[str, Any]]:
     line = sys.stdin.readline()
@@ -33,20 +31,16 @@ def _read_json() -> Optional[Dict[str, Any]]:
     except Exception:
         return None
 
-
 def _ok(text: str) -> Dict[str, Any]:
     return {"content": [{"type": "text", "text": text}]}
 
-
 def _err(text: str) -> Dict[str, Any]:
     return {"content": [{"type": "text", "text": text}], "isError": True}
-
 
 def _tool(name: str, description: str, params: Dict[str, Any],
           required: List[str]) -> Dict[str, Any]:
     return {"name": name, "description": description,
             "inputSchema": {"type": "object", "properties": params, "required": required}}
-
 
 TOOLS = [
     _tool("memory_read", "Read memory tier.", {
@@ -70,7 +64,6 @@ TOOLS = [
     }, ["tier"]),
 ]
 
-
 def _handle_read(args: Dict[str, Any]) -> Dict[str, Any]:
     tier = args.get("tier")
     limit = int(args.get("limit", 20))
@@ -84,7 +77,6 @@ def _handle_read(args: Dict[str, Any]) -> Dict[str, Any]:
     else:
         return _err("Unknown tier")
     return _ok(json.dumps(rows, ensure_ascii=False, default=str, indent=2))
-
 
 def _handle_write(args: Dict[str, Any]) -> Dict[str, Any]:
     content = args.get("content", "")
@@ -102,7 +94,6 @@ def _handle_write(args: Dict[str, Any]) -> Dict[str, Any]:
         return _err("Unknown tier")
     return _ok("saved")
 
-
 def _handle_search(args: Dict[str, Any]) -> Dict[str, Any]:
     query = args.get("query", "").lower()
     limit = int(args.get("limit", 10))
@@ -114,11 +105,9 @@ def _handle_search(args: Dict[str, Any]) -> Dict[str, Any]:
     out = [{"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]} for r in rows]
     return _ok(json.dumps(out, ensure_ascii=False, default=str, indent=2))
 
-
 def _handle_stats(args: Dict[str, Any]) -> Dict[str, Any]:
     stats = manager.get_platform_stats(PLATFORM)
     return _ok(json.dumps(stats, ensure_ascii=False, default=str, indent=2))
-
 
 def _handle_clear(args: Dict[str, Any]) -> Dict[str, Any]:
     tier = args.get("tier")
@@ -130,7 +119,6 @@ def _handle_clear(args: Dict[str, Any]) -> Dict[str, Any]:
     else:
         return _err("Unknown tier")
     return _ok(f"cleared {tier}")
-
 
 def _dispatch(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     if name == "memory_read":
@@ -144,7 +132,6 @@ def _dispatch(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     if name == "memory_clear":
         return _handle_clear(args)
     return _err(f"Unknown tool: {name}")
-
 
 def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     method = req.get("method")
@@ -166,7 +153,6 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     return {"jsonrpc": "2.0", "id": _id, "error": {"code": -32601, "message": f"Method not found: {method}"}}
 
-
 def _smoke() -> int:
 
     db.initialize()
@@ -176,7 +162,6 @@ def _smoke() -> int:
     print(f"tools: {[t['name'] for t in TOOLS]}")
     print("cortexagent-memory: OK")
     return 0
-
 
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
@@ -189,7 +174,6 @@ def main() -> None:
         resp = _handle_request(req)
         if resp is not None:
             _send_json(resp)
-
 
 if __name__ == "__main__":
     main()

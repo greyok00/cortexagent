@@ -4,13 +4,9 @@ import time
 from pathlib import Path
 from typing import Dict, List
 
-
-
 SESSION_STATE_FILE = Path.home() / ".config/cortexllm/memory/session_state.json"
 
-
 class SessionCoordinator:
-
 
     def __init__(self, session_name: str = "cortexagent"):
         self.session_name = session_name
@@ -80,7 +76,6 @@ class SessionCoordinator:
 
     def log_awareness(self, message: str, level: str = "info") -> dict:
 
-
         from lib.memory_thin import append
 
         awareness_msg = (
@@ -88,7 +83,6 @@ class SessionCoordinator:
             f"  (cortexagent at {time.strftime('%H:%M:%S')})"
         )
         path = append(awareness_msg, role="system")
-
 
         self.broadcast(status="aware", task=message[:40])
 
@@ -112,10 +106,7 @@ class SessionCoordinator:
             )
         return "\n".join(lines)
 
-
-
 _coordinator = None
-
 
 def get_coordinator(session_name: str = "cortexagent") -> SessionCoordinator:
 
@@ -124,15 +115,12 @@ def get_coordinator(session_name: str = "cortexagent") -> SessionCoordinator:
         _coordinator = SessionCoordinator(session_name)
     return _coordinator
 
-
 if __name__ == "__main__":
 
     c = SessionCoordinator("cortexagent")
 
-
     c.broadcast(status="working", task="memory refactor")
     time.sleep(0.1)
-
 
     state = c._read_state()
     state["sessions"]["claude"] = {
@@ -142,14 +130,11 @@ if __name__ == "__main__":
     }
     c._write_state(state)
 
-
     others = c.get_other_sessions()
     print("Other sessions:", others)
 
-
     c.log_awareness("claude idle, cortexagent working on memory refactor")
     print("Awareness logged")
-
 
     print("\n" + c.summarize_activity())
 

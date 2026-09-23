@@ -1,19 +1,7 @@
 #!/bin/bash
-# cortexagent-harden — wrapper for the hardening status pipeline.
-#
-# Read-only snapshot of nftables/sshd/sysctl/auditd/lsms/dns subsystems.
-# Schedules: install daily audit drift check via overseer scheduler.
-#
-# Usage:
-#   cortexagent-harden                       # full snapshot (human summary)
-#   cortexagent-harden --json                # machine-readable JSON
-#   cortexagent-harden --subsystem nftables  # single subsystem
-#   cortexagent-harden --install-schedule    # register daily 07:23 hardening audit
-#   cortexagent-harden --uninstall-schedule
 
 set -euo pipefail
 
-# ── Locate self (symlink-safe) ─────────────────────────────────────────────
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
@@ -66,7 +54,6 @@ for name in ('hardening_audit_daily', 'nft_reload_check_weekly'):
 "
 }
 
-# ── Arg dispatch ───────────────────────────────────────────────────────────
 case "${1:-}" in
   --json)
     shift

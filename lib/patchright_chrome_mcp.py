@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""Patchright + Chrome MCP server.
-
-Renamed from lib/playwright_brave_mcp.py on 2026-08-28 as part of the
-Patchright + Chrome default-browser migration. Tool names also renamed
-brave_* → chrome_*; the old brave_* names are gone (use the new file if
-you need the chrome_* names).
-
-Server name: patchright_chrome
-Protocol:    JSON-RPC over stdio (MCP 2024-11-05)
-
-Tools: chrome_status, chrome_tabs, chrome_navigate, chrome_fetch,
-       chrome_click, chrome_type, chrome_evaluate, chrome_snapshot,
-       chrome_fill_send, chrome_stealth_status
-
-The handlers below delegate to lib/browser_control.py, which is now a
-sync facade over patchright.sync_api.sync_playwright.connect_over_cdp
-to chrome running on :9223.
-"""
 
 from __future__ import annotations
 
@@ -26,12 +8,10 @@ from typing import Any, Dict, List, Optional
 
 from browser_control import CDP_URL, close, list_tabs, navigate, fetch, click, type_text, evaluate, snapshot, fill_and_send, start_guard, stealth_status
 
-
 def _send_json(obj: Dict[str, Any]) -> None:
     raw = json.dumps(obj, ensure_ascii=False) + "\n"
     sys.stdout.write(raw)
     sys.stdout.flush()
-
 
 def _read_json() -> Optional[Dict[str, Any]]:
     line = sys.stdin.readline()
@@ -42,10 +22,8 @@ def _read_json() -> Optional[Dict[str, Any]]:
     except Exception:
         return None
 
-
 def _tool(name: str, description: str, params: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
     return {"name": name, "description": description, "inputSchema": {"type": "object", "properties": params, "required": required}}
-
 
 _TAB = {"type": ["integer", "string", "null"], "description": "Target tab: index, URL prefix, or omit for the first tab."}
 
@@ -97,16 +75,13 @@ TOOLS = [
     _tool("chrome_stealth_status", "Report live stealth/humanizer/CDP-guard state (profile, seed, applied targets, isolated worlds).", {}, []),
 ]
 
-
 def _ok_result(content: Any) -> Dict[str, Any]:
     if isinstance(content, list):
         return {"content": content}
     return {"content": [{"type": "text", "text": str(content)}]}
 
-
 def _err_result(message: str) -> Dict[str, Any]:
     return {"content": [{"type": "text", "text": message}], "isError": True}
-
 
 def _handle_status() -> Dict[str, Any]:
     try:
@@ -114,7 +89,6 @@ def _handle_status() -> Dict[str, Any]:
         return _ok_result(f"Chrome reachable on {CDP_URL} — {len(tabs)} tab(s).")
     except Exception as e:
         return _err_result(f"Chrome not reachable on {CDP_URL}: {e}")
-
 
 def _handle_tabs() -> Dict[str, Any]:
     try:
@@ -124,14 +98,12 @@ def _handle_tabs() -> Dict[str, Any]:
     except Exception as e:
         return _err_result(f"List tabs failed: {e}")
 
-
 def _handle_navigate(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         r = navigate(tab=args.get("tab"), url=args["url"])
         return _ok_result(f"Title: {r['title']}\nURL: {r['url']}")
     except Exception as e:
         return _err_result(f"Navigate failed: {e}")
-
 
 def _handle_fetch(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -145,7 +117,6 @@ def _handle_fetch(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return _err_result(f"Fetch failed: {e}")
 
-
 def _handle_click(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         click(tab=args.get("tab"), selector=args["target"],
@@ -153,7 +124,6 @@ def _handle_click(args: Dict[str, Any]) -> Dict[str, Any]:
         return _ok_result("Clicked.")
     except Exception as e:
         return _err_result(f"Click failed: {e}")
-
 
 def _handle_type(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -164,7 +134,6 @@ def _handle_type(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return _err_result(f"Type failed: {e}")
 
-
 def _handle_evaluate(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         result = evaluate(tab=args.get("tab"), expression=args["expression"],
@@ -173,14 +142,12 @@ def _handle_evaluate(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return _err_result(f"Evaluate failed: {e}")
 
-
 def _handle_snapshot(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         snap = snapshot(tab=args.get("tab"), depth=args.get("depth", 10))
         return _ok_result(json.dumps(snap, ensure_ascii=False, indent=2))
     except Exception as e:
         return _err_result(f"Snapshot failed: {e}")
-
 
 def _handle_fill_send(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -195,7 +162,6 @@ def _handle_fill_send(args: Dict[str, Any]) -> Dict[str, Any]:
         return _err_result("Fill failed — element not found.")
     except Exception as e:
         return _err_result(f"Fill/send failed: {e}")
-
 
 def _dispatch_call(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     if name == "chrome_status":
@@ -219,7 +185,6 @@ def _dispatch_call(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     if name == "chrome_stealth_status":
         return _ok_result(stealth_status())
     return _err_result(f"Unknown tool: {name}")
-
 
 def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     method = req.get("method")
@@ -246,7 +211,6 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     return {"jsonrpc": "2.0", "id": _id, "error": {"code": -32601, "message": f"Method not found: {method}"}}
 
-
 def _smoke() -> int:
     print(f"tools exposed: {[t['name'] for t in TOOLS]}")
     try:
@@ -257,7 +221,6 @@ def _smoke() -> int:
         print(f"CDP check failed: {e}")
     print("patchright_chrome_mcp: OK")
     return 0
-
 
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
@@ -270,7 +233,6 @@ def main() -> None:
         resp = _handle_request(req)
         if resp is not None:
             _send_json(resp)
-
 
 if __name__ == "__main__":
     main()

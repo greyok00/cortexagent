@@ -1,11 +1,11 @@
 {
   "by_kind": {
     "cli_subcommand": 20,
-    "control_socket_rpc": 10,
+    "control_socket_rpc": 7,
     "mcp_tool": 39,
-    "registered_tool": 15
+    "registered_tool": 11
   },
-  "feature_count": 84,
+  "feature_count": 77,
   "features": [
     {
       "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
@@ -807,33 +807,6 @@
     {
       "advertised_in": "lib/daemon.py:_handle",
       "description": "",
-      "id": "control:load",
-      "kind": "control_socket_rpc",
-      "schema": {
-        "cmd": "load"
-      }
-    },
-    {
-      "advertised_in": "lib/daemon.py:_handle",
-      "description": "",
-      "id": "control:swap",
-      "kind": "control_socket_rpc",
-      "schema": {
-        "cmd": "swap"
-      }
-    },
-    {
-      "advertised_in": "lib/daemon.py:_handle",
-      "description": "",
-      "id": "control:unload",
-      "kind": "control_socket_rpc",
-      "schema": {
-        "cmd": "unload"
-      }
-    },
-    {
-      "advertised_in": "lib/daemon.py:_handle",
-      "description": "",
       "id": "control:shutdown",
       "kind": "control_socket_rpc",
       "schema": {
@@ -897,37 +870,19 @@
     {
       "advertised_in": "lib/tool_registry.py",
       "description": "",
-      "id": "tool_registry:generate_image",
-      "kind": "registered_tool",
-      "schema": {
-        "name": "generate_image"
-      }
-    },
-    {
-      "advertised_in": "lib/tool_registry.py",
-      "description": "",
-      "id": "tool_registry:generate_video",
-      "kind": "registered_tool",
-      "schema": {
-        "name": "generate_video"
-      }
-    },
-    {
-      "advertised_in": "lib/tool_registry.py",
-      "description": "",
-      "id": "tool_registry:generate_media",
-      "kind": "registered_tool",
-      "schema": {
-        "name": "generate_media"
-      }
-    },
-    {
-      "advertised_in": "lib/tool_registry.py",
-      "description": "",
       "id": "tool_registry:web_search",
       "kind": "registered_tool",
       "schema": {
         "name": "web_search"
+      }
+    },
+    {
+      "advertised_in": "lib/tool_registry.py",
+      "description": "",
+      "id": "tool_registry:download",
+      "kind": "registered_tool",
+      "schema": {
+        "name": "download"
       }
     },
     {
@@ -946,15 +901,6 @@
       "kind": "registered_tool",
       "schema": {
         "name": "coding_practices"
-      }
-    },
-    {
-      "advertised_in": "lib/tool_registry.py",
-      "description": "",
-      "id": "tool_registry:transcribe_audio",
-      "kind": "registered_tool",
-      "schema": {
-        "name": "transcribe_audio"
       }
     },
     {
@@ -994,6 +940,6 @@
       }
     }
   ],
-  "generated_at": "2026-08-24T19:23:46.162201+00:00",
+  "generated_at": "2026-09-23T02:02:20.257682+00:00",
   "schema": 1
 }

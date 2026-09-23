@@ -6,10 +6,8 @@ from typing import Optional, Callable
 from .types import Task, TaskStatus, EngineType, WorkflowPlan, BatchGroup, ProgressEvent
 from .dag import DAGScheduler
 
-
 STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR", str(Path.home() / ".cortexagent")))
 WORKFLOW_FILE = STATE_DIR / "workflow_state.json"
-
 
 def _save_workflow(plan: WorkflowPlan):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -24,7 +22,6 @@ def _save_workflow(plan: WorkflowPlan):
         "updated_at": datetime.now().isoformat(),
     }
     WORKFLOW_FILE.write_text(json.dumps(data, indent=2))
-
 
 def _load_workflow() -> Optional[WorkflowPlan]:
     if not WORKFLOW_FILE.exists():
@@ -48,19 +45,13 @@ def _load_workflow() -> Optional[WorkflowPlan]:
     except Exception:
         return None
 
-
-
-
 class WorkflowEngine:
-
 
     def __init__(self):
         self.scheduler = DAGScheduler()
         self.current_plan: Optional[WorkflowPlan] = None
         self.progress_events: list[ProgressEvent] = []
         self.completed_tasks: set[str] = set()
-
-
 
     def expand_goal(self, raw_prompt: str) -> str:
 
@@ -78,8 +69,6 @@ class WorkflowEngine:
             if keyword in raw_prompt.lower():
                 return expansion
         return raw_prompt
-
-
 
     def decompose(self, goal: str) -> list[Task]:
 
@@ -174,15 +163,11 @@ class WorkflowEngine:
             Task("G-03", "Verification", EngineType.SYSTEM_EXEC, "Verify implementation works correctly", depends_on=["G-02"], priority=3),
         ]
 
-
-
     def batch_schedule(self, tasks: list[Task]) -> list[BatchGroup]:
 
         for task in tasks:
             self.scheduler.add_task(task)
         return self.scheduler.optimize_schedule()
-
-
 
     def _run_shell_command(self, command: str, timeout: int = 300) -> str:
 
@@ -234,8 +219,6 @@ class WorkflowEngine:
                 on_progress(ProgressEvent("execution", task.id, TaskStatus.FAILED,
                                           f"Failed: {task.name}: {e}", 0.0))
 
-
-
     def assemble(self, plan: WorkflowPlan) -> dict:
 
         results = {}
@@ -250,8 +233,6 @@ class WorkflowEngine:
             "failed": len([t for t in plan.tasks if t.status == TaskStatus.FAILED]),
             "results": results,
         }
-
-
 
     def run(self, prompt: str, on_progress: Optional[Callable] = None) -> dict:
 
@@ -304,9 +285,6 @@ class WorkflowEngine:
                       for t in plan.tasks],
         }
 
-
-
-
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -350,7 +328,6 @@ def main():
         print(f"Unknown command: {cmd}")
         print(__doc__)
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

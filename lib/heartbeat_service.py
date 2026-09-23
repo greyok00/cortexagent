@@ -9,19 +9,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-
-
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 CORTEXAGENT_STATE = Path.home() / ".cortexagent" / "state"
 STATE_FILE = CORTEXAGENT_STATE / "heartbeat_state.json"
 HEALTH_FILE = CORTEXAGENT_STATE / "context_health.json"
 
-
 MAX_MESSAGES_WARN = 60
 MAX_MESSAGES_CRIT = 100
 MAX_SIZE_MB_WARN = 2.0
 MAX_SIZE_MB_CRIT = 4.0
-
 
 def _find_session(cwd: Optional[Path] = None) -> Optional[Path]:
 
@@ -44,7 +40,6 @@ def _find_session(cwd: Optional[Path] = None) -> Optional[Path]:
         return None
     all_sessions.sort(key=lambda x: x.stat().st_mtime, reverse=True)
     return all_sessions[0]
-
 
 def _check_health(session_path: Path) -> dict:
     result = {
@@ -105,7 +100,6 @@ def _check_health(session_path: Path) -> dict:
         result["warnings"].append(f"WARM: {', '.join(warn_reasons)}")
     return result
 
-
 def _clean_stale_locks(session_path: Path) -> int:
 
     cleaned = 0
@@ -121,7 +115,6 @@ def _clean_stale_locks(session_path: Path) -> int:
         except Exception:
             pass
     return cleaned
-
 
 def run_heartbeat(cwd: Optional[Path] = None) -> dict:
     result = {
@@ -165,7 +158,6 @@ def run_heartbeat(cwd: Optional[Path] = None) -> dict:
     STATE_FILE.write_text(json.dumps(result, indent=2))
     return result
 
-
 def format_report(result: dict) -> str:
     icon = {"green": "✓", "yellow": "⚠", "red": "✗"}.get(result["status"], "?")
     lines = [f"[HEARTBEAT] {icon} {result['status'].upper()}"]
@@ -177,8 +169,6 @@ def format_report(result: dict) -> str:
     if result["locks_cleaned"]:
         lines.append(f"  Cleaned {result['locks_cleaned']} stale lock(s)")
     return "\n".join(lines)
-
-
 
 def _cli(argv: List[str]) -> int:
     if not argv:
@@ -214,19 +204,16 @@ def _cli(argv: List[str]) -> int:
                     print(f"  ! {w}")
             except Exception as e:
 
-
                 print(f"heartbeat error (continuing): {e}", file=sys.stderr)
             time.sleep(interval)
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
-
 
 def _smoke() -> int:
 
     h = _check_health(Path("/tmp/does-not-exist-for-session"))
     assert h["status"] == "red" and not h["healthy"]
     print(f"  missing file: status={h['status']} healthy={h['healthy']}")
-
 
     import tempfile
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
@@ -243,13 +230,11 @@ def _smoke() -> int:
     finally:
         tmp_path.unlink()
 
-
     sess = _find_session(cwd=Path.cwd())
     if sess:
         print(f"  find_session: {sess.parent.name}/{sess.name[:8]}...")
     else:
         print("  find_session: no session for current cwd")
-
 
     r = {"status": "green", "session_id": "abc123def", "message_count": 5,
          "file_size_kb": 12.3, "new_recommended": False, "locks_cleaned": 0}
@@ -259,7 +244,6 @@ def _smoke() -> int:
 
     print("heartbeat_service: OK")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(_cli(sys.argv[1:]))

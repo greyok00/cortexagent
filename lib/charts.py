@@ -2,17 +2,12 @@
 
 from typing import List, Dict, Optional, Tuple, Union
 
-
 VERTICAL_BLOCKS = "▁▂▃▄▅▆▇█"
 HORIZONTAL_BLOCKS = "▏▎▍▌▋▊▉█"
 HEATMAP_DENSITY = " ░▒▓█"
 
-
-
-
 SERIES_ROLES = ["accent", "success", "warn", "danger", "info", "muted"]
 SERIES_GLYPHS = ["█", "▓", "▒", "░", "▌", "▐"]
-
 
 def _series_style(palette: Optional[Dict[str, str]], index: int) -> Tuple[str, str, str]:
 
@@ -24,7 +19,6 @@ def _series_style(palette: Optional[Dict[str, str]], index: int) -> Tuple[str, s
     glyph = SERIES_GLYPHS[index % len(SERIES_GLYPHS)]
     return color, reset, glyph
 
-
 def _map_to_block(value: float, min_val: float, max_val: float,
                   block_set: str = VERTICAL_BLOCKS) -> str:
 
@@ -33,7 +27,6 @@ def _map_to_block(value: float, min_val: float, max_val: float,
     ratio = (value - min_val) / (max_val - min_val)
     idx = min(int(ratio * len(block_set)), len(block_set) - 1)
     return block_set[idx]
-
 
 def sparkline(data: List[Union[int, float]], width: Optional[int] = None,
               block_set: str = VERTICAL_BLOCKS) -> str:
@@ -47,7 +40,6 @@ def sparkline(data: List[Union[int, float]], width: Optional[int] = None,
     if width is None:
         width = len(data)
 
-
     if len(data) > width:
         step = len(data) / width
         sampled = []
@@ -56,11 +48,9 @@ def sparkline(data: List[Union[int, float]], width: Optional[int] = None,
             sampled.append(data[idx])
         data = sampled
 
-
     blocks = [_map_to_block(v, min_val, max_val, block_set) for v in data]
 
     return "".join(blocks)
-
 
 def multi_sparkline(data: Dict[str, List[Union[int, float]]],
                     width: int = 30, max_series: int = 6,
@@ -68,7 +58,6 @@ def multi_sparkline(data: Dict[str, List[Union[int, float]]],
 
     if not data:
         return ""
-
 
     items = list(data.items())[:max_series]
 
@@ -86,7 +75,6 @@ def multi_sparkline(data: Dict[str, List[Union[int, float]]],
 
     return "\n".join(lines)
 
-
 def waffle(data: List[Union[int, float]],
            labels: Optional[List[str]] = None,
            grid_size: int = 10,
@@ -100,9 +88,7 @@ def waffle(data: List[Union[int, float]],
     if total == 0:
         return ""
 
-
     percentages = [v / total * 100 for v in data]
-
 
     total_cells = grid_size * grid_size
     cells = [int(p / 100 * total_cells) for p in percentages]
@@ -110,7 +96,6 @@ def waffle(data: List[Union[int, float]],
     cell_sum = sum(cells)
     if cell_sum < total_cells:
         cells[0] += total_cells - cell_sum
-
 
     grid = [empty_char] * total_cells
     idx = 0
@@ -120,13 +105,11 @@ def waffle(data: List[Union[int, float]],
                 grid[idx] = fill_char if labels and i < len(labels) else fill_char
                 idx += 1
 
-
     lines = []
     for row in range(grid_size):
         row_start = row * grid_size
         row_end = row_start + grid_size
         row_cells = "".join(grid[row_start:row_end])
-
 
         if labels and row == 0:
             for i, n in enumerate(cells):
@@ -138,7 +121,6 @@ def waffle(data: List[Union[int, float]],
         else:
             lines.append(row_cells)
 
-
     if labels:
         lines.append("")
         for i, label in enumerate(labels[:len(cells)]):
@@ -146,7 +128,6 @@ def waffle(data: List[Union[int, float]],
             lines.append(f"  {fill_char} {label}: {pct:.1f}%")
 
     return "\n".join(lines)
-
 
 def bar_chart(data: Dict[str, Union[int, float]],
               width: int = 40,
@@ -168,9 +149,7 @@ def bar_chart(data: Dict[str, Union[int, float]],
         if len(name) > label_width:
             name = name[:label_width - 1] + "…"
 
-
         bar_len = int(value / max_val * width) if max_val > 0 else 0
-
 
         bar = ""
         for i in range(bar_len):
@@ -181,9 +160,7 @@ def bar_chart(data: Dict[str, Union[int, float]],
                 block = _map_to_block(ratio * 100, 0, 100, HORIZONTAL_BLOCKS)
                 bar += block
 
-
         bar += empty_char * (width - len(bar))
-
 
         value_str = f" {value:g}" if show_value else ""
         if color:
@@ -191,7 +168,6 @@ def bar_chart(data: Dict[str, Union[int, float]],
         lines.append(f"{name:<{label_width}} {bar} {value_str}")
 
     return "\n".join(lines)
-
 
 def heatmap(data: List[List[Union[int, float]]],
             row_labels: Optional[List[str]] = None,
@@ -201,12 +177,9 @@ def heatmap(data: List[List[Union[int, float]]],
     if not data or not data[0]:
         return ""
 
-
-
     flat = [v for row in data for v in row]
     min_val = min(flat)
     max_val = max(flat)
-
 
     lines = []
     for i, row in enumerate(data):
@@ -215,13 +188,11 @@ def heatmap(data: List[List[Union[int, float]]],
             block = _map_to_block(val, min_val, max_val, density)
             row_str += block
 
-
         label = row_labels[i] if row_labels and i < len(row_labels) else ""
         if label:
             lines.append(f"{label:<10} {row_str}")
         else:
             lines.append(f"{'':<10} {row_str}")
-
 
     if col_labels:
         label_row = "          " + "".join(f"{l:<1}" for l in col_labels)
@@ -229,14 +200,12 @@ def heatmap(data: List[List[Union[int, float]]],
 
     return "\n".join(lines)
 
-
 def calendar_heatmap(rows: Dict[str, List[Union[int, float]]],
                      width: int = 24,
                      density: str = HEATMAP_DENSITY) -> str:
 
     if not rows:
         return ""
-
 
     lines = []
     for label, series in rows.items():
@@ -250,12 +219,10 @@ def calendar_heatmap(rows: Dict[str, List[Union[int, float]]],
 
     return "\n".join(lines)
 
-
 def flowchart(nodes: List[str], edges: List[Tuple[str, str]]) -> str:
 
     if not nodes:
         return ""
-
 
     children: Dict[str, List[str]] = {n: [] for n in nodes}
     indeg: Dict[str, int] = {n: 0 for n in nodes}
@@ -263,7 +230,6 @@ def flowchart(nodes: List[str], edges: List[Tuple[str, str]]) -> str:
         if src in children and tgt in children:
             children[src].append(tgt)
             indeg[tgt] += 1
-
 
     order: List[str] = []
     stack = [n for n in nodes if indeg[n] == 0]
@@ -285,7 +251,6 @@ def flowchart(nodes: List[str], edges: List[Tuple[str, str]]) -> str:
     for n in nodes:
         by_layer[layer[n]].append(n)
 
-
     def _box(label: str) -> List[str]:
         w = max(3, len(label) + 2)
         top = "┌" + "─" * w + "┐"
@@ -302,7 +267,6 @@ def flowchart(nodes: List[str], edges: List[Tuple[str, str]]) -> str:
             rows.append("  ".join(b[r] for b in boxes))
         rendered.append(rows)
 
-
     out: List[str] = []
     for li, rows in enumerate(rendered):
         out.extend(rows)
@@ -313,7 +277,6 @@ def flowchart(nodes: List[str], edges: List[Tuple[str, str]]) -> str:
             out.append(" " * (width // 2) + "▼")
 
     return "\n".join(out)
-
 
 def gauge(value: float, min_val: float = 0, max_val: float = 100,
           width: int = 20) -> str:
@@ -332,13 +295,11 @@ def gauge(value: float, min_val: float = 0, max_val: float = 100,
 
     return f"{pct_str:>6} {bar}"
 
-
 def gantt(tasks: List[Dict], start: str = "00:00",
           end: str = "23:59", width: int = 50) -> str:
 
     if not tasks:
         return ""
-
 
     def parse_time(t: str) -> float:
         h, m = t.split(":")
@@ -354,20 +315,16 @@ def gantt(tasks: List[Dict], start: str = "00:00",
         task_start = parse_time(task["start"])
         task_end = parse_time(task["end"])
 
-
         pos_start = int((task_start - start_min) / total_min * width) if total_min > 0 else 0
         pos_end = int((task_end - start_min) / total_min * width) if total_min > 0 else width
 
-
         if len(name) > 10:
             name = name[:10] + "…"
-
 
         row = f"{name:<10} " + " " * pos_start + "█" * max(1, pos_end - pos_start)
         lines.append(row)
 
     return "\n".join(lines)
-
 
 def tree(data: Dict[str, Union[str, Dict]], prefix: str = "",
          is_last: bool = True) -> str:
@@ -380,17 +337,14 @@ def tree(data: Dict[str, Union[str, Dict]], prefix: str = "",
     for i, (node, child) in enumerate(items):
         is_last_child = i == len(items) - 1
 
-
         connector = "└── " if is_last_child else "├── "
         lines.append(f"{prefix}{connector}{node}")
-
 
         if isinstance(child, dict):
             new_prefix = prefix + ("    " if is_last_child else "│   ")
             lines.append(tree(child, new_prefix, is_last_child))
 
     return "\n".join(lines)
-
 
 def box_plot(data: List[Union[int, float]]) -> str:
 
@@ -405,7 +359,6 @@ def box_plot(data: List[Union[int, float]]) -> str:
     q1 = sorted_data[n // 4]
     median = sorted_data[n // 2]
     q3 = sorted_data[3 * n // 4]
-
 
     plot_width = 40
     plot = (
@@ -424,7 +377,6 @@ def box_plot(data: List[Union[int, float]]) -> str:
 
     return plot
 
-
 def funnel(data: List[Union[int, float]], labels: Optional[List[str]] = None,
            palette: Optional[Dict[str, str]] = None) -> str:
 
@@ -441,7 +393,6 @@ def funnel(data: List[Union[int, float]], labels: Optional[List[str]] = None,
         width = int(val / max_val * 40)
         bar = glyph * max(1, width)
 
-
         if i > 0:
             bar = " " * (i * 2) + bar
 
@@ -451,7 +402,6 @@ def funnel(data: List[Union[int, float]], labels: Optional[List[str]] = None,
         lines.append(f"{name:<10} {bar} {val}")
 
     return "\n".join(lines)
-
 
 def sankey(nodes: List[str], flows: List[Tuple[str, str, float]],
            width: int = 30) -> str:
@@ -471,7 +421,6 @@ def sankey(nodes: List[str], flows: List[Tuple[str, str, float]],
     lines.append("  " + "─" * (width + 10))
     return "\n".join(lines)
 
-
 def line_chart(data: List[Union[int, float]], width: Optional[int] = None) -> str:
 
     if not data:
@@ -483,7 +432,6 @@ def line_chart(data: List[Union[int, float]], width: Optional[int] = None) -> st
     if width is None:
         width = min(len(data), 40)
 
-
     if len(data) > width:
         step = len(data) / width
         sampled = []
@@ -491,7 +439,6 @@ def line_chart(data: List[Union[int, float]], width: Optional[int] = None) -> st
             idx = int(i * step)
             sampled.append(data[idx])
         data = sampled
-
 
     braille_chars = "⠁⠃⠇⠏⠟⠿⣿"
     braille = ""
@@ -505,11 +452,7 @@ def line_chart(data: List[Union[int, float]], width: Optional[int] = None) -> st
 
     return braille
 
-
-
 empty_char = "░"
-
-
 
 def main():
 
@@ -579,7 +522,6 @@ def main():
     print("=== Line Chart ===")
     print(line_chart([10, 20, 15, 30, 25, 35, 30, 40, 35, 45]))
     print()
-
 
 if __name__ == "__main__":
     main()

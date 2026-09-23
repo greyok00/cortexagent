@@ -9,14 +9,6 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-
-
-
-
-
-
-
-
 PREFERRED_IMAGE_MODELS = ["sd_xl_base_1.0.safetensors",
                           "v1-5-pruned-emaonly.safetensors"]
 DEFAULT_IMAGE_MODEL = "v1-5-pruned-emaonly.safetensors"
@@ -24,9 +16,6 @@ DEFAULT_VIDEO_MODEL = "Lightricks/LTX-Video"
 DEFAULT_IMAGE_W, DEFAULT_IMAGE_H = 3840, 2160
 DEFAULT_VIDEO_W, DEFAULT_VIDEO_H = 3840, 2160
 UPSCALER = os.environ.get("CORTEXAGENT_UPSCALER", "lanczos").lower()
-
-
-
 
 NATIVE_MP = {"sdxl": 2.07, "sd15": 0.60, "ltx": 0.59}
 
@@ -43,7 +32,6 @@ CHECKPOINT_DIR = os.environ.get(
 DEVICE = os.environ.get("CORTEXAGENT_DIFFUSION_DEVICE", "cuda")
 CUDNN = os.environ.get("CORTEXAGENT_DIFFUSION_CUDNN", "0").lower() in (
     "1", "true", "yes", "on")
-
 
 def _ckpt_complete(path: Path) -> bool:
 
@@ -68,9 +56,7 @@ def _ckpt_complete(path: Path) -> bool:
     except Exception:
         return False
 
-
 _CKPT_CACHE: dict = {}
-
 
 def _resolve_image_model() -> str:
 
@@ -87,7 +73,6 @@ def _resolve_image_model() -> str:
             return cand
     return DEFAULT_IMAGE_MODEL
 
-
 def _resolve_image_path() -> Optional[Path]:
 
     name = _resolve_image_model()
@@ -97,11 +82,9 @@ def _resolve_image_path() -> Optional[Path]:
     cand = Path(CHECKPOINT_DIR) / name
     return cand if cand.exists() else None
 
-
 def _resolve_video_model() -> str:
 
     m = os.environ.get("CORTEXAGENT_VIDEO_MODEL") or DEFAULT_VIDEO_MODEL
-
 
     legacy = os.environ.get("CORTEXAGENT_LTX_MODEL", "")
     if legacy and not os.environ.get("CORTEXAGENT_VIDEO_MODEL"):
@@ -110,11 +93,9 @@ def _resolve_video_model() -> str:
             m = legacy
     return m
 
-
 def _video_is_hf_repo(model: str) -> bool:
 
     return "/" in model and not Path(model).exists()
-
 
 def _hf_repo_cached(repo_id: str) -> bool:
 
@@ -126,7 +107,6 @@ def _hf_repo_cached(repo_id: str) -> bool:
     snap = repo_dir / "snapshots"
     return snap.is_dir() and any(snap.iterdir())
 
-
 def _detect_kind(ckpt_name: str) -> str:
 
     n = ckpt_name.lower()
@@ -134,13 +114,11 @@ def _detect_kind(ckpt_name: str) -> str:
         return "sdxl"
     return "sd15"
 
-
 def _defaults_for(ckpt_name: str) -> Tuple[int, int, int, float]:
 
     if _detect_kind(ckpt_name) == "sdxl":
         return DEFAULT_IMAGE_W, DEFAULT_IMAGE_H, 40, 7.0
     return DEFAULT_IMAGE_W, DEFAULT_IMAGE_H, 30, 8.0
-
 
 def _native_gen_size(target_w: int, target_h: int, kind: str) -> Tuple[int, int]:
 
@@ -155,7 +133,6 @@ def _native_gen_size(target_w: int, target_h: int, kind: str) -> Tuple[int, int]
     while nw * nh > cap_mp * 1e6 * 1.02:
         nw = max(32, nw - 32)
     return nw, nh
-
 
 def _upscale(img, target_w: int, target_h: int):
 
@@ -176,7 +153,6 @@ def _upscale(img, target_w: int, target_h: int):
                          interpolation=cv2.INTER_LANCZOS4)[:, :, ::-1]
     from PIL import Image
     return Image.fromarray(arr)
-
 
 def _upscale_realesrgan(img, target_w: int, target_h: int):
 
@@ -199,24 +175,17 @@ def _upscale_realesrgan(img, target_w: int, target_h: int):
                      interpolation=cv2.INTER_LANCZOS4)[:, :, ::-1]
     return Image.fromarray(out)
 
-
 _ESRGAN = None
-
-
 
 CYAN, GREEN, YELLOW, RED, MAGENTA, DIM = (
     "\033[36m", "\033[32m", "\033[33m", "\033[31m", "\033[35m", "\033[2m")
 BOLD, RST = "\033[1m", "\033[0m"
 
-
 def _log(msg: str, emoji: str = "", color: str = "") -> None:
     prefix = f"{color}{emoji} {BOLD}diffusion{RST} {DIM}{color}|{RST}"
     print(f"{prefix} {color}{msg}{RST}", file=sys.stderr)
 
-
-
 _TORCH_OK: Optional[bool] = None
-
 
 def _torch():
 
@@ -224,11 +193,9 @@ def _torch():
     import torch
     if not CUDNN:
 
-
         torch.backends.cudnn.enabled = False
     _TORCH_OK = True
     return torch
-
 
 def _torch_available() -> bool:
 
@@ -237,20 +204,16 @@ def _torch_available() -> bool:
     if _TORCH_OK is False:
         return False
     try:
-        import torch  # noqa: F401
+        import torch
         return bool(torch.cuda.is_available())
     except Exception:
         return False
 
-
-
 _PIPES: dict = {}
 _PIPE_KIND: dict = {}
 
-
 def _image_pipe_key(ckpt_path: Path) -> str:
     return f"img:{ckpt_path}"
-
 
 def _get_image_pipe(ckpt_path: Path):
 
@@ -268,9 +231,6 @@ def _get_image_pipe(ckpt_path: Path):
     pipe = cls.from_single_file(str(ckpt_path), torch_dtype=torch.float16)
     pipe = pipe.to(DEVICE)
 
-
-
-
     try:
         pipe.enable_attention_slicing()
     except Exception:
@@ -285,7 +245,6 @@ def _get_image_pipe(ckpt_path: Path):
     _PIPES[key] = pipe
     _PIPE_KIND[key] = "image"
     return pipe
-
 
 def _get_video_pipe():
 
@@ -307,15 +266,12 @@ def _get_video_pipe():
 
         pipe = LTXPipeline.from_pretrained(model, **kwargs)
 
-
-
-
     offloaded = False
     if offload:
         if hasattr(pipe, "enable_group_offload"):
             try:
                 pipe.enable_group_offload(onload_device=torch.device(DEVICE))
-                _log("group offload enabled (fits 16 GB alongside the big model)", "💾", DIM)
+                _log("group offload enabled (fits 16 GB alongside the model)", "💾", DIM)
                 offloaded = True
             except Exception as e:
                 _log(f"group offload failed ({e}); trying model_cpu_offload", "⚠️", YELLOW)
@@ -334,7 +290,6 @@ def _get_video_pipe():
     _PIPE_KIND[key] = "video"
     return pipe
 
-
 def unload() -> None:
 
     global _PIPES
@@ -351,14 +306,11 @@ def unload() -> None:
     except Exception:
         pass
 
-
-
 def is_running(timeout: float = 2) -> bool:
 
     if not _torch_available():
         return False
     return _resolve_image_path() is not None
-
 
 def gen_image(prompt: str, output: str = "output.png",
               model: Optional[str] = None, width: Optional[int] = None,
@@ -427,7 +379,6 @@ def gen_image(prompt: str, output: str = "output.png",
          "💾", GREEN)
     return True
 
-
 def gen_video(prompt: str, output: str = "output.mp4",
               model: Optional[str] = None, width: Optional[int] = None,
               height: Optional[int] = None, steps: Optional[int] = None,
@@ -437,7 +388,6 @@ def gen_video(prompt: str, output: str = "output.mp4",
     if model:
         os.environ["CORTEXAGENT_VIDEO_MODEL"] = model
     vid_model = _resolve_video_model()
-
 
     if _video_is_hf_repo(vid_model):
         cached = _hf_repo_cached(vid_model)
@@ -453,7 +403,6 @@ def gen_video(prompt: str, output: str = "output.mp4",
 
     width = int(width or os.environ.get("CORTEXAGENT_VIDEO_WIDTH") or DEFAULT_VIDEO_W)
     height = int(height or os.environ.get("CORTEXAGENT_VIDEO_HEIGHT") or DEFAULT_VIDEO_H)
-
 
     nat_w, nat_h = _native_gen_size(width, height, "ltx")
     upscale_needed = (nat_w, nat_h) != (width, height)
@@ -507,7 +456,6 @@ def gen_video(prompt: str, output: str = "output.mp4",
          "💾", GREEN)
     return True
 
-
 def _export_video(frames, path: str, fps: int) -> bool:
 
     try:
@@ -530,7 +478,6 @@ def _export_video(frames, path: str, fps: int) -> bool:
     except Exception as e:
         _log(f"ffmpeg encode failed: {e}", "❌", RED)
         return False
-
 
 def status() -> dict:
 
@@ -562,8 +509,6 @@ def status() -> dict:
         "port": 0,
         "dir": CHECKPOINT_DIR,
     }
-
-
 
 def _cli() -> int:
     if len(sys.argv) < 2:
@@ -612,7 +557,6 @@ def _cli() -> int:
         return 0 if gen_video(prompt, output=out) else 1
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 1
-
 
 if __name__ == "__main__":
     sys.exit(_cli())

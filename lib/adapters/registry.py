@@ -10,7 +10,6 @@ from .base import BaseAdapter
 _REGISTRY: Dict[str, BaseAdapter] = {}
 _LOCK = threading.Lock()
 
-
 def register(adapter: BaseAdapter) -> None:
 
     if not adapter.name:
@@ -18,17 +17,14 @@ def register(adapter: BaseAdapter) -> None:
     with _LOCK:
         _REGISTRY[adapter.name] = adapter
 
-
 def unregister(name: str) -> bool:
 
     with _LOCK:
         return _REGISTRY.pop(name, None) is not None
 
-
 def get(name: str) -> Optional[BaseAdapter]:
 
     return _REGISTRY.get(name)
-
 
 def list_adapters(only_enabled: bool = False) -> List[BaseAdapter]:
 
@@ -37,11 +33,9 @@ def list_adapters(only_enabled: bool = False) -> List[BaseAdapter]:
         items = [a for a in items if a.enabled]
     return items
 
-
 def all_adapters_dict(only_enabled: bool = False) -> List[Dict[str, Any]]:
 
     return [a.to_dict() for a in list_adapters(only_enabled=only_enabled)]
-
 
 def search_all(
     query: str,
@@ -58,7 +52,6 @@ def search_all(
         except Exception as e:
             out[adapter.name] = {"error": str(e), "source": adapter.name}
     return out
-
 
 def reset_for_tests() -> None:
        with _LOCK:

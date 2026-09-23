@@ -12,7 +12,6 @@ from typing import Dict, Iterable, Optional
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = REPO_ROOT / ".superpowers" / "manifest" / "cortexagent.manifest.json"
 
-
 ROOTS = [
     "lib",
     "cortex",
@@ -26,15 +25,12 @@ ROOTS = [
     "tools",
 ]
 
-
 TOPLEVEL_FILES = [
     "install.sh",
     "README.md",
     "LICENSE",
     ".SAFETY_QUICK_REF",
-    ".SNAPSHOT_STATUS",
 ]
-
 
 EXCLUDE_PATTERNS = {
     ".git", ".claude", ".superpowers", ".pytest_cache", ".mypy_cache",
@@ -42,7 +38,6 @@ EXCLUDE_PATTERNS = {
     ".swp", ".bak", ".tmp", ".pyc", ".pyo", ".log", ".lock", ".pid",
     "test_results", "out", "dist", "build",
 }
-
 
 def _should_exclude(path: Path) -> bool:
     parts = set(path.parts)
@@ -52,7 +47,6 @@ def _should_exclude(path: Path) -> bool:
     if path.name.startswith("~") or path.name.endswith(( ".pyc", ".pyo", ".swp", ".bak", ".tmp")):
         return True
     return False
-
 
 def _iter_files() -> Iterable[Path]:
     seen = set()
@@ -77,14 +71,12 @@ def _iter_files() -> Iterable[Path]:
             seen.add(path)
             yield path
 
-
 def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
-
 
 def _build(out_path: Path) -> Dict:
     files: Dict[str, Dict] = {}
@@ -111,7 +103,6 @@ def _build(out_path: Path) -> Dict:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
     return manifest
-
 
 def _check(manifest: Dict) -> int:
     rows = []
@@ -147,7 +138,6 @@ def _check(manifest: Dict) -> int:
         print(f"... and {len(rows) - 200} more")
     return 1
 
-
 def main(argv: Optional[list] = None) -> int:
     ap = argparse.ArgumentParser(description="Build / verify cortexagent file-hash manifest")
     ap.add_argument("--out", default=str(DEFAULT_OUT), help="Manifest path")
@@ -165,7 +155,6 @@ def main(argv: Optional[list] = None) -> int:
     if args.print:
         print(f"built: {manifest['file_count']} files -> {out}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

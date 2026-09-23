@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-
 _PROC_CMDLINE = Path("/proc/cmdline")
 _PROC_SECURITY_LSM = Path("/sys/kernel/security/lsm")
 _SYSCTL_BASE = Path("/proc/sys")
@@ -22,7 +21,6 @@ _AUDIT_RULES_D = Path("/etc/audit/rules.d")
 _NFTABLES_CONF = Path("/etc/nftables.conf")
 _DNSMASQ_CONF = Path("/etc/dnsmasq.conf")
 _UNBOUND_CONF = Path("/etc/unbound/unbound.conf")
-
 
 SYSCTL_BASELINE: dict[str, int] = {
 
@@ -61,8 +59,6 @@ SSHD_BASELINE: dict[str, str] = {
     "MACs": "*-etm@openssh.com",
 }
 
-
-
 RISKY_CAPS = {
     "cap_sys_admin", "cap_sys_ptrace", "cap_sys_module", "cap_sys_rawio",
     "cap_sys_boot", "cap_dac_read_search", "cap_linux_immutable",
@@ -72,8 +68,6 @@ RISKY_CAPS = {
     "cap_mac_override", "cap_mac_admin",
 }
 
-
-
 def _safe_run(cmd: list[str], timeout: float = 5.0) -> tuple[int, str, str]:
 
     try:
@@ -82,7 +76,6 @@ def _safe_run(cmd: list[str], timeout: float = 5.0) -> tuple[int, str, str]:
         return p.returncode, p.stdout, p.stderr
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
         return 127, "", str(exc)
-
 
 def _read_proc_sys(key: str) -> int | None:
 
@@ -94,11 +87,8 @@ def _read_proc_sys(key: str) -> int | None:
     except (OSError, ValueError):
         return None
 
-
 def _check_tool(name: str) -> str | None:
     return shutil.which(name)
-
-
 
 def check_nftables() -> dict[str, Any]:
 
@@ -130,7 +120,6 @@ def check_nftables() -> dict[str, Any]:
         "summary": f"{len(tables)} tables, {len(chains)} chains, ~{rules} rules",
         "details": {"tables": tables, "chains_count": len(chains), "rules_approx": rules},
     }
-
 
 def check_sshd() -> dict[str, Any]:
 
@@ -170,7 +159,6 @@ def check_sshd() -> dict[str, Any]:
     return {"status": "fail", "summary": f"{len(bad)} baseline deviations",
             "details": {"issues": bad}}
 
-
 def check_sysctl() -> dict[str, Any]:
 
     bad: list[str] = []
@@ -192,7 +180,6 @@ def check_sysctl() -> dict[str, Any]:
                     f"{len(bad)} differ, {miss_count} missing"),
         "details": {"issues": bad, "ok": ok_count, "missing": miss_count},
     }
-
 
 def check_auditd() -> dict[str, Any]:
 
@@ -216,7 +203,6 @@ def check_auditd() -> dict[str, Any]:
         "summary": f"{rule_count} active rules, {len(staged)} staged files",
         "details": {"active": rule_count, "staged": staged},
     }
-
 
 def check_capabilities() -> dict[str, Any]:
 
@@ -247,7 +233,6 @@ def check_capabilities() -> dict[str, Any]:
         "details": {"risky": risky[:20]},
     }
 
-
 def check_unbound() -> dict[str, Any]:
 
     has_bin = bool(_check_tool("unbound"))
@@ -272,7 +257,6 @@ def check_unbound() -> dict[str, Any]:
         return {"status": "warn", "summary": "unbound not running", "details": details}
     return {"status": "ok", "summary": "unbound active", "details": details}
 
-
 def check_dnsmasq() -> dict[str, Any]:
 
     has_bin = bool(_check_tool("dnsmasq"))
@@ -295,7 +279,6 @@ def check_dnsmasq() -> dict[str, Any]:
         "summary": f"dnsmasq running, resolv.conf→127.0.0.1: {resolv_ok}",
         "details": {"running": running, "resolv_local": resolv_ok},
     }
-
 
 def check_lsms() -> dict[str, Any]:
 
@@ -325,7 +308,6 @@ def check_lsms() -> dict[str, Any]:
         "details": {"active": lsm_active, "cmdline_lsm": cmdline_lsm},
     }
 
-
 def check_dns_blocklist() -> dict[str, Any]:
 
     hosts_file = Path("/etc/hosts.adblock")
@@ -345,8 +327,6 @@ def check_dns_blocklist() -> dict[str, Any]:
         "details": {"path": str(hosts_file), "count": count},
     }
 
-
-
 CHECKERS: dict[str, Callable[[], dict[str, Any]]] = {
     "nftables": check_nftables,
     "sshd": check_sshd,
@@ -358,7 +338,6 @@ CHECKERS: dict[str, Callable[[], dict[str, Any]]] = {
     "lsms": check_lsms,
     "dns_blocklist": check_dns_blocklist,
 }
-
 
 def hardening_snapshot(subsystems: list[str] | None = None) -> dict[str, Any]:
 
@@ -379,19 +358,15 @@ def hardening_snapshot(subsystems: list[str] | None = None) -> dict[str, Any]:
             overall = "warn"
     return {"overall": overall, "subsystems": out, "ts": _now_iso()}
 
-
 def _now_iso() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
-
-
 
 def _cli_summary(snap: dict[str, Any]) -> None:
     print(f"Overall: {snap['overall'].upper()}")
     for name, v in snap["subsystems"].items():
         icon = {"ok": "✓", "warn": "⚠", "fail": "✗", "unknown": "?"}.get(v["status"], "?")
         print(f"  {icon} {name:14s} {v['summary']}")
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Read-only hardening status snapshot")
@@ -407,7 +382,6 @@ def main() -> int:
     if args.summary or not args.json:
         _cli_summary(snap)
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

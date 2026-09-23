@@ -21,9 +21,6 @@ try:
 except Exception:
     CFG = None
 
-
-
-
 def _daemon_status(timeout: float = 0.4) -> dict[str, Any]:
     sock = Path.home() / ".cortexagent" / "control.sock"
     if not sock.exists():
@@ -46,31 +43,15 @@ def _daemon_status(timeout: float = 0.4) -> dict[str, Any]:
     except Exception:
         return {}
 
-
-def _proxy_metrics(timeout: float = 0.4) -> dict[str, Any]:
-    port = os.environ.get("CORTEXAGENT_PROXY_PORT", "8081")
+def _lane_metrics(timeout: float = 0.4) -> dict[str, Any]:
     try:
         req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/metrics", method="GET"
+            "http://127.0.0.1:11436/metrics", method="GET"
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read())
     except Exception:
         return {}
-
-
-def _minify_snapshot() -> dict[str, Any]:
-    try:
-        p = Path.home() / ".cortexagent" / "minify_stats.json"
-        if not p.exists():
-            return {}
-        d = json.loads(p.read_text() or "{}")
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
-
-
-
 
 def _ctx_str(daemon: dict[str, Any]) -> str:
     cw = daemon.get("context_window") or {}
@@ -81,13 +62,12 @@ def _ctx_str(daemon: dict[str, Any]) -> str:
             return f"{used}/{total} tok"
     return ""
 
-
-def _tok_metrics(proxy: dict[str, Any]) -> str:
-    if not proxy:
+def _tok_metrics(metrics: dict[str, Any]) -> str:
+    if not metrics:
         return ""
-    in_tps = proxy.get("current_in_tps") or 0
-    out_tps = proxy.get("current_out_tps") or proxy.get("current_tok_s") or 0
-    reqs = proxy.get("requests", 0)
+    in_tps = metrics.get("current_in_tps") or 0
+    out_tps = metrics.get("current_out_tps") or metrics.get("current_tok_s") or 0
+    reqs = metrics.get("requests", 0)
     parts: list[str] = []
     if in_tps and out_tps:
         parts.append(f"in {in_tps:.0f} t/s · out {out_tps:.0f} t/s")
@@ -99,44 +79,10 @@ def _tok_metrics(proxy: dict[str, Any]) -> str:
         parts.append(f"{reqs} req")
     return " · ".join(parts)
 
-
-def _vram_str(daemon: dict[str, Any]) -> str:
-    vbp = daemon.get("vram_by_proc") or {}
-    if not vbp.get("ok"):
-        return ""
-    big = int(vbp.get("big_mib", 0) or 0)
-    other = int(vbp.get("other_mib", 0) or 0)
-    used = big + other
-    if used <= 0:
-        return ""
-    parts: list[str] = []
-    if big:
-        parts.append(f"big {big/1024:.1f} GB")
-    if not parts:
-        return f"{used/1024:.1f} GB"
-    return " + ".join(parts) + f" / {used/1024:.1f} GB"
-
-
-def _minify_str(minify: dict[str, Any]) -> str:
-    try:
-        runs = int(minify.get("runs", 0) or 0)
-        if runs <= 0:
-            return ""
-        ratio = float(minify.get("ratio_pct", 0.0) or 0.0)
-        saved = int(minify.get("tokens_saved", 0) or 0)
-        if saved <= 0 or ratio <= 0:
-            return ""
-        shown = (f"{saved // 1000}k" if saved >= 1000 else f"{saved}")
-        return f"minify -{ratio:.0f}% ({shown})"
-    except Exception:
-        return ""
-
-
 def render_line() -> str:
 
     daemon = _daemon_status()
-    proxy = _proxy_metrics()
-    minify = _minify_snapshot()
+    lane = _lane_metrics()
 
     brand = (str(CFG.author) if CFG else "Cortex") or "Cortex"
     model = ""
@@ -145,8 +91,8 @@ def render_line() -> str:
         model = m.get("display_name") or m.get("id") or ""
     elif isinstance(m, str):
         model = m
-    elif proxy.get("model_alias"):
-        model = proxy.get("model_alias")
+    elif lane.get("model_alias"):
+        model = lane.get("model_alias")
 
     cwd = daemon.get("cwd") or ""
     if cwd:
@@ -164,22 +110,12 @@ def render_line() -> str:
     ctx = _ctx_str(daemon)
     if ctx:
         parts.append(ctx)
-    tok = _tok_metrics(proxy)
+    tok = _tok_metrics(lane)
     if tok:
         parts.append(tok)
-    vram = _vram_str(daemon)
-    if vram:
-        parts.append(vram)
-    mf = _minify_str(minify)
-    if mf:
-        parts.append(mf)
     return " · ".join(str(p) for p in parts if p)
 
-
-
-
 class StatusTicker:
-
 
     def __init__(self, interval: float = 1.0, stream=None) -> None:
         self.interval = interval
@@ -206,7 +142,6 @@ class StatusTicker:
     def _emit(self, line: str) -> None:
         if self._is_tty:
 
-
             self.stream.write(f"\x1b[1A\x1b[2K{line}\n")
             self.stream.flush()
         else:
@@ -214,7 +149,6 @@ class StatusTicker:
             self.stream.flush()
 
     def _run(self) -> None:
-
 
         try:
             self.stream.write("\n")
@@ -235,9 +169,6 @@ class StatusTicker:
 
             self._stop.wait(0.1)
 
-
-
-
 def _smoke() -> int:
 
     try:
@@ -247,7 +178,6 @@ def _smoke() -> int:
     except Exception as e:
         print(f"ticker smoke FAILED: {e}", file=sys.stderr)
         return 1
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":

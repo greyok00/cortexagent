@@ -5,7 +5,6 @@ from pathlib import Path
 
 DB = Path.home() / ".config/cortexllm" / "cortexllm.db"
 
-
 CATEGORY_KEYWORDS = {
     "Network Security": ["nmap", "port scan", "network", "firewall", "dns", "subdomain",
                          "sniff", "packet", "cidr", "asn", "tcp", "udp"],
@@ -57,7 +56,6 @@ def guess_category(text: str) -> str:
         return max(scores, key=scores.get)
     return "Penetration Testing"
 
-
 def insert_practice(category, practice, description, source, priority="medium", tags=None):
     conn = sqlite3.connect(str(DB))
     row = conn.execute(
@@ -83,14 +81,10 @@ def insert_practice(category, practice, description, source, priority="medium", 
     conn.close()
     return True
 
-
-
-
 def parse_markdown(text: str, source: str) -> int:
 
     total = 0
     lines = text.split("\n")
-
 
     CAT_HEADING_MAP = {
         "reconnaissance": "OSINT", "osint": "OSINT",
@@ -103,7 +97,6 @@ def parse_markdown(text: str, source: str) -> int:
         "forensics": "Forensics", "incident response": "Incident Response",
         "cryptography": "Cryptography", "authentication": "Authentication",
     }
-
 
     sections = []
     current_heading = "General"
@@ -126,10 +119,7 @@ def parse_markdown(text: str, source: str) -> int:
             if key in heading_lower:
                 break
 
-
         section_text = "\n".join(section_lines)
-
-
 
         for j, line in enumerate(section_lines):
             s = line.strip()
@@ -168,7 +158,6 @@ def parse_markdown(text: str, source: str) -> int:
                     total += 1
                     print(f"  ✅ [{cat}] {tool_name[:50]}")
 
-
         tools = re.findall(r'\*\*([^*]+)\*\*\s*[—–:-]?\s*([^\n]*)', section_text)
         for tool_name, tool_desc in tools:
             tool_name = tool_name.strip()
@@ -183,7 +172,6 @@ def parse_markdown(text: str, source: str) -> int:
             if insert_practice(cat, tool_name, full_desc[:5000], source, prio, [cat.lower().replace(" ", "_")]):
                 total += 1
                 print(f"  ✅ [{cat}] {tool_name[:50]}")
-
 
         for line in section_lines:
             s = line.strip()
@@ -207,13 +195,9 @@ def parse_markdown(text: str, source: str) -> int:
 
     return total
 
-
-
-
 def parse_html(text: str, source: str) -> int:
 
     total = 0
-
 
     table_rows = re.findall(r'\|([^|]+)\|([^|]+)\|([^|]+)\|', text)
     for row in table_rows:
@@ -229,7 +213,6 @@ def parse_html(text: str, source: str) -> int:
                 total += 1
                 print(f"  ✅ [{cat}] {name[:50]}")
 
-
     defs = re.findall(r'\*\*([^*]+)\*\*:\s*([^*]+)', text)
     for name, desc in defs:
         name = name.strip()[:60]
@@ -243,9 +226,6 @@ def parse_html(text: str, source: str) -> int:
 
     return total
 
-
-
-
 def parse_pdf_text(text: str, source: str) -> int:
 
     total = 0
@@ -256,12 +236,10 @@ def parse_pdf_text(text: str, source: str) -> int:
         if not s or len(s) < 15:
             continue
 
-
         if any(w in s.lower() for w in ["copyright", "all rights reserved", "ebscohost",
                                           "packt publishing", "www.", "http://", "https://",
                                           "printed on", "terms-of-use"]):
             continue
-
 
         if len(s) < 60 and s.isupper() and not s.startswith(" "):
             heading = s.lower()
@@ -278,7 +256,6 @@ def parse_pdf_text(text: str, source: str) -> int:
                     break
             continue
 
-
         if re.match(r'^\d+[.)]\s', s):
             name = re.sub(r'^\d+[.)]\s+', '', s)[:60]
             desc = s[:150]
@@ -288,7 +265,6 @@ def parse_pdf_text(text: str, source: str) -> int:
             if insert_practice(cat, name, desc, source, "medium", [cat.lower().replace(" ", "_")]):
                 total += 1
                 print(f"  ✅ [{cat}] {name[:50]}")
-
 
         if s.startswith("•") or s.startswith("-") or s.startswith("*"):
             content = s[1:].strip()
@@ -303,9 +279,6 @@ def parse_pdf_text(text: str, source: str) -> int:
 
     return total
 
-
-
-
 def list_sources():
     conn = sqlite3.connect(str(DB))
     rows = conn.execute("SELECT source, COUNT(*) as c FROM Coding_Practices GROUP BY source ORDER BY c DESC").fetchall()
@@ -317,7 +290,6 @@ def list_sources():
     total = sum(r[1] for r in rows)
     print(f"{'─'*55} {'─'*6}")
     print(f"{'TOTAL':<55} {total:>6}")
-
 
 def main():
     if len(sys.argv) < 2:
@@ -355,7 +327,6 @@ def main():
 
     print(f"\n✅ Inserted {total} new practices from '{source}'")
     return 0
-
 
 if __name__ == "__main__":
     main()

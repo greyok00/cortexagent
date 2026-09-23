@@ -3,9 +3,7 @@ from collections import defaultdict, deque
 from typing import Optional
 from .types import Task, TaskStatus, EngineType, BatchGroup
 
-
 class DAGScheduler:
-
 
     def __init__(self):
         self.tasks: dict[str, Task] = {}

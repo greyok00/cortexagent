@@ -1,13 +1,6 @@
 [Unit]
 Description=CortexAgent stealth Chrome (Patchright/Chrome + CDP on :9222)
 Documentation=https://github.com/greyok00/cortexagent
-# Headless Chromium on virtual display :99. Replaces the old Brave + CDP
-# on :9222 stack that was getting wedged by Brave Shields (DOM guard
-# injection, blocked trackers, modified navigator objects).
-#
-# Standalone. Does NOT depend on cortexagent-tray / cortexagent-daemon /
-# overseer. The user can run this all night for clickworker / scraper
-# jobs without touching the main chat session.
 After=graphical-session.target
 
 [Service]

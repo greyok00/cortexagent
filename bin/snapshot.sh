@@ -1,14 +1,7 @@
 #!/bin/bash
-# snapshot.sh — Full system snapshot with integrity verification
-# Usage:
-#   snapshot.sh save          # Create a full snapshot
-#   snapshot.sh verify        # Verify current state matches snapshot
-#   snapshot.sh restore       # Restore from snapshot
-#   snapshot.sh diff          # Show differences from snapshot
 
 set -euo pipefail
 
-# Derived from this script's location — works for any clone, no hardcoded path.
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 WORKDIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 SNAPSHOT_DIR="$WORKDIR/.snapshots"
@@ -26,7 +19,7 @@ CRITICAL_FILES=(
     "lib/overseer.py"
     "lib/daemon.py"
     "lib/observability.py"
-    "config/settings.toml"
+    "config/settings.json"
 )
 
 hash_file() {
@@ -38,14 +31,13 @@ save_snapshot() {
     echo "║                    SNAPSHOT SAVE                           ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
-    
+
     local snap_dir="$SNAPSHOT_DIR/$SNAPSHOT_NAME"
     mkdir -p "$snap_dir"
-    
+
     echo "  Snapshot directory: $snap_dir"
     echo ""
-    
-    # Hash current state
+
     echo "  Recording file hashes..."
     echo -n "" > "$snap_dir/hashes.txt"
     for f in "${CRITICAL_FILES[@]}"; do
@@ -60,7 +52,7 @@ save_snapshot() {
             echo "  ✗ $f — NOT FOUND"
         fi
     done
-    
+
     echo ""
     echo "  Snapshot saved: $SNAPSHOT_NAME"
     echo "  Hash file: $snap_dir/hashes.txt"
@@ -71,29 +63,29 @@ verify_snapshot() {
     echo "║                    VERIFICATION                            ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
-    
+
     local latest=$(ls -d "$SNAPSHOT_DIR"/snap-*/ | sort -r | head -1)
-    
+
     if [ -z "$latest" ]; then
         echo "  No snapshots found!"
         return 1
     fi
-    
+
     echo "  Checking against: $latest"
     echo ""
-    
+
     local issues=0
     while IFS='|' read -r filepath hash size date; do
         local full_path="$WORKDIR/$filepath"
-        
+
         if [ ! -f "$full_path" ]; then
             echo "  ✗ $filepath — MISSING"
             ((issues++))
             continue
         fi
-        
+
         local current_hash=$(hash_file "$full_path")
-        
+
         if [ "$current_hash" == "$hash" ]; then
             echo "  ✓ $filepath — unchanged"
         else
@@ -103,7 +95,7 @@ verify_snapshot() {
             ((issues++))
         fi
     done < "$latest/hashes.txt"
-    
+
     echo ""
     if [ $issues -eq 0 ]; then
         echo "  ✓ All files verified — system intact"
@@ -117,22 +109,21 @@ restore_snapshot() {
     echo "║                    RESTORE                                 ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
-    
+
     local latest=$(ls -d "$SNAPSHOT_DIR"/snap-*/ | sort -r | head -1)
-    
+
     if [ -z "$latest" ]; then
         echo "  No snapshots found!"
         return 1
     fi
-    
+
     echo "  Restoring from: $latest"
     echo ""
-    
-    # Restore each file from its copy in the snapshot dir
+
     while IFS='|' read -r filepath hash size date; do
         local full_path="$WORKDIR/$filepath"
         local src="$latest/$filepath"
-        
+
         if [ -f "$src" ]; then
             echo "  Restoring $filepath..."
             cp -a "$src" "$full_path"
@@ -141,7 +132,7 @@ restore_snapshot() {
             echo "  ✗ $filepath — backup not found in snapshot"
         fi
     done < "$latest/hashes.txt"
-    
+
     echo ""
     echo "  Restore complete."
     echo "  Run: ./bin/snapshot.sh verify"
@@ -149,25 +140,25 @@ restore_snapshot() {
 
 diff_snapshot() {
     local latest=$(ls -d "$SNAPSHOT_DIR"/snap-*/ | sort -r | head -1)
-    
+
     if [ -z "$latest" ]; then
         echo "  No snapshots found!"
         return
     fi
-    
+
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║                    DIFF                                    ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
-    
+
     while IFS='|' read -r filepath hash size date; do
         local full_path="$WORKDIR/$filepath"
-        
+
         if [ ! -f "$full_path" ]; then
             echo "  ✗ $filepath — MISSING (was present at snapshot time)"
             continue
         fi
-        
+
         local current_hash=$(hash_file "$full_path")
         if [ "$current_hash" != "$hash" ]; then
             echo "  CHANGED: $filepath"

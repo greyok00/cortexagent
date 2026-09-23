@@ -7,7 +7,6 @@ import subprocess
 import threading
 from typing import Callable, Sequence
 
-
 _SEV = {
     "critical": "#c0392b",
     "high":     "#d35400",
@@ -20,10 +19,8 @@ _SEV = {
 _DEFAULT = "#34495e"
 _AUTO_MS = 6000
 
-
 def _has_display() -> bool:
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-
 
 def _notify_send_fallback(title: str, message: str, severity: str,
                           timeout_ms: int) -> None:
@@ -38,14 +35,12 @@ def _notify_send_fallback(title: str, message: str, severity: str,
     except FileNotFoundError:
         pass
 
-
 def _run_callback(fn: Callable) -> None:
 
     try:
         fn()
     except Exception:
         pass
-
 
 def _build_window(title: str, message: str, severity: str,
                   actions: Sequence[tuple[str, Callable]]) -> None:
@@ -66,7 +61,6 @@ def _build_window(title: str, message: str, severity: str,
     root.attributes("-topmost", True)
     f = tkfont.Font
 
-
     tk.Frame(root, bg=accent, height=6).pack(fill="x")
     head = tk.Frame(root, bg=accent, padx=14, pady=8)
     head.pack(fill="x")
@@ -75,13 +69,11 @@ def _build_window(title: str, message: str, severity: str,
     tk.Label(head, text=title, bg=accent, fg="#ffffff",
              font=f(size=11, weight="bold"), anchor="w").pack(side="left", padx=10)
 
-
     body = tk.Frame(root, bg="#f4f6f7", padx=14, pady=10)
     body.pack(fill="both", expand=True)
     tk.Label(body, text=message, bg="#f4f6f7", fg="#22272b",
              font=f(size=12), justify="left", anchor="nw",
              wraplength=W - 40).pack(fill="both", expand=True)
-
 
     ts = datetime.datetime.now().strftime("%H:%M:%S")
     foot = tk.Frame(root, bg="#eef1ee", padx=10, pady=8)
@@ -107,7 +99,6 @@ def _build_window(title: str, message: str, severity: str,
 
     root.after(_AUTO_MS, close)
     root.mainloop()
-
 
 def show_alert(title: str, message: str, severity: str = "info",
                timeout_ms: int = 8000,

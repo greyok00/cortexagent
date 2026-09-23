@@ -14,8 +14,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.config import CFG  # noqa: F401,E402  (config dir resolution kept consistent with CFG defaults)
-
+from lib.config import CFG
 
 if sys.stderr.isatty():
     CYAN, GREEN, YELLOW, RED, DIM, BOLD, RST = (
@@ -23,13 +22,11 @@ if sys.stderr.isatty():
 else:
     CYAN = GREEN = YELLOW = RED = DIM = BOLD = RST = ""
 
-
 HEALTHY = "healthy"
 FIXED = "fixed"
 DRY = "would-fix"
 FLAG = "flag"
 FAIL = "fail"
-
 
 class Check:
     __slots__ = ("name", "status", "detail")
@@ -40,8 +37,6 @@ class Check:
     @property
     def ok(self) -> bool:
         return self.status in (HEALTHY, FIXED, DRY, FLAG)
-
-
 
 def _bak(path: Path) -> Path:
 
@@ -54,13 +49,9 @@ def _bak(path: Path) -> Path:
         pass
     return bak
 
-
-
-
 def _render_settings(home: str) -> str:
     tpl = (_REPO_ROOT / "config" / "settings.json.template").read_text()
     return tpl.replace("{{HOME}}", home)
-
 
 def _render_mcp(memory_cmd: str, fire_enabled: str, brave_enabled: str) -> tuple[str, bool]:
 
@@ -93,8 +84,6 @@ def _render_mcp(memory_cmd: str, fire_enabled: str, brave_enabled: str) -> tuple
             pass
     return json.dumps({"mcpServers": servers}, indent=2) + "\n", has_cortexagent
 
-
-
 def _check_config_dir(cfg_dir: Path, dry: bool) -> Check:
     if cfg_dir.exists():
         return Check("config dir exists", HEALTHY, str(cfg_dir))
@@ -106,14 +95,10 @@ def _check_config_dir(cfg_dir: Path, dry: bool) -> Check:
     except Exception as e:
         return Check("config dir exists", FAIL, f"{e.__class__.__name__}: {e}")
 
-
 def _check_profile_at_runtime() -> Check:
-
-
 
     return Check("practical-reasoning profile", HEALTHY,
                  "applied at runtime (slimtoken)")
-
 
 def _check_settings(cfg_dir: Path, home: str, dry: bool) -> Check:
     dst = cfg_dir / "settings.json"
@@ -141,7 +126,6 @@ def _check_settings(cfg_dir: Path, home: str, dry: bool) -> Check:
     dst.write_text(want)
     return Check("settings.json", FIXED, drift_str)
 
-
 def _check_mcp(cfg_dir: Path, memory_cmd: str, fire: str, brave: str, dry: bool) -> Check:
     dst = cfg_dir / "mcp.json"
     want, has_ca = _render_mcp(memory_cmd, fire, brave)
@@ -153,7 +137,6 @@ def _check_mcp(cfg_dir: Path, memory_cmd: str, fire: str, brave: str, dry: bool)
     _bak(dst)
     dst.write_text(want)
     return Check("mcp.json", FIXED, "re-rendered" + ("" if has_ca else " (cortexagent absent — MCP script missing)"))
-
 
 def _check_binary_patch(no_patch: bool, dry: bool) -> Check:
     if no_patch or os.environ.get("CORTEXAGENT_PATCH_BINARY", "1") == "0":
@@ -181,13 +164,11 @@ def _check_binary_patch(no_patch: bool, dry: bool) -> Check:
     return Check("claude binary patch", FAIL,
                  f"patch failed rc={pr.returncode}: {pr.stderr[-160:]}")
 
-
 def _check_asset() -> Check:
     logo = _REPO_ROOT / "assets" / "cortexagentsquarelogo.jpg"
     if logo.exists() and logo.stat().st_size > 1000:
         return Check("logo asset", HEALTHY, f"{logo.stat().st_size} bytes")
     return Check("logo asset", FAIL, f"missing/corrupt: {logo}")
-
 
 def _check_launcher_wiring() -> Check:
 
@@ -207,7 +188,6 @@ def _check_launcher_wiring() -> Check:
     if missing:
         return Check("launcher wiring", FLAG, "tampered/missing: " + ",".join(missing))
     return Check("launcher wiring", HEALTHY, "IS_DEMO/ALT_SCREEN/banner/MCP-guard intact")
-
 
 def _check_model_conf_lock(dry: bool) -> Check:
 
@@ -241,8 +221,6 @@ def _check_model_conf_lock(dry: bool) -> Check:
     return Check("model conf lock", FIXED, "chmod 444 applied" +
                   (f" (DRIFT remains: {drift})" if drift else ""))
 
-
-
 def run(dry: bool = False, no_patch: bool = False) -> list[Check]:
     cfg_dir = Path(os.environ.get("CORTEXAGENT_CONFIG_DIR", str(Path.home() / ".cortexagent-config")))
     home = str(Path.home())
@@ -259,7 +237,6 @@ def run(dry: bool = False, no_patch: bool = False) -> list[Check]:
     checks.append(_check_launcher_wiring())
     checks.append(_check_model_conf_lock(dry))
     return checks
-
 
 def _format(checks: list[Check], dry: bool = False) -> str:
     mark = {HEALTHY: f"{GREEN}✓{RST}", FIXED: f"{YELLOW}↻{RST}",
@@ -285,7 +262,6 @@ def _format(checks: list[Check], dry: bool = False) -> str:
         lines.append(f"  {GREEN}all healthy — no drift detected{RST}")
     return "\n".join(lines)
 
-
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(prog="cortexagent doctor",
@@ -302,7 +278,6 @@ def main() -> int:
         print(_format(checks, dry=args.dry_run))
 
     return 1 if any(c.status == FAIL for c in checks) else 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

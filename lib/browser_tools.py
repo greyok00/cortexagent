@@ -14,29 +14,21 @@ _LIB = Path(__file__).resolve().parent
 if str(_LIB) not in sys.path:
     sys.path.insert(0, str(_LIB))
 
-from browser_control import (  # noqa: E402
+from browser_control import (
     CDP_URL, close, list_tabs, navigate, fetch, click, type_text,
     evaluate, snapshot, fill_and_send, health,
 )
 
-from lib.tool_registry import register_tool  # noqa: E402
-
+from lib.tool_registry import register_tool
 
 def _schema(description: str, properties: Dict[str, Any],
             required: List[str]) -> Dict[str, Any]:
     return {"description": description, "parameters": {
         "type": "object", "properties": properties, "required": required}}
 
-
-
-
 _TAB = {"type": ["string", "null"],
         "description": "Target tab: URL prefix, CDP target id, or omit for the first tab."}
 
-
-# Tool names renamed from brave_* → chrome_* on 2026-08-28 as part of the
-# Patchright + Chrome default-browser migration. Same schemas, same handlers,
-# just a different prefix to reflect the actual browser underneath.
 _TOOL_DEFS = [
     ("chrome_status", "Check Chrome CDP reachability and count open tabs.",
      {}, []),
@@ -75,14 +67,12 @@ _TOOL_DEFS = [
      {}, []),
 ]
 
-
 def _handle_status(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         tabs = list_tabs()
         return {"ok": True, "output": f"Chrome reachable on {CDP_URL} — {len(tabs)} tab(s).", "error": ""}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Chrome not reachable on {CDP_URL}: {e}"}
-
 
 def _handle_tabs(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
@@ -93,14 +83,12 @@ def _handle_tabs(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     except Exception as e:
         return {"ok": False, "output": "", "error": f"List tabs failed: {e}"}
 
-
 def _handle_navigate(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         r = navigate(tab=args.get("tab"), url=args["url"])
         return {"ok": True, "output": f"Title: {r['title']}\nURL: {r['url']}", "error": ""}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Navigate failed: {e}"}
-
 
 def _handle_fetch(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -112,7 +100,6 @@ def _handle_fetch(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Fetch failed: {e}"}
 
-
 def _handle_click(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         click(tab=args.get("tab"), selector=args["target"],
@@ -120,7 +107,6 @@ def _handle_click(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": True, "output": "Clicked.", "error": ""}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Click failed: {e}"}
-
 
 def _handle_type(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -131,7 +117,6 @@ def _handle_type(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Type failed: {e}"}
 
-
 def _handle_evaluate(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         result = evaluate(tab=args.get("tab"), expression=args["expression"],
@@ -140,14 +125,12 @@ def _handle_evaluate(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Evaluate failed: {e}"}
 
-
 def _handle_snapshot(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         snap = snapshot(tab=args.get("tab"), depth=args.get("depth", 10))
         return {"ok": True, "output": json.dumps(snap, ensure_ascii=False, indent=2), "error": ""}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Snapshot failed: {e}"}
-
 
 def _handle_fill_send(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -162,7 +145,6 @@ def _handle_fill_send(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "output": "", "error": "Fill failed — element not found."}
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Fill/send failed: {e}"}
-
 
 def _handle_health(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -181,7 +163,6 @@ def _handle_health(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"ok": False, "output": "", "error": f"Health check failed: {e}"}
 
-
 _HANDLERS = {
     "chrome_status": _handle_status,
     "chrome_tabs": _handle_tabs,
@@ -195,7 +176,6 @@ _HANDLERS = {
     "chrome_health": _handle_health,
 }
 
-
 def register_browser_tools() -> int:
 
     from lib.tool_registry import TOOLS
@@ -203,9 +183,6 @@ def register_browser_tools() -> int:
     for name, desc, props, required in _TOOL_DEFS:
         if name in TOOLS:
             continue
-
-
-
 
         def _make_wrapped(name=name):
             def _wrapped(**kwargs):
@@ -216,7 +193,6 @@ def register_browser_tools() -> int:
                       priority=1)
         count += 1
     return count
-
 
 def _smoke() -> int:
     n = register_browser_tools()
@@ -229,7 +205,6 @@ def _smoke() -> int:
         print(f"CDP check failed (graceful): {e}")
     print("browser_tools: OK")
     return 0
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":

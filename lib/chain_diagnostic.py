@@ -1,30 +1,22 @@
 #!/usr/bin/env python3
-"""chain_diagnostic.py — Full diagnostic of the entire CortexAgent request chain.
-
-Traces a request from user input → proxy → model → output, showing where
-minification, token tracking, and beautification happen (or don't).
-
-Usage:
-  python3 lib/chain_diagnostic.py          # full diagnostic
-  python3 lib/chain_diagnostic.py trace    # detailed trace for a test request
-"""
+"""End-to-end request-chain diagnostic: probe each lane and print latency."""
+import json
 import sys
 import time
 from pathlib import Path
-
 
 print("=" * 70)
 print("CortexAgent Request Chain Diagnostic")
 print("=" * 70)
 print()
 
-
 print("1. COMPONENT HEALTH")
 print("-" * 70)
 import socket
 components = {
-    "Proxy (minify)": ("127.0.0.1", 8081),
-    "Big model (llama-server)": ("127.0.0.1", 8080),
+    "slimtoken cloud lane": ("127.0.0.1", 11435),
+    "slimtoken local lane": ("127.0.0.1", 11436),
+    "ollama backend": ("127.0.0.1", 11600),
 }
 for name, addr in components.items():
     try:
@@ -36,51 +28,38 @@ for name, addr in components.items():
     except Exception as e:
         print(f"  ❌ {name:30s} NOT RUNNING — {e}")
 
-
-print("\n2. MINIFICATION PIPELINE")
+print("\n2. LANE METRICS (SLIMTOKEN :11436)")
 print("-" * 70)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import urllib.request
 try:
-    from lib.grammar_proxy import _MINIFY_OK, _MINIFY_BACKEND, _MINIFY_CFG, _get_minify_snapshot
-    print(f"  Minification backend:   {_MINIFY_BACKEND}")
-    print(f"  Minification enabled:   {_MINIFY_OK}")
-    print(f"  Config stages:          {_MINIFY_CFG.enabled_stages}")
-    print(f"  Token budget:           {_MINIFY_CFG.token_budget}")
-    print(f"  Chunked minify:         {sys.modules['lib.grammar_proxy']._MINIFY_CHUNKED}")
-    print(f"  Response minify:        {sys.modules['lib.grammar_proxy']._MINIFY_RESPONSE}")
-
-    snap = _get_minify_snapshot()
-    print("\n  Lifetime stats:")
-    print(f"    Total runs:           {snap.get('runs', 0)}")
-    print(f"    Tokens in:            {snap.get('tokens_in', 0):,}")
-    print(f"    Tokens out:           {snap.get('tokens_out', 0):,}")
-    print(f"    Tokens saved:         {snap.get('tokens_saved', 0):,}")
-    print(f"    Savings ratio:        {snap.get('ratio_pct', 0):.1f}%")
+    with urllib.request.urlopen("http://127.0.0.1:11436/metrics",
+                                timeout=2) as resp:
+        snap = json.loads(resp.read())
+    print(f"    Total requests:       {snap.get('requests', 0)}")
+    print(f"    Prompt tokens:        {snap.get('prompt_tokens', 0):,}")
+    print(f"    Completion tokens:    {snap.get('completion_tokens', 0):,}")
+    print(f"    Avg tok/s:            {snap.get('avg_tok_s', 0)}")
 except Exception as e:
     print(f"  ❌ Error: {e}")
-
 
 print("\n3. LLM PATH (OVERSEER)")
 print("-" * 70)
 try:
-    from lib.config import CFG
-    from lib.overseer import _big_model_healthy
-    print(f"  Port:           {CFG.big_model_port}")
-    print(f"  Is healthy:     {_big_model_healthy()}")
+    from lib.overseer import _model_healthy
+    print("  LLM lane:       slimtoken :11436 → ollama :11600")
+    print(f"  Is healthy:     {_model_healthy()}")
 
     start = time.time()
-    result = _big_model_healthy()
+    result = _model_healthy()
     elapsed = time.time() - start
     print(f"  Health check:   took {elapsed:.2f}s")
 except Exception as e:
     print(f"  ❌ Error: {e}")
 
-
 print("\n4. BEAUTIFICATION PIPELINE")
 print("-" * 70)
 try:
     from lib.beautify import beautify
-
 
     tests = [
         ("Table", "| a | b |\n|---|---|\n| 1 | 2 |"),
@@ -99,7 +78,6 @@ try:
 except Exception as e:
     print(f"  ❌ Error: {e}")
 
-
 print("\n5. REACT LOOP")
 print("-" * 70)
 try:
@@ -116,7 +94,6 @@ try:
         print(f"    '{text[:40]:40s}' → {mode}")
 except Exception as e:
     print(f"  ❌ Error: {e}")
-
 
 print("\n6. OVERSEER CLI")
 print("-" * 70)

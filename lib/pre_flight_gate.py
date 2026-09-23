@@ -17,8 +17,6 @@ try:
 except Exception:
     _manager = None
 
-
-
 def _load_capabilities() -> Dict:
 
     raw = os.environ.get("CORTEXAGENT_MODEL_CAPABILITIES", "")
@@ -29,8 +27,6 @@ def _load_capabilities() -> Dict:
             pass
     return {}
 
-
-
 def _read_hot(profile: str) -> List[Dict]:
 
     if _manager is None:
@@ -40,7 +36,6 @@ def _read_hot(profile: str) -> List[Dict]:
         return list(reversed(rows))
     except Exception:
         return []
-
 
 def _check_cache(profile: str, prompt: str) -> Dict:
 
@@ -55,8 +50,6 @@ def _check_cache(profile: str, prompt: str) -> Dict:
             except ValueError:
                 pass
     return {"cached": False, "response": None}
-
-
 
 def classify_intent(prompt: str) -> str:
 
@@ -87,7 +80,6 @@ def classify_intent(prompt: str) -> str:
         return "ambiguous"
     return "llm_required"
 
-
 def is_ambiguous(prompt: str) -> bool:
 
     p = prompt.strip()
@@ -105,8 +97,6 @@ def is_ambiguous(prompt: str) -> bool:
     if len(words) <= 7 and pronouns >= 1 and not any(c.isupper() for c in p):
         return True
     return False
-
-
 
 class PreFlightResult:
     def __init__(self):
@@ -131,10 +121,6 @@ class PreFlightResult:
             "budget_remaining": self.budget_remaining,
         }
 
-
-
-
-
 _CAPABILITY_KEYWORDS = {
     "vision": ("image", "picture", "photo", "screenshot", "visual", "see"),
     "web": ("web", "internet", "browse", "search the web", "fetch url", "http"),
@@ -142,7 +128,6 @@ _CAPABILITY_KEYWORDS = {
     "long_context": ("long context", "128k", "whole file", "entire codebase"),
     "audio": ("audio", "speech", "voice", "transcribe", "listen"),
 }
-
 
 class PreFlightGate:
     def __init__(self, max_iterations: int = 100):
@@ -162,13 +147,11 @@ class PreFlightGate:
               budget_remaining: Optional[float] = None) -> PreFlightResult:
         result = PreFlightResult()
 
-
         if not prompt or not prompt.strip():
             result.passed = False
             result.blocked = True
             result.reason = "Empty prompt"
             return result
-
 
         if budget_remaining is not None and budget_remaining <= 0:
             result.passed = False
@@ -176,7 +159,6 @@ class PreFlightGate:
             result.reason = "Budget exhausted"
             return result
         result.budget_remaining = budget_remaining
-
 
         count = self._iter.get(profile, 0)
         if count >= self.max_iterations:
@@ -186,19 +168,17 @@ class PreFlightGate:
             return result
         self._iter[profile] = count + 1
 
-
         cache = _check_cache(profile, prompt)
         if cache["cached"]:
             result.cached_response = cache["response"]
             result.warnings.append("Returning cached response — LLM call skipped")
-
 
         result.intent = classify_intent(prompt)
 
         if result.intent == "ambiguous" and not result.cached_response:
             result.warnings.append(
                 "Prompt looks ambiguous — asking for clarification instead of "
-                "passing to big. Rephrase with the file, function, or goal."
+                "passing to the model. Rephrase with the file, function, or goal."
             )
             result.cached_response = (
                 "Could you clarify what you mean?\n"
@@ -207,8 +187,6 @@ class PreFlightGate:
                 "• Any constraints (no restart, must keep model X, etc)?"
             )
             return result
-
-
 
         if self.capabilities:
             cap = self._requested_capability(prompt)
@@ -224,12 +202,9 @@ class PreFlightGate:
     def reset_iterations(self, profile: str) -> None:
         self._iter.pop(profile, None)
 
-
 def verify_before_llm(prompt: str, profile: str = "default",
                       budget: Optional[float] = None) -> PreFlightResult:
        return PreFlightGate().check(prompt, profile=profile, budget_remaining=budget)
-
-
 
 def _cli(argv: List[str]) -> int:
     if not argv:
@@ -267,36 +242,29 @@ def _cli(argv: List[str]) -> int:
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
 
-
 def _smoke() -> int:
     g = PreFlightGate()
-
 
     r = g.check("   ")
     assert r.blocked
     print(f"  empty prompt: blocked={r.blocked}  reason={r.reason}")
-
 
     r = g.check("edit file lib/foo.py", profile="default")
     assert not r.blocked
     assert r.intent == "file_operation"
     print(f"  file-op intent: passed={r.passed}  intent={r.intent}")
 
-
     r = g.check("Run python3 --version")
     assert r.intent == "command_execution"
     print(f"  command intent: {r.intent}")
-
 
     r = g.check("hello there")
     assert r.intent == "conversation"
     print(f"  greeting intent: {r.intent}")
 
-
     r = g.check("anything", budget_remaining=0)
     assert r.blocked
     print(f"  budget=0: blocked={r.blocked}  reason={r.reason}")
-
 
     g2 = PreFlightGate(max_iterations=2)
     g2.check("a", profile="x")
@@ -305,7 +273,6 @@ def _smoke() -> int:
     assert r.blocked
     print(f"  iter cap: blocked={r.blocked}  reason={r.reason}")
 
-
     g2.reset_iterations("x")
     r = g2.check("d", profile="x")
     assert not r.blocked
@@ -313,7 +280,6 @@ def _smoke() -> int:
 
     print("pre_flight_gate: OK")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(_cli(sys.argv[1:]))

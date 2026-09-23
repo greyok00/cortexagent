@@ -9,15 +9,11 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-
-
-
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.config import CFG  # noqa: E402
+from lib.config import CFG
 
 DB_PATH = CFG.db_path
 DB_DIR = DB_PATH.parent
@@ -107,9 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_profile ON Logs(profile, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_checkpoints_profile ON Checkpoints(profile, timestamp DESC);
 """
 
-
 class Database:
-
 
     _instance: Optional["Database"] = None
     _lock = threading.Lock()
@@ -162,9 +156,6 @@ class Database:
             self._readers.conn.close()
             self._readers.conn = None
 
-
-
-
     def add_to_hot(self, profile: str, role: str, content: str,
                    tokens_in: int = 0, tokens_out: int = 0,
                    metadata: Optional[dict] = None,
@@ -199,9 +190,6 @@ class Database:
         ).fetchone()
         return row["content"] if row else None
 
-
-
-
     def add_to_warm(self, profile: str, role: str, content: str,
                     tokens_in: int = 0, tokens_out: int = 0,
                     metadata: Optional[dict] = None,
@@ -227,9 +215,6 @@ class Database:
         w = self.writer
         w.execute("DELETE FROM Memory_Warm WHERE profile = ?", (profile,))
         w.commit()
-
-
-
 
     def add_to_cold(self, profile: str, category: str, fact: str,
                     source: str = "unknown", confidence: float = 0.5,
@@ -266,9 +251,6 @@ class Database:
         ).fetchall()
         return [r["category"] for r in rows]
 
-
-
-
     def save_checkpoint(self, profile: str, last_command: str,
                         context: Optional[dict] = None,
                         session_id: Optional[str] = None) -> int:
@@ -288,9 +270,6 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
-
-
-
     def log_event(self, profile: str, event_type: str,
                   event_data: Optional[dict] = None,
                   task_id: Optional[str] = None,
@@ -305,6 +284,5 @@ class Database:
             w.commit()
         except Exception:
             pass
-
 
 db = Database()

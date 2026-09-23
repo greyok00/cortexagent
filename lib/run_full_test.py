@@ -11,19 +11,16 @@ from typing import Dict
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
-
 GREEN = "\033[32m"
 RED = "\033[31m"
 CYAN = "\033[36m"
 RESET = "\033[0m"
-
 
 def log(msg: str, color: str = RESET, prefix: str = "") -> None:
 
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"\u001b[33m🚀 \u001b[1mrun_full_test\u001b[0m \u001b[2m[{ts}]\u001b[0m \u001b[{color}m{prefix} {msg}\u001b[0m",
           file=sys.stderr, flush=True)
-
 
 def run_component_health() -> Dict:
 
@@ -34,8 +31,9 @@ def run_component_health() -> Dict:
     }
 
     components = {
-        "Proxy (minify)": ("127.0.0.1", 8081),
-        "Big model (llama-server)": ("127.0.0.1", 8080),
+        "slimtoken cloud lane": ("127.0.0.1", 11435),
+        "slimtoken local lane": ("127.0.0.1", 11436),
+        "ollama backend": ("127.0.0.1", 11600),
     }
 
     for name, addr in components.items():
@@ -53,22 +51,19 @@ def run_component_health() -> Dict:
 
     return results
 
-
 def run_chain_diagnostic() -> Dict:
 
     log("Running chain diagnostic...", CYAN)
     results = {}
 
-
     try:
 
-        import lib.chain_diagnostic  # noqa: F401
+        import lib.chain_diagnostic
         results["chain"] = "diagnostic_completed"
     except Exception as e:
         results["chain"] = f"error: {e}"
 
     return results
-
 
 def run_observability_test() -> Dict:
 
@@ -78,10 +73,8 @@ def run_observability_test() -> Dict:
         from lib.observability import Trace, Span, save_trace, evaluate_trace
         import time
 
-
         trace = Trace(trace_id="full_test", session_id="full_test_session",
                       user_input="Full system test", workflow="full_test")
-
 
         with Span(trace.trace_id, "routing", "intent_classification") as s1:
             s1.set_metric("intent", "information_retrieval")
@@ -103,9 +96,7 @@ def run_observability_test() -> Dict:
             s5.payload["content"] = "Test output for full system test."
             time.sleep(0.001)
 
-
         save_trace(trace)
-
 
         eval_result = evaluate_trace(trace)
 
@@ -124,7 +115,6 @@ def run_observability_test() -> Dict:
 
     return results_local
 
-
 def run_load_tests() -> Dict:
 
     log("Running load tests...", CYAN)
@@ -132,7 +122,6 @@ def run_load_tests() -> Dict:
 
     try:
         from lib.load_test import run_proxy_test, run_overseer_test, run_e2e_test, run_disk_test
-
 
         results_local["proxy"] = run_proxy_test(10, 5)
         time.sleep(1)
@@ -153,7 +142,6 @@ def run_load_tests() -> Dict:
 
     return results_local
 
-
 def run_error_tests() -> Dict:
 
     log("Running error injection tests...", CYAN)
@@ -173,7 +161,6 @@ def run_error_tests() -> Dict:
 
     return results_local
 
-
 def generate_report(results: Dict) -> None:
 
     log("Generating comprehensive test report...", CYAN)
@@ -187,16 +174,13 @@ def generate_report(results: Dict) -> None:
         "error_tests": results.get("error_tests", {}),
     }
 
-
     report_file = Path.home() / ".cortexagent" / "test_results" / f"full_test_{int(time.time())}.json"
     with open(report_file, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False, default=str)
 
-
     log(f"\n{'='*70}", CYAN)
     log("FULL TEST REPORT", CYAN)
     log(f"{'='*70}", CYAN)
-
 
     log("\n1. COMPONENT HEALTH", GREEN)
     comp_health = results.get("components_health", {}).get("components", {})
@@ -206,14 +190,12 @@ def generate_report(results: Dict) -> None:
         else:
             log(f"  ❌ {name}: {status.get('error', 'unhealthy')}", RED)
 
-
     log("\n2. CHAIN DIAGNOSTIC", GREEN)
     chain_diag = results.get("chain_diagnostic", {})
     if chain_diag.get("chain") == "diagnostic_completed":
         log("  ✅ Chain diagnostic passed", GREEN)
     else:
         log(f"  ❌ Chain diagnostic failed: {chain_diag.get('chain', 'unknown')}", RED)
-
 
     log("\n3. OBSERVABILITY", GREEN)
     obs = results.get("observability", {})
@@ -223,7 +205,6 @@ def generate_report(results: Dict) -> None:
         log(f"  ✅ Evaluation score: {eval_score}", GREEN)
     else:
         log("  ❌ Observability test failed", RED)
-
 
     log("\n4. LOAD TESTS", GREEN)
     load_tests = results.get("load_tests", {})
@@ -247,7 +228,6 @@ def generate_report(results: Dict) -> None:
     else:
         log("  ❌ Load tests failed", RED)
 
-
     log("\n5. ERROR INJECTION", GREEN)
     error_tests = results.get("error_tests", {})
     if error_tests:
@@ -263,11 +243,9 @@ def generate_report(results: Dict) -> None:
     else:
         log("  ❌ Error tests failed", RED)
 
-
     log(f"\n{'='*70}", CYAN)
     log(f"Report saved to: {report_file}", CYAN)
     log(f"{'='*70}", CYAN)
-
 
 def main():
 
@@ -290,7 +268,6 @@ def main():
         log("Report generation requires running full test suite first.", RED)
         return
 
-
     log("Starting full system test suite...", CYAN)
     start_time = time.time()
 
@@ -307,14 +284,11 @@ def main():
         import traceback
         traceback.print_exc()
 
-
     generate_report(results)
-
 
     duration = time.time() - start_time
     log(f"\nTotal duration: {duration:.2f}s", CYAN)
     log("Test suite complete!", GREEN)
-
 
 if __name__ == "__main__":
     main()

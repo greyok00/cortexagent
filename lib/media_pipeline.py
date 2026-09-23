@@ -12,30 +12,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
                  str(Path.home() / ".cortexagent")))
 QUEUE_FILE = STATE_DIR / "overseer_queue.json"
 LOG_FILE = STATE_DIR / "logs" / "media_pipeline.log"
 
-
-
-
-
-
-from lib import diffusion_backend as _db  # noqa: E402
+from lib import diffusion_backend as _db
+from lib.config import CFG
 
 MODELS = {
-    "main": {
-        "name": "Qwen3.6-35B",
-        "emoji": "🧠",
-        "path": str(Path.home() / "models/qwen3.6-35b-iq3s/Qwen3.6-35B-A3B-UD-IQ3_S.gguf"),
-        "vram_gb": 14.3,
-        "type": "llm",
-        "engine": "llama_server",
-        "port": 8080,
-    },
     "image": {
         "name": "Stable Diffusion (diffusers)",
         "emoji": "🎨",
@@ -53,7 +39,6 @@ MODELS = {
         "engine": "diffusers",
     },
 }
-
 
 def _check_model_support(model_key: str) -> dict:
 
@@ -77,13 +62,9 @@ def _check_model_support(model_key: str) -> dict:
             f"LTX-Video ({st['video_model']}) not cached yet — run gen-video "
             f"once to download it, or set CORTEXAGENT_VIDEO_MODEL to a local "
             f"path. Needs torch+CUDA.")
-    elif model_key == "main":
-        info["supported"] = True
-        info["tools"] = ["llama_server"]
     return info
 
 class MediaPipeline:
-
 
     _instance: Optional["MediaPipeline"] = None
 
@@ -101,12 +82,9 @@ class MediaPipeline:
         self._thread: Optional[threading.Thread] = None
         self._initialized = True
 
-
-
     def detect_media_request(self, prompt: str) -> Optional[Dict]:
 
         lower = prompt.lower()
-
 
         if any(kw in lower for kw in [
             "generate image", "create an image", "draw", "picture of",
@@ -116,7 +94,6 @@ class MediaPipeline:
             if not support["supported"]:
                 return None
             return {"type": "image", "model": MODELS["image"], "prompt": prompt}
-
 
         if any(kw in lower for kw in [
             "generate video", "create a video", "animation", "video of",
@@ -134,8 +111,6 @@ class MediaPipeline:
         media = self.detect_media_request(prompt)
         return media is None
 
-
-
     def _swap_to(self, model: Dict) -> bool:
 
         engine = model.get("engine")
@@ -148,8 +123,6 @@ class MediaPipeline:
 
     def _swap_to_main(self) -> bool:
                return True
-
-
 
     def _generate_image(self, prompt: str) -> Optional[Dict]:
 
@@ -197,15 +170,14 @@ class MediaPipeline:
     def _generate_text(self, prompt: str) -> Optional[Dict]:
 
         try:
-            proxy_port = int(os.environ.get("CORTEXAGENT_PROXY_PORT", "8081"))
+            model = CFG.model_cloud
             req = urllib.request.Request(
-                f"http://127.0.0.1:{proxy_port}/v1/chat/completions",
+                "http://127.0.0.1:11436/v1/chat/completions",
                 data=json.dumps({
-                    "model": "cortexagent",
+                    "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 1024,
                     "temperature": 0.7,
-                    "chat_template_kwargs": {"enable_thinking": False},
                 }).encode(),
                 headers={"Content-Type": "application/json"},
                 method="POST",
@@ -222,12 +194,9 @@ class MediaPipeline:
                 "message": f"Generation failed: {e}",
             }
 
-
-
     def submit(self, prompt: str, model_type: str = "auto") -> Dict:
 
         task_id = f"T-{datetime.now().strftime('%Y%m%d%H%M%S')}-{len(self._tasks)}"
-
 
         if model_type == "auto":
             media = self.detect_media_request(prompt)
@@ -243,7 +212,6 @@ class MediaPipeline:
 
         with self._lock:
             self._tasks.append(task)
-
 
         result = self._process_task(task)
 
@@ -286,8 +254,6 @@ class MediaPipeline:
         self._thread.start()
         return task_id
 
-
-
     def _process_task(self, task: Dict) -> Dict:
 
         task_id = task["id"]
@@ -297,7 +263,6 @@ class MediaPipeline:
         _log(f"Task {task_id}: processing [{gen_type}] {prompt[:60]}...", "🔄")
 
         result = {"task_id": task_id, "type": gen_type}
-
 
         if gen_type in ("image", "video"):
             model_key = "image" if gen_type == "image" else "video"
@@ -320,13 +285,11 @@ class MediaPipeline:
                 self._swap_to_main()
                 return result
 
-
             if gen_type == "image":
                 gen_result = self._generate_image(prompt)
             else:
                 gen_result = self._generate_video(prompt)
             result.update(gen_result)
-
 
             result["swap_out"] = "pending"
             swapped_back = self._swap_to_main()
@@ -347,8 +310,6 @@ class MediaPipeline:
              "✅" if result.get("status") == "completed" else "❌")
 
         return result
-
-
 
     def status(self) -> Dict:
 
@@ -387,9 +348,6 @@ class MediaPipeline:
             self._tasks.clear()
             self._results.clear()
 
-
-
-
 def _log(msg: str, emoji: str = "", color: str = "") -> None:
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"[{ts}] {emoji} {msg}", file=sys.stderr)
@@ -399,9 +357,6 @@ def _log(msg: str, emoji: str = "", color: str = "") -> None:
             f.write(f"[{ts}] {msg}\n")
     except Exception:
         pass
-
-
-
 
 def main():
 
@@ -453,7 +408,6 @@ def main():
     else:
         print(f"Unknown command: {cmd}")
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

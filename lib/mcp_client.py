@@ -14,7 +14,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.tool_registry import register_tool  # noqa: E402
+from lib.tool_registry import register_tool
 
 MCP_CONFIG = Path(os.environ.get(
     "CORTEXAGENT_MCP_CONFIG", "~/.mcp.json")).expanduser()
@@ -24,7 +24,6 @@ LAZY_CONFIG = Path(os.environ.get(
 
 _SERVER_ALLOW = {s.strip() for s in
                  os.environ.get("CORTEXAGENT_MCP_SERVERS", "").split(",") if s.strip()}
-
 
 def load_servers() -> List[Dict[str, Any]]:
 
@@ -65,12 +64,9 @@ def load_servers() -> List[Dict[str, Any]]:
         servers = {n: s for n, s in servers.items() if n in _SERVER_ALLOW}
     return list(servers.values())
 
-
-
 _loop: Optional[asyncio.AbstractEventLoop] = None
 _loop_thread: Optional[threading.Thread] = None
 _sessions: Dict[str, Tuple[Any, Any]] = {}
-
 
 def _ensure_loop() -> asyncio.AbstractEventLoop:
     global _loop, _loop_thread
@@ -81,14 +77,11 @@ def _ensure_loop() -> asyncio.AbstractEventLoop:
         _loop_thread.start()
     return _loop
 
-
 async def _connect(server: Dict[str, Any]) -> Tuple[Any, Any]:
 
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
-    env = None
-    if server.get("env"):
-        env = {**os.environ, **server["env"]}
+    env = {**os.environ, **(server.get("env") or {})}
     params = StdioServerParameters(
         command=server["command"],
         args=server.get("args", []),
@@ -101,7 +94,6 @@ async def _connect(server: Dict[str, Any]) -> Tuple[Any, Any]:
     await session.initialize()
     return ctx, session
 
-
 def _get_session(server: Dict[str, Any]) -> Tuple[Any, Any]:
 
     name = server["name"]
@@ -112,7 +104,6 @@ def _get_session(server: Dict[str, Any]) -> Tuple[Any, Any]:
     ctx, session = future.result(timeout=45)
     _sessions[name] = (ctx, session)
     return ctx, session
-
 
 def _list_server_tools(server: Dict[str, Any]) -> List[Dict[str, Any]]:
 
@@ -128,7 +119,6 @@ def _list_server_tools(server: Dict[str, Any]) -> List[Dict[str, Any]]:
         print(f"mcp_client: list tools on '{server['name']}' failed: {e}",
               file=sys.stderr)
         return []
-
 
 def _call_server_tool(server: Dict[str, Any], tool_name: str,
                       arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -155,7 +145,6 @@ def _call_server_tool(server: Dict[str, Any], tool_name: str,
         return {"ok": False, "output": "",
                 "error": f"mcp call {server['name']}/{tool_name} failed: {e}"}
 
-
 def close_all() -> None:
 
     if not _sessions:
@@ -178,8 +167,6 @@ def close_all() -> None:
         asyncio.run_coroutine_threadsafe(_close(), loop).result(timeout=10)
     except Exception:
         _sessions.clear()
-
-
 
 def register_mcp_tools() -> int:
 
@@ -205,19 +192,15 @@ def register_mcp_tools() -> int:
             count += 1
     return count
 
-
 def _schema(description: str, properties: Dict[str, Any],
             required: List[str]) -> Dict[str, Any]:
     return {"description": description, "parameters": {
         "type": "object", "properties": properties, "required": required}}
 
-
 def _make_handler(server: Dict[str, Any], tool_name: str):
     def _handler(**kwargs: Any) -> Dict[str, Any]:
         return _call_server_tool(server, tool_name, kwargs)
     return _handler
-
-
 
 def _smoke() -> int:
     servers = load_servers()
@@ -230,7 +213,6 @@ def _smoke() -> int:
     print("mcp_client: OK")
     return 0
 
-
 def _list() -> int:
     servers = load_servers()
     for s in servers:
@@ -240,7 +222,6 @@ def _list() -> int:
             print(f"  mcp_{s['name']}_{t['name']}: {t['description'][:60]}")
     return 0
 
-
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
         sys.exit(_smoke())
@@ -248,7 +229,6 @@ def main() -> None:
         sys.exit(_list())
     print("usage: mcp_client.py smoke | list", file=sys.stderr)
     sys.exit(2)
-
 
 if __name__ == "__main__":
     main()

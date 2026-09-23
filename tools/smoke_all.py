@@ -17,7 +17,6 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 DAEMON_SOCK = Path.home() / ".cortexagent" / "control.sock"
 
-
 class R:
     def __init__(self, name: str, passed: bool, detail: str = "",
                  errors: Optional[List[str]] = None):
@@ -30,8 +29,6 @@ class R:
     def to_dict(self):
         return {"name": self.name, "passed": self.passed,
                 "detail": self.detail, "errors": self.errors}
-
-
 
 def _sys_run(args: List[str], timeout: int = 60, cwd: Optional[Path] = None,
              env: Optional[Dict] = None) -> Tuple[int, str, str]:
@@ -47,7 +44,6 @@ def _sys_run(args: List[str], timeout: int = 60, cwd: Optional[Path] = None,
     except Exception as e:
         return 2, "", f"exec error: {e}"
 
-
 def _http_get(url: str, timeout: float = 1.5) -> Tuple[int, str, str]:
     import urllib.request
     try:
@@ -55,8 +51,6 @@ def _http_get(url: str, timeout: float = 1.5) -> Tuple[int, str, str]:
             return r.getcode(), r.read().decode("utf-8", errors="replace"), ""
     except Exception as e:
         return 0, "", str(e)
-
-
 
 def layer_compile(scope: List[Path]) -> R:
     name = "L1.compile"
@@ -76,8 +70,6 @@ def layer_compile(scope: List[Path]) -> R:
         return R(name, False, f"{n} ok, {len(errors)} failed", errors[:10])
     return R(name, True, f"{n} files compiled")
 
-
-
 def layer_import() -> R:
     name = "L2.import"
     errors: List[str] = []
@@ -95,8 +87,6 @@ def layer_import() -> R:
     if errors:
         return R(name, False, f"{n} ok, {len(errors)} failed", errors[:10])
     return R(name, True, f"{n} modules imported")
-
-
 
 def layer_module_smoke() -> R:
     name = "L3.module-smoke"
@@ -118,15 +108,9 @@ def layer_module_smoke() -> R:
 
         if has_main_smoke:
 
-
             is_heavy = any(s in path.name for s in
                            ("diffusion_backend",
                             "diffusers", "img2img"))
-
-
-
-
-
 
             timeout = 180 if is_heavy else 30
             rc, out, err = _sys_run(
@@ -159,8 +143,6 @@ def layer_module_smoke() -> R:
                               f"{n_skip} skipped", errors[:10])
     return R(name, True, f"{n_ok} ok, {n_skip} skipped")
 
-
-
 def layer_cli() -> R:
     name = "L4.cli"
     errors: List[str] = []
@@ -177,8 +159,6 @@ def layer_cli() -> R:
         (["python3", "lib/memory_thin.py", "sessions"], "memory_thin sessions"),
     ]
     for cmd, label in cmds:
-        # Self-healing: daemon status is expected to be down pre-launch
-        # (control socket absent = intentional off, not a regression).
         if label == "daemon status" and not DAEMON_SOCK.exists():
             continue
         rc, out, err = _sys_run(cmd, timeout=30)
@@ -189,19 +169,16 @@ def layer_cli() -> R:
                               f"{len(errors)} failed", errors)
     return R(name, True, f"{len(cmds)} cmds ok")
 
-
-
 def layer_live() -> R:
     name = "L5.live"
     errors: List[str] = []
     notes: List[str] = []
-    # Self-healing: with the daemon off (pre-launch), endpoints down is
-    # expected state, not a failure.
     if not DAEMON_SOCK.exists():
         return R(name, True, "skipped — daemon not running (pre-launch)")
     endpoints = [
-        ("http://127.0.0.1:8080/health", "model server"),
-        ("http://127.0.0.1:8081/health", "grammar proxy"),
+        ("http://127.0.0.1:11600/api/version", "ollama backend"),
+        ("http://127.0.0.1:11435/metrics", "slimtoken cloud lane"),
+        ("http://127.0.0.1:11436/metrics", "slimtoken local lane"),
     ]
     for url, label in endpoints:
         code, body, err = _http_get(url)
@@ -214,8 +191,6 @@ def layer_live() -> R:
         return R(name, False, "all endpoints down", errors)
     return R(name, True, f"up: {', '.join(notes)}; "
                          f"down: {len(errors)}", errors)
-
-
 
 def layer_hot_paths() -> R:
     name = "L6.hot-paths"
@@ -244,7 +219,6 @@ def layer_hot_paths() -> R:
     except Exception as e:
         errors.append(f"observability: {type(e).__name__}: {e}")
 
-
     try:
         from lib.token_tracker import merge_stats, get_status
         s = merge_stats()
@@ -253,7 +227,6 @@ def layer_hot_paths() -> R:
                 errors.append(f"token_tracker: missing key {k!r}")
     except Exception as e:
         errors.append(f"token_tracker: {type(e).__name__}: {e}")
-
 
     try:
         from lib.converted_mcp_tools import CONVERTED_TOOLS, TOOL_MAP
@@ -281,13 +254,11 @@ def layer_hot_paths() -> R:
                     errors.append(f"{name}: returned {type(result).__name__}")
                 elif "error" in result and "not configured" not in result["error"]:
 
-
                     pass
             except Exception as e:
                 errors.append(f"{name}: {type(e).__name__}: {e}")
     except Exception as e:
         errors.append(f"converted_mcp_tools: {type(e).__name__}: {e}")
-
 
     try:
         from lib.memory_thin import append, read_last, search, write_cold, read_cold
@@ -313,7 +284,6 @@ def layer_hot_paths() -> R:
     except Exception as e:
         errors.append(f"memory_thin: {type(e).__name__}: {e}")
 
-
     try:
         import sys
         for mod_path in ["lib.tool_registry", "tool_registry"]:
@@ -329,8 +299,6 @@ def layer_hot_paths() -> R:
     if errors:
         return R(name, False, f"{len(errors)} failures", errors)
     return R(name, True, "all hot paths green")
-
-
 
 def layer_socket() -> R:
     name = "L7.socket"
@@ -353,22 +321,17 @@ def layer_socket() -> R:
     except Exception as e:
         return R(name, False, f"socket error: {e}")
 
-
-
 def layer_config() -> R:
     name = "L8.config"
     errors: List[str] = []
     try:
         from lib.config import CFG
 
-
     except Exception as e:
         errors.append(f"config: {type(e).__name__}: {e}")
     if errors:
         return R(name, False, "; ".join(errors))
     return R(name, True, "config loads")
-
-
 
 def run_all(layers: List[str], no_live: bool) -> Dict[str, Any]:
     scope = [REPO_ROOT / "lib", REPO_ROOT / "cortex", REPO_ROOT / "cortexllm",
@@ -411,7 +374,6 @@ def run_all(layers: List[str], no_live: bool) -> Dict[str, Any]:
         "results": [r.to_dict() for r in results],
     }
 
-
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="CortexAgent end-to-end smoke harness")
     ap.add_argument("--layer", action="append", default=[],
@@ -441,7 +403,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             print("\nALL GREEN")
     return out["summary"]["exit_code"]
-
 
 if __name__ == "__main__":
     sys.exit(main())

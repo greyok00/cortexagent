@@ -1,17 +1,14 @@
 
-
 import sys
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from lib import sec_controls as sc  # noqa: E402
-
+from lib import sec_controls as sc
 
 def test_severity_bar_empty():
     assert sc._severity_bar([]) == "All clear"
-
 
 def test_severity_bar_counts_only_nonzero():
     alerts = [
@@ -27,12 +24,10 @@ def test_severity_bar_counts_only_nonzero():
     assert "medium" not in bar
     assert "0 medium" not in bar
 
-
 def test_severity_bar_order_is_critical_first():
     alerts = [{"severity": "low", "detail": "a"}, {"severity": "critical", "detail": "b"}]
     bar = sc._severity_bar(alerts)
     assert bar.index("critical") < bar.index("low")
-
 
 def test_human_frame_port_scan_has_block_action():
     title, body, actions = sc._human_frame(
@@ -43,12 +38,10 @@ def test_human_frame_port_scan_has_block_action():
     keys = [k for k, _ in actions]
     assert "block" in keys
 
-
 def test_human_frame_unknown_kind_falls_back_to_default():
     title, body, actions = sc._human_frame({"kind": "weird.thing", "detail": "d"})
     assert "something" in body.lower() or "flag" in body.lower()
     assert isinstance(actions, list)
-
 
 def test_block_feedback_write_failure(tmp_path, monkeypatch):
     blocker = tmp_path / "not_a_dir"
@@ -58,7 +51,6 @@ def test_block_feedback_write_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(sc, "FIREWALL_STATE", tmp_path / "state.json")
     out = sc._block_feedback("1.2.3.4", "test")
     assert "fail" in out.lower() or "⚠" in out
-
 
 def test_block_feedback_applied(tmp_path, monkeypatch):
 
@@ -72,7 +64,6 @@ def test_block_feedback_applied(tmp_path, monkeypatch):
     ) + "\n")
     out = sc._block_feedback("1.2.3.4", "manual: test")
     assert out == "Blocked 1.2.3.4 ✓"
-
 
 def test_block_feedback_pending_when_no_result(tmp_path, monkeypatch):
 

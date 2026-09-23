@@ -1,13 +1,4 @@
 #!/bin/bash
-# install.sh — set up CortexAgent for the current user.
-#
-# - templates config/mcp.json and config/settings.json with $HOME paths
-# - syncs our minified CLAUDE.md into the isolated config dir
-# - creates the standalone memory dir (~/cortexagent/memory)
-# - marks scripts executable
-# - symlinks bin/cortexagent into ~/.local/bin
-#
-# No hardcoded home paths; everything is $HOME-relative. Re-runnable.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +14,6 @@ mkdir -p "${CONFIG_DIR}" "${BIN_DIR}"
 
 MEMORY_CMD="python3 ${REPO_ROOT}/memory/mcp_server.py"
 
-# ── Make scripts executable ─────────────────────────────────────────────────
 chmod +x "${REPO_ROOT}/bin/cortexagent" \
         "${REPO_ROOT}/hooks/"*.sh \
         "${REPO_ROOT}/memory/"*.py \
@@ -31,29 +21,15 @@ chmod +x "${REPO_ROOT}/bin/cortexagent" \
         "${REPO_ROOT}/lib/"*.sh 2>/dev/null || true
 echo "    scripts made executable"
 
-# ── Minify deps (slimtoken — REQUIRED for the proxy's chunked path) ────────
-# slimtoken is a hard runtime dep: grammar_proxy.py imports slimtoken.pipeline
-# directly. If missing, the chunked transport returns 400 from llama-server
-# because the `grammar` field isn't stripped. Install on every install.
 echo "    installing slimtoken (minify + grammar-strip)…"
 python3 -m pip install --break-system-packages --user \
   "slimtoken>=0.3.3" "orjson" "xxhash" 2>&1 | tail -2 || \
   echo "    WARN: slimtoken install failed — see README" >&2
 
-# ── Cython build (DEFAULT — compiles hot compute modules to native .so) ─────
-# tools/build_opt.py compiles a curated set of pure-Python modules (domain_db,
-# token_tracker, cold_distiller, charts) to .so with Cython. The .so shadows
-# the .py in lib/, so imports pick the native build automatically. Skipped
-# gracefully (falls back to .py) if Cython/gcc are missing.
 echo "    building native modules (Cython)…"
 python3 -m pip install --break-system-packages --user cython 2>&1 | tail -1 >/dev/null
 python3 "${REPO_ROOT}/tools/build_opt.py" 2>&1 | tail -3
 
-# ── Verify all expected .so artifacts are present after the build ─────────────
-# Cython can fail per-module silently if a compile breaks (out-of-tree build
-# cache, missing header). A half-optimized install is worse than a transparent
-# fallback — the user would think they're fast when they're not. Report loudly
-# if any expected .so is missing.
 echo "    verifying Cython artifacts…"
 if python3 "${REPO_ROOT}/tools/build_opt.py" --check 2>&1 | tee /tmp/_build_opt_check.$$ | grep -q "on .py fallback"; then
   echo "WARN: some modules still on .py fallback — install is functional but NOT optimized." >&2
@@ -61,23 +37,10 @@ if python3 "${REPO_ROOT}/tools/build_opt.py" --check 2>&1 | tee /tmp/_build_opt_
 fi
 rm -f /tmp/_build_opt_check.$$
 
-# ── Source minify (DEFAULT — strips comments/docstrings from .py files) ───────
-# tools/minify_source.py rewrites the .py tree in place: comments and
-# docstrings go, runtime behavior is preserved. Idempotent — re-running on an
-# already-minified tree is a no-op. Cython-compiled modules are not touched.
-# Skipped gracefully if the tool errors on an unparseable file (it leaves
-# such files alone and continues).
 echo "    minifying source (comments + docstrings)…"
 python3 "${REPO_ROOT}/tools/minify_source.py" 2>&1 | tail -3 || \
   echo "    WARN: source minify failed — leaving .py as-is" >&2
 
-# ── Diffusion deps (image/video via in-process diffusers) ────────────────────
-# Optional: only installs when CORTEXAGENT_INSTALL_DIFFUSION_DEPS=1 (heavy: torch
-# + diffusers + CUDA). Otherwise just prints what's needed so a user can install
-# manually. These are NOT auto-installed because a CPU-only/CI box doesn't want
-# a multi-GB CUDA torch pull. gen_image (SD1.5/SDXL) needs diffusers+torch+accelerate;
-# gen_video (LTX-Video) additionally needs sentencepiece (T5 tokenizer) +
-# imageio-ffmpeg (mp4 export).
 _diff_deps="diffusers transformers accelerate sentencepiece imageio imageio-ffmpeg opencv-python"
 if [ "${CORTEXAGENT_INSTALL_DIFFUSION_DEPS:-0}" = "1" ]; then
   echo "    installing diffusion deps (torch + ${_diff_deps})…"
@@ -89,7 +52,6 @@ else
   echo "      (needed for: cortexagent gen-image / gen-video)"
 fi
 
-# ── Render templates → live config files ────────────────────────────────────
 python3 - "${REPO_ROOT}/config" "${CONFIG_DIR}" "${MEMORY_CMD}" "${HOME}" "${REPO_ROOT}" <<'PY'
 import json, os, sys, shutil
 config_dir, isolated_dir, memory_cmd, home, repo_root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
@@ -124,30 +86,21 @@ if os.path.exists(src_md):
     print(f"    copied {src_md} → {dst_md}")
 PY
 
-# ── Standalone memory dir ─────────────────────────────────────────────────────
 mkdir -p "${MEMORY_DIR}/hot" "${MEMORY_DIR}/warm" "${MEMORY_DIR}/cold"
-# Seed USER.md if missing (preserve user edits on re-run)
 if [ ! -f "${MEMORY_DIR}/USER.md" ] && [ -f "${REPO_ROOT}/memory/USER.md" ]; then
   cp "${REPO_ROOT}/memory/USER.md" "${MEMORY_DIR}/USER.md"
 fi
-# Seed cold/cortexagent.md if missing
 if [ ! -f "${MEMORY_DIR}/cold/cortexagent.md" ] && [ -f "${REPO_ROOT}/memory/cold/cortexagent.md" ]; then
   cp "${REPO_ROOT}/memory/cold/cortexagent.md" "${MEMORY_DIR}/cold/cortexagent.md"
 fi
 echo "    memory dir: ${MEMORY_DIR}"
 
-# ── Per-profile directories (for lib/profiles.py, lib/loop_guard.py) ────────
 PROFILES_DIR="${CORTEXAGENT_PROFILES_DIR:-$HOME/.cortexagent/profiles}"
 mkdir -p "${PROFILES_DIR}/default"/{state,memory,workspace,sandboxes,logs}
 echo "    profiles dir: ${PROFILES_DIR}/default/{state,memory,workspace,sandboxes,logs}"
 
-# ── Log dir ─────────────────────────────────────────────────────────────────
 mkdir -p "${HOME}/.cortexagent/logs"
 
-# ── Symlink the entry point → engine/cli.py (unified Python dispatcher) ──────
-# `cortexagent` (no args) → cli.py `run` → execs bin/cortexagent (the session
-# launcher). Subcommands (`models`, `daemon`, `status`, `install`) are the
-# control plane over the daemon's socket. This is the Nuitka-compilable entry.
 mkdir -p "$BIN_DIR"
 target="${BIN_DIR}/cortexagent"
 if [ -e "$target" ] && [ ! -L "$target" ]; then
@@ -158,10 +111,6 @@ chmod +x "${REPO_ROOT}/engine/cli.py"
 ln -sfn "${REPO_ROOT}/engine/cli.py" "$target"
 echo "    linked ${target} -> ${REPO_ROOT}/engine/cli.py"
 
-# ── systemd user service (Linux only; OS-aware) ──────────────────────────────
-# Installs a user unit that runs the persistent daemon (models + proxy). The
-# daemon idle-unloads the big model to free VRAM; the CLI is a thin client.
-# Enabled to start on login. Set CORTEXAGENT_AUTOSTART=1 to also start it now.
 install_systemd() {
   local unit_tpl="${REPO_ROOT}/config/templates/cortexagent.service"
   local unit_dir="$HOME/.config/systemd/user"
@@ -173,7 +122,6 @@ install_systemd() {
     echo "    systemd: unit template missing — skipping (non-fatal)" >&2
     return 0
   fi
-  # Back up a hand-written / pre-existing unit before overwriting.
   if [ -f "${unit_out}" ] && [ ! -f "${unit_out}.bak" ]; then
     cp -a "${unit_out}" "${unit_out}.bak"
     echo "    backed up existing unit → ${unit_out}.bak"
@@ -183,10 +131,6 @@ install_systemd() {
   echo "    wrote ${unit_out}"
   if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
     systemctl --user enable cortexagent >/dev/null 2>&1 && echo "    enabled cortexagent.service (starts on login)"
-    # The daemon is the DEFAULT backend now (DAEMON_MODE in bin/cortexagent
-    # engages whenever this is up) — start it unconditionally, not gated on
-    # CORTEXAGENT_AUTOSTART. Stop any manual/orphan daemon holding the
-    # control socket / pidfile first so the restart doesn't conflict.
     if [ -f "$HOME/.cortexagent/daemon.pid" ]; then
       "${py}" "${REPO_ROOT}/lib/daemon.py" stop >/dev/null 2>&1 || true
     fi
@@ -196,11 +140,6 @@ install_systemd() {
   fi
 }
 
-# ── systemd user service: OVERSEER (always-on scheduler) ─────────────────────
-# Installs a user unit that runs the overseer daemon — runs the cron scheduler
-# + task queue + memory health, independent of the cortexagent CLI (so
-# scheduled tasks fire even when no session is open). Enabled + started now:
-# it is meant to be always on.
 install_overseer_systemd() {
   local unit_tpl="${REPO_ROOT}/config/templates/cortexagent-overseer.service"
   local unit_dir="$HOME/.config/systemd/user"
@@ -212,7 +151,6 @@ install_overseer_systemd() {
     echo "    systemd: overseer unit template missing — skipping (non-fatal)" >&2
     return 0
   fi
-  # Back up a hand-written / pre-existing unit before overwriting.
   if [ -f "${unit_out}" ] && [ ! -f "${unit_out}.bak" ]; then
     cp -a "${unit_out}" "${unit_out}.bak"
     echo "    backed up existing unit → ${unit_out}.bak"
@@ -222,8 +160,6 @@ install_overseer_systemd() {
   echo "    wrote ${unit_out}"
   if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
     systemctl --user enable cortexagent-overseer >/dev/null 2>&1 && echo "    enabled cortexagent-overseer.service (starts on login)"
-    # Stop any manual/orphan overseer holding the pidfile first (Type=forking
-    # would otherwise see "already running" and go inactive).
     if [ -f "$HOME/.cortexagent/overseer.pid" ]; then
       "${py}" "${REPO_ROOT}/lib/overseer.py" stop >/dev/null 2>&1 || true
     fi
@@ -236,11 +172,6 @@ install_overseer_systemd() {
   fi
 }
 
-# ── Install the system tray unit (linked to overseer) ──────────────────────
-# The tray is the user's persistent companion (wolf-head system-tray icon +
-# popout overseer dashboard). Linked to the overseer: Wants= pulls overseer
-# up when tray starts; PartOf= stops the tray when overseer stops. Only
-# installed on Linux with systemd; headless installs skip it.
 install_tray_systemd() {
   if [ "$(uname -s)" != "Linux" ]; then return; fi
   if ! command -v systemctl >/dev/null 2>&1; then return; fi
@@ -261,8 +192,6 @@ install_tray_systemd() {
   if systemctl --user daemon-reload >/dev/null 2>&1; then
     systemctl --user enable cortexagent-tray.service >/dev/null 2>&1 \
       && echo "    enabled cortexagent-tray.service (wolf-head tray on login)"
-    # Only start if DISPLAY is set (otherwise headless — let the user start
-    # it manually after they get a graphical session).
     if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
       systemctl --user start cortexagent-tray.service >/dev/null 2>&1 \
         && echo "    started cortexagent-tray.service (linked to overseer)"
@@ -272,13 +201,6 @@ install_tray_systemd() {
   fi
 }
 
-# ── Install the stealth-Chrome user unit (Patchright automation driver) ─────
-# Patchright talks to Chrome over CDP on :9222. Chrome itself has to be a
-# long-lived process so user-data-dir state (cookies, profile, seeds) survives
-# across CLI invocations. Installed only on Linux + when the template exists.
-# Enable-only by default (starts on next login); set STEALTH_CHROME_START=1 to
-# also start it now. We do NOT auto-start on headless installs (no DISPLAY)
-# because Chrome needs Xvfb, which the worker brings up itself.
 install_stealth_chrome_systemd() {
   if [ "${STEALTH_CHROME_SYSTEMD:-1}" != "1" ]; then return; fi
   if [ "$(uname -s)" != "Linux" ]; then return; fi
@@ -324,11 +246,6 @@ case "$(uname -s)" in
   *) echo "    $(uname -s): systemd install skipped — run 'cortexagent daemon start' manually" ;;
 esac
 
-# ── Patch the claude binary (hide "Welcome"/"Tips"/"What's new" banner) ─────────
-# Nulls the onboarding strings in the installed `claude` binary so the only
-# banner the user sees is CortexAgent's (lib/banner.py). Non-fatal: on a fresh
-# box `claude` may not be installed yet, and patching is opt-out. Backs up the
-# original to claude.exe.bak first (restore with: python3 lib/patch_binary.py --restore).
 if [ "${CORTEXAGENT_PATCH_BINARY:-1}" = "1" ] && [ -f "${REPO_ROOT}/lib/patch_binary.py" ]; then
   if python3 "${REPO_ROOT}/lib/patch_binary.py" --check >/dev/null 2>&1; then
     python3 "${REPO_ROOT}/lib/patch_binary.py" >/dev/null 2>&1 \
@@ -339,14 +256,12 @@ if [ "${CORTEXAGENT_PATCH_BINARY:-1}" = "1" ] && [ -f "${REPO_ROOT}/lib/patch_bi
   fi
 fi
 
-# ── PII self-check ──────────────────────────────────────────────────────────
 leak="$(grep -rn "/home/$(whoami)" "${REPO_ROOT}" --include='*.sh' --include='*.py' --include='*.json' --include='*.md' 2>/dev/null | grep -v 'config/mcp.json' | grep -v 'config/settings.json' | grep -v 'config/CLAUDE.md' | grep -v 'memory/' | grep -v '.git/' | grep -v 'tauri/src-tauri/target/' | grep -v '/.claude/' | grep -v '/tests/' || true)"
 if [ -n "$leak" ]; then
   echo "WARN: hardcoded home path found in package (review):" >&2
   echo "$leak" >&2
 fi
 
-# ── Optimization summary (printed at end so the user sees what shipped) ─────
 echo ""
 echo "Optimization summary:"
 _so_listing="$(python3 "${REPO_ROOT}/tools/build_opt.py" --check 2>/dev/null || true)"
@@ -361,20 +276,16 @@ fi
 _py_count=$(find "${REPO_ROOT}/lib" -maxdepth 1 -name '*.py' | wc -l)
 echo "  → ${_py_count} .py files in lib/ (minified)"
 
-# ── Next steps ──────────────────────────────────────────────────────────────
 echo ""
 echo "Done. Make sure ${BIN_DIR} is on your PATH."
 echo "Run:    cortexagent                       # start an interactive session"
 echo "        cortexagent -p \"fix this bug\"     # one-shot"
-echo "        cortexagent daemon start         # start the persistent backend"
-echo "        cortexagent models status        # big/proxy state"
-echo "        cortexagent models unload big    # free ~13 GB VRAM now"
 echo "Env knobs: CORTEXAGENT_MODEL, CORTEXAGENT_PORT, CORTEXAGENT_CTX, CORTEXAGENT_NGL"
 echo "           CORTEXAGENT_IDLE_UNLOAD_SEC (default 600)"
-echo "Logs:    \$HOME/.cortexagent/logs/daemon.log"
+echo "Logs:    \$HOME/.cortexagent/logs/"
 echo ""
 echo "Self-contained layout:"
 echo "  • config dir:  ${CONFIG_DIR} (CLAUDE.md, settings.json, mcp.json)"
 echo "  • memory dir:  ${MEMORY_DIR}"
-echo "  • daemon:      systemd user service cortexagent.service (models + proxy)"
+echo "  • local model: launcher-spawned on 127.0.0.1:11599 (no daemon/proxy service)"
 echo "  • excludes:    \$HOME/.claude/CLAUDE.md (via claudeMdExcludes)"

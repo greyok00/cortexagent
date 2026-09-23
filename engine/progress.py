@@ -2,7 +2,6 @@
 from typing import Optional
 from .types import TaskStatus, ProgressEvent, EngineType
 
-
 ENGINE_ICONS = {
     EngineType.LLM_REASONING: "🧠",
     EngineType.LLM_CODE: "💻",
@@ -22,9 +21,7 @@ STATUS_ICONS = {
     TaskStatus.RETRYING: "🔄",
 }
 
-
 class ProgressRenderer:
-
 
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
@@ -89,10 +86,8 @@ class ProgressRenderer:
             self.render_pipeline(phases),
         ]
 
-
         pct = completed / total if total > 0 else 0
         parts.append(f"\n  OVERALL: {self.render_progress_bar(pct)}")
-
 
         parts.append(self.render_summary(total, completed, failed))
 

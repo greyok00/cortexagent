@@ -16,14 +16,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _MITRE_MAP_FILE = _REPO_ROOT / "data" / "mitre_attack_mapping.json"
 _INTEL_DIR = Path.home() / "security-console" / "cve"
 _INTEL_FILE = _INTEL_DIR / "intel.jsonl"
 _CACHE_DIR = Path.home() / ".cortexagent" / "cache" / "cve"
 _FIREWALL_COMMANDS = Path.home() / "security-console" / "overseer" / "firewall_commands.jsonl"
-
 
 def _ref_url(ref: Any) -> Optional[str]:
 
@@ -32,7 +30,6 @@ def _ref_url(ref: Any) -> Optional[str]:
     if isinstance(ref, str):
         return ref.strip() or None
     return None
-
 
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 NVD_KEY = os.environ.get("NVD_API_KEY", "").strip()
@@ -48,10 +45,8 @@ UA = "cortexagent-cve-intel/1.0 (+local)"
 _USER_AGENT = UA
 _SSL_CTX = ssl.create_default_context()
 
-
 _MITRE_MAP: dict[str, list[str]] | None = None
 _KEYWORD_MAP: dict[str, list[str]] | None = None
-
 
 def _load_mitre_map() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
 
@@ -64,8 +59,6 @@ def _load_mitre_map() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
             _MITRE_MAP = data.get("mapping", {})
             _KEYWORD_MAP = data.get("keyword_fallback", {})
     return _MITRE_MAP, _KEYWORD_MAP
-
-
 
 def _http_get(url: str, params: dict | None = None, headers: dict | None = None,
               timeout: float = 30.0) -> bytes:
@@ -85,7 +78,6 @@ def _http_get(url: str, params: dict | None = None, headers: dict | None = None,
     with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
         return resp.read()
 
-
 def _http_get_json(url: str, params: dict | None = None,
                    headers: dict | None = None, timeout: float = 30.0) -> Any:
 
@@ -95,12 +87,9 @@ def _http_get_json(url: str, params: dict | None = None,
     except (UnicodeDecodeError, json.JSONDecodeError):
         return None
 
-
-
 def _cache_path(name: str) -> Path:
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return _CACHE_DIR / f"{name}.json"
-
 
 def _read_cache(name: str, max_age_s: int) -> Any | None:
     p = _cache_path(name)
@@ -114,11 +103,8 @@ def _read_cache(name: str, max_age_s: int) -> Any | None:
     except (OSError, json.JSONDecodeError):
         return None
 
-
 def _write_cache(name: str, data: Any) -> None:
     _cache_path(name).write_text(json.dumps(data, default=str))
-
-
 
 def poll_kev() -> set[str]:
 
@@ -129,7 +115,6 @@ def poll_kev() -> set[str]:
     cves = {e["cveID"] for e in data.get("vulnerabilities", [])}
     _write_cache("kev", sorted(cves))
     return cves
-
 
 def poll_nvd(since: str | None = None, limit: int = 200) -> list[dict]:
 
@@ -155,7 +140,6 @@ def poll_nvd(since: str | None = None, limit: int = 200) -> list[dict]:
             entries.append(entry)
     _write_cache("nvd_recent", entries[-200:])
     return entries
-
 
 def _nvd_to_entry(v: dict) -> dict | None:
 
@@ -214,7 +198,6 @@ def _nvd_to_entry(v: dict) -> dict | None:
         "sources": ["nvd"],
     }
 
-
 def poll_epss(cve_ids: Iterable[str]) -> dict[str, tuple[float, float]]:
 
     ids = list(cve_ids)
@@ -237,7 +220,6 @@ def poll_epss(cve_ids: Iterable[str]) -> dict[str, tuple[float, float]]:
                 continue
     return out
 
-
 def poll_ghsa(ecosystems: list[str] | None = None,
               since: str | None = None) -> list[dict]:
 
@@ -259,7 +241,6 @@ def poll_ghsa(ecosystems: list[str] | None = None,
             if entry:
                 out.append(entry)
     return out
-
 
 def _ghsa_to_entry(a: dict) -> dict | None:
     cid = a.get("cve_id") or a.get("ghsa_id")
@@ -284,7 +265,6 @@ def _ghsa_to_entry(a: dict) -> dict | None:
         "mitre_techniques": [],
         "sources": ["ghsa"],
     }
-
 
 def poll_osv(packages: list[tuple[str, str]] | None = None) -> list[dict]:
 
@@ -334,9 +314,7 @@ def poll_osv(packages: list[tuple[str, str]] | None = None) -> list[dict]:
                 out.append(entry)
     return out
 
-
 URLHAUS_DUMP = "https://urlhaus.abuse.ch/downloads/csv_recent/"
-
 
 def poll_urlhaus() -> set[str]:
 
@@ -352,7 +330,6 @@ def poll_urlhaus() -> set[str]:
         if len(parts) >= 3 and parts[2].startswith("http"):
             bad.add(parts[2].strip('"'))
     return bad
-
 
 def pin_dependencies() -> list[tuple[str, str]]:
 
@@ -390,8 +367,6 @@ def pin_dependencies() -> list[tuple[str, str]]:
                 pkgs.append(("crates.io", m.group(1)))
     return pkgs
 
-
-
 def enrich_with_mitre(entry: dict) -> dict:
 
     techniques: list[str] = []
@@ -408,8 +383,6 @@ def enrich_with_mitre(entry: dict) -> dict:
     entry["mitre_techniques"] = sorted(set(techniques))
     return entry
 
-
-
 def _load_seen_ids() -> set[str]:
     if not _INTEL_FILE.exists():
         return set()
@@ -425,12 +398,10 @@ def _load_seen_ids() -> set[str]:
         return set()
     return seen
 
-
 def diff_against_last(entries: list[dict]) -> list[dict]:
 
     seen = _load_seen_ids()
     return [e for e in entries if e["cve_id"] not in seen]
-
 
 def write_intel(entries: list[dict], append: bool = True) -> int:
 
@@ -444,8 +415,6 @@ def write_intel(entries: list[dict], append: bool = True) -> int:
             f.write(json.dumps(e, default=str, ensure_ascii=False) + "\n")
             n += 1
     return n
-
-
 
 def recent(since: str = "7d", min_cvss: float = 0.0,
            kev_only: bool = False, limit: int = 100) -> list[dict]:
@@ -479,7 +448,6 @@ def recent(since: str = "7d", min_cvss: float = 0.0,
     out.sort(key=lambda e: e.get("published") or e.get("last_modified") or "", reverse=True)
     return out
 
-
 def _parse_window(s: str) -> int:
 
     m = re.match(r"^(\d+)([smhd])$", s.strip().lower())
@@ -488,7 +456,6 @@ def _parse_window(s: str) -> int:
     n, unit = int(m.group(1)), m.group(2)
     return n * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
 
-
 def _iso_to_ts(s: str) -> float:
     if not s:
         return 0.0
@@ -496,7 +463,6 @@ def _iso_to_ts(s: str) -> float:
         return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
     except ValueError:
         return 0.0
-
 
 def lookup(cve_id: str) -> dict | None:
 
@@ -528,17 +494,12 @@ def lookup(cve_id: str) -> dict | None:
         return None
     return None
 
-
 def mitre_for_cve(cve_id: str) -> list[str]:
 
     entry = lookup(cve_id)
     if not entry:
         return []
     return entry.get("mitre_techniques", [])
-
-
-
-
 
 _LOCAL_MITIGATIONS: dict[str, str] = {
     "M1041": "Encrypt Sensitive Information (nftables + unbound DoT)",
@@ -570,7 +531,6 @@ _LOCAL_MITIGATIONS: dict[str, str] = {
     "M1059": "Threat Intelligence Program (THIS MODULE)",
 }
 
-
 def mitre_coverage() -> dict:
 
     covered = list(_LOCAL_MITIGATIONS.keys())
@@ -580,8 +540,6 @@ def mitre_coverage() -> dict:
         "pct": round(100.0 * len(covered) / 42.0, 1),
         "mapping": _LOCAL_MITIGATIONS,
     }
-
-
 
 def poll_cve_feeds(since: str | None = "7d", skip_osv: bool = True) -> list[dict]:
 
@@ -621,12 +579,9 @@ def poll_cve_feeds(since: str | None = "7d", skip_osv: bool = True) -> list[dict
         write_intel(new_entries)
     return new_entries
 
-
-
 def _is_smoke_argv(argv: list[str]) -> bool:
 
     return any(a == "--smoke" for a in argv[1:])
-
 
 def _smoke() -> int:
 
@@ -657,7 +612,6 @@ def _smoke() -> int:
     print(f"[smoke] Coverage: {mitre_coverage()['pct']}% of MITRE mitigations mapped locally")
     print("[smoke] Fake CVE passed through enrich + lookup OK")
     return 0
-
 
 def main() -> int:
     argv = sys.argv
@@ -740,7 +694,6 @@ def main() -> int:
         return 0
     ap.print_help()
     return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

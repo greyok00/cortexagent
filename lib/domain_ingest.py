@@ -11,11 +11,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib import domain_db  # noqa: E402
+from lib import domain_db
 
 CHUNK_TOKENS = 200
 OVERLAP = 50
-
 
 def chunk_text(text: str, chunk_tokens: int = CHUNK_TOKENS,
                overlap: int = OVERLAP) -> List[str]:
@@ -28,13 +27,11 @@ def chunk_text(text: str, chunk_tokens: int = CHUNK_TOKENS,
     step = max(chunk_tokens - overlap, 1)
     while i < len(words):
 
-
         if chunks and len(words) - i <= overlap:
             break
         chunks.append(" ".join(words[i:i + chunk_tokens]))
         i += step
     return chunks
-
 
 def ingest(domain: str, source: str, text: str) -> dict:
 
@@ -67,7 +64,6 @@ def ingest(domain: str, source: str, text: str) -> dict:
             except sqlite3.IntegrityError:
                 pass
     return {"ok": True, "chunks": stored, "error": ""}
-
 
 def _smoke() -> int:
     fails = 0
@@ -110,13 +106,11 @@ def _smoke() -> int:
     print("domain_ingest smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
 
-
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         return _smoke()
     print("Usage: python3 lib/domain_ingest.py --smoke")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

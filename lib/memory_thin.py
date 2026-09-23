@@ -17,7 +17,6 @@ except ImportError:
         finally:
             os.close(fd)
 
-
 _HOME = Path.home()
 CORTEXLLM_DIR = _HOME / ".config/cortexllm"
 
@@ -25,10 +24,8 @@ HOT_FILE = CORTEXLLM_DIR / "memory" / "hot" / "cortexagent.jsonl"
 COLD_FILE = CORTEXLLM_DIR / "memory" / "cold" / "cortexagent.jsonl"
 DAEMON_SOCKET = _HOME / ".cortexllm" / "memory.sock"
 
-
 def _now_ts() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
-
 
 def _try_daemon(message: dict) -> bool:
 
@@ -50,13 +47,11 @@ def _try_daemon(message: dict) -> bool:
     except (OSError, socket.error):
         return False
 
-
 def append(content: str, role: str = "user", *, session: str = "cortexagent",
            session_status: str = None, **meta) -> Path:
 
     message = {"role": role, "content": content, "timestamp": _now_ts(), **meta}
     line = json.dumps(message, ensure_ascii=False) + "\n"
-
 
     if session_status:
         try:
@@ -72,7 +67,6 @@ def append(content: str, role: str = "user", *, session: str = "cortexagent",
     _atomic_append(HOT_FILE, line)
     return HOT_FILE
 
-
 def read_last(n: int = 5) -> List[Dict]:
 
     if not HOT_FILE.exists():
@@ -86,9 +80,6 @@ def read_last(n: int = 5) -> List[Dict]:
         return [json.loads(l) for l in lines]
     except (OSError, ValueError):
         return []
-
-
-
 
 def search(query: str, limit: int = 10) -> List[Dict]:
 
@@ -110,7 +101,6 @@ def search(query: str, limit: int = 10) -> List[Dict]:
         pass
     return matches
 
-
 def write_cold(content: str, **meta) -> Path:
 
     entry = {"timestamp": _now_ts(), "content": content, **meta}
@@ -118,7 +108,6 @@ def write_cold(content: str, **meta) -> Path:
     COLD_FILE.parent.mkdir(parents=True, exist_ok=True)
     _atomic_append(COLD_FILE, line)
     return COLD_FILE
-
 
 def read_cold() -> List[Dict]:
 
@@ -129,12 +118,9 @@ def read_cold() -> List[Dict]:
     except (OSError, ValueError):
         return []
 
-
 def cold_list() -> List[str]:
 
     return [f"{e['timestamp']}: {e.get('content', '')[:40]}" for e in read_cold()]
-
-
 
 def check_sessions() -> dict:
 
@@ -145,7 +131,6 @@ def check_sessions() -> dict:
     except Exception as e:
         return {"error": str(e), "sessions": []}
 
-
 def log_awareness(message: str, level: str = "info") -> dict:
 
     try:
@@ -154,8 +139,6 @@ def log_awareness(message: str, level: str = "info") -> dict:
         return coord.log_awareness(message, level)
     except Exception as e:
         return {"error": str(e)}
-
-
 
 if __name__ == "__main__":
     import argparse
@@ -178,9 +161,6 @@ if __name__ == "__main__":
     c.add_argument("content")
 
     sub.add_parser("sessions")
-
-
-
 
     args = ap.parse_args()
     if args.cmd == "append":

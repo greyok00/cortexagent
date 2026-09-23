@@ -9,25 +9,15 @@ import threading
 from pathlib import Path
 from typing import Dict, Optional
 
-
-
-
 _CWD = Path(__file__).resolve().parent.parent
 if str(_CWD) not in sys.path:
     sys.path.insert(0, str(_CWD))
-
-
-
 
 _CLX_LEGACY = Path.home() / "cortexllm" / "repo" / "legacy"
 if _CLX_LEGACY.is_dir() and str(_CLX_LEGACY) not in sys.path:
     sys.path.insert(0, str(_CLX_LEGACY))
 if str(_CWD / "lib") not in sys.path:
     sys.path.insert(0, str(_CWD / "lib"))
-
-
-
-
 
 class HTTPSession:
 
@@ -54,7 +44,6 @@ class HTTPSession:
                 self.session.base_url = self.base_url
         return self.session
 
-
 class GraphStore:
 
     _instance = None
@@ -74,7 +63,6 @@ class GraphStore:
                 if cls._instance is None:
                     cls._instance = cls()
         return cls._instance
-
 
 class VectorStore:
 
@@ -96,7 +84,6 @@ class VectorStore:
                     cls._instance = cls()
         return cls._instance
 
-
 class OntologyEngine:
 
     _instance = None
@@ -117,11 +104,6 @@ class OntologyEngine:
                     cls._instance = cls()
         return cls._instance
 
-
-
-
-
-
 def memory_read(tier: str, platform: str = "default", category: str = None) -> dict:
 
     try:
@@ -138,7 +120,6 @@ def memory_read(tier: str, platform: str = "default", category: str = None) -> d
         return {"status": "ok", "data": data}
     except Exception as e:
         return {"error": str(e)}
-
 
 def memory_write(tier: str, content: str, platform: str = "default",
                  category: str = None, role: str = "user") -> dict:
@@ -165,7 +146,6 @@ def memory_write(tier: str, content: str, platform: str = "default",
     except Exception as e:
         return {"error": str(e)}
 
-
 def memory_search(query: str, limit: int = 10) -> dict:
 
     try:
@@ -174,7 +154,6 @@ def memory_search(query: str, limit: int = 10) -> dict:
         return {"status": "ok", "results": results}
     except Exception as e:
         return {"error": str(e)}
-
 
 def memory_clear(tier: str, platform: str = None) -> dict:
 
@@ -195,7 +174,6 @@ def memory_clear(tier: str, platform: str = None) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
 def memory_search_semantic(query: str, limit: int = 10, platform: str = None) -> dict:
 
     try:
@@ -206,7 +184,6 @@ def memory_search_semantic(query: str, limit: int = 10, platform: str = None) ->
         return {"status": "ok", "results": results}
     except Exception as e:
         return {"error": str(e)}
-
 
 def memory_graph_query(action: str, entity: str = None, text: str = None,
                        target: str = None, depth: int = 2,
@@ -229,7 +206,6 @@ def memory_graph_query(action: str, entity: str = None, text: str = None,
         return result
     except Exception as e:
         return {"error": str(e)}
-
 
 def memory_ontology(action: str, text: str = None) -> dict:
 
@@ -257,14 +233,6 @@ def memory_ontology(action: str, text: str = None) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
-
-
-
-
-
-
-
 def adapter_list() -> dict:
 
     try:
@@ -273,7 +241,6 @@ def adapter_list() -> dict:
         return {"status": "ok", "adapters": items, "count": len(items)}
     except Exception as e:
         return {"error": str(e)}
-
 
 def adapter_search(query: str, limit: int = 5,
                     adapter_name: Optional[str] = None) -> dict:
@@ -311,11 +278,6 @@ def adapter_search(query: str, limit: int = 5,
     except Exception as e:
         return {"error": str(e)}
 
-
-
-
-
-
 def firecrawl_search(query: str, limit: int = 10) -> dict:
 
     try:
@@ -326,7 +288,6 @@ def firecrawl_search(query: str, limit: int = 10) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
 def firecrawl_scrape(url: str) -> dict:
 
     try:
@@ -336,11 +297,6 @@ def firecrawl_scrape(url: str) -> dict:
         return {"status": "ok", "content": content}
     except Exception as e:
         return {"error": str(e)}
-
-
-
-
-
 
 def magicui_generate(description: str, format: str = "html") -> dict:
 
@@ -374,11 +330,6 @@ def magicui_generate(description: str, format: str = "html") -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
-
-
-
-
 class TradingSession:
 
     _instances: Dict[str, 'TradingSession'] = {}
@@ -395,7 +346,6 @@ class TradingSession:
             if broker not in cls._instances:
                 cls._instances[broker] = cls(broker)
             return cls._instances[broker]
-
 
 def alpaca_get_account() -> dict:
 
@@ -421,7 +371,6 @@ def alpaca_get_account() -> dict:
         return {"status": "ok", "account": account, "paper": paper}
     except Exception as e:
         return {"error": f"Alpaca request failed: {e}"}
-
 
 def ibkr_get_positions() -> dict:
 
@@ -449,7 +398,6 @@ def ibkr_get_positions() -> dict:
             f"IBKR gateway not reachable/configured: {e}. Set "
             "CORTEXAGENT_IBKR_GATEWAY_URL to the IBKR Web API gateway "
             "(default http://127.0.0.1:5000/v1/api).")}
-
 
 def quant_trader_strategy(symbol: str, timeframe: str = "1d") -> dict:
 
@@ -495,11 +443,6 @@ def quant_trader_strategy(symbol: str, timeframe: str = "1d") -> dict:
     except Exception as e:
         return {"error": f"Quant strategy failed: {e}"}
 
-
-
-
-
-
 def slimtoken_minify(messages: list) -> dict:
 
     try:
@@ -509,7 +452,6 @@ def slimtoken_minify(messages: list) -> dict:
         return {"status": "ok", "minified": msgs, "stats": stats}
     except Exception as e:
         return {"error": str(e)}
-
 
 def slimtoken_maxify(messages: list) -> dict:
 
@@ -545,14 +487,6 @@ def slimtoken_maxify(messages: list) -> dict:
         "expanded_markers": {"dedup": dedup, "distill": distill},
     }
 
-
-
-
-
-
-
-
-
 def session_broadcast(status: str = "working", task: str = None) -> dict:
 
     try:
@@ -562,7 +496,6 @@ def session_broadcast(status: str = "working", task: str = None) -> dict:
         return result
     except Exception as e:
         return {"error": str(e)}
-
 
 def session_check() -> dict:
 
@@ -576,7 +509,6 @@ def session_check() -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
 def session_log(message: str, level: str = "info") -> dict:
 
     try:
@@ -585,11 +517,6 @@ def session_log(message: str, level: str = "info") -> dict:
         return coord.log_awareness(message, level)
     except Exception as e:
         return {"error": str(e)}
-
-
-
-
-
 
 def cve_recent(since: str = "7d", min_cvss: float = 0.0,
                kev_only: bool = False, limit: int = 50) -> dict:
@@ -601,7 +528,6 @@ def cve_recent(since: str = "7d", min_cvss: float = 0.0,
         return {"status": "ok", "count": len(entries), "cves": entries}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
 
 def cve_lookup(cve_id: str) -> dict:
 
@@ -618,7 +544,6 @@ def cve_lookup(cve_id: str) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def mitre_techniques_for_cve(cve_id: str) -> dict:
 
     try:
@@ -628,7 +553,6 @@ def mitre_techniques_for_cve(cve_id: str) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def mitre_mitigations_coverage() -> dict:
 
     try:
@@ -636,7 +560,6 @@ def mitre_mitigations_coverage() -> dict:
         return {"status": "ok", **cve_intel.mitre_coverage()}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
 
 def cve_poll_now(since: str = "7d", include_osv: bool = False) -> dict:
 
@@ -661,11 +584,6 @@ def cve_poll_now(since: str = "7d", include_osv: bool = False) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
-
-
-
-
 def hardening_status(subsystem: str = "all") -> dict:
 
     try:
@@ -678,7 +596,6 @@ def hardening_status(subsystem: str = "all") -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def nftables_list() -> dict:
 
     try:
@@ -687,7 +604,6 @@ def nftables_list() -> dict:
         return {"status": "ok", **snap["subsystems"].get("nftables", {})}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
 
 def auditd_query() -> dict:
 
@@ -698,7 +614,6 @@ def auditd_query() -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def sshd_config_dump() -> dict:
 
     try:
@@ -707,7 +622,6 @@ def sshd_config_dump() -> dict:
         return {"status": "ok", **snap["subsystems"].get("sshd", {})}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
 
 def sysctl_current(keys: list[str] | None = None) -> dict:
 
@@ -722,7 +636,6 @@ def sysctl_current(keys: list[str] | None = None) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def unbound_status() -> dict:
 
     try:
@@ -731,7 +644,6 @@ def unbound_status() -> dict:
         return {"status": "ok", **snap["subsystems"].get("unbound", {})}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
 
 def capabilities_list(paths: list[str] | None = None) -> dict:
 
@@ -762,7 +674,6 @@ def capabilities_list(paths: list[str] | None = None) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def lsm_stack() -> dict:
 
     try:
@@ -772,26 +683,20 @@ def lsm_stack() -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
-
-
-
-
 def siem_recent(source: str | None = None, limit: int = 50) -> dict:
 
     try:
-        import siem.db as siem_db  # type: ignore
+        import siem.db as siem_db
         rows = siem_db.list_findings(limit=limit, source=source)
         return {"status": "ok", "count": len(rows), "findings": rows,
                 "counts": siem_db.finding_counts()}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def siem_posture() -> dict:
 
     try:
-        import siem.db as siem_db  # type: ignore
+        import siem.db as siem_db
         rows = siem_db.list_findings(limit=500, source="hardening_status")
         latest: dict[str, dict] = {}
         for r in rows:
@@ -809,7 +714,6 @@ def siem_posture() -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def siem_push_recent(since: str = "7d") -> dict:
 
     try:
@@ -818,7 +722,6 @@ def siem_push_recent(since: str = "7d") -> dict:
         return {"status": "ok", "pushed": n, "since": since}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
 
 def soar_run_on_recent(since: str = "7d", dry_run: bool = False) -> dict:
 
@@ -829,7 +732,6 @@ def soar_run_on_recent(since: str = "7d", dry_run: bool = False) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def soar_run_posture(dry_run: bool = False) -> dict:
 
     try:
@@ -839,7 +741,6 @@ def soar_run_posture(dry_run: bool = False) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-
 def soar_history(limit: int = 20) -> dict:
 
     try:
@@ -848,10 +749,6 @@ def soar_history(limit: int = 20) -> dict:
                 "runs": soar_playbooks.load_history(limit)}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
-
-
-
 
 CONVERTED_TOOLS = [
 {
@@ -1550,8 +1447,6 @@ CONVERTED_TOOLS = [
         },
 ]
 
-
-
 TOOL_MAP = {
     "memory_read": memory_read,
     "memory_write": memory_write,
@@ -1598,7 +1493,6 @@ TOOL_MAP = {
     "soar_history": soar_history,
 }
 
-
 def execute_converted_tool(name: str, args: dict) -> dict:
 
     if name not in TOOL_MAP:
@@ -1608,7 +1502,6 @@ def execute_converted_tool(name: str, args: dict) -> dict:
         return result
     except Exception as e:
         return {"error": str(e)}
-
 
 def list_converted_tools(limit: int = 16, stub: bool = True) -> list:
 
@@ -1625,11 +1518,9 @@ def list_converted_tools(limit: int = 16, stub: bool = True) -> list:
         ]
     return tools
 
-
 if __name__ == "__main__":
 
     print("Testing converted MCP tools...")
-
 
     r = execute_converted_tool("memory_read", {"tier": "warm"})
     print(f"memory_read: {r}")

@@ -1,27 +1,7 @@
 #!/bin/bash
-# cortexagent-cve — wrapper for the CVE / MITRE threat-intel pipeline.
-#
-# Thin stdlib-only poller that writes new CVEs to ~/security-console/cve/intel.jsonl
-# and tags each entry with MITRE ATT&CK techniques. Designed to run daily via
-# the overseer scheduler (or `cortexagent-cve --install-schedule` to register).
-#
-# All operations are local-only — outbound HTTPS to NVD/KEV/EPSS/GHSA/OSV.dev.
-# No new network services are bound.
-#
-# Usage:
-#   cortexagent-cve                  # default: poll last 7 days (NVD+KEV+EPSS+GHSA)
-#   cortexagent-cve --since=24h      # poll last 24h
-#   cortexagent-cve --include-osv    # also query OSV.dev for our pinned deps
-#   cortexagent-cve --lookup CVE-2024-3094
-#   cortexagent-cve --mitre T1190
-#   cortexagent-cve --coverage
-#   cortexagent-cve --smoke         # offline self-test
-#   cortexagent-cve --install-schedule   # register daily cron in overseer scheduler
-#   cortexagent-cve --uninstall-schedule
 
 set -euo pipefail
 
-# ── Locate self (symlink-safe) ─────────────────────────────────────────────
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
@@ -57,7 +37,6 @@ print('  ✓ removed: cve_poll_daily')
 "
 }
 
-# ── Arg dispatch ───────────────────────────────────────────────────────────
 case "${1:-}" in
   --smoke|smoke)
     cd "$REPO_ROOT"

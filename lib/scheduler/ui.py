@@ -5,9 +5,7 @@ import html
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-
 def sanitize_title(title: str, max_len: int = 40) -> str:
-
 
     title = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', title)
 
@@ -20,7 +18,6 @@ def sanitize_title(title: str, max_len: int = 40) -> str:
 
     title = html.escape(title)
     return title
-
 
 def format_time(time_str: Optional[str], now: Optional[datetime] = None) -> str:
 
@@ -48,9 +45,6 @@ def format_time(time_str: Optional[str], now: Optional[datetime] = None) -> str:
     except Exception:
         return time_str[:16]
 
-
-
-
 STATUS_GLYPHS = {
     "scheduled": ("◌", "muted"),
     "queued": ("◍", "info"),
@@ -72,33 +66,25 @@ STATUS_COLORS = {
     "muted": (60, "#565F89"),
 }
 
-
 def status_glyph(state: str) -> str:
 
     return STATUS_GLYPHS.get(state, ("?", "muted"))[0]
-
 
 def status_color(state: str) -> tuple:
 
     color_name = STATUS_GLYPHS.get(state, ("?", "muted"))[1]
     return STATUS_COLORS.get(color_name, (60, "#565F89"))
 
-
-
-
 def scheduler_strip(tasks: List[Dict], queue_depth: int = 0,
                     failed_count: int = 0,
                     dev_mode: bool = False) -> str:
 
-
     if not dev_mode:
         tasks = [t for t in tasks if not (t.get("kind") == "test" and t.get("ephemeral", False))]
-
 
     active = len([t for t in tasks if t.get("state") in ("scheduled", "queued", "running")])
     failed = len([t for t in tasks if t.get("state") == "failed"])
     paused = len([t for t in tasks if t.get("state") == "paused"])
-
 
     next_task = None
     next_run_time = None
@@ -109,7 +95,6 @@ def scheduler_strip(tasks: List[Dict], queue_depth: int = 0,
             next_task = t.get("title", "unknown")
             next_run_time = t.get("next_run_at")
             break
-
 
     components = ["● Scheduler"]
     components.append(f"{active} active")
@@ -125,12 +110,8 @@ def scheduler_strip(tasks: List[Dict], queue_depth: int = 0,
 
     return " · ".join(components)
 
-
-
-
 def scheduler_expanded(tasks: List[Dict], max_show: int = 5,
                        dev_mode: bool = False) -> List[str]:
-
 
     if not dev_mode:
         tasks = [t for t in tasks if not (t.get("kind") == "test" and t.get("ephemeral", False))]
@@ -148,7 +129,6 @@ def scheduler_expanded(tasks: List[Dict], max_show: int = 5,
         glyph = status_glyph(state)
         time_display = format_time(task.get("next_run_at"))
 
-
         actions = []
         if state in ("scheduled", "paused"):
             actions.append("resume")
@@ -159,7 +139,6 @@ def scheduler_expanded(tasks: List[Dict], max_show: int = 5,
         if state not in ("succeeded", "canceled", "archived"):
             actions.append("cancel")
         actions_str = ",".join(actions) if actions else "—"
-
 
         line = f"  │ {glyph} {title:<30} {state:<12} {time_display:<15} [{actions_str}] "
         if i < len(tasks) - 1:
@@ -172,11 +151,7 @@ def scheduler_expanded(tasks: List[Dict], max_show: int = 5,
 
     return lines
 
-
-
-
 class SchedulerUI:
-
 
     def __init__(self, tasks=None, queue_depth=0, failed_count=0):
         self.tasks = tasks or []
@@ -192,13 +167,9 @@ class SchedulerUI:
     def render_test_summary(self):
         return format_test_task_summary(self.tasks)
 
-
-
-
 def is_test_task(task: Dict) -> bool:
 
     return task.get("kind") == "test" and task.get("ephemeral", False)
-
 
 def format_test_task_summary(tasks: List[Dict]) -> str:
 
@@ -219,11 +190,6 @@ def format_test_task_summary(tasks: List[Dict]) -> str:
     lines.append("  ╰───────────────────────────────────────────────────────────╯")
     return "\n".join(lines)
 
-
-
-
-
-
 def main():
 
     import sys
@@ -231,18 +197,15 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
         print("Scheduler UI smoke tests:")
 
-
         title = sanitize_title("smoke-test (0 9 * * *)", max_len=40)
         assert "smoke-test" in title
         assert "*" not in title
         print(f"  ✅ sanitize_title: '{title}'")
 
-
         now = datetime.now(timezone.utc)
         future = (now.replace(hour=9, minute=0, second=0)).isoformat()
         time_display = format_time(future)
         print(f"  ✅ format_time: '{time_display}'")
-
 
         tasks = [
             {"title": "daily backup", "state": "scheduled", "enabled": True,
@@ -261,11 +224,9 @@ def main():
         print(f"  ✅ scheduler_strip (normal): '{strip_normal}'")
         print(f"  ✅ scheduler_strip (dev): '{strip_dev}'")
 
-
         expanded = scheduler_expanded(tasks[:1])
         assert len(expanded) > 2
         print(f"  ✅ scheduler_expanded: {len(expanded)} lines")
-
 
         test_task = {"kind": "test", "ephemeral": True}
         assert is_test_task(test_task)
@@ -284,7 +245,6 @@ def main():
         return
 
     print("usage: ui.py smoke | strip", file=sys.stderr)
-
 
 if __name__ == "__main__":
     main()

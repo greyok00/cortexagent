@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Tests for lib/browser_control.py — the Patchright + Chrome facade.
-
-Replaces the old `_http_json` / `websocket` mocks with MagicMock objects that
-imitate Patchright's `Browser` / `BrowserContext` / `Page` API. Same 5 test
-classes (TabsCacheTests, PerTargetLockTests, HealthTests, ResolveTabFallbackTests,
-CloseHygieneTests) — same assertions, different mock surface.
-
-Run: `python3 -m pytest tests/test_browser_control.py -v`
-"""
 
 from __future__ import annotations
 
@@ -18,23 +9,16 @@ import unittest
 from typing import Any, Dict, List
 from unittest import mock
 
-
 _REPO = __import__("pathlib").Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 if str(_REPO / "lib") not in sys.path:
     sys.path.insert(0, str(_REPO / "lib"))
 
-import browser_control as bc  # noqa: E402
-
+import browser_control as bc
 
 def _make_page(page_id: str, url: str = "https://example.com",
                title: str = "Example"):
-    """Build a MagicMock that quacks like a Patchright Page.
-
-    Patchright Page exposes: .url, .title(), .evaluate(), .goto(),
-    .locator(), .context, .close(), .wait_for_event(), .is_closed().
-    """
     page = mock.MagicMock(name=f"Page<{page_id}>")
     page.url = url
     page.title.return_value = title
@@ -42,8 +26,6 @@ def _make_page(page_id: str, url: str = "https://example.com",
     page.goto.return_value = None
     page.close.return_value = None
     page.is_closed.return_value = False
-    # Hide .context so _page_id() falls back to f"page-{id(page)}" rather than
-    # trying to round-trip through a CDP session (which the mock can't satisfy).
     del page.context
 
     loc = mock.MagicMock(name=f"Locator<{page_id}>")
@@ -57,7 +39,6 @@ def _make_page(page_id: str, url: str = "https://example.com",
     page._page_id = page_id
     return page
 
-
 def _make_ctx(pages: List[Any]):
     ctx = mock.MagicMock(name="BrowserContext")
     ctx.pages = list(pages)
@@ -70,7 +51,6 @@ def _make_ctx(pages: List[Any]):
     ctx.new_page.side_effect = _spawn_new_page
     return ctx
 
-
 def _make_browser(ctx: Any):
     b = mock.MagicMock(name="Browser")
     b.contexts = [ctx]
@@ -78,9 +58,7 @@ def _make_browser(ctx: Any):
     b.is_connected.return_value = True
     return b
 
-
 class TabsCacheTests(unittest.TestCase):
-    """list_tabs() must hit the browser once per TTL window and cache the rest."""
 
     def setUp(self) -> None:
         bc.close()
@@ -90,8 +68,6 @@ class TabsCacheTests(unittest.TestCase):
         ]
         self._ctx = _make_ctx(self._pages)
         self._browser = _make_browser(self._ctx)
-        # Patchright connects via sync_playwright().chromium.connect_over_cdp().
-        # Mock that whole chain so _get_browser() returns our fake browser.
         pw_manager = mock.MagicMock(name="pw_manager")
         pw_instance = mock.MagicMock(name="pw_instance")
         pw_manager.start.return_value = pw_instance
@@ -109,20 +85,16 @@ class TabsCacheTests(unittest.TestCase):
         self.assertEqual(len(tabs), 2)
         self.assertEqual(tabs[0]["url"], "https://example.com")
         self.assertEqual(tabs[0]["title"], "Ex1")
-        # _page_id() falls back to "page-{id(page)}" when there's no real CDP
-        # session; just assert we got an id and a type="page".
         self.assertTrue(tabs[0]["id"].startswith("page-"))
         self.assertEqual(tabs[0]["type"], "page")
 
     def test_burst_within_ttl_returns_cache(self) -> None:
         for _ in range(5):
             bc.list_tabs()
-        # _get_ctx should only have been consulted once (within TTL window)
-        self.assertEqual(self._ctx.pages.__len__(), 2)  # sanity check, still 2 pages
+        self.assertEqual(self._ctx.pages.__len__(), 2)
 
     def test_after_ttl_refetches(self) -> None:
         bc.list_tabs()
-        # Pretend the TTL window expired
         bc._tabs_cache_at -= (bc._TABS_TTL_SEC + 0.1)
         tabs = bc.list_tabs()
         self.assertEqual(len(tabs), 2)
@@ -131,15 +103,11 @@ class TabsCacheTests(unittest.TestCase):
         bc.list_tabs()
         self.assertEqual(len(bc._tabs_cache), 2)
         new = bc.new_tab()
-        # Without a real CDP session, _page_id() returns "page-<id>".
         self.assertTrue(new.startswith("page-"))
-        # new_tab() must invalidate the cache; next list_tabs() hits browser
-        bc._tabs_cache_at -= 100  # force expiry too
+        bc._tabs_cache_at -= 100
         bc.list_tabs()
 
-
 class ResolvePageTests(unittest.TestCase):
-    """_resolve_page() must honor None / int / str (URL prefix or page-id)."""
 
     def setUp(self) -> None:
         bc.close()
@@ -168,15 +136,12 @@ class ResolvePageTests(unittest.TestCase):
 
     def test_int_index(self) -> None:
         self.assertIs(bc._resolve_page(1), self._pages[1])
-        self.assertIs(bc._resolve_page(99), self._pages[0])  # wraps
+        self.assertIs(bc._resolve_page(99), self._pages[0])
 
     def test_url_prefix(self) -> None:
         self.assertIs(bc._resolve_page("https://g.test"), self._pages[2])
 
     def test_page_id_passthrough(self) -> None:
-        # _page_id returns "page-<id(page)>" by default since the mock has no
-        # .context.new_cdp_session, so the string won't match. Test that an
-        # unknown string falls back to first page (covers the back-compat path).
         self.assertIs(bc._resolve_page("BETA"), self._pages[0])
 
     def test_unknown_string_falls_back_to_first(self) -> None:
@@ -193,9 +158,7 @@ class ResolvePageTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 bc._resolve_page(None)
 
-
 class HealthTests(unittest.TestCase):
-    """health() must always return the full back-compat shape."""
 
     def setUp(self) -> None:
         bc.close()
@@ -203,8 +166,6 @@ class HealthTests(unittest.TestCase):
         self._browser = _make_browser(self._ctx)
 
     def _patch_pw(self, browser_obj):
-        # Chain: sync_playwright() → pw_manager; .start() → pw_instance;
-        # .chromium.connect_over_cdp(URL) → browser_obj.
         pw_manager = mock.MagicMock(name="pw_manager")
         pw_instance = mock.MagicMock(name="pw_instance")
         pw_manager.start.return_value = pw_instance
@@ -221,7 +182,7 @@ class HealthTests(unittest.TestCase):
             self.assertIn(key, h, f"missing key: {key}")
         self.assertTrue(h["cdp_reachable"])
         self.assertIn("Chrome (Patchright)", h["browser"])
-        self.assertEqual(h["cached_sockets"], 0)  # back-compat shape
+        self.assertEqual(h["cached_sockets"], 0)
 
     def test_health_never_raises_on_bad_endpoint(self) -> None:
         with self._patch_pw(None):
@@ -238,20 +199,12 @@ class HealthTests(unittest.TestCase):
         self.assertGreaterEqual(after["calls"], before["calls"])
         self.assertGreaterEqual(after["last_call_ms"], 0.0)
 
-
 class PerTargetLockTests(unittest.TestCase):
-    """Per-target locking is gone under Patchright (BrowserContext serializes
-    per-page ops). Keep one regression test so anyone who re-introduces locks
-    gets a nudge."""
 
     def test_no_target_locks_attribute(self) -> None:
-        # Patchright serializes per-page ops at the BrowserContext level; we
-        # intentionally do not maintain a per-target lock dict.
         self.assertFalse(hasattr(bc, "_target_locks"))
 
-
 class CloseHygieneTests(unittest.TestCase):
-    """close() must be idempotent and zero out the connection globals."""
 
     def test_close_is_idempotent(self) -> None:
         bc.close()
@@ -261,7 +214,6 @@ class CloseHygieneTests(unittest.TestCase):
         self.assertIsNone(bc._ctx)
         self.assertEqual(bc._tabs_cache, [])
         self.assertEqual(bc._tabs_cache_at, 0.0)
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

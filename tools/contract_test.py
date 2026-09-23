@@ -9,13 +9,11 @@ from typing import Any, Dict, List, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-
 def _parse_module(path: Path):
     try:
         return ast.parse(path.read_text(errors="replace"))
     except SyntaxError as e:
         return None
-
 
 def _declared_names(tree: ast.Module) -> List[Tuple[str, str, int]]:
 
@@ -27,13 +25,11 @@ def _declared_names(tree: ast.Module) -> List[Tuple[str, str, int]]:
                 out.append((node.name, kind, node.lineno))
     return out
 
-
 def _module_docstring(tree: ast.Module) -> str:
     if tree.body and isinstance(tree.body[0], ast.Expr) and isinstance(
         tree.body[0].value, ast.Constant) and isinstance(tree.body[0].value.value, str):
         return tree.body[0].value.value
     return ""
-
 
 def _docstring_mentions_symbol(doc: str) -> List[str]:
 
@@ -44,7 +40,6 @@ def _docstring_mentions_symbol(doc: str) -> List[str]:
     refs.update(re.findall(r":meth:`~?([\w.]+)`", doc))
     refs.update(re.findall(r"`([\w]+\.[\w]+)`", doc))
     return sorted(r for r in refs if "." in r)
-
 
 def _scan_lib_module(path: Path) -> Dict[str, Any]:
 
@@ -61,7 +56,6 @@ def _scan_lib_module(path: Path) -> Dict[str, Any]:
         "docstring_first_line": docs.splitlines()[0] if docs else "",
     }
 
-
 def _check_lib_module(path: Path) -> Tuple[bool, str]:
     info = _scan_lib_module(path)
     if info.get("syntax_error"):
@@ -69,7 +63,6 @@ def _check_lib_module(path: Path) -> Tuple[bool, str]:
     if not info["names"]:
         return False, "no public symbols"
     return True, f"{len(info['names'])} symbols"
-
 
 def _check_daemon_control_rpcs(path: Path = None) -> List[Dict[str, Any]]:
 
@@ -87,7 +80,6 @@ def _check_daemon_control_rpcs(path: Path = None) -> List[Dict[str, Any]]:
              "documented": c in doc_text,
              "handler": f'cmd == "{c}"'} for c in cmds]
 
-
 def main(argv: List[str] = None) -> int:
     ap = argparse.ArgumentParser(description="Doc-vs-code contract test")
     ap.add_argument("--json", action="store_true")
@@ -101,10 +93,7 @@ def main(argv: List[str] = None) -> int:
         "errors": [],
     }
 
-
-
-    RUNTIME_SCRIPTS = {"chain_diagnostic.py", "tray_dashboard.py",
-                       "version.py"}
+    RUNTIME_SCRIPTS = {"chain_diagnostic.py"}
     lib_dir = REPO_ROOT / "lib"
     for path in sorted(lib_dir.glob("*.py")):
         if path.name == "__init__.py":
@@ -132,10 +121,8 @@ def main(argv: List[str] = None) -> int:
             "public_count": len(info["names"]),
         })
 
-
     rpcs = _check_daemon_control_rpcs()
     report["daemon_rpcs"] = rpcs
-
 
     n_mod = len(report["lib_modules"])
     n_mod_fail = sum(1 for m in report["lib_modules"] if not m["passed"])
@@ -172,7 +159,6 @@ def main(argv: List[str] = None) -> int:
                 print("\n✅ ALL GREEN")
 
     return 0 if report["summary"]["passed"] else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -4,12 +4,9 @@ import json
 from datetime import datetime
 from typing import Dict, List
 
-
 from lib.scheduler.store import EVENTS_FILE, VALID_STATES, TASK_KINDS, _load_state, _save_state, _load_snapshot, _rebuild_snapshot, _save_snapshot, _ensure_dirs, _now, _now_iso, _next_run
 
-
 class Recovery:
-
 
     def __init__(self):
         _ensure_dirs()
@@ -33,7 +30,6 @@ class Recovery:
             state = _load_state()
             summary["generation_at_load"] = state.get("generation", 0)
 
-
             snapshot = _load_snapshot()
 
             if not snapshot:
@@ -46,10 +42,8 @@ class Recovery:
                 summary["snapshot_valid"] = True
                 summary["tasks_at_load"] = len(snapshot)
 
-
             snapshot, repairs = self._validate_and_repair(snapshot)
             summary["tasks_repaired"] = len(repairs)
-
 
             events = self._load_events_sorted()
             last_gen = state.get("generation", 0)
@@ -60,17 +54,13 @@ class Recovery:
 
                 _save_snapshot(snapshot)
 
-
             interrupted = self._mark_interrupted(snapshot)
             summary["tasks_interrupted"] = len(interrupted)
-
 
             due = self._recalculate_next_run(snapshot)
             summary["tasks_due"] = len(due)
 
-
             _save_snapshot(snapshot)
-
 
             state["generation"] = state.get("generation", 0) + 1
             state["last_reconciled"] = _now_iso()
@@ -126,23 +116,19 @@ class Recovery:
                 task["state"] = "scheduled"
                 repairs.append(f"{task_id[:8]}: added missing 'state'")
 
-
             if task.get("state") not in VALID_STATES:
                 task["state"] = "scheduled"
                 task["enabled"] = task.get("enabled", True)
                 repairs.append(f"{task_id[:8]}: invalid state '{task.get('state')}' → scheduled")
 
-
             if task.get("kind") not in TASK_KINDS:
                 task["kind"] = "user"
                 repairs.append(f"{task_id[:8]}: invalid kind '{task.get('kind')}' → user")
-
 
             if task.get("payload_type") not in ("command", "llm", "subagent", "image", "video",
                                                   "browser", "filesystem", "network", "custom"):
                 task["payload_type"] = "command"
                 repairs.append(f"{task_id[:8]}: invalid payload_type → command")
-
 
             trigger = task.get("trigger", "manual")
             if trigger not in ("cron", "daily", "weekly", "date", "interval", "manual"):
@@ -199,7 +185,6 @@ class Recovery:
                 task["next_run_at"] = _next_run(task)
                 task["updated_at"] = _now_iso()
 
-
             try:
                 next_run_dt = datetime.fromisoformat(next_run)
                 if next_run_dt < now:
@@ -214,15 +199,11 @@ class Recovery:
 
         return due
 
-
     def test_corrupt_snapshot(self) -> Dict:
-
 
         _save_snapshot({"bad": {"state": "invalid_state"}})
 
-
         result = self.recover()
-
 
         snapshot = _load_snapshot()
         assert "bad" not in snapshot or snapshot["bad"].get("state") != "invalid_state"
@@ -233,29 +214,20 @@ class Recovery:
 
         from lib.scheduler import Store
 
-
         store = Store()
         store.create(title="test1", kind="user", trigger="cron",
                                 schedule_value="0 9 * * *")
         store.create(title="test2", kind="test", ephemeral=True,
                                 trigger="manual")
 
-
         _save_snapshot({"corrupted": {"state": "invalid", "kind": "invalid"}})
 
-
         result = self.recover()
-
 
         assert result["ok"], f"Recovery failed: {result}"
         assert result["tasks_repaired"] > 0, "No tasks repaired"
 
         return result
-
-
-
-
-
 
 def main():
 
@@ -266,14 +238,11 @@ def main():
 
         recovery = Recovery()
 
-
         result = recovery.recover()
         print(f"  ✅ Normal recovery: {result['ok']}, tasks={result.get('tasks_at_load', 0)}")
 
-
         result = recovery.test_corrupt_snapshot()
         print(f"  ✅ Corrupt snapshot recovery: {result['ok']}")
-
 
         result = recovery.test_full_recovery()
         print(f"  ✅ Full recovery: {result['ok']}")
@@ -289,7 +258,6 @@ def main():
         return
 
     print("usage: recovery.py smoke | recover", file=sys.stderr)
-
 
 if __name__ == "__main__":
     main()

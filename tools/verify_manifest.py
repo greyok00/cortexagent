@@ -10,7 +10,6 @@ from typing import Dict, List
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = REPO_ROOT / ".superpowers" / "manifest" / "cortexagent.manifest.json"
 
-
 def _hash(path: Path) -> str:
     h = hashlib.sha256()
     try:
@@ -18,7 +17,6 @@ def _hash(path: Path) -> str:
     except (FileNotFoundError, IsADirectoryError):
         return ""
     return h.hexdigest()
-
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Verify CortexAgent file-hash manifest")
@@ -33,7 +31,6 @@ def main(argv=None) -> int:
             print(f"manifest missing: {MANIFEST}", file=sys.stderr)
             print("run: python3 tools/build_manifest.py", file=sys.stderr)
         return 2
-
 
     sys.path.insert(0, str(REPO_ROOT / "tools"))
     from build_manifest import _iter_files, TOPLEVEL_FILES, ROOTS
@@ -92,7 +89,6 @@ def main(argv=None) -> int:
         else:
             print("\n✅ NO DRIFT")
     return 1 if drift else 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

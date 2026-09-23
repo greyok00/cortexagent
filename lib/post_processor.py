@@ -2,9 +2,7 @@
 
 import re
 
-
 class PostProcessor:
-
 
     def __init__(self, show_code: bool = False, show_thinking: bool = False):
         self.show_code = show_code
@@ -12,38 +10,29 @@ class PostProcessor:
 
     def process(self, text: str) -> str:
 
-
         if not self.show_code:
             text = self._collapse_code_fences(text)
         else:
             text = self._keep_code_fences(text)
 
-
         if not self.show_thinking:
             text = self._strip_thinking_preamble(text)
 
-
         text = self._normalize_glyphs(text)
-
 
         text = self._strip_headers(text)
 
-
         text = self._normalize_bullets(text)
-
 
         text = self._strip_horizontal_rules(text)
 
-
         text = self._strip_markdown_formatting(text)
-
 
         text = self._normalize_whitespace(text)
 
         return text
 
     def _collapse_code_fences(self, text: str) -> str:
-
 
         pattern = r'```(\w+)?\s*\n(.*?)```'
         def replacer(match):
@@ -60,11 +49,9 @@ class PostProcessor:
 
     def _keep_code_fences(self, text: str) -> str:
 
-
         return re.sub(r'\s*```\s*', '\n```\n', text)
 
     def _strip_thinking_preamble(self, text: str) -> str:
-
 
         patterns = [
             r'^(?:Let me(?:\s+)?(?:think(?:ing)?\s+)?|First(?:\s+)?(?:,|\.)?|To begin(?:\s+)?(?:,|\.)?|I\s+need\s+to(?:\s+)?(?:\s+)?|Sure(?:\s+)?(?:,|\.)?|Here\s+(?:is|are)(?:\s+)?(?:\s+)?).*?\n',
@@ -77,9 +64,7 @@ class PostProcessor:
 
     def _normalize_glyphs(self, text: str) -> str:
 
-
         text = re.sub(r'^\s*[-*]\s+', '▎ ', text, flags=re.MULTILINE)
-
 
         text = re.sub(r'^---+$', '───', text, flags=re.MULTILINE)
         text = re.sub(r'^===+$', '━━━', text, flags=re.MULTILINE)
@@ -102,16 +87,13 @@ class PostProcessor:
 
     def _normalize_bullets(self, text: str) -> str:
 
-
         return text
 
     def _strip_horizontal_rules(self, text: str) -> str:
 
-
         return text
 
     def _strip_markdown_formatting(self, text: str) -> str:
-
 
         text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
         text = re.sub(r'\*(.+?)\*', r'\1', text)
@@ -122,20 +104,17 @@ class PostProcessor:
 
     def _normalize_whitespace(self, text: str) -> str:
 
-
         text = re.sub(r'\n{3,}', '\n\n', text)
 
         text = text.strip()
 
         return text
 
-
 def process_output(text: str, show_code: bool = False,
                    show_thinking: bool = False) -> str:
 
     processor = PostProcessor(show_code=show_code, show_thinking=show_thinking)
     return processor.process(text)
-
 
 def main():
 
@@ -156,10 +135,6 @@ Some bullet points:
 
 ---
 
-# Main Header
-
-## Sub Header
-
 This is **bold** and *italic* text.
 
 """
@@ -171,7 +146,6 @@ This is **bold** and *italic* text.
     print(process_output(sample, show_code=True, show_thinking=False))
     print("\n=== Processed (show both) ===")
     print(process_output(sample, show_code=True, show_thinking=True))
-
 
 if __name__ == "__main__":
     main()

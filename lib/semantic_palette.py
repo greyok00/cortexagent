@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Optional
 
-
 def detect_color_depth() -> str:
 
     colorterm = os.environ.get("COLORTERM", "")
@@ -28,19 +27,11 @@ def detect_color_depth() -> str:
 
     return "256"
 
-
 def get_truecolor_index(r: int, g: int, b: int) -> int:
 
     return f"\033[38;2;{r};{g};{b}m"
 
-
 def get_256color_index(r: int, g: int, b: int) -> int:
-
-
-
-
-
-
 
     mapping = {
         0: 0,
@@ -57,7 +48,6 @@ def get_256color_index(r: int, g: int, b: int) -> int:
 
     return 16 + r_idx * 36 + g_idx * 6 + b_idx
 
-
 def get_ansi_color(r: int, g: int, b: int, depth: str = "truecolor") -> str:
 
     if depth == "truecolor":
@@ -67,7 +57,6 @@ def get_ansi_color(r: int, g: int, b: int, depth: str = "truecolor") -> str:
         return f"\033[38;5;{idx}m"
     else:
 
-
         avg = (r + g + b) // 3
         if avg < 85:
             return "\033[30m"
@@ -75,12 +64,6 @@ def get_ansi_color(r: int, g: int, b: int, depth: str = "truecolor") -> str:
             return "\033[90m"
         else:
             return "\033[37m"
-
-
-
-
-
-
 
 SEMANTIC_ROLES = {
     "accent": (127, 212, 201),
@@ -93,15 +76,12 @@ SEMANTIC_ROLES = {
     "bg": (26, 27, 38),
 }
 
-
 class Palette:
-
 
     def __init__(self, theme_path: Optional[str] = None):
 
         self.depth = detect_color_depth()
         self.colors: Dict[str, str] = {}
-
 
         theme_file = theme_path or os.environ.get(
             "CORTEXAGENT_THEME",
@@ -109,12 +89,10 @@ class Palette:
         )
         theme = self._load_theme(theme_file)
 
-
         if theme:
             for role, rgb in theme.items():
                 if role in SEMANTIC_ROLES:
                     SEMANTIC_ROLES[role] = tuple(rgb)
-
 
         for role, (r, g, b) in SEMANTIC_ROLES.items():
             self.colors[role] = get_ansi_color(r, g, b, self.depth)
@@ -171,9 +149,6 @@ class Palette:
         )
         return f"Depth: {self.depth}, Theme: {theme_path}"
 
-
-
-
 _palette = None
 
 def get_palette() -> Palette:
@@ -183,18 +158,15 @@ def get_palette() -> Palette:
         _palette = Palette()
     return _palette
 
-
 def color_text(role: str, text: str) -> str:
 
     pal = get_palette()
     return pal.color(role, text)
 
-
 def status_glyph(state: str, text: str) -> str:
 
     pal = get_palette()
     return pal.status_glyph(state, text)
-
 
 def main():
 
@@ -208,7 +180,6 @@ def main():
     print("Status glyphs:")
     for state in ["alive", "idle", "warn", "error", "done"]:
         print(f"  {state:10s}: {pal.status_glyph(state, 'Status text')}")
-
 
 if __name__ == "__main__":
     main()

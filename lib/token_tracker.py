@@ -8,7 +8,6 @@ from typing import Dict
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
-
 _TOKENS_FILE = Path.home() / ".cortexagent" / "token_tracker.json"
 _TOKEN_TRACKING_ENABLED = True
 
@@ -40,7 +39,6 @@ def _load_token_stats() -> Dict:
         "merged_history": [],
     }
 
-
 def _save_token_stats(stats: Dict) -> None:
 
     try:
@@ -51,30 +49,10 @@ def _save_token_stats(stats: Dict) -> None:
     except Exception:
         pass
 
-
-def _normalize_token_file(stats: Dict) -> None:
-
-    if "tiny_model" in stats:
-        stats.pop("tiny_model", None)
-
-
 def merge_stats() -> Dict:
 
     stats = _load_token_stats()
 
-
-    try:
-        from lib.grammar_proxy import _get_minify_snapshot
-        proxy_stats = _get_minify_snapshot()
-        if proxy_stats:
-            stats["proxy"] = proxy_stats
-    except Exception:
-        pass
-
-
-
-
-    _normalize_token_file(stats)
     proxy = stats.get("proxy", {})
     stats["total"] = {
         "runs": proxy.get("runs", 0),
@@ -89,7 +67,6 @@ def merge_stats() -> Dict:
             stats["total"]["tokens_saved"] / stats["total"]["tokens_in"] * 100, 1
         )
 
-
     history = []
     hist = stats.get("proxy", {}).get("history_60s", [])
     if hist:
@@ -97,10 +74,8 @@ def merge_stats() -> Dict:
     history.sort(key=lambda x: x[0] if isinstance(x, (list, tuple)) else 0)
     stats["merged_history"] = history[-60:]
 
-
     _save_token_stats(stats)
     return stats
-
 
 def get_status() -> Dict:
 
@@ -115,14 +90,12 @@ def get_status() -> Dict:
         "proxy_runs": stats.get("proxy", {}).get("runs", 0),
     }
 
-
 def main():
 
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         print("Token tracker smoke test:")
         print(f"  Stats file: {_TOKENS_FILE}")
         print(f"  Tracking enabled: {_TOKEN_TRACKING_ENABLED}")
-
 
         stats = merge_stats()
         total = stats.get("total", {})
@@ -150,7 +123,6 @@ def main():
         print(f"  Tokens saved: {total.get('tokens_saved', 0)}")
         print(f"  Ratio: {total.get('ratio_pct', 0):.1f}%")
         return
-
 
 if __name__ == "__main__":
     main()

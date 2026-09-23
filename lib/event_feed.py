@@ -11,7 +11,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -28,10 +27,8 @@ RING_SIZE = 200
 POLL_INTERVAL = 1.0
 BRIDGE_POLL = 0.5
 
-
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
 
 def _read_json(path: Path, default=None):
     try:
@@ -39,11 +36,6 @@ def _read_json(path: Path, default=None):
             return json.load(f)
     except Exception:
         return default
-
-
-
-
-
 
 def _compression_snapshot() -> dict:
     s = _read_json(MINIFY_STATS, {}) or {}
@@ -57,7 +49,6 @@ def _compression_snapshot() -> dict:
         "errors": s.get("errors", 0),
     }
 
-
 def _routing_snapshot() -> dict:
     s = _read_json(ROUTING_STATE, {}) or {}
     return {
@@ -68,7 +59,6 @@ def _routing_snapshot() -> dict:
         "toolproxy_available": s.get("toolproxy_available", False),
         "updated_at": s.get("updated_at"),
     }
-
 
 def _scheduling_snapshot() -> dict:
     try:
@@ -95,7 +85,6 @@ def _scheduling_snapshot() -> dict:
         ],
     }
 
-
 def _memory_snapshot() -> dict:
     counts = {}
     last_write = None
@@ -116,7 +105,6 @@ def _memory_snapshot() -> dict:
         "last_write_age_s": round(time.time() - last_write, 1) if last_write else None,
     }
 
-
 def snapshot() -> dict:
 
     return {
@@ -127,13 +115,7 @@ def snapshot() -> dict:
         "timestamp": _now_iso(),
     }
 
-
-
-
-
-
 class EventFeed:
-
 
     def __init__(self, socket_path: Path = SOCKET_PATH):
         self.socket_path = socket_path
@@ -146,7 +128,6 @@ class EventFeed:
         self._last_routing = None
         self._last_memory_write = None
         self._bridge_cursor = 0
-
 
     def _push(self, ev: dict) -> None:
         with self._lock:
@@ -169,7 +150,6 @@ class EventFeed:
             "timestamp": _now_iso(),
             "data": data or {},
         })
-
 
     def _serve(self) -> None:
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,7 +183,6 @@ class EventFeed:
             self.socket_path.unlink()
         except Exception:
             pass
-
 
     def _watch_bridge(self) -> None:
 
@@ -273,7 +252,6 @@ class EventFeed:
                 self._last_memory_write = mw
             self._shutdown.wait(POLL_INTERVAL)
 
-
     def run(self) -> None:
         threads = [
             threading.Thread(target=self._serve, daemon=True),
@@ -290,11 +268,6 @@ class EventFeed:
         self._shutdown.set()
         for t in threads:
             t.join(timeout=2)
-
-
-
-
-
 
 def _smoke() -> int:
     fails = 0
@@ -317,7 +290,6 @@ def _smoke() -> int:
     print("✅ event_feed smoke PASS" if fails == 0 else f"❌ {fails} failures")
     return 1 if fails else 0
 
-
 def main() -> int:
     if "--smoke" in sys.argv:
         return _smoke()
@@ -328,7 +300,6 @@ def main() -> int:
     print(f"🐺 event_feed listening on {SOCKET_PATH}", file=sys.stderr)
     feed.run()
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

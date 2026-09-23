@@ -18,23 +18,18 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-
 class R:
     def __init__(self, name: str, area: str, ok: bool, detail: str = ""):
         self.name, self.area, self.ok, self.detail = name, area, ok, detail
     def __repr__(self):
         return f"{'✅' if self.ok else '❌'} [{self.area}] {self.name}{(' — '+self.detail) if self.detail else ''}"
 
-
 RESULTS: list[R] = []
 DEAD_CODE: set = set()
-
 
 def record(r: R) -> None:
     RESULTS.append(r)
     print(r)
-
-
 
 def _py_modules() -> list[str]:
 
@@ -50,10 +45,9 @@ def _py_modules() -> list[str]:
                 mods.append(f"{sub}.{f.stem}")
     return mods
 
-
 def _sh_scripts() -> list[Path]:
     out = []
-    for rel in ["bin/cortexagent", "install.sh", "scripts/cortexagent-menu",
+    for rel in ["bin/cortexagent", "install.sh",
                 "hooks/session-start.sh", "hooks/stop.sh",
                 "hooks/user-prompt-submit.sh", "lib/state.sh"]:
         p = REPO / rel
@@ -61,45 +55,24 @@ def _sh_scripts() -> list[Path]:
             out.append(p)
     return out
 
-
-def _isolated_env(big_stand_in: bool = True) -> tuple[dict, Path]:
+def _isolated_env() -> tuple[dict, Path]:
 
     env = dict(os.environ)
     state = Path(tempfile.mkdtemp(prefix="ca-smoke-"))
     env["CORTEXAGENT_STATE_DIR"] = str(state)
-    env["CORTEXAGENT_IDLE_UNLOAD_SEC"] = "99999"
     env["CORTEXAGENT_DB_PATH"] = str(state / "smoke.db")
     env["CORTEXAGENT_CONFIG_DIR"] = str(state / "config")
-
-    env["CORTEXAGENT_PORT"] = "18080"
-    env["CORTEXAGENT_PROXY_PORT"] = "18081"
-    if big_stand_in:
-        # Small on-disk model stands in for the big model during fast tests.
-        # (qwen2.5-0.5b was never present on this machine; lfm2.5-1.2b is the
-        # shipped offline stand-in — a plain GGUF, not the removed tiny server.)
-        env["CORTEXAGENT_MODEL"] = str(Path.home() / "models" /
-                                       "lfm2.5-1.2b" / "LFM2.5-1.2B-Instruct-Q4_K_M.gguf")
-        # big_ctx is a LOCKED key (pinned 131072 in config.py). The isolated
-        # test env must explicitly unlock it or the small stand-in model loads
-        # with the full 131072 ctx and OOMs on a busy GPU.
-        env["CORTEXAGENT_UNLOCK_BIG_CTX"] = "1"
-        env["CORTEXAGENT_CTX"] = "8192"
-        env["CORTEXAGENT_NGL"] = "999"
     return env, state
-
 
 def _cli(env: dict) -> list[str]:
     return [sys.executable, str(REPO / "engine" / "cli.py")]
 
-
 def _run(env: dict, *args, timeout=60) -> subprocess.CompletedProcess:
     return subprocess.run(args, env=env, capture_output=True, text=True, timeout=timeout)
-
 
 def _daemon_up(env: dict, timeout=2) -> bool:
     r = _run(env, sys.executable, str(REPO / "lib" / "control.py"), timeout=timeout)
     return "True" in r.stdout
-
 
 def _start_daemon(env: dict, wait=14) -> bool:
     state = Path(env["CORTEXAGENT_STATE_DIR"])
@@ -113,15 +86,12 @@ def _start_daemon(env: dict, wait=14) -> bool:
         time.sleep(1)
     return False
 
-
 def _stop_daemon(env: dict) -> None:
 
     try:
         _run(env, sys.executable, str(REPO / "lib" / "daemon.py"), "stop", timeout=30)
     except Exception:
         pass
-
-
 
     time.sleep(1)
     try:
@@ -140,7 +110,6 @@ def _stop_daemon(env: dict) -> None:
             break
         time.sleep(1)
     time.sleep(1)
-
 
 def _kill_aliased_servers(ports: "set[int] | None" = None) -> None:
 
@@ -167,10 +136,6 @@ def _kill_aliased_servers(ports: "set[int] | None" = None) -> None:
         except Exception:
             pass
 
-
-
-
-
 def test_static_imports() -> R:
 
     bad = []
@@ -184,7 +149,6 @@ def test_static_imports() -> R:
             bad.append(f"{m}: {e.__class__.__name__}: {e}")
     return R("all .py import", "static", not bad, "; ".join(bad) if bad else f"{len(_py_modules())} modules")
 
-
 def test_static_bashn() -> R:
 
     bad = []
@@ -194,45 +158,27 @@ def test_static_bashn() -> R:
             bad.append(f"{s.relative_to(REPO)}: {r.stderr.strip()}")
     return R("bash -n all scripts", "static", not bad, "; ".join(bad) if bad else f"{len(_sh_scripts())} scripts")
 
-
-
-
-
 def test_config_isolated() -> R:
 
-    env, state = _isolated_env(big_stand_in=False)
+    env, state = _isolated_env()
     try:
         from lib.config import Config
 
         r = _run(env, sys.executable, "-c",
                  "import sys; sys.path.insert(0,'.'); from lib.config import CFG as c; "
                  "import json; print(json.dumps({'db':str(c.db_path),'state':str(c.state_dir),"
-                 "'cortexllm':str(c.cortexllm_dir),'backend':c.backend}))", timeout=15)
+                 "'cortexllm':str(c.cortexllm_dir),'cloud':c.model_cloud}))", timeout=15)
         d = json.loads(r.stdout)
         ok = (str(state) in d["state"] and str(state) in d["db"]
-              and d["backend"] == "llamacpp")
+              and d["cloud"] == "glm-5.3-flash:cloud")
         return R("config distrib-isolated", "config", ok,
-                 f"db={d['db']} backend={d['backend']}")
+                 f"db={d['db']} cloud={d['cloud']}")
     finally:
         shutil.rmtree(state, ignore_errors=True)
-
 
 def test_v03x_rules() -> R:
 
     fails = []
-    try:
-        from lib.grammar_proxy import minify_response
-        body = b'data: {"choices":[{"delta":{"content":"Sure!\\nHi."}}]}\n\ndata: [DONE]\n'
-        out = minify_response(body)
-        import json as _j
-        for line in out.split(b"\n"):
-            if line.startswith(b"data: ") and line != b"data: [DONE]":
-                c = _j.loads(line[6:])["choices"][0]["delta"]["content"]
-                if c.startswith("Sure!"):
-                    fails.append("R4 filler not stripped")
-                    break
-    except Exception as e:
-        fails.append(f"R4: {e}")
     try:
         from lib.pre_flight_gate import is_ambiguous
         if not is_ambiguous("fix it") or is_ambiguous("rename foo.py to bar.py and reload"):
@@ -242,7 +188,7 @@ def test_v03x_rules() -> R:
     try:
         import re as _re
         repopath = str(REPO)
-        for f in ("lib/grammar_proxy.py", "lib/pre_flight_gate.py"):
+        for f in ("lib/pre_flight_gate.py",):
             t = open(os.path.join(repopath, f)).read()
             if _re.search(r"--no-format|--no-visual|format=False|charts=False", t):
                 fails.append(f"R5 opt-out flag found in {f}")
@@ -255,14 +201,14 @@ def test_v03x_rules() -> R:
         r = subprocess.run(
             [sys.executable, "-c",
              "import sys; sys.path.insert(0,'.'); from lib.config import Config; "
-             "c=Config(); print('BIG=' + repr(c.big_model) + ' IDLE=' + str(c.idle_unload_sec))"],
+             "c=Config(); print('CLOUD=' + repr(c.model_cloud) + ' NOPORT=' + repr(getattr(c, 'model_port', 'GONE')))"],
             env=env, capture_output=True, text=True, timeout=15,
         )
         line = (r.stdout or "").strip()
-        if "BIG=''" not in line:
-            fails.append(f"R7/Cfg big_model default not empty: {line!r}")
-        if "IDLE=0" not in line:
-            fails.append(f"R7 idle_unload_sec default != 0: {line!r}")
+        if "CLOUD='glm-5.3-flash:cloud'" not in line:
+            fails.append(f"R7/Cfg model_cloud default wrong: {line!r}")
+        if "NOPORT='GONE'" not in line:
+            fails.append(f"R7 model_port key still present: {line!r}")
     except Exception as e:
         fails.append(f"R7/Cfg: {e}")
     try:
@@ -285,8 +231,6 @@ def test_v03x_rules() -> R:
     """User-shared mode: with no overrides, defaults match the original paths."""
 def test_config_user_shared() -> R:
 
-
-
     env = {k: v for k, v in os.environ.items()
            if k not in ("CORTEXLLM_DIR", "CORTEXLLM_DB_PATH")}
 
@@ -295,27 +239,22 @@ def test_config_user_shared() -> R:
             del env[_k]
     state = Path(tempfile.mkdtemp(prefix="ca-smoke-"))
 
-
     env["CORTEXAGENT_CONF"] = str(state / "nonexistent.conf")
     try:
         r = _run(env, sys.executable, "-c",
                  "import sys; sys.path.insert(0,'.'); from lib.config import CFG as c; "
-                 "import json; print(json.dumps({'db':str(c.db_path),'backend':c.backend,"
-                 "'big_port':c.big_model_port,'idle':c.idle_unload_sec}))",
+                 "import json; print(json.dumps({'db':str(c.db_path),"
+                 "'cloud':c.model_cloud}))",
                  timeout=15)
         try:
             d = json.loads(r.stdout)
         except Exception:
             return R("config user-shared defaults", "config", False, f"parse fail: {r.stdout[:120]}")
-        ok = (d["backend"] == "llamacpp" and d["big_port"] == 8080
-              and d["idle"] == 0 and "cortexllm.db" in d["db"])
-        return R("config user-shared defaults", "config", ok, f"db={d['db']} port={d['big_port']}")
+        ok = ("cortexllm.db" in d["db"]
+              and d["cloud"] == "glm-5.3-flash:cloud")
+        return R("config user-shared defaults", "config", ok, f"db={d['db']} cloud={d['cloud']}")
     finally:
         shutil.rmtree(state, ignore_errors=True)
-
-
-
-
 
 PII_PATTERNS = ["/home/grey", "GreyOK00", "fc-", "sk-ant-"]
 PII_EXCLUDE_DIRS = {".git", "node_modules", "__pycache__", ".cortexagent",
@@ -323,19 +262,12 @@ PII_EXCLUDE_DIRS = {".git", "node_modules", "__pycache__", ".cortexagent",
                     "cortex", "backup", ".backups", ".snapshots",
                     ".superpowers", "build"}
 
-
-
 PII_EXCLUDE_FILES = {
     "tests/run_smoke.py",
     "tests/COVERAGE.md",
     "lib/post_response_verifier.py",
     "lib/config.py",
-    "lib/cortex_routing.py",
     "docs/superpowers/specs/2026-08-10-daily-changelog.md",
-
-
-
-
 
     "README.md",
     "ABOUT.md",
@@ -343,9 +275,7 @@ PII_EXCLUDE_FILES = {
     "docs/ARCHITECTURE.md",
     "docs/AUDIT-2026-08-11.md",
     "docs/CORTEXLLM-0.4.0-DIVERGENCE.md",
-    "lib/tray_dashboard.py",
 }
-
 
 def test_pii_free() -> R:
 
@@ -371,35 +301,6 @@ def test_pii_free() -> R:
                 hits.append(f"{rel}: {pat}")
     return R("PII grep empty", "pii", not hits, "; ".join(hits[:5]) if hits else "clean")
 
-
-
-
-
-def test_models_start_stop() -> R:
-
-    env, state = _isolated_env()
-    try:
-        r = _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "start", "big", timeout=60)
-
-        ok = False
-        for _ in range(30):
-            h = _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "health", "big", timeout=5)
-            if h.returncode == 0 and "ok" in h.stdout.lower():
-                ok = True
-                break
-            time.sleep(1)
-        _run(env, sys.executable, str(REPO / "lib" / "model_backend.py"), "stop", "big", timeout=15)
-        time.sleep(1)
-        return R("model_backend start/health/stop big", "models", ok,
-                 "" if ok else f"start={r.stdout[:80]}")
-    finally:
-        _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080))})
-        shutil.rmtree(state, ignore_errors=True)
-
-
-
-
-
 def test_daemon_lifecycle() -> R:
 
     env, state = _isolated_env()
@@ -412,105 +313,13 @@ def test_daemon_lifecycle() -> R:
         if s.returncode != 0:
             return R("daemon lifecycle", "daemon", False, f"status rc={s.returncode}")
 
-        ss = _run(env, *cli, "models", "load", "big", timeout=60)
-        if ss.returncode != 0:
-            return R("daemon lifecycle", "daemon", False, f"load big rc={ss.returncode} {ss.stdout[:80]}")
-
         _run(env, sys.executable, "-c",
              "import sys; sys.path.insert(0,'.'); from lib import control; control.send_request('session-end',timeout=5)",
              timeout=10)
-        return R("daemon lifecycle", "daemon", True, "start/status/load/session-end ok")
+        return R("daemon lifecycle", "daemon", True, "start/status/session-end ok")
     finally:
         _stop_daemon(env)
         shutil.rmtree(state, ignore_errors=True)
-
-
-def test_daemon_idle_unload() -> R:
-
-    env, state = _isolated_env()
-    env["CORTEXAGENT_IDLE_UNLOAD_SEC"] = "15"
-    try:
-        if not _start_daemon(env):
-            return R("daemon idle-unload", "daemon", False, "daemon did not come up")
-        cli = _cli(env)
-        _run(env, *cli, "models", "load", "big", timeout=60)
-        st = _run(env, *cli, "models", "status", timeout=5)
-
-
-
-
-        big_line = next((l for l in st.stdout.splitlines() if "big" in l and ":" in l), "")
-        if "down" in big_line and "running=False" in big_line:
-            return R("daemon idle-unload", "daemon", False, "big never loaded")
-
-        time.sleep(20)
-        st2 = _run(env, *cli, "models", "status", timeout=5)
-        big_line2 = next((l for l in st2.stdout.splitlines() if "big" in l and ":" in l), "")
-        unloaded = ("down" in big_line2 and "running=False" in big_line2)
-        return R("daemon idle-unload", "daemon", unloaded,
-                 f"after 20s idle: {st2.stdout.strip()[:80]}")
-    finally:
-        _stop_daemon(env)
-        shutil.rmtree(state, ignore_errors=True)
-
-
-
-
-
-def test_proxy_reload_on_request() -> R:
-
-    import urllib.request, urllib.error
-    env, state = _isolated_env()
-    try:
-        if not _start_daemon(env):
-            return R("proxy reload-on-request", "proxy", False, "daemon did not come up")
-
-
-        proxy_port = int(env.get("CORTEXAGENT_PROXY_PORT", 18081))
-        proxy_url = f"http://127.0.0.1:{proxy_port}/v1/chat/completions"
-        body = json.dumps({
-            "model": "cortexagent", "messages": [{"role": "user", "content": "say OK"}],
-            "max_tokens": 8, "stream": False,
-        }).encode()
-        req = urllib.request.Request(
-            proxy_url,
-            data=body, headers={"Content-Type": "application/json"}, method="POST")
-
-
-
-
-
-
-
-
-        status, txt, last_err = 0, "", ""
-        for attempt in range(1, 4):
-            req = urllib.request.Request(
-                proxy_url,
-                data=body, headers={"Content-Type": "application/json"}, method="POST")
-            try:
-                with urllib.request.urlopen(req, timeout=330) as r:
-                    status = r.status
-                    txt = r.read().decode()[:200]
-                break
-            except urllib.error.HTTPError as e:
-                status, txt = e.code, e.read().decode()[:200]
-                break
-            except Exception as e:
-                last_err = f"{e.__class__.__name__}: {e}"
-                if attempt < 3:
-                    time.sleep(3)
-        else:
-            return R("proxy reload-on-request", "proxy", False, f"req error after 3 tries: {last_err}")
-        ok = status == 200
-        return R("proxy reload-on-request", "proxy", ok, f"status={status} body={txt[:80]}")
-    finally:
-        _stop_daemon(env)
-        shutil.rmtree(state, ignore_errors=True)
-
-
-
-
 
 def test_cli_routing() -> R:
 
@@ -522,8 +331,8 @@ def test_cli_routing() -> R:
         r = _run(env, *cli, "--help", timeout=10)
         checks.append(("--help", r.returncode == 0))
 
-        r = _run(env, *cli, "models", "--help", timeout=10)
-        checks.append(("models --help", r.returncode == 0))
+        r = _run(env, *cli, "status", "--help", timeout=10)
+        checks.append(("status --help", r.returncode == 0))
 
         r = _run(env, *cli, "status", timeout=10)
         checks.append(("status(down)=rc1", r.returncode == 1 and "daemon down" in r.stdout))
@@ -531,39 +340,24 @@ def test_cli_routing() -> R:
         if not _start_daemon(env):
             return R("cli routing", "cli", False, "daemon did not come up")
 
-
-
-
-
         r = None
         for _ in range(1, 4):
-            r = _run(env, *cli, "models", "status", timeout=15)
+            r = _run(env, *cli, "status", timeout=15)
             if r.returncode == 0:
                 break
             time.sleep(2)
-        checks.append(("models status", r is not None and r.returncode == 0))
+        checks.append(("status", r is not None and r.returncode == 0))
         r = _run(env, *cli, "daemon", "status", timeout=10)
         checks.append(("daemon status", r.returncode == 0))
-        r = _run(env, *cli, "models", "load", "big", timeout=60)
-        checks.append(("models load big", r.returncode == 0))
-        r = _run(env, *cli, "models", "unload", "big", timeout=20)
-        checks.append(("models unload big", r.returncode == 0))
         bad = [n for n, ok in checks if not ok]
         return R("cli routing", "cli", not bad, "all ok" if not bad else f"failed: {bad}")
     finally:
         _stop_daemon(env)
         shutil.rmtree(state, ignore_errors=True)
 
-
-
-
-
 def test_hooks_syntax_and_nocortexllm() -> R:
 
-
-
-
-    env, state = _isolated_env(big_stand_in=False)
+    env, state = _isolated_env()
     try:
         env["CORTEXAGENT_REPO"] = str(REPO)
 
@@ -586,10 +380,6 @@ def test_hooks_syntax_and_nocortexllm() -> R:
         _run(env, sys.executable, str(REPO / "lib" / "overseer.py"), "stop", timeout=20)
         shutil.rmtree(state, ignore_errors=True)
 
-
-
-
-
 def test_mcp_stdio() -> R:
 
     server = REPO / "memory" / "mcp_server.py"
@@ -607,15 +397,11 @@ def test_mcp_stdio() -> R:
     ok = '"jsonrpc"' in r.stdout and ('"result"' in r.stdout or '"error"' in r.stdout)
     return R("mcp stdio initialize", "mcp", ok, f"stdout={r.stdout[:80]!r}")
 
-
-
-
-
 def test_xcontam_isolated() -> R:
 
     user_db = Path.home() / ".config" / "cortexllm" / "cortexllm.db"
     before = user_db.stat().st_mtime if user_db.exists() else 0
-    env, state = _isolated_env(big_stand_in=False)
+    env, state = _isolated_env()
     try:
 
         _run(env, sys.executable, "-c",
@@ -634,10 +420,6 @@ def test_xcontam_isolated() -> R:
     finally:
         shutil.rmtree(state, ignore_errors=True)
 
-
-
-
-
 def test_regression_overseer_exit0() -> R:
 
     env, state = _isolated_env()
@@ -647,7 +429,6 @@ def test_regression_overseer_exit0() -> R:
                  f"rc={r.returncode} out={r.stdout.strip()[:60]}")
     finally:
         shutil.rmtree(state, ignore_errors=True)
-
 
 def test_regression_cortexllm_apis() -> R:
 
@@ -662,9 +443,6 @@ def test_regression_cortexllm_apis() -> R:
         if c.is_dir() and str(c) not in _sys.path:
             _sys.path.insert(0, str(c))
     checks = []
-    # cortexllm 0.5.0 restructure: the old vector/graph/ontology stores were
-    # removed. The current surface is the memory layer (append/search/cold_*)
-    # plus the legacy Database + pydantic models.
     for mod, attrs in [
         ("cortexllm", ["append", "search", "cold_list", "cold_get",
                        "write_cold", "retry", "CircuitBreaker"]),
@@ -681,7 +459,6 @@ def test_regression_cortexllm_apis() -> R:
     bad = [n for n, ok in checks if not ok]
     return R("cortexllm vector/graph/ontology APIs", "regression", not bad,
              "all present" if not bad else f"missing/failed: {bad}")
-
 
 def test_tool_registry() -> R:
 
@@ -705,7 +482,6 @@ def test_tool_registry() -> R:
         return R("tool registry stubs", "registry", False, str(r))
     return R("tool registry", "registry", True, f"{len(tools)} tools")
 
-
 def test_adapters():
 
     from lib.tool_registry import execute_tool
@@ -714,18 +490,11 @@ def test_adapters():
                        ("transcribe_audio", {"file": "/nonexistent.wav"}),
                        ("parse_document", {"file": "/nonexistent.pdf"})):
         r = execute_tool(name, args)
-        # A clean error path: ok=False with a non-empty error message (not an
-        # exception). run_command surfaces the exit code ("exit 3") rather than
-        # the word "failed", so assert on the shape, not the wording.
         if r.get("ok") or not r.get("error"):
             print(f"❌ {name} error path: {r}")
             fails += 1
     return R("adapter tools error paths", "adapters", fails == 0,
              "clean errors" if fails == 0 else f"{fails} bad error paths")
-
-
-
-
 
 def test_bridges() -> R:
 
@@ -772,10 +541,6 @@ def test_bridges() -> R:
     return R("bridge scripts (tool + schedule)", "bridges", fails == 0,
              "all bridges OK" if fails == 0 else f"{fails} bridge failures")
 
-
-
-
-
 def test_welcome_screen_flag() -> R:
 
     launcher = REPO / "bin" / "cortexagent"
@@ -804,18 +569,11 @@ def test_welcome_screen_flag() -> R:
     if modes.get("hidden") != "IS_DEMO=1" or modes.get("condensed") != "IS_DEMO=1":
         bad.append(f"hidden/condensed → {modes}")
 
-    # The flag must be dropped in the FILTERED_ARGS case arm (a `;;` no-op,
-    # not appended). The launcher lists it mid-alternation, so match the block
-    # rather than a brittle trailing `*) ;;` substring.
     filter_block = txt.split("FILTERED_ARGS=()", 1)[1].split("done", 1)[0]
     if "--welcome-screen" not in filter_block or "--welcome-screen=*" not in filter_block:
         bad.append("flag not filtered from FILTERED_ARGS")
     return R("welcomeScreen --welcome-screen → IS_DEMO", "welcome", not bad,
              "; ".join(bad) if bad else "hidden/condensed→IS_DEMO=1, full→unset; banner var removed")
-
-
-
-
 
 def test_banner() -> R:
 
@@ -856,13 +614,9 @@ def test_banner() -> R:
     return R("banner — in-place ANSI boot + static fallback", "banner", not bad,
              "all ok" if not bad else f"failed: {bad}")
 
-
-
-
-
 def test_prompt_queue() -> R:
 
-    env, state = _isolated_env(big_stand_in=False)
+    env, state = _isolated_env()
     try:
         r = _run(env, sys.executable, "-c", """
 import sys; sys.path.insert(0,'.')
@@ -890,12 +644,11 @@ print('OK')
     finally:
         shutil.rmtree(state, ignore_errors=True)
 
-
 def test_prompt_queue_hook() -> R:
 
     if not shutil.which("bash"):
         return R("prompt-queue hook block+inject", "promptqueue", True, "skipped (no bash)")
-    env, state = _isolated_env(big_stand_in=False)
+    env, state = _isolated_env()
     env["CORTEXAGENT_REPO"] = str(REPO)
     env["CORTEXLLM_SAVE_SCRIPT"] = "/nonexistent/save-context.py"
     env["CORTEXLLM_SOCKET"] = "/nonexistent/memory.sock"
@@ -909,102 +662,12 @@ def test_prompt_queue_hook() -> R:
         ok_ctx = "additionalContext" in out_ctx and "Prompt queue" in out_ctx
         run_hook("use React for the frontend")
         out_block = run_hook("use Vue for the frontend")
-        # The hook is agenda-only (deliberate since a491076): it injects the
-        # queue as context but NEVER emits a block decision — a rambling STT
-        # user must not be stopped mid-flow. Assert the no-block contract.
         ok_block = '"decision": "block"' not in out_block
         ok = ok_ctx and ok_block
         return R("prompt-queue hook agenda-inject (never blocks)", "promptqueue", ok,
                  f"ctx={ok_ctx} block={ok_block}")
     finally:
         shutil.rmtree(state, ignore_errors=True)
-
-
-
-
-
-def test_tray_headless() -> R:
-
-    env, state = _isolated_env(big_stand_in=False)
-    env["CORTEXAGENT_PORT"] = "18080"
-    env["CORTEXAGENT_PROXY_PORT"] = "18081"
-
-    def big8080_count():
-        try:
-            ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
-            return sum(1 for l in ps.splitlines()
-                       if "llama-server" in l and "--port 8080" in l and "grep" not in l)
-        except Exception:
-            return -1
-    pre = big8080_count()
-    did_live_fork = False
-    try:
-        cli = _cli(env)
-        r = _run(env, *cli, "tray", "--check", timeout=15)
-        check_ok = r.returncode == 0 and "pystray" in r.stdout
-        if os.name == "nt":
-
-
-            return R("tray --check + headless keeper", "tray", check_ok,
-                     f"check={check_ok} (live fork skipped on Windows)")
-        if pre > 0:
-
-
-
-
-
-
-
-
-
-
-            return R("tray --check + headless keeper", "tray", check_ok,
-                     f"check={check_ok} (live fork skipped — user :8080 big up, count={pre})")
-        did_live_fork = True
-        proc = subprocess.Popen(
-            [sys.executable, str(REPO / "engine" / "cli.py"), "tray", "--headless"],
-            env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, text=True)
-        try:
-            out, err = proc.communicate(input="s\nq\n", timeout=90)
-        except subprocess.TimeoutExpired:
-            proc.kill(); out, err = proc.communicate()
-        time.sleep(1)
-        rpid = _run(env, sys.executable, "-c",
-                    "import sys; sys.path.insert(0,'.'); from lib import overseer; print(overseer._is_running())",
-                    timeout=10)
-        torn = "None" in rpid.stdout
-        post = big8080_count()
-        untouched = post == pre
-        ok = check_ok and torn and proc.returncode == 0 and untouched
-        return R("tray --check + headless keeper", "tray", ok,
-                 f"check={check_ok} torn_down={torn} rc={proc.returncode} :8080_unchanged={untouched}")
-    finally:
-        if not did_live_fork:
-
-
-
-
-            shutil.rmtree(state, ignore_errors=True)
-        else:
-            try:
-                _run(env, sys.executable, str(REPO / "lib" / "overseer.py"), "stop", timeout=20)
-            except Exception:
-                pass
-            _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080))})
-
-            try:
-                ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
-                for line in ps.splitlines():
-                    if "llama-server" in line and "--port 18080" in line and "grep" not in line:
-                        try: os.kill(int(line.split()[0]), 9)
-                        except Exception: pass
-            except Exception:
-                pass
-            shutil.rmtree(state, ignore_errors=True)
-
-
-
 
 
 def test_nvidia_smi_toks() -> R:
@@ -1033,7 +696,7 @@ def test_nvidia_smi_toks() -> R:
     t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
     try:
         env = dict(os.environ)
-        env["CORTEXAGENT_PROXY_PORT"] = str(port)
+        env["CORTEXAGENT_METRICS_PORT"] = str(port)
         r = subprocess.run(["bash", str(wrap), "--query-gpu=memory.total",
                             "--format=csv,noheader"], env=env,
                            capture_output=True, text=True, timeout=10)
@@ -1043,7 +706,6 @@ def test_nvidia_smi_toks() -> R:
                  gen[0] if gen else f"no gen line; out={r.stdout[:120]!r}")
     finally:
         srv.shutdown()
-
 
 def test_diffusion_backend() -> R:
 
@@ -1092,10 +754,6 @@ def test_diffusion_backend() -> R:
         detail += f" err={r.stderr[-240:]}"
     return R("diffusion_backend diffusers (offline)", "diffusion", ok, detail)
 
-
-
-
-
 def test_patch_binary_wired() -> R:
 
     bad = []
@@ -1138,79 +796,6 @@ def test_patch_binary_wired() -> R:
     return R("patch_binary wired + module", "patch", not bad,
              "; ".join(bad) if bad else "install.sh invokes guarded; REPLACEMENTS present; --check stable")
 
-
-
-
-
-
-
-
-
-
-def test_proxy_vram_field() -> R:
-
-    import urllib.request
-    bad = []
-
-    try:
-        import importlib
-        gp = importlib.import_module("lib.grammar_proxy")
-        if not hasattr(gp, "_vram_mib") or not hasattr(gp, "_VRAM_TTL"):
-            bad.append("proxy missing _vram_mib/_VRAM_TTL")
-        metrics = json.loads(gp._get_metrics())
-
-        used, total = gp._vram_mib()
-        if used is not None and "vram_used_mib" not in metrics:
-            bad.append("vram_used_mib absent from /metrics despite nvidia-smi OK")
-        if used is not None and "vram_total_mib" not in metrics:
-            bad.append("vram_total_mib absent from /metrics")
-    except Exception as e:
-        bad.append(f"proxy import: {e.__class__.__name__}: {e}")
-
-
-    import http.server, socket, threading
-    for _ in range(10):
-        s = socket.socket()
-        try:
-            s.bind(("127.0.0.1", 0)); mport = s.getsockname()[1]; s.close(); break
-        except OSError:
-            continue
-    else:
-        return R("proxy VRAM in /metrics + statusline", "proxy", False, "no free port")
-
-    class _M(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            payload = json.dumps({"completion_tokens": 120, "current_tok_s": 45.2,
-                                  "requests": 3, "vram_used_mib": 8400,
-                                  "vram_total_mib": 16384}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-        def log_message(self, *a): pass
-    msrv = http.server.HTTPServer(("127.0.0.1", mport), _M)
-    threading.Thread(target=msrv.serve_forever, daemon=True).start()
-    try:
-        status_in = json.dumps({"model": {"display_name": "qwen3.6-35b"},
-                                "cwd": "/tmp", "context_window": {"used": 8000, "total": 8192}})
-        r = subprocess.run([sys.executable, str(REPO / "lib" / "statusline.py")],
-                           input=status_in, capture_output=True, text=True,
-                           env={**os.environ, "CORTEXAGENT_PROXY_PORT": str(mport)}, timeout=10)
-        out = r.stdout.strip()
-        if "8.2/16 GB" not in out:
-            bad.append(f"statusline didn't render VRAM: {out!r}")
-    except Exception as e:
-        bad.append(f"statusline run: {e.__class__.__name__}: {e}")
-    finally:
-        msrv.shutdown()
-    return R("proxy VRAM in /metrics + statusline", "proxy", not bad,
-             "; ".join(bad) if bad else "proxy emits vram_*; statusline renders 8.2/16 GB")
-
-
-
-
-
 def test_doctor_drift_repair() -> R:
 
     import tempfile
@@ -1242,7 +827,6 @@ def test_doctor_drift_repair() -> R:
         if cfg.exists():
             bad.append("dry-run wrote (should be read-only)")
 
-
         r = _run("--json")
         out = json.loads(r.stdout)
         statuses = {c["name"]: c["status"] for c in out}
@@ -1250,17 +834,14 @@ def test_doctor_drift_repair() -> R:
             if statuses.get(n) != "fixed":
                 bad.append(f"live {n} → {statuses.get(n)}")
 
-
         if not (cfg / "settings.json").exists():
             bad.append("live repair didn't write settings.json")
-
 
         r = _run("--json")
         out = json.loads(r.stdout)
         fixed = [c["name"] for c in out if c["status"] == "fixed"]
         if fixed:
             bad.append(f"not idempotent (re-fixed: {fixed})")
-
 
         (cfg / "settings.json").write_text('{"quiet": false, "tampered": true}')
         r = _run("--json")
@@ -1270,16 +851,13 @@ def test_doctor_drift_repair() -> R:
         if not list(cfg.glob("settings.json.doctor.bak.*")):
             bad.append("no .doctor.bak created before overwrite")
 
-
         r = _run("--json")
         out = json.loads(r.stdout)
         if any(c["status"] == "fixed" for c in out):
             bad.append("not idempotent after drift repair")
 
-
         if global_md.exists() and global_md.stat().st_mtime_ns != global_mtime:
             bad.append("global ~/.claude/CLAUDE.md was modified!")
-
 
         rc = subprocess.run([sys.executable, str(repo / "engine" / "cli.py"),
                             "doctor", "--dry-run", "--no-patch"],
@@ -1291,22 +869,16 @@ def test_doctor_drift_repair() -> R:
     return R("doctor drift repair", "doctor", not bad,
              "; ".join(bad) if bad else "dry/live/idempotent/bak/non-destructive all OK")
 
-
-
-
-
 COVERAGE = [
 
     ("lib/config.py — resolution + both modes", "config_isolated + config_user_shared", True),
-    ("lib/model_backend.py — start/health/stop", "models_start_stop", True),
     ("lib/control.py — socket + daemon_present", "daemon_lifecycle + cli_routing", True),
-    ("lib/daemon.py — lifecycle + idle-unload + swap", "daemon_lifecycle + daemon_idle_unload + hotswap(#28)", True),
-    ("lib/grammar_proxy.py — reload-on-request + /metrics", "proxy_reload_on_request + nvsmi(#24)", True),
+    ("lib/daemon.py — lifecycle (control + session claims)", "daemon_lifecycle", True),
+    ("local model lane — llama-server :11599 direct (no proxy)", "test_local_lane_direct", True),
     ("lib/overseer.py — clean exit 0", "regression_overseer_exit0", True),
-    ("engine/cli.py — all subcommands (models/daemon/status/queue/tray/install)", "cli_routing + queue + tray", True),
+    ("engine/cli.py — all subcommands (daemon/status/queue/install)", "cli_routing + queue", True),
     ("bin/cortexagent — bash syntax + daemon-mode + welcomeScreen", "static_bashn + welcome(#27)", True),
-    ("scripts/cortexagent-menu — bash syntax", "static_bashn", True),
-    ("scripts/nvidia-smi — real tok/s from /metrics (#24)", "nvsmi_toks", True),
+    ("scripts/nvidia-smi — real tok/s from slimtoken /metrics (#24)", "nvsmi_toks", True),
     ("hooks/*.sh — syntax + no-cortexllm no-op + prompt queue", "hooks_syntax_and_nocortexllm + promptqueue_hook", True),
     ("memory/mcp_server.py — stdio", "mcp_stdio", True),
     ("memory/db.py — import", "static_imports", True),
@@ -1322,10 +894,8 @@ COVERAGE = [
     ("lib/diffusion_backend.py — diffusers in-process (#30/#31/#33)", "diffusion_backend", True),
     ("lib/banner.py — ANSI in-place boot banner + static fallback", "banner", True),
     ("lib/patch_binary.py — install.sh post-install wiring + module", "patch_binary_wired", True),
-    ("lib/grammar_proxy.py + statusline.py — VRAM in /metrics + render", "proxy_vram_field", True),
     ("lib/doctor.py — settings drift repair + idempotent + non-destructive", "doctor_drift_repair", True),
 ]
-
 
 def print_coverage() -> None:
     print("\n" + "═" * 72)
@@ -1339,10 +909,6 @@ def print_coverage() -> None:
     gaps = [f for f, _, c in COVERAGE if not c]
     print(f"  {covered}/{len(COVERAGE)} covered   |   {len(gaps)} gap(s): {gaps}")
     print("═" * 72)
-
-
-
-
 
 def test_overseer_unit_template() -> R:
 
@@ -1362,77 +928,54 @@ def test_overseer_unit_template() -> R:
     return R("overseer unit template clean", "overseer", ok,
              " ".join(f"{k}={'OK' if v else 'BAD'}" for k, v in checks.items()))
 
+def test_launch_model_lifecycle() -> R:
 
-def test_kill_stale_big_only() -> R:
-
-    import re
     src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
+    pdeath = "pdeathspawn.py" in src and "_MODEL_PID" in src
+    cleanup_kills = "kill \"${_MODEL_PID}\"" in src
+    no_stale = "_cortexagent_kill_stale" not in src
+    hup = "INT TERM HUP" in src
+    ok = pdeath and cleanup_kills and no_stale and hup
+    return R("bin launcher owns llama (pdeathsig-bound)", "overseer", ok,
+             f"pdeath_spawn={'OK' if pdeath else 'BAD'} cleanup_kill={'OK' if cleanup_kills else 'BAD'} "
+             f"no_stale_kill={'OK' if no_stale else 'BAD'} hup_trap={'OK' if hup else 'BAD'}")
 
-    m = re.search(r'grep -E -- "([^"]*cortexagent[^"]*)"', src)
-    if not m:
-        return R("kill_stale regex present", "overseer", False, "regex not found")
-    pat = m.group(1)
-
-
-
-    pat = pat.replace("\\$", "$")
-
-
-    no_build_filter = "LLAMA_DIR" not in pat
-
-    sample = "--alias cortexagent -fa on\n--alias cortexagent\n"
-    r = subprocess.run(["grep", "-E", "--", pat], input=sample,
-                       capture_output=True, text=True)
-    matched = r.stdout.splitlines()
-    matches_big = all("--alias cortexagent" in l for l in matched) and len(matched) >= 2
-    ok = matches_big and no_build_filter
-    return R("kill_stale is big-only", "overseer", ok,
-             f"big={'OK' if matches_big else 'BAD'} build_filter={'gone' if no_build_filter else 'PRESENT'}")
-
-
-def test_overseer_big_params() -> R:
+def test_local_lane_direct() -> R:
 
     checks = {}
-
-    env = dict(os.environ)
-    env["CORTEXAGENT_STATE_DIR"] = str(REPO / ".smoke_cfg_tmp")
-    r = _run(env, sys.executable, "-c",
+    r = _run({}, sys.executable, "-c",
              "import sys; sys.path.insert(0,'.'); from lib.config import CFG; "
-             "print(CFG.big_ctx, CFG.big_b, CFG.big_ub)", timeout=15)
+             "print(CFG.local_port, CFG.model_cloud)", timeout=15)
     out = r.stdout.strip()
-    if r.returncode == 0 and out.split() == ["131072", "2048", "1024"]:
+    if r.returncode == 0 and out == "11599 glm-5.3-flash:cloud":
         checks["config"] = "OK"
     else:
         checks["config"] = f"BAD rc={r.returncode} out={out[:40]}"
-
     src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
-    checks["bin_ctx_131072"] = "OK" if 'CORTEXAGENT_CTX:-131072' in src else "BAD"
-    checks["bin_ub_1024"] = "OK" if 'CORTEXAGENT_UB:-1024' in src else "BAD"
-    checks["bin_no_65536"] = "OK" if "65536" not in src else "BAD (ctx reduced)"
+    checks["direct_11599"] = "OK" if "--port 11599" in src else "BAD"
+    checks["direct_server"] = "OK" if "llama-server" in src else "BAD"
+    checks["no_8080"] = "OK" if "8080" not in src else "BAD"
+    no_unit = not (REPO / "config" / "templates" / "cortexagent-model.service").exists()
+    checks["no_systemd_unit"] = "OK" if no_unit else "BAD"
     ok = all(v == "OK" for v in checks.values())
-    return R("big-model params (ctx kept, ub=1024)", "overseer", ok,
+    return R("local model lane (:11599 direct, no proxy)", "overseer", ok,
              " ".join(f"{k}={v}" for k, v in checks.items()))
 
-
-def test_cleanup_big_only() -> R:
+def test_cleanup_local_only() -> R:
 
     src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
-
     c = src.split("cleanup() {", 1)
     if len(c) != 2:
         return R("cleanup body found", "overseer", False, "cleanup() not found")
     body = c[1].split("\n}", 1)[0]
-    no_overseer_stop = "overseer.py\" stop" not in body
-    no_stop_tiny = 'model_backend.py" stop tiny' not in body and 'stop tiny' not in body
-    uses_stop_big = "stop big" in body
-    ok = no_overseer_stop and no_stop_tiny and uses_stop_big
-    return R("cleanup kills big-only", "overseer", ok,
+    no_overseer_stop = 'overseer.py" stop' not in body
+    no_model_stop = "model_backend" not in body and "stop model" not in body
+    has_scrub = "keep_alive" in body and "11600" in body
+    ok = no_overseer_stop and no_model_stop and has_scrub
+    return R("cleanup: ollama scrub + no model stop", "overseer", ok,
              f"no_overseer_stop={'OK' if no_overseer_stop else 'BAD'} "
-             f"no_stop_tiny={'OK' if no_stop_tiny else 'BAD'} stop_big={'OK' if uses_stop_big else 'BAD'}")
-
-
-
-
+             f"no_model_stop={'OK' if no_model_stop else 'BAD'} "
+             f"ollama_scrub={'OK' if has_scrub else 'BAD'}")
 
 def _fn_body(src: str, name: str) -> str:
 
@@ -1448,7 +991,6 @@ def _fn_body(src: str, name: str) -> str:
             break
     return "\n".join(out)
 
-
 def test_daemon_unit_template() -> R:
 
     tpl = REPO / "config" / "templates" / "cortexagent.service"
@@ -1460,30 +1002,13 @@ def test_daemon_unit_template() -> R:
         "uses_{{REPO_ROOT}}": "{{REPO_ROOT}}" in txt,
         "After_overseer": "cortexagent-overseer.service" in txt,
         "Wants_overseer": "Wants=cortexagent-overseer.service" in txt,
-        "idle_unload_0": "CORTEXAGENT_IDLE_UNLOAD_SEC=0" in txt,
-        "no_idle_unload_600": "CORTEXAGENT_IDLE_UNLOAD_SEC=600" not in txt,
+        "no_model_envs": "IDLE_UNLOAD" not in txt and "KEEP_MODEL" not in txt,
         "Type_simple": "Type=simple" in txt,
         "WantedBy_default": "WantedBy=default.target" in txt,
     }
     ok = all(checks.values())
-    return R("daemon unit orders after overseer + idle=0", "daemoncfg", ok,
+    return R("daemon unit orders after overseer", "daemoncfg", ok,
              " ".join(f"{k}={'OK' if v else 'BAD'}" for k, v in checks.items()))
-
-
-def test_daemon_no_auto_tiny() -> R:
-
-    src = (REPO / "lib" / "daemon.py").read_text(errors="ignore")
-    r = src.split("def _run() ->", 1)
-    if len(r) != 2:
-        return R("daemon _run found", "daemoncfg", False, "_run() not found")
-    body = r[1].split("\ndef ", 1)[0]
-    no_start = "_start_tiny()" not in body
-    no_stop = "_stop_tiny()" not in body
-    ok = no_start and no_stop
-    return R("daemon doesn't auto-manage tiny", "daemoncfg", ok,
-             f"no_start_tiny={'OK' if no_start else 'BAD'} "
-             f"no_stop_tiny={'OK' if no_stop else 'BAD'}")
-
 
 def test_install_starts_daemon_unconditional() -> R:
 
@@ -1492,15 +1017,12 @@ def test_install_starts_daemon_unconditional() -> R:
     if not body:
         return R("install_systemd found", "daemoncfg", False, "install_systemd() not found")
 
-
-
     has_restart = "systemctl --user restart cortexagent" in body
     no_autostart_gate = '"${CORTEXAGENT_AUTOSTART:-0}" = "1"' not in body
     ok = has_restart and no_autostart_gate
     return R("install starts daemon unconditionally", "daemoncfg", ok,
              f"restart_cortexagent={'OK' if has_restart else 'BAD'} "
              f"no_autostart_gate={'OK' if no_autostart_gate else 'BAD'}")
-
 
 def _patch_vram(daemon_mod, seq_miB):
 
@@ -1518,7 +1040,6 @@ def _patch_vram(daemon_mod, seq_miB):
     daemon_mod.subprocess.run = fake_run
     daemon_mod.time.sleep = lambda *_: None
     return orig_run, orig_sleep, calls
-
 
 def test_fallback_vram_probe_glitchrejection() -> R:
 
@@ -1548,7 +1069,6 @@ def test_fallback_vram_probe_glitchrejection() -> R:
     return R("fallback vram probe glitch-rejection (max-of-N)", "daemoncfg", ok,
              f"transient_max={free} sustained_max={free2}")
 
-
 def test_no_fallback_two_models_only() -> R:
 
     try:
@@ -1558,7 +1078,6 @@ def test_no_fallback_two_models_only() -> R:
         from lib.config import CFG, _load_conf
     except Exception as e:
         return R("two-models-only config import", "daemoncfg", False, f"import: {e}")
-
 
     cfg_no_fb = not hasattr(CFG, "fallback_model") or str(getattr(CFG, "fallback_model", "")).strip() == ""
 
@@ -1577,19 +1096,9 @@ def test_no_fallback_two_models_only() -> R:
         return R("no fallback model (two-models-only)", "daemoncfg", False,
                  f"FORBIDDEN: {conf_msg} — three models are not allowed")
 
-    try:
-        import lib.daemon as d
-        big_has_kvu = "--kv-unified" in d._big_extra_args()
-    except Exception as e:
-        return R("big args", "daemoncfg", False, f"daemon import: {e}")
-    ok = cfg_no_fb and conf_empty and big_has_kvu
-    return R("no fallback (two-models-only) + big has --kv-unified",
-             "daemoncfg", ok,
-             f"cfg=clean conf={conf_msg} big_has_kvu={'OK' if big_has_kvu else 'BAD'}")
-
-
-
-
+    ok = cfg_no_fb and conf_empty
+    return R("no fallback model (two-models-only)", "daemoncfg", ok,
+             f"cfg=clean conf={conf_msg}")
 
 def test_tui_status_render() -> R:
 
@@ -1615,7 +1124,6 @@ def test_tui_status_render() -> R:
             return R("tui_status render", "tui", False,
                      f"width={w}: missing headings")
     return R("tui_status render", "tui", True, "3 widths OK")
-
 
 def test_tui_status_active_work() -> R:
 
@@ -1648,7 +1156,6 @@ def test_tui_status_active_work() -> R:
                  "indeterminate work line has %")
     return R("tui_status active work", "tui", True, "WARMING emitted, no %")
 
-
 def test_tui_status_unavailable_memory() -> R:
 
     try:
@@ -1667,7 +1174,6 @@ def test_tui_status_unavailable_memory() -> R:
     if "memory unavailable" not in plain:
         return R("tui_status memory unavailable", "tui", False, plain[:200])
     return R("tui_status memory unavailable", "tui", True, "renders cleanly")
-
 
 def test_processing_animation() -> R:
 
@@ -1702,132 +1208,6 @@ def test_processing_animation() -> R:
         return R("processing_animation unknown", "tui", False, "unknown stage")
     return R("processing_animation", "tui", True, "7 stages + fallbacks OK")
 
-
-def test_stt_config_defaults() -> R:
-
-    # Shipped defaults, checked in an isolated env so the user's
-    # ~/.cortexagent/cortexagent.conf overrides (VAD tuning 2026-08-24:
-    # silence 2.5, threshold 0.05) don't mask a regression in config.py.
-    env, state = _isolated_env(big_stand_in=False)
-    # CONF_FILE is keyed off CORTEXAGENT_CONF (not CONFIG_DIR) — point it at a
-    # non-existent path so the user's real conf can't leak into the check.
-    env["CORTEXAGENT_CONF"] = str(state / "config" / "cortexagent.conf")
-    try:
-        code = (
-            "from lib.config import CFG\n"
-            "assert CFG.stt_model == 'base'\n"
-            "assert CFG.stt_device == 'cuda'\n"
-            "assert CFG.stt_mic_device == 'Logi USB Headset'\n"
-            "assert CFG.stt_hotkey == '<ctrl>+<shift>+space'\n"
-            "assert CFG.stt_speak_to_capture is True\n"
-            "assert CFG.stt_vad_threshold == 0.05\n"
-            "assert CFG.stt_vad_silence_sec == 1.5\n"
-            "assert CFG.stt_cleanup is False\n"
-            "assert CFG.stt_cleanup_target == 'big'\n"
-            "print('all 9 defaults green')\n"
-        )
-        r = _run(env, sys.executable, "-c", code, timeout=30)
-        ok = r.returncode == 0
-        return R("stt config defaults", "stt", ok,
-                 r.stdout.strip() or r.stderr.strip()[:200])
-    finally:
-        shutil.rmtree(state, ignore_errors=True)
-
-
-def test_stt_transcribe_sample() -> R:
-
-    from lib import stt
-    wav = os.path.join(tempfile.gettempdir(), "stt_sample.wav")
-    subprocess.run(["espeak-ng", "-v", "en-us", "-w", wav,
-                    "fix the proxy token accounting bug"], check=True)
-    text = stt.transcribe(wav)
-    if not (text and text.strip()):
-        return R("stt transcribe sample", "stt", False,
-                 f"transcribe returned empty: {text!r}")
-    return R("stt transcribe sample", "stt", True, f"sample → {text!r}")
-
-
-def test_stt_cleanup_fallback() -> R:
-
-    from lib import stt
-
-    raw = "fix the proxy t s bug and reload it"
-    out = stt.cleanup(raw)
-    if not (isinstance(out, str) and out.strip()):
-        return R("stt cleanup fallback", "stt", False,
-                 f"cleanup returned empty: {out!r}")
-    return R("stt cleanup fallback", "stt", True, f"cleanup → {out!r}")
-
-
-def test_stt_transcribe_and_cleanup() -> R:
-
-    from lib import stt
-    wav = os.path.join(tempfile.gettempdir(), "stt_sample.wav")
-    subprocess.run(["espeak-ng", "-v", "en-us", "-w", wav,
-                    "fix the proxy token accounting bug"], check=True)
-    text = stt.transcribe_and_cleanup(wav)
-    if not (text and text.strip()):
-        return R("stt transcribe+cleanup", "stt", False,
-                 f"pipeline returned empty: {text!r}")
-    return R("stt transcribe+cleanup", "stt", True, f"pipeline → {text!r}")
-
-
-def test_stt_vad_math() -> R:
-
-    import numpy as np
-    from lib import stt_daemon
-    silence = np.zeros(1600, dtype=np.float32)
-    tone = (0.1 * np.sin(2 * np.pi * 440 * np.arange(1600) / 16000)).astype(np.float32)
-    s_rms = stt_daemon.rms(silence)
-    t_rms = stt_daemon.rms(tone)
-    if not (s_rms < 0.001 and t_rms > 0.05):
-        return R("stt vad math", "stt", False,
-                 f"silence={s_rms:.4f} tone={t_rms:.4f}")
-    return R("stt vad math", "stt", True, f"silence={s_rms:.4f} tone={t_rms:.4f}")
-
-
-def test_stt_oom_floor_unload() -> R:
-
-    from lib import stt
-    orig_free = stt._free_vram_mib
-
-
-    stt._model = object()
-    stt._model_device = "cuda"
-    stt._free_vram_mib = lambda: 14000
-    stt.unload_if_idle()
-    roomy_kept = stt._model is not None
-
-    # OOM floor is 256 MiB (lowered from 512 at v0.55 — release only when
-    # truly about to OOM-kill). 200 MiB is below the floor → must unload.
-    stt._free_vram_mib = lambda: 200
-    stt.unload_if_idle()
-    oom_freed = stt._model is None
-    stt._model = None
-    stt._free_vram_mib = orig_free
-    if not (roomy_kept and oom_freed):
-        return R("stt oom-floor unload", "stt", False,
-                 f"roomy_kept={roomy_kept} oom_freed={oom_freed}")
-    return R("stt oom-floor unload", "stt", True, "resident kept, OOM-floor freed")
-
-
-def test_stt_transcribe_pipeline() -> R:
-
-    import subprocess, tempfile, os, json
-    from lib import stt
-    wav = os.path.join(tempfile.gettempdir(), "stt_sample.wav")
-    subprocess.run(["espeak-ng", "-v", "en-us", "-w", wav,
-                    "fix the proxy token accounting bug"], check=True)
-    text = stt.transcribe_and_cleanup(wav)
-    if not (text and text.strip()):
-        return R("stt transcribe pipeline", "stt", False,
-                 f"pipeline returned empty: {text!r}")
-    return R("stt transcribe pipeline", "stt", True, f"transcribed → {text!r}")
-
-
-
-
-
 def test_react_loop() -> R:
 
     from lib.react_loop import classify_mode, run_react
@@ -1842,7 +1222,6 @@ def test_react_loop() -> R:
         return R("react_loop direct run", "react", False, str(r))
     return R("react_loop", "react", True, "modes + direct run OK")
 
-
 def test_tuning_defaults() -> R:
 
     from lib import domain_db, react_loop, tool_registry
@@ -1855,10 +1234,6 @@ def test_tuning_defaults() -> R:
     if "limit: int = 10" not in src:
         return R("tuning rag_query limit", "react", False, "limit != 10")
     return R("tuning defaults", "react", True, "k=60, steps=8, limit=10")
-
-
-
-
 
 def test_domain_db() -> R:
 
@@ -1882,9 +1257,6 @@ def test_domain_db() -> R:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         domain_db.DOMAINS_DIR = old
-
-
-
 
 def test_ingest_job_library() -> R:
 
@@ -1912,9 +1284,6 @@ def test_ingest_job_library() -> R:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         domain_db.DOMAINS_DIR = old
-
-
-
 
 def test_integration_offline() -> R:
 
@@ -1946,10 +1315,6 @@ def test_integration_offline() -> R:
         shutil.rmtree(tmp, ignore_errors=True)
         domain_db.DOMAINS_DIR = old
 
-
-
-
-
 _FAKE_MCP_SERVER = '''#!/usr/bin/env python3
 import json, sys
 def send(o):
@@ -1978,7 +1343,6 @@ for line in sys.stdin:
         else:
             send({"jsonrpc": "2.0", "id": i, "error": {"code": -32601, "message": "unknown"}})
 '''
-
 
 def test_harness_mcp_client() -> R:
 
@@ -2010,7 +1374,6 @@ def test_harness_mcp_client() -> R:
             os.environ["CORTEXAGENT_MCP_CONFIG"] = old
         shutil.rmtree(tmp, ignore_errors=True)
 
-
 def test_harness_browser_tools() -> R:
 
     from lib.browser_tools import register_browser_tools
@@ -2021,7 +1384,6 @@ def test_harness_browser_tools() -> R:
     if len(chrome) < 9:
         return R("browser_tools register", "harness", False, f"{len(chrome)} chrome tools")
     return R("browser_tools register", "harness", True, f"{len(chrome)} chrome tools")
-
 
 def test_harness_skills() -> R:
 
@@ -2036,7 +1398,6 @@ def test_harness_skills() -> R:
         return R("skills run", "harness", False, str(r))
     return R("skills register+run", "harness", True, "x=42")
 
-
 def test_harness_beautify() -> R:
 
     from lib.beautify import beautify
@@ -2047,7 +1408,6 @@ def test_harness_beautify() -> R:
     if p != "The investigation is complete.":
         return R("beautify prose", "harness", False, p)
     return R("beautify csv+prose", "harness", True, "ok")
-
 
 def test_harness_wiring() -> R:
 
@@ -2062,7 +1422,6 @@ def test_harness_wiring() -> R:
     if "run_command" not in names:
         return R("harness tool cap", "harness", False, "run_command dropped")
     return R("harness wiring", "harness", True, f"idempotent, cap={rl.MAX_TOOLS}")
-
 
 def test_harness_stub_mode() -> R:
 
@@ -2090,18 +1449,12 @@ def test_harness_stub_mode() -> R:
     return R("harness stub mode", "harness", True,
              f"{len(stubs)} stubs, {s_chars:,} chars vs {f_chars:,} full")
 
-
-
-
-
-LIVE_AREAS = {"models", "daemon", "proxy", "cli", "tray"}
+LIVE_AREAS = {"daemon", "cli", "tray"}
 TESTS = {
     "static": [test_static_imports, test_static_bashn],
     "config": [test_config_isolated, test_config_user_shared],
     "pii": [test_pii_free],
-    "models": [test_models_start_stop],
-    "daemon": [test_daemon_lifecycle, test_daemon_idle_unload],
-    "proxy": [test_proxy_reload_on_request, test_proxy_vram_field],
+    "daemon": [test_daemon_lifecycle],
     "cli": [test_cli_routing],
     "hooks": [test_hooks_syntax_and_nocortexllm],
     "mcp": [test_mcp_stdio],
@@ -2110,23 +1463,19 @@ TESTS = {
     "welcome": [test_welcome_screen_flag],
     "banner": [test_banner],
     "promptqueue": [test_prompt_queue, test_prompt_queue_hook],
-    "tray": [test_tray_headless],
     "nvsmi": [test_nvidia_smi_toks],
     "diffusion": [test_diffusion_backend],
     "patch": [test_patch_binary_wired],
     "doctor": [test_doctor_drift_repair],
-    "overseer": [test_overseer_unit_template, test_kill_stale_big_only,
-                 test_overseer_big_params, test_cleanup_big_only],
-    "daemoncfg": [test_daemon_unit_template, test_daemon_no_auto_tiny,
+    "overseer": [test_overseer_unit_template, test_launch_model_lifecycle,
+                 test_local_lane_direct, test_cleanup_local_only],
+    "daemoncfg": [test_daemon_unit_template,
                   test_install_starts_daemon_unconditional,
                   test_fallback_vram_probe_glitchrejection,
                   test_no_fallback_two_models_only],
     "tui": [test_tui_status_render, test_tui_status_active_work,
             test_tui_status_unavailable_memory,
             test_processing_animation],
-    "stt": [test_stt_config_defaults, test_stt_transcribe_sample,
-            test_stt_cleanup_fallback, test_stt_transcribe_and_cleanup,
-            test_stt_vad_math, test_stt_oom_floor_unload, test_stt_transcribe_pipeline],
     "registry": [test_tool_registry],
     "adapters": [test_adapters],
     "bridges": [test_bridges],
@@ -2138,7 +1487,6 @@ TESTS = {
                 test_harness_skills, test_harness_beautify,
                 test_harness_wiring, test_harness_stub_mode],
 }
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="CortexAgent smoke test + coverage audit")
@@ -2181,7 +1529,6 @@ def main() -> int:
     for r in failed:
         print(f"  ❌ {r}")
     return 1 if failed else 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
