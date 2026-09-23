@@ -75,7 +75,7 @@ _start_model() {
     eval "$(LD_LIBRARY_PATH= /usr/bin/python3 "$REPO_ROOT/lib/config.py" local 2>/dev/null || true)"
     [ -n "${CORTEXAGENT_MODEL:-}" ] || { echo "[launcher] no local model configured" >&2; return 0; }
     mkdir -p "${HOME}/.cortexagent/logs"
-    for _ctx in 98304 73728 49152 32768; do
+    for _ctx in 131072 98304 73728 49152; do
       python3 "$REPO_ROOT/scripts/pdeathspawn.py" \
         env LD_LIBRARY_PATH="$HOME/prismml/llama-prism-b10709-9a9394a" \
         "$HOME/prismml/llama-prism-b10709-9a9394a/llama-server" \
