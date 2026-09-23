@@ -114,7 +114,6 @@ def _scan_active_sessions() -> List[Dict]:
         for marker, kind in (
             ("/lib/daemon.py",        "daemon"),
             ("/lib/overseer.py",      "overseer"),
-            ("/lib/diffusion_backend.py", "diffusion"),
         ):
             if marker in args:
                 _emit(pid_i, etime, comm, args, kind)

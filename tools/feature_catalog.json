@@ -1,11 +1,11 @@
 {
   "by_kind": {
-    "cli_subcommand": 20,
+    "cli_subcommand": 18,
     "control_socket_rpc": 7,
-    "mcp_tool": 39,
-    "registered_tool": 11
+    "mcp_tool": 35,
+    "registered_tool": 10
   },
-  "feature_count": 77,
+  "feature_count": 70,
   "features": [
     {
       "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
@@ -196,64 +196,6 @@
         ],
         "required": [
           "url"
-        ]
-      }
-    },
-    {
-      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-      "description": "Generate UI from description",
-      "id": "magicui_generate",
-      "implementation": "lib/converted_mcp_tools.py:magicui_generate",
-      "kind": "mcp_tool",
-      "reachable": true,
-      "schema": {
-        "properties": [
-          "description",
-          "format"
-        ],
-        "required": [
-          "description"
-        ]
-      }
-    },
-    {
-      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-      "description": "Get Alpaca trading account info",
-      "id": "alpaca_get_account",
-      "implementation": "lib/converted_mcp_tools.py:alpaca_get_account",
-      "kind": "mcp_tool",
-      "reachable": true,
-      "schema": {
-        "properties": [],
-        "required": []
-      }
-    },
-    {
-      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-      "description": "Get Interactive Brokers positions",
-      "id": "ibkr_get_positions",
-      "implementation": "lib/converted_mcp_tools.py:ibkr_get_positions",
-      "kind": "mcp_tool",
-      "reachable": true,
-      "schema": {
-        "properties": [],
-        "required": []
-      }
-    },
-    {
-      "advertised_in": "lib/converted_mcp_tools.py:CONVERTED_TOOLS",
-      "description": "Run quant strategy on a symbol",
-      "id": "quant_trader_strategy",
-      "implementation": "lib/converted_mcp_tools.py:quant_trader_strategy",
-      "kind": "mcp_tool",
-      "reachable": true,
-      "schema": {
-        "properties": [
-          "symbol",
-          "timeframe"
-        ],
-        "required": [
-          "symbol"
         ]
       }
     },
@@ -697,24 +639,6 @@
       }
     },
     {
-      "advertised_in": "lib/img2img.py",
-      "description": "",
-      "id": "img2img.py:generate",
-      "kind": "cli_subcommand",
-      "schema": {
-        "args": "<varies>"
-      }
-    },
-    {
-      "advertised_in": "lib/img2img.py",
-      "description": "",
-      "id": "img2img.py:info",
-      "kind": "cli_subcommand",
-      "schema": {
-        "args": "<varies>"
-      }
-    },
-    {
       "advertised_in": "lib/memory_thin.py",
       "description": "",
       "id": "memory_thin.py:append",
@@ -924,15 +848,6 @@
     {
       "advertised_in": "lib/tool_registry.py",
       "description": "",
-      "id": "tool_registry:render_image",
-      "kind": "registered_tool",
-      "schema": {
-        "name": "render_image"
-      }
-    },
-    {
-      "advertised_in": "lib/tool_registry.py",
-      "description": "",
       "id": "tool_registry:add_llm_provider",
       "kind": "registered_tool",
       "schema": {
@@ -940,6 +855,6 @@
       }
     }
   ],
-  "generated_at": "2026-09-23T02:02:20.257682+00:00",
+  "generated_at": "2026-09-23T04:36:05.382807+00:00",
   "schema": 1
 }

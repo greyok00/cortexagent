@@ -26,7 +26,7 @@ bin/verify
 | 1 · Manifest | file-hash drift across the repo |
 | 2 · Contract | docstring/doc claims match code |
 | 3 · Smoke | in-process smoke harness (no live endpoints) |
-| 4 · Features | **77** feature-catalog reachability checks |
+| 4 · Features | **70** feature-catalog reachability checks |
 | 5 · Model package | models.json + local model conf |
 
 The feature catalog is generated, not maintained: `tools/build_feature_catalog.py` re-derives it from the live handlers, so the count and the checks can't drift from the code.
@@ -95,13 +95,10 @@ Everything below works with zero cloud configuration. Every tool name is reachab
 | **Browser** | ten CDP tools driving your own default browser: `chrome_status/tabs/navigate/fetch/click/type/evaluate/snapshot/fill_send/health` — site-agnostic, shadow-DOM aware, never restarts the browser |
 | **Web + search** | `web_search` (local SearXNG → Firecrawl → DuckDuckGo fallback), the adapter layer with fan-out (`adapter_search`, `adapter_list` — Google CSE, SearXNG, …), `firecrawl_search` / `firecrawl_scrape` |
 | **Documents + RAG** | `parse_document` (PDF/DOCX/PPTX/XLSX/scanned), `ingest_domain` (business/dfir/law/osint/programming), `rag_query`, `coding_practices`; plus the `cortexagent-rag-ingest` helper |
-| **Images + video** | local generation through diffusers — SDXL / SD 1.5 stills and LTX-Video clips at up to 4K (3840×2160, lanczos or RealESRGAN upscale) — and `render_image` to show the result in the terminal; `img2img generate|info` for CLI use |
 | **Security posture** | live read-only checks: `hardening_status`, `nftables_list`, `auditd_query`, `sshd_config_dump`, `sysctl_current`, `unbound_status`, `capabilities_list`, `lsm_stack` |
 | **CVE + MITRE intel** | `cve_recent` (NVD+KEV+EPSS+GHSA+OSV cache), `cve_lookup` with ATT&CK technique mapping, `mitre_techniques_for_cve`, `mitre_mitigations_coverage`, `cve_poll_now`; CLI mirror in `bin/cortexagent-cve` |
 | **SIEM + SOAR** | `siem_recent` / `siem_posture` / `siem_push_recent`, playbook runs over recent CVEs and posture fails (`soar_run_on_recent`, `soar_run_posture`), `soar_history`; CLI mirror in `bin/cortexagent-siem` |
-| **Markets** | `alpaca_get_account`, `ibkr_get_positions`, `quant_trader_strategy` |
 | **Downloads** | `download` — parallel range-chunks, resumable (`.part` + HTTP Range), SHA256-verified |
-| **UI generation** | `magicui_generate` — UI from a description via the local model or a template shell (opt-in: `CORTEXAGENT_MAGICUI_BACKEND`) |
 | **Model providers** | `add_llm_provider` — checklist for adding a provider to the core |
 
 ### Safety rails
@@ -153,6 +150,8 @@ The hybrid lane is a single piece: an MCP server that owns everything cloud. It'
 
 ## How it works
 
+![CortexAgent workflow](assets/cortexagent-workflow.svg)
+
 | Piece | Where | Role |
 |---|---|---|
 | Local model (llama.cpp) | `127.0.0.1:11599` | the agent's brain — spawned by the launcher, dies with it |
@@ -200,7 +199,6 @@ CortexAgent stands on tools other people built. Thanks and credit to the origina
 - **[llama.cpp](https://github.com/ggml-org/llama.cpp)** by Georgi Gerganov and the ggml team — the model server that does the actual thinking.
 - **[pi.dev](https://github.com/badlogic/pi-mono)** by Mario Zechner — the fork origin, and the cleanest argument for a minimal harness.
 - **[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)** by Vinyzu and Kaliiiiiiiiii — a stealth-patched Playwright used for hardened browser automation, alongside the raw [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/).
-- **[PyTorch](https://pytorch.org)** and **[diffusers](https://github.com/huggingface/diffusers)** — the local image/video generation backends.
 - **[orjson](https://github.com/ijl/orjson)** by Jim Crist-Harif, **[xxHash](https://github.com/Cyan4973/xxHash)** by Yann Collet, and **[tiktoken](https://github.com/openai/tiktoken)** by OpenAI — the fast JSON, hashing, and real-tokenizer layers inside SlimToken.
 
 The compression proxy itself, **[SlimToken](https://github.com/greyok00/slimtoken)** (MIT), is CortexAgent's sibling project — a standalone token-optimization and memory layer usable with any LLM stack, not just this one.

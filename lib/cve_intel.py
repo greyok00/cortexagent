@@ -512,7 +512,7 @@ _LOCAL_MITIGATIONS: dict[str, str] = {
     "M1054": "Software Configuration (Brave managed policies, hardening.json)",
     "M1047": "Audit (auditd, SIEM ingest)",
     "M1032": "Multi-factor Authentication (YubiKey + pam_u2f)",
-    "M1057": "User Training (security tray popout education)",
+    "M1057": "User Training",
     "M1060": "Software Signing (fs-verity, dm-verity, IMA)",
     "M1024": "Restrict Registry Permissions (n/a Linux)",
     "M1029": "Scheduled Software Updates (apt auto, brew autoupdate)",
