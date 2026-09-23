@@ -23,6 +23,10 @@ Legacy garbled rows are normalized on read. Same hotfix train, 2026-09-23:
   executions (it was hard-stuck at "(0 tools)"), renders inside a box on
   the same row as the model/token stats, and widgets no longer get a
   stray leading space from the renderer.
+- **Dispatcher queue auto-prunes** — stale `blocked` tasks sat in the
+  queue forever (prune only ran inside done/block, retention was 24h),
+  freezing the Tasks panel on an old list. Now the heartbeat prunes every
+  60s, blocked tasks expire after 1h, and the panel lists 6 tasks.
 
   *(v0.7.3.1 earlier today fixed the memory **loop**: per-token
   `memory_search` in both memory servers, replacing whole-query substring
