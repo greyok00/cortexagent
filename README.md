@@ -2,36 +2,6 @@
 
 > **Your private, local AI coding agent — no cloud required, no API key.**
 
-**v0.7.3.2 (2026-09-23) — hotfix: session memory amnesia.** The bundled
-memory extension called the hot-memory API with swapped arguments
-(`append('user', prompt)` instead of `append(prompt, 'user')`) and passed a
-`platform` keyword that `read_last()` doesn't accept — every write stored
-garbled rows and every read **threw and was silently swallowed**, so a
-resumed session had zero memory of anything it did. Fixed the calls, and
-each agent run now also records what it *did* (last tool names + final
-output) as an assistant row, so resume sees actions, not just questions.
-Legacy garbled rows are normalized on read. Same hotfix train, 2026-09-23:
-
-- **Memory amnesia fixed** — correct `memory_thin` API usage, run summaries
-  written on `agent_end`, memory failures now log instead of vanishing.
-  The fixed extension ships in-repo as `extensions/memory.ts`.
-- **Compression panel reads real data** — it pointed at a dead
-  `~/.cortexagent/minify_stats.json` path and always showed "no data yet";
-  it now reads SlimToken's live stats file
-  (`~/.local/state/slimtoken/stats.json`), legacy path as fallback.
-- **Status bar reworked** — the progress bar now counts real tool
-  executions (it was hard-stuck at "(0 tools)"), renders inside a box on
-  the same row as the model/token stats, and widgets no longer get a
-  stray leading space from the renderer.
-- **Dispatcher queue auto-prunes** — stale `blocked` tasks sat in the
-  queue forever (prune only ran inside done/block, retention was 24h),
-  freezing the Tasks panel on an old list. Now the heartbeat prunes every
-  60s, blocked tasks expire after 1h, and the panel lists 6 tasks.
-
-  *(v0.7.3.1 earlier today fixed the memory **loop**: per-token
-  `memory_search` in both memory servers, replacing whole-query substring
-  matching that always returned `[]` — see that release's notes.)*
-
 ![CortexAgent session](assets/cortexagent-cli.png)
 
 CortexAgent runs on your machine: a local llama.cpp model spawned and owned by the launcher, a terminal session pinned to it, automatic memory across sessions, local browser automation, and token compression. Everything binds to `127.0.0.1`. No accounts, no telemetry.
@@ -294,3 +264,46 @@ Companion CLIs: `cortexagent-cve` (`lookup`/`mitre`/`coverage`, registers the da
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+## Changelog
+
+**v0.7.3.2 (2026-09-23) — hotfix: session memory amnesia.** The bundled
+memory extension called the hot-memory API with swapped arguments
+(`append('user', prompt)` instead of `append(prompt, 'user')`) and passed a
+`platform` keyword that `read_last()` doesn't accept — every write stored
+garbled rows and every read **threw and was silently swallowed**, so a
+resumed session had zero memory of anything it did. Fixed the calls, and
+each agent run now also records what it *did* (last tool names + final
+output) as an assistant row, so resume sees actions, not just questions.
+Legacy garbled rows are normalized on read. Same hotfix train, 2026-09-23:
+
+- **Memory amnesia fixed** — correct `memory_thin` API usage, run summaries
+  written on `agent_end`, memory failures now log instead of vanishing.
+  The fixed extension ships in-repo as `extensions/memory.ts`.
+- **Compression panel reads real data** — it pointed at a dead
+  `~/.cortexagent/minify_stats.json` path and always showed "no data yet";
+  it now reads SlimToken's live stats file
+  (`~/.local/state/slimtoken/stats.json`), legacy path as fallback.
+- **Status bar reworked** — the progress bar now counts real tool
+  executions (it was hard-stuck at "(0 tools)"), renders inside a box on
+  the same row as the model/token stats, and widgets no longer get a
+  stray leading space from the renderer.
+- **Dispatcher queue auto-prunes** — stale `blocked` tasks sat in the
+  queue forever (prune only ran inside done/block, retention was 24h),
+  freezing the Tasks panel on an old list. Now the heartbeat prunes every
+  60s, blocked tasks expire after 1h, and the panel lists 6 tasks.
+
+**v0.7.3.1 (2026-09-23) — memory loop fix.** Fixed the bug that made the
+agent loop forever instead of working: `memory_search` in the bundled memory
+MCP server (`memory/mcp_server.py`) matched the *entire multi-word query as
+one exact substring* (`LIKE '%whole query%'` in SQLite), so real queries
+returned `[]` every time and the agent kept re-asking memory, then grepping
+its own session logs in circles. Search is now per-token (AND across tokens,
+best-ranked-first, OR fallback when the strict match is empty) and returns
+in <0.1s. Verified end-to-end over the real MCP protocol. The same disease
+was fixed in the CortexLLM universal-memory server
+(`cortexllm_mcp_server.py`, deployed at `~/.config/cortexllm`) — its search
+never saw the `.jsonl` hot tier and required whole-query substring matches;
+both are covered by this release.
