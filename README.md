@@ -286,10 +286,6 @@ Legacy garbled rows are normalized on read. Same hotfix train, 2026-09-23:
   `~/.cortexagent/minify_stats.json` path and always showed "no data yet";
   it now reads SlimToken's live stats file
   (`~/.local/state/slimtoken/stats.json`), legacy path as fallback.
-- **Status bar reworked** — the progress bar now counts real tool
-  executions (it was hard-stuck at "(0 tools)"), renders inside a box on
-  the same row as the model/token stats, and widgets no longer get a
-  stray leading space from the renderer.
 - **Dispatcher queue auto-prunes** — stale `blocked` tasks sat in the
   queue forever (prune only ran inside done/block, retention was 24h),
   freezing the Tasks panel on an old list. Now the heartbeat prunes every
