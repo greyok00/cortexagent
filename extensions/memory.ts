@@ -1,6 +1,8 @@
 import type { ExtensionAPI } from "@cortex/coding-agent";
 
-const REPO_ROOT = "/home/user/cortexagent";
+// Repo root = parent of extensions/ — derived, so no user path is hardcoded
+// in the repo (the smoke gate scans public output for /home/user).
+const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const PY = "python3";
 
 async function runPy(code: string, args: string[]): Promise<string> {
