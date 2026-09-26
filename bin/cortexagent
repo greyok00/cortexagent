@@ -142,28 +142,31 @@ MEMORY_CMD="python3 ${REPO_ROOT}/memory/mcp_server.py"
 python3 - "${REPO_ROOT}" "${CONFIG_DIR}" "${MEMORY_CMD}" "${FIRECRAWL_ENABLED}" "${BRAVE_ENABLED}" <<'PY'
 import json, os, sys
 repo_root, config_dir, memory_cmd, fire_enabled, brave_enabled = sys.argv[1:6]
+def _split(cmd):
+    parts = cmd.split()
+    return {"command": parts[0], "args": parts[1:]} if len(parts) > 1 else {"command": cmd}
 servers = {}
 _mem_script = memory_cmd.split()[-1] if memory_cmd else ""
 if _mem_script and os.path.exists(_mem_script):
-    servers["cortexagent"] = {"command": memory_cmd}
+    servers["cortexagent"] = _split(memory_cmd)
 if fire_enabled == "1":
-    servers["firecrawl"] = {
-        "command": f"python3 {os.path.join(repo_root, 'lib', 'firecrawl_proxy.py')}",
-    }
+    servers["firecrawl"] = _split(f"python3 {os.path.join(repo_root, 'lib', 'firecrawl_proxy.py')}")
 if brave_enabled == "1":
     venv_python = os.path.expanduser("~/.cortexagent/venv/bin/python3")
     if not os.path.exists(venv_python):
         venv_python = "python3"
-    servers["patchright_chrome"] = {
-        "command": f"{venv_python} {os.path.join(repo_root, 'lib', 'patchright_chrome_mcp.py')}",
-    }
+    servers["patchright_chrome"] = _split(f"{venv_python} {os.path.join(repo_root, 'lib', 'patchright_chrome_mcp.py')}")
 for _name, _cmd in (
     ("secops", os.path.expanduser("~/security-hardening/secops-mcp.py")),
     ("dispatcher", os.path.expanduser("~/dispatcher/server.py")),
     ("messenger", os.path.expanduser("~/messenger/bin/messenger-server")),
+    ("workers", os.path.expanduser("~/workers/mcp-server.py")),
+    ("research", os.path.join(repo_root, "research", "mcp_server.py")),
+    ("cortexllm", os.path.expanduser("~/cortexllm/cortexllm_mcp_server.py")),
+    ("rag", os.path.expanduser("~/cortexllm/rag_mcp.py")),
 ):
     if os.path.exists(_cmd):
-        servers[_name] = {"command": f"python3 {_cmd}"}
+        servers[_name] = _split(f"python3 {_cmd}")
 lazy_config = os.path.expanduser("~/.cortexagent/config/lazy_mcp_servers.json")
 if os.path.exists(lazy_config):
     try:
@@ -173,9 +176,9 @@ if os.path.exists(lazy_config):
             if isinstance(cmd, list):
                 cmd = " ".join(cmd)
             if name and cmd:
-                servers[f"lazy_{name}"] = {
-                    "command": f"python3 {os.path.join(repo_root, 'lib', 'lazy_mcp_proxy.py')} --name {name}",
-                }
+                servers[f"lazy_{name}"] = _split(
+                    f"python3 {os.path.join(repo_root, 'lib', 'lazy_mcp_proxy.py')} --name {name}",
+                )
     except Exception:
         pass
 mcp = {"mcpServers": servers}
@@ -187,8 +190,12 @@ PY
 export CLAUDE_CONFIG_DIR="${CONFIG_DIR}"
 export CORTEXAGENT_MCP_CONFIG="${CONFIG_DIR}/mcp.json"
 if [ -z "${CORTEXAGENT_MCP_SERVERS:-}" ]; then
-  export CORTEXAGENT_MCP_SERVERS="dispatcher,secops,cortexllm,messenger,workers"
+  export CORTEXAGENT_MCP_SERVERS="dispatcher,research,rag"
 fi
+# domain-researcher clones are replaced by the single research pipeline
+export CORTEXAGENT_DISABLED_TOOLS="${CORTEXAGENT_DISABLED_TOOLS:-add_llm_provider,coding_practices,ingest_domain,rag_query,download,query_llm,memory_clear}"
+# process-skills dir is a dev-workflow artifact, not a runtime tool surface
+export CORTEXAGENT_SKILLS_DIR="${CORTEXAGENT_SKILLS_DIR:-/nonexistent-no-skills}"
 
 bash "${HOME}/.cortexllm/scripts/memory-daemon.sh" start 2>/dev/null || true
 

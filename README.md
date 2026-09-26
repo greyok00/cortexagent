@@ -269,6 +269,33 @@ MIT — see [LICENSE](LICENSE).
 
 ## Changelog
 
+**v0.7.4 (2026-09-26) — toolbelt: uncapped, wired, one researcher.** The
+react loop's hidden 16-tool cap is gone — the model now sees its full
+registered toolbelt (31 tools with the default configuration;
+`CORTEXAGENT_MAX_TOOLS` re-introduces a cap as an opt-in). Three fixes
+land with it:
+
+- **MCP servers actually load now.** The launcher-generated `mcp.json`
+  wrote each server as a single `command` string (`"python3 /path/to/x.py"`)
+  the client tried to execute as one filename — every generated server
+  (dispatcher, secops, messenger, …) silently failed to spawn. The config
+  now emits proper `{command, args}` pairs, and the client splits legacy
+  single-string entries for backward compatibility.
+- **One researcher, not fifty.** New `CORTEXAGENT_DISABLED_TOOLS`
+  blocklist (honored by both tool listing and tool calls) retires the
+  domain one-offs — `ingest_domain`, `rag_query`, `query_llm` self-calls,
+  `download`, `add_llm_provider`, `coding_practices`, and the destructive
+  `memory_clear` — in favor of the research pipeline plus a new RAG
+  companion server (`rag_mcp.py`: FTS5/BM25 over the CortexLLM store —
+  cold facts, wiki layer, coding practices — returning cited results with
+  provenance and freshness, and an explicit no-match marker so the model
+  can't paper over gaps with invented answers). Process-skills no longer
+  register as model tools either.
+- **Memory injection is per-run again.** The hot recent-memory block is
+  re-injected into the system prompt on every agent run (idempotent, last
+  40 entries) instead of once per TUI process, so resumed runs get their
+  memory back.
+
 **v0.7.3.2 (2026-09-23) — hotfix: session memory amnesia.** The bundled
 memory extension called the hot-memory API with swapped arguments
 (`append('user', prompt)` instead of `append(prompt, 'user')`) and passed a

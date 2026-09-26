@@ -19,6 +19,9 @@ MAX_TOOL_OUTPUT = None
 
 TOOLS: Dict[str, Dict[str, Any]] = {}
 
+# CORTEXAGENT_DISABLED_TOOLS: csv of tool names the model must never see/call.
+_DISABLED: set = {s.strip() for s in os.environ.get("CORTEXAGENT_DISABLED_TOOLS", "").split(",") if s.strip()}
+
 def register_tool(name: str, schema: Dict[str, Any], handler: Callable,
                   priority: int = 0, trust: str = "high") -> None:
 
@@ -30,6 +33,8 @@ def list_tools(limit: Optional[int] = None, stub: bool = False) -> List[Dict[str
     tools = []
     for name, t in sorted(TOOLS.items(),
                           key=lambda kv: (kv[1].get("priority", 0), kv[0])):
+        if name in _DISABLED:
+            continue
         if stub:
             desc = t["schema"].get("description", t["schema"].get("function", {}).get("description", ""))
             if len(desc) > 50:
@@ -55,6 +60,8 @@ def execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     tool = TOOLS.get(name)
     if tool is None:
         return {"ok": False, "output": "", "error": f"unknown tool: {name}"}
+    if name in _DISABLED:
+        return {"ok": False, "output": "", "error": f"tool disabled: {name}"}
     trust = tool.get("trust", "high")
     schema = tool["schema"]
     params = schema.get("parameters") or {}
