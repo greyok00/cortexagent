@@ -104,41 +104,66 @@ class OntologyEngine:
                     cls._instance = cls()
         return cls._instance
 
-def memory_read(tier: str, platform: str = "default", category: str = None) -> dict:
+# Cold facts are curated and cross-platform: the shared rule store plus each
+# harness's own profile. Hot/warm stay strictly per-platform (transcript).
+_COLD_PROFILES_STATIC = ("shared", "platform:claude")
+_READ_PREVIEW = 400  # chars per row — hot is a transcript log; keep reads compact
+
+
+def _preview(text, limit: int = _READ_PREVIEW) -> str:
+    text = str(text or "")
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
+def memory_read(tier: str, platform: str = "cortexagent", category: str = None,
+                limit: int = 20) -> dict:
 
     try:
-        from memory_manager import MemoryManager
-        mm = MemoryManager()
+        from memory.db import db
+        profile = f"platform:{platform}" if platform != "default" else "platform:cortexagent"
+        limit = max(1, min(int(limit or 20), 200))
         if tier == "hot":
-            data = mm.get_hot_messages(platform)
+            data = [{"role": r["role"], "timestamp": r["timestamp"],
+                     "content": _preview(r["content"])}
+                    for r in db.get_hot(profile, limit=limit)]
         elif tier == "warm":
-            data = mm.get_warm_messages()
+            data = [{"role": r["role"], "timestamp": r["timestamp"],
+                     "content": _preview(r["content"])}
+                    for r in db.get_warm(profile, limit=limit)]
         elif tier == "cold":
-            data = mm.get_cold_knowledge(category) if category else mm.get_all_cold_categories()
+            cold_profiles = (*_COLD_PROFILES_STATIC, profile)
+            marks = ",".join("?" for _ in cold_profiles)
+            sql = (f"SELECT category, fact, timestamp FROM Memory_Cold "
+                   f"WHERE profile IN ({marks})")
+            params = list(cold_profiles)
+            if category:
+                sql += " AND category = ?"
+                params.append(category)
+            sql += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+            data = [{"category": r["category"], "timestamp": r["timestamp"],
+                     "fact": _preview(r["fact"])}
+                    for r in db.reader().execute(sql, params).fetchall()]
         else:
             return {"error": f"Invalid tier: {tier}"}
         return {"status": "ok", "data": data}
     except Exception as e:
         return {"error": str(e)}
 
-def memory_write(tier: str, content: str, platform: str = "default",
+def memory_write(tier: str, content: str, platform: str = "cortexagent",
                  category: str = None, role: str = "user") -> dict:
 
     try:
-        from memory_manager import MemoryManager
-        mm = MemoryManager()
+        from memory.db import db
+        profile = f"platform:{platform}" if platform != "default" else "platform:cortexagent"
         if tier == "hot":
-            mm.add_to_hot(platform, content, role)
+            db.add_to_hot(profile, role, content)
             result = {"status": "written", "tier": "hot", "platform": platform}
         elif tier == "warm":
-            mm.add_to_hot(platform, content, role)
+            db.add_to_warm(profile, role, content)
             result = {"status": "written", "tier": "warm"}
         elif tier == "cold":
-            try:
-                knowledge = json.loads(content)
-            except Exception:
-                knowledge = {"content": content}
-            mm.save_to_cold(category or "general", knowledge)
+            db.add_to_cold(profile, category or "general", content)
             result = {"status": "written", "tier": "cold", "category": category}
         else:
             result = {"error": f"Invalid tier: {tier}"}
@@ -149,9 +174,82 @@ def memory_write(tier: str, content: str, platform: str = "default",
 def memory_search(query: str, limit: int = 10) -> dict:
 
     try:
-        from domain_db import search
-        results = search("default", query, limit)
-        return {"status": "ok", "results": results}
+        # 2026-09-24 fix (agent "no memory" root cause): the old version called
+        # domain_db.search("default", ...) — an empty ontology domain, never the
+        # memory tiers — so every real query returned [] and the agent recalled
+        # nothing (wolflogger IP, creds, share names all lost). Per-token AND
+        # match with an OR fallback ranked by hit count.
+        # 2026-09-26 fixes: (1) the OR fallback bound its hit-count placeholders
+        # in the SELECT *before* the profile placeholder, so a LIKE pattern
+        # landed in the profile filter and every multi-token query returned []
+        # (single-token AND still worked, which masked it) — bind in SQL order:
+        # hits, profile, or-conds, limit. (2) Cold was never scanned — curated
+        # facts (agent_critical_rules etc.) live under 'shared'/'platform:claude'
+        # and were invisible to a platform-scoped warm+hot search.
+        import re as _re
+        from memory.db import db
+        profile = f"platform:{os.environ.get('CORTEXAGENT_PLATFORM', 'cortexagent')}"
+        tokens = _re.findall(r"\w{2,}", (query or "").lower())
+        if not tokens:
+            return {"status": "ok", "results": []}
+        and_conds = " AND ".join("LOWER(content) LIKE ?" for _ in tokens)
+        like_params = [f"%{t}%" for t in tokens]
+        results = []
+        con = db.reader()
+        # Cold first: curated facts outrank the raw transcript. Memory_Cold's
+        # text column is `fact`, not `content` — build its conditions separately.
+        cold_profiles = (*_COLD_PROFILES_STATIC, profile)
+        marks = ",".join("?" for _ in cold_profiles)
+        cold_conds = " AND ".join("LOWER(fact) LIKE ?" for _ in tokens)
+        cold_rows = con.execute(
+            f"SELECT category, fact, timestamp FROM Memory_Cold "
+            f"WHERE profile IN ({marks}) AND {cold_conds} "
+            f"ORDER BY id DESC LIMIT ?",
+            (*cold_profiles, *like_params, limit),
+        ).fetchall()
+        if not cold_rows and len(tokens) > 1:
+            cold_or = " OR ".join("LOWER(fact) LIKE ?" for _ in tokens)
+            cold_hits = " + ".join(
+                "(CASE WHEN LOWER(fact) LIKE ? THEN 1 ELSE 0 END)"
+                for _ in tokens)
+            cold_rows = con.execute(
+                f"SELECT category, fact, timestamp, ({cold_hits}) AS hits "
+                f"FROM Memory_Cold WHERE profile IN ({marks}) AND ({cold_or}) "
+                f"ORDER BY hits DESC, id DESC LIMIT ?",
+                (*like_params, *cold_profiles, *like_params, limit),
+            ).fetchall()
+        for r in cold_rows:
+            results.append({
+                "tier": "cold",
+                "category": r["category"],
+                "content": r["fact"],
+                "timestamp": r["timestamp"],
+            })
+        for tier, table in (("warm", "Memory_Warm"), ("hot", "Memory_Hot")):
+            rows = con.execute(
+                f"SELECT role, content, timestamp FROM {table} "
+                f"WHERE profile = ? AND {and_conds} ORDER BY id DESC LIMIT ?",
+                (profile, *like_params, limit),
+            ).fetchall()
+            if not rows and len(tokens) > 1:
+                or_conds = " OR ".join("LOWER(content) LIKE ?" for _ in tokens)
+                hits = " + ".join(
+                    "(CASE WHEN LOWER(content) LIKE ? THEN 1 ELSE 0 END)"
+                    for _ in tokens)
+                rows = con.execute(
+                    f"SELECT role, content, timestamp, ({hits}) AS hits FROM {table} "
+                    f"WHERE profile = ? AND ({or_conds}) "
+                    f"ORDER BY hits DESC, id DESC LIMIT ?",
+                    (*like_params, profile, *like_params, limit),
+                ).fetchall()
+            for r in rows:
+                results.append({
+                    "tier": tier,
+                    "role": r["role"],
+                    "content": _preview(r["content"]),
+                    "timestamp": r["timestamp"],
+                })
+        return {"status": "ok", "results": results[:limit]}
     except Exception as e:
         return {"error": str(e)}
 

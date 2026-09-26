@@ -134,7 +134,13 @@ def _handle_search(args: Dict[str, Any]) -> Dict[str, Any]:
                 f"SELECT role, content, timestamp, ({hits}) AS hits "
                 f"FROM Memory_Warm WHERE profile = ? AND ({conds}) "
                 f"ORDER BY hits DESC, id DESC LIMIT ?",
-                (PROFILE, *[f"%{t}%" for t in tokens] * 2, limit),
+                # 2026-09-26: bind in SQL placeholder order — the hits CASE
+                # placeholders in the SELECT bind before the profile ? in the
+                # WHERE, so the old (PROFILE, *like*2, limit) tuple fed a LIKE
+                # pattern into the profile filter and the fallback always
+                # returned [].
+                (*[f"%{t}%" for t in tokens], PROFILE,
+                 *[f"%{t}%" for t in tokens], limit),
             ).fetchall()
     out = [{"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]} for r in rows]
     return _ok(json.dumps(out, ensure_ascii=False, default=str, indent=2))
