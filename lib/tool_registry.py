@@ -503,13 +503,6 @@ _MCP_TOOL_DEFS = [
          "role": {"type": "string", "enum": ["user", "assistant", "system", "cold"]},
          "category": {"type": "string", "description": "Category for cold facts."}
      }, "required": ["tier", "content"]}},
-
-    {"name": "memory_write", "desc": "Append to hot or cold memory (no caps)",
-     "params": {"type": "object", "properties": {
-         "tier": {"type": "string", "enum": ["hot", "cold"]},
-         "content": {"type": "string"},
-         "role": {"type": "string", "enum": ["user", "assistant", "system", "cold"]}
-     }, "required": ["tier", "content"]}},
     {"name": "memory_search", "desc": "Search across hot + cold memory",
      "params": {"type": "object", "properties": {
          "query": {"type": "string"},
