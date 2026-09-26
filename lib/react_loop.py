@@ -20,7 +20,7 @@ from lib.output_frame import frame_output
 MAX_STEPS = 8
 TOOL_TIMEOUT = 60
 
-MAX_TOOLS = int(os.environ.get("CORTEXAGENT_MAX_TOOLS", "16"))
+MAX_TOOLS = int(os.environ.get("CORTEXAGENT_MAX_TOOLS", "0") or 0)  # 0 = no cap
 
 STUB_MODE = os.environ.get("CORTEXAGENT_TOOL_STUBS", "1") == "1"
 SOCRATIC_KEYWORDS = (
@@ -188,7 +188,7 @@ def run_react(task: Dict, state: Optional[Dict] = None) -> Dict[str, Any]:
                       "status": "in_progress"})
         _publish(state, steps, step)
         response = _query_llm_with_tools(
-            messages, list_tools(limit=MAX_TOOLS, stub=STUB_MODE), max_tokens=512,
+            messages, list_tools(limit=(MAX_TOOLS or None), stub=STUB_MODE), max_tokens=512,
             timeout=TOOL_TIMEOUT)
         if response is None:
             return {"ok": False, "output": "", "error": "LLM unavailable"}

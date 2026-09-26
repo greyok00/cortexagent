@@ -92,19 +92,20 @@ function formatMemory(raw: string): string {
 }
 
 export default function memoryExtension(pi: ExtensionAPI): void {
-	let injected = false;
 	pi.on("before_agent_start", async (event) => {
 		const prompt = event.prompt;
 		if (typeof prompt === "string" && prompt.trim()) {
 			void savePrompt(prompt);
 		}
 
-		if (injected) return;
-		injected = true;
-
-		const memory = formatMemory(await readRecent(12));
+		const memory = formatMemory(await readRecent(40));
 		if (!memory) return;
-		const current = event.systemPrompt ?? "";
+		// runner.ts rebuilds systemPrompt fresh per run, so append is safe;
+		// strip any existing block first so re-entry never stacks duplicates.
+		const current = (event.systemPrompt ?? "").replace(
+			/\n\n<recent_memory>[\s\S]*?<\/recent_memory>\n?/g,
+			"",
+		);
 		return { systemPrompt: current + memory };
 	});
 

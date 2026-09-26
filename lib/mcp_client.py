@@ -33,10 +33,16 @@ def load_servers() -> List[Dict[str, Any]]:
             data = json.loads(MCP_CONFIG.read_text())
             for name, cfg in (data.get("mcpServers") or {}).items():
                 command = cfg.get("command", "")
+                args = list(cfg.get("args", []))
+                if isinstance(command, str):
+                    parts = command.split()
+                    command = parts[0] if parts else ""
+                    if len(parts) > 1:
+                        args = parts[1:]
                 servers[name] = {
                     "name": name,
                     "command": command,
-                    "args": list(cfg.get("args", [])),
+                    "args": args,
                     "env": dict(cfg.get("env", {})),
                 }
         except Exception as e:
