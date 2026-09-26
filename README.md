@@ -269,6 +269,28 @@ MIT — see [LICENSE](LICENSE).
 
 ## Changelog
 
+**v0.7.5 (2026-09-26) — hotfix: memory tools.** The in-TUI memory tools
+broke three ways at once; all three reproduced first, then fixed:
+
+- **`memory_read(limit=…)` threw.** The tool schema advertised a `limit`
+  parameter the function never accepted — every call carrying it died with
+  a `TypeError`. It is now honored (default 20), and reads are compact:
+  hot reads were returning 50 full-transcript rows (~11.5k chars) straight
+  into the model's context; they return 20 rows of 400-char previews.
+- **Multi-token search always returned `[]`.** The OR-fallback query bound
+  its hit-count placeholders (in the `SELECT`) *before* the `profile`
+  placeholder in the `WHERE`, so a LIKE pattern landed in the profile
+  filter and nothing could match — single-token queries still worked,
+  which is what hid it. Placeholder binding now follows SQL text order.
+  The same one-line bug shipped in `memory/mcp_server.py` and is fixed
+  there too.
+- **Curated memory was invisible.** Search only scanned warm + hot for the
+  agent's own profile; the cold tier — where curated facts live, including
+  rules stored under the `shared` profile — was never consulted. Cold is
+  now scanned first (its own ranked OR-fallback included), and cold reads
+  span the shared, Claude, and agent profiles. Registry also drops a
+  duplicate `memory_write` schema entry.
+
 **v0.7.4 (2026-09-26) — toolbelt: uncapped, wired, one researcher.** The
 react loop's hidden 16-tool cap is gone — the model now sees its full
 registered toolbelt (31 tools with the default configuration;
