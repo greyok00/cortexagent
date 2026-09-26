@@ -166,7 +166,7 @@ class Config:
         self.cortex_brand = _env(
             "CORTEXAGENT_BRAND", "branding", "name", "Cortex")
         self.cortex_author = _env(
-            "CORTEXAGENT_AUTHOR", "branding", "author", "")
+            "CORTEXAGENT_AUTHOR", "branding", "author", "greyok00")
 
         self.ctx_tokens = _env_locked_int(
             "ctx_tokens", "CORTEXAGENT_CTX", "backend", "ctx_tokens", 131072)
@@ -221,7 +221,7 @@ class Config:
             "CORTEXAGENT_FIRECRAWL_ENABLED", "integrations", "firecrawl_enabled", True)
 
         self.brand = _env("CORTEXAGENT_BRAND", "branding", "name", "CortexAgent")
-        self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "")
+        self.author = _env("CORTEXAGENT_AUTHOR", "branding", "author", "greyok00")
 
         self.vram_buffer_mb = _env_int(
             "CORTEXAGENT_VRAM_BUFFER_MB", "vram", "buffer_mb", 512)

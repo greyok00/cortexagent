@@ -269,6 +269,15 @@ MIT — see [LICENSE](LICENSE).
 
 ## Changelog
 
+**v0.7.5.1 (2026-09-26) — hotfix: TUI display.** Tool output is expanded by
+default — ctrl+o now starts ON (it collapses on demand) instead of hiding
+tool results behind a collapsed one-liner. The banner credits the author
+(`greyok00` is now the branding default instead of an empty string), and the
+TUI reports its real version (0.7.5.1) instead of a stale 0.7.3.x from the
+shipped bundle. Assistant code blocks already display by default
+(owner directive 2026-09-23) — the collapsed tool-output pane was what was
+hiding them.
+
 **v0.7.5 (2026-09-26) — hotfix: memory tools.** The in-TUI memory tools
 broke three ways at once; all three reproduced first, then fixed:
 
