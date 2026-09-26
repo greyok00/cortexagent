@@ -83,7 +83,7 @@ Everything below works with zero cloud configuration. Every tool name is reachab
 ### The brain and its resources
 
 - **Local model by default** — a 35B-class MoE on llama.cpp at `127.0.0.1:11599`, spawned by the launcher as its own child: context auto-fits your free VRAM (98304 → 73728 → 49152 → 32768 until it fits), and the model dies with the app — VRAM is back the same second.
-- **Memory** — hot/warm/cold tiers on local disk, with a knowledge graph, ontology ops, and semantic (BM25) search: `memory_read`, `memory_write`, `memory_search`, `memory_clear`, `memory_search_semantic`, `memory_graph_query`, `memory_ontology`. Sessions resume without re-explaining yourself. A thin CLI (`memory_thin` — append/read/search/cold/sessions) plus `cortexagent_call` expose the same memory from scripts.
+- **Memory** — hot + cold tiers on local disk (uncapped hot working set, curated cold facts; a legacy `warm` mirror kept for older tooling), with a knowledge graph, ontology ops, and semantic (BM25) search: `memory_read`, `memory_write`, `memory_search`, `memory_clear`, `memory_search_semantic`, `memory_graph_query`, `memory_ontology`. Sessions resume without re-explaining yourself. A thin CLI (`memory_thin` — append/read/search/cold/sessions) plus `cortexagent_call` expose the same memory from scripts.
 - **Token compression** — SlimToken minifies requests before the backend sees them: `slimtoken_minify` / `slimtoken_maxify` round-trip markers, a full pipeline on the local lane (`:11436`), tokenizer-counted budgets. More fits the window.
 - **Self-repair** — `cortexagent doctor` detects and fixes config drift; see [Self-repair](#self-repair).
 
@@ -181,7 +181,7 @@ CortexAgent didn't start as an agent at all. It started as a session bridge — 
 | Where your code goes | Anthropic's servers, per token | OpenAI's cloud, subscription | Depends on the provider you pick | Nowhere. No API key, no upload |
 | Offline | No | No | Yes, with a local model | Yes |
 | Runs code where | Your machine (CLI) — the model is cloud | OpenAI's sandbox — not your machine | Your machine, your tools | Your machine, your tools |
-| Memory between sessions | `CLAUDE.md` files, maintained by hand | Server-side, stored by OpenAI | Bring-your-own | Hot/warm/cold tiers, resurfaced automatically |
+| Memory between sessions | `CLAUDE.md` files, maintained by hand | Server-side, stored by OpenAI | Bring-your-own | Hot/cold tiers, resurfaced automatically |
 | Ambiguous request | The model guesses | The model guesses | The model guesses | Socratic mode: clarifying questions before tools run |
 | Long-running work | The agent process | Not a terminal agent | The agent process | Overseer: worker pool, heartbeats, published progress |
 | Config integrity | Anthropic's settings files | Consumer app settings | Env vars, trusted blindly | Expensive settings locked at startup; `doctor` repairs drift |
