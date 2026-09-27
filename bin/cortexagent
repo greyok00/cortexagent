@@ -248,12 +248,30 @@ if [ "${CORTEXAGENT_BROWSER_ENABLED:-1}" = "1" ]; then
     if [ "${BROWSER_KIND}" = "chromium" ]; then
       CHROMIUM_BIN="${CORTEXAGENT_CHROMIUM_BIN:-$(command -v chromium || command -v chromium-browser || true)}"
       if [ -n "${CHROMIUM_BIN}" ]; then
-        CHROMIUM_DATA_DIR="${CORTEXAGENT_CHROMIUM_DATA_DIR:-$HOME/.cortexagent/chromium-cdp-profile}"
+        # PROFILE FIX 2026-09-27: this defaulted to $HOME/.cortexagent/chromium-cdp-profile,
+        # a SEPARATE, near-empty profile (no cookies, no history) from the one
+        # bin/chromium-relaunch.sh uses. Result: every automated visit was a logged-out
+        # session, so Google bounced it to accounts.google.com -> workspace.google.com
+        # marketing page, and each retry opened another tab. It also meant no session
+        # history was ever saved and every site demanded 2FA again.
+        # Now read the launcher config so cortexagent and chromium-relaunch.sh share ONE
+        # profile. Precedence: explicit env override > launcher-config.json > known-good dir.
+        _LAUNCHER_CFG="$HOME/.cortexagent/chromium-profile/launcher-config.json"
+        _CFG_PROFILE_DIR=""
+        if [ -f "${_LAUNCHER_CFG}" ]; then
+          _CFG_PROFILE_DIR="$(python3 -c "import json;print(json.load(open('${_LAUNCHER_CFG}')).get('user_data_dir',''))" 2>/dev/null || true)"
+        fi
+        CHROMIUM_DATA_DIR="${CORTEXAGENT_CHROMIUM_DATA_DIR:-${_CFG_PROFILE_DIR:-$HOME/.browser-automation/chromium-profile}}"
         mkdir -p "${CHROMIUM_DATA_DIR}" "${HOME}/.cortexagent/logs"
+        # HEADLESS DISABLED 2026-09-27 on the owner's instruction. This browser
+        # must never run headless again: a headless instance is invisible, so
+        # leaked tabs accumulate where nobody can see or close them (53 stale
+        # tabs were found on 2026-09-27). Do NOT re-add --headless=new.
         nohup "${CHROMIUM_BIN}" --remote-debugging-port=9224 \
           --no-first-run --no-default-browser-check \
           --user-data-dir="${CHROMIUM_DATA_DIR}" \
-          --headless=new \
+          --start-maximized \
+          "https://voice.google.com/" "https://mail.google.com/" \
           > "${HOME}/.cortexagent/logs/chromium-cdp.log" 2>&1 &
         STEALTH_PID=$!
         sleep 1

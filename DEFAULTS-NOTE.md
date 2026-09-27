@@ -12,7 +12,7 @@
 | ~~:8080 model server~~ | REMOVED 2026-09-22 — replaced by :11599 direct llama-server | — | — |
 | Tiny model | removed 2026-09-21 | — | — |
 | Dispatcher / task queue | dispatcher server | `~/dispatcher/server.py` | 8084 |
-| Browser automation CDP (cortexagent sessions) | launcher chromium | `~/.cortexagent/chromium-cdp-profile` | **9224** |
+| Browser automation CDP (cortexagent sessions) | launcher chromium | `~/.cortexagent/chromium-profile/launcher-config.json` → `user_data_dir`, which is **`~/.browser-automation/chromium-profile`** — the ONE profile, holding the real logins and history. ⛔ `~/.cortexagent/chromium-cdp-profile` is a DEAD, near-empty profile (no cookies): pointing the launcher here forces a re-2FA on every site, saves no history, and makes Google bounce an unauthenticated session to `accounts.google.com` → the `workspace.google.com` marketing page, opening a new tab per retry (53 stale tabs found 2026-09-27). Fixed 2026-09-27: the launcher now reads the same config `bin/chromium-relaunch.sh` reads — never hardcode either path again. | **9224** |
 | SearXNG (web_search) | `searxng.service` (user systemd) | `~/.config/systemd/user/searxng.service` | **8888** |
 
 ## The TWO model knobs (separate on purpose — never merge them)
