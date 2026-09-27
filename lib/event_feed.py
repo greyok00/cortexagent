@@ -10,6 +10,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -19,13 +20,41 @@ _STATE_DIR = Path(os.environ.get("CORTEXAGENT_STATE_DIR",
                                  str(Path.home() / ".cortexagent")))
 SOCKET_PATH = _STATE_DIR / "state" / "event_feed.sock"
 MINIFY_STATS = _STATE_DIR / "minify_stats.json"
+TOKEN_TRACKER = _STATE_DIR / "token_tracker.json"
 ROUTING_STATE = _STATE_DIR / "routing_state.json"
+SLIMTOKEN_STATS = Path.home() / ".local" / "state" / "slimtoken" / "stats.json"
 BRIDGE_FILE = _STATE_DIR / "state" / "session_bridge.jsonl"
 MEMORY_DIR = Path.home() / ".config" / "cortexllm" / "memory"
 
 RING_SIZE = 200
 POLL_INTERVAL = 1.0
 BRIDGE_POLL = 0.5
+
+# Three writers have produced compression numbers. Only the newest one is worth
+# reporting, and its age has to travel with the numbers: slimtoken was stopped
+# on purpose 2026-09-27 00:11, so whichever file it left behind is frozen at the
+# moment it stopped. Reporting that figure without its age is what made the
+# panel read as "putting in hard numbers" (owner report 2026-09-27).
+COMPRESSION_SOURCES = (
+    ("token_tracker", TOKEN_TRACKER),
+    ("slimtoken-local", MINIFY_STATS),
+    ("slimtoken", SLIMTOKEN_STATS),
+)
+
+# Older than this and the compression numbers describe a run that has ended.
+COMPRESSION_LIVE_WINDOW_S = 600
+
+# The only route vocabulary cortexagent speaks is local/cloud. The retired
+# entry names in this table come from the old two-model size scheme; each is
+# mapped to the lane it stood for and translated on read, so an old record or a
+# replayed bridge line cannot put those words back into the feed (owner request
+# 2026-09-27: route words are local/cloud only).
+LEGACY_ROUTE_WORDS = {
+    "big": "local", "large": "local", "model": "local", "local": "local",
+    "onprem": "local", "on-prem": "local",
+    "small": "cloud", "little": "cloud", "tiny": "cloud", "cloud": "cloud",
+    "remote": "cloud",
+}
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -37,8 +66,155 @@ def _read_json(path: Path, default=None):
     except Exception:
         return default
 
+def _cfg():
+    """The live configuration object, or None when it cannot be imported."""
+    try:
+        from lib.config import CFG
+        return CFG
+    except Exception:
+        return None
+
+def _active_model_name() -> str:
+    """The model the agent is actually running, as the launcher names it."""
+    for var in ("CORTEXAGENT_ACTIVE_MODEL", "CLAUDE_MODEL_NAME",
+                "CORTEXAGENT_MODEL_NAME"):
+        val = os.environ.get(var)
+        if val:
+            return val
+    cfg = _cfg()
+    if cfg is not None:
+        return str(getattr(cfg, "model_alias", "") or "")
+    return ""
+
+def route_for_model(model: str, base_url: str = "") -> str:
+    """Map a model or endpoint onto the two route names: local or cloud.
+
+    A name carrying ``:cloud`` (or pointing at the ollama cloud port 11600) is
+    the cloud lane; anything else served from this machine is the local lane.
+    """
+    text = f"{model or ''} {base_url or ''}".strip().lower()
+    if ":cloud" in text or "11600" in text:
+        return "cloud"
+    return "local" if text else "unknown"
+
+def normalize_route(word, model: str = "", base_url: str = "") -> str:
+    """Translate a recorded route word into local/cloud.
+
+    A recorded word is honoured first (the retired vocabulary is translated by
+    LEGACY_ROUTE_WORDS), and only then is the live model consulted, so a route
+    that was genuinely chosen still reads as chosen.
+    """
+    w = str(word or "").strip().lower()
+    if w in LEGACY_ROUTE_WORDS:
+        return LEGACY_ROUTE_WORDS[w]
+    return route_for_model(model or w, base_url)
+
+def _newest_source(sources):
+    """The most recently written of `sources` as (name, path, mtime)."""
+    best = None
+    for name, path in sources:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if best is None or mtime > best[2]:
+            best = (name, path, mtime)
+    return best
+
+def _ledger_age_s(stats: dict, mtime: float) -> float:
+    """How long ago the numbers were written — the ledger's own word first.
+
+    `last_run_ts` is when the writer last ran. A file's mtime is not: these
+    ledgers get rewritten without a new compression (token_tracker.json's total
+    is republished on every restart), so a fresh mtime next to a five-day-old
+    total is exactly the shape that makes a frozen figure look live — it made
+    this snapshot report 37 minutes for a writer that stopped 2026-09-22.
+    Epoch seconds are what token_tracker writes, ISO strings what slimtoken
+    writes, so both are accepted. mtime remains the fallback when the ledger
+    carries no timestamp at all.
+    """
+    raw = stats.get("last_run_ts")
+    ts = None
+    if isinstance(raw, (int, float)) and raw > 0:
+        ts = float(raw)
+    elif isinstance(raw, str) and raw.strip():
+        try:
+            ts = datetime.fromisoformat(raw.strip()).timestamp()
+        except ValueError:
+            ts = None
+    if ts is None:
+        return max(0.0, time.time() - mtime)
+    return max(0.0, time.time() - ts)
+
+def _compressor_state(lane: str) -> dict:
+    """Is a compressor actually in the path the agent's traffic takes?
+
+    The panels used to answer "is compression working?" from a runs counter, and
+    a counter only moves when a request passes through a compressor. That is not
+    the same question: the counter is frozen if the compressor is gone, idle, or
+    — the live case on 2026-09-27 — if the agent talks to a lane nothing fronts
+    (traffic goes to llama-server :11599 while slimtoken fronts ollama :11600).
+    So probe the compressor itself, live, and report which of those it is.
+    """
+    ports, upstreams = [], []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            raw = Path(f"/proc/{entry}/cmdline").read_bytes().decode("utf-8", "replace")
+        except OSError:
+            continue
+        parts = [p for p in raw.split("\x00") if p]
+        if not parts or "slimtoken" not in " ".join(parts):
+            continue
+        for i, part in enumerate(parts):
+            if part == "--port" and i + 1 < len(parts):
+                ports.append(parts[i + 1])
+            elif part == "--upstream" and i + 1 < len(parts):
+                upstreams.append(parts[i + 1])
+    lane_port = ""
+    if lane:
+        try:
+            lane_port = str(urlparse(lane).port or "")
+        except ValueError:
+            lane_port = ""
+    return {
+        "running": bool(ports or upstreams),
+        "ports": sorted(set(ports)),
+        "upstreams": sorted(set(upstreams)),
+        "lane": lane or None,
+        "lane_port": lane_port or None,
+        "in_path": bool(lane_port) and lane_port in ports,
+    }
+
 def _compression_snapshot() -> dict:
-    s = _read_json(MINIFY_STATS, {}) or {}
+    """Compression numbers plus the age, origin, and live state of the numbers.
+
+    `age_s` is how long ago the compressor last ran (see `_ledger_age_s`). When
+    it is large the numbers are a record of a compressor that is no longer
+    running, not live traffic — consumers must say so rather than render them as
+    current. `compressor` says whether one is running at all and whether it is
+    even in the agent's request path, so a frozen counter can be explained
+    instead of just dated.
+    """
+    compressor = _compressor_state(_routing_snapshot().get("base_url") or "")
+    empty = {
+        "runs": 0, "tokens_in": 0, "tokens_out": 0, "tokens_saved": 0,
+        "ratio_pct": 0.0, "last_run_ts": None, "errors": 0,
+        "source": None, "age_s": None, "live": False,
+        "compressor": compressor,
+    }
+    picked = _newest_source(COMPRESSION_SOURCES)
+    if picked is None:
+        return empty
+    name, path, mtime = picked
+    s = _read_json(path, {}) or {}
+    # token_tracker.json has a "total" key wrapping the stats
+    if "total" in s:
+        s = s["total"]
+    elif "proxy" in s:
+        s = s["proxy"]
+    age = _ledger_age_s(s, mtime)
     return {
         "runs": s.get("runs", 0),
         "tokens_in": s.get("tokens_in", 0),
@@ -47,17 +223,44 @@ def _compression_snapshot() -> dict:
         "ratio_pct": s.get("ratio_pct", 0.0),
         "last_run_ts": s.get("last_run_ts"),
         "errors": s.get("errors", 0),
+        "source": name,
+        "age_s": round(age, 1),
+        "live": age < COMPRESSION_LIVE_WINDOW_S,
+        "compressor": compressor,
     }
 
 def _routing_snapshot() -> dict:
-    s = _read_json(ROUTING_STATE, {}) or {}
+    """The live route, in local/cloud terms.
+
+    Nothing in this tree writes routing_state.json — its writer, the grammar
+    proxy, was deleted 2026-09-22 — so the route is derived from the model the
+    agent is running instead of being replayed from a frozen file. The recorded
+    state is consulted only for what it still truthfully describes (which mode
+    was selected, and when it was recorded).
+    """
+    recorded = _read_json(ROUTING_STATE, {}) or {}
+    model = (_active_model_name() or str(recorded.get("model") or "")).strip()
+    route = normalize_route(recorded.get("route"), model, "")
+    cfg = _cfg()
+    if route == "cloud":
+        base_url = "http://127.0.0.1:11600"
+    else:
+        port = int(getattr(cfg, "local_port", 11599) or 11599) if cfg else 11599
+        base_url = f"http://127.0.0.1:{port}"
+    router_mode = str((getattr(cfg, "cortex_router_mode", "") if cfg else "")
+                      or recorded.get("router_mode") or "auto")
+    if cfg is not None:
+        toolproxy = bool(getattr(cfg, "cortex_toolproxy", False))
+    else:
+        toolproxy = False
     return {
-        "route": s.get("route", "unknown"),
-        "model": s.get("model", ""),
-        "base_url": s.get("base_url", ""),
-        "router_mode": s.get("router_mode", ""),
-        "toolproxy_available": s.get("toolproxy_available", False),
-        "updated_at": s.get("updated_at"),
+        "route": route,
+        "model": model,
+        "base_url": base_url,
+        "router_mode": router_mode,
+        "toolproxy_available": toolproxy,
+        "recorded_at": recorded.get("updated_at"),
+        "derived_from": "active-model",
     }
 
 def _scheduling_snapshot() -> dict:
@@ -124,10 +327,14 @@ class EventFeed:
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
 
-        self._last_minify = None
+        # Compression changes on a runs increase OR on the compressor's own state
+        # (started, stopped, in/out of the agent's path) — a counter frozen five
+        # days ago with a compressor that just died is a change consumers need.
+        self._last_compression = None
         self._last_routing = None
         self._last_memory_write = None
         self._bridge_cursor = 0
+        self._last_scheduling = None
 
     def _push(self, ev: dict) -> None:
         with self._lock:
@@ -186,24 +393,49 @@ class EventFeed:
 
     def _watch_bridge(self) -> None:
 
+        # Start at the END of the bridge. The bridge is an append-only log of
+        # every session message since 2026-08-19, so replaying it from line 0
+        # delivered weeks of stale events to each new client as if they were
+        # current — 815 of those lines carry the retired size-scheme route name,
+        # why the feed kept announcing it (owner report 2026-09-27: "cortexagent
+        # is calling routing=big"). Only lines appended after this process starts
+        # are events.
+        try:
+            if BRIDGE_FILE.exists():
+                with BRIDGE_FILE.open() as f:
+                    self._bridge_cursor = sum(1 for _ in f)
+        except OSError:
+            self._bridge_cursor = 0
+
         while not self._shutdown.is_set():
             try:
                 if BRIDGE_FILE.exists():
                     with BRIDGE_FILE.open() as f:
                         lines = f.read().splitlines()
-                    for line in lines[self._bridge_cursor:]:
+                    for idx, line in enumerate(lines[self._bridge_cursor:],
+                                               start=self._bridge_cursor):
+                        # Advance past every line examined, parsed or not, so a
+                        # malformed line cannot make the cursor drift and replay
+                        # its neighbours.
+                        self._bridge_cursor = idx + 1
                         if not line.strip():
                             continue
                         try:
                             ev = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        self._bridge_cursor += 1
                         etype = ev.get("type", "message")
                         content = ev.get("content", "")
 
                         if etype == "routing":
-                            self._emit("routing", content, "info", {"route": ev.get("route")})
+                            # Rebuild from fields, translated to local/cloud —
+                            # the recorded `content` still carries the old word.
+                            route = normalize_route(ev.get("route"), str(ev.get("model") or ""))
+                            model = ev.get("model") or ""
+                            mode = ev.get("router_mode") or ""
+                            self._emit("routing",
+                                       f"route={route} model={model} mode={mode}",
+                                       "info", {"route": route, "model": model})
                         elif etype == "schedule_fired":
                             self._emit("scheduled_task", content, "info",
                                        {"name": ev.get("schedule_name")})
@@ -224,17 +456,30 @@ class EventFeed:
 
         while not self._shutdown.is_set():
 
-            m = _read_json(MINIFY_STATS, {}) or {}
+            # Watch the same source the snapshot reports, so a change in which
+            # file is newest cannot leave the two disagreeing.
+            m = _compression_snapshot()
             runs = m.get("runs", 0)
-            if runs != self._last_minify:
-                if self._last_minify is not None and runs > self._last_minify:
-                    self._emit("compression",
-                               f"compressed {m.get('tokens_in',0)}→{m.get('tokens_out',0)} "
-                               f"tok ({m.get('ratio_pct',0)}% saved)",
-                               "info", {"runs": runs, "ratio_pct": m.get("ratio_pct")})
-                self._last_minify = runs
+            comp = m.get("compressor") or {}
+            ckey = (runs, comp.get("running"), comp.get("in_path"),
+                    tuple(comp.get("ports") or ()))
+            if ckey != self._last_compression:
+                if self._last_compression is not None:
+                    prev_runs = self._last_compression[0]
+                    if runs > prev_runs:
+                        msg = (f"compressed {m.get('tokens_in',0)}→"
+                               f"{m.get('tokens_out',0)} tok ({m.get('ratio_pct',0)}% saved)")
+                    elif not comp.get("in_path"):
+                        msg = ("no compression: the agent's lane "
+                               f"({comp.get('lane')}) is not fronted by the compressor")
+                    elif comp.get("running"):
+                        msg = "no compression traffic: compressor up, nothing routed through it"
+                    else:
+                        msg = "no compression: compressor not running"
+                    self._emit("compression", msg, "info", m)
+                self._last_compression = ckey
 
-            r = _read_json(ROUTING_STATE, {}) or {}
+            r = _routing_snapshot()
             rkey = (r.get("route"), r.get("model"), r.get("router_mode"))
             if rkey != self._last_routing:
                 if self._last_routing is not None:
@@ -243,6 +488,18 @@ class EventFeed:
                                f"mode={r.get('router_mode')}",
                                "info", {"route": r.get("route"), "model": r.get("model")})
                 self._last_routing = rkey
+
+            # Also watch scheduling (tasks)
+            ss = _scheduling_snapshot()
+            if ss is not None:
+                sskey = (ss.get("task_count", 0), tuple(sorted(ss.get("by_state", {}).items())))
+                if sskey != self._last_scheduling:
+                    if self._last_scheduling is not None:
+                        self._emit("scheduling",
+                                   f"tasks: {ss.get('task_count', 0)} total, "
+                                   f"{ss.get('by_state', {})}",
+                                   "info", ss)
+                    self._last_scheduling = sskey
 
             mem = _memory_snapshot()
             mw = mem.get("last_write_ts")
