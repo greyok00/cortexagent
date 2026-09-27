@@ -123,7 +123,7 @@ install_systemd() {
     if [ -f "$HOME/.cortexagent/daemon.pid" ]; then
       "${py}" "${REPO_ROOT}/lib/daemon.py" stop >/dev/null 2>&1 || true
     fi
-    systemctl --user restart cortexagent >/dev/null 2>&1 && echo "    started cortexagent.service now (always-on, big idle-unloads)"
+    systemctl --user restart cortexagent >/dev/null 2>&1 && echo "    started cortexagent.service now (always-on, local model unloads when idle)"
   else
     echo "    systemd not available — daemon can still run manually: cortexagent daemon start"
   fi
@@ -154,7 +154,7 @@ install_overseer_systemd() {
     fi
     systemctl --user restart cortexagent-overseer >/dev/null 2>&1 && echo "    started cortexagent-overseer.service now (always-on)"
     if [ "${CORTEXAGENT_AUTOSTART:-0}" != "1" ]; then
-      echo "    (set CORTEXAGENT_AUTOSTART=1 to also autostart the big-model daemon)"
+      echo "    (set CORTEXAGENT_AUTOSTART=1 to also autostart the daemon that owns the local model)"
     fi
   else
     echo "    systemd not available — overseer can still run manually: python3 lib/overseer.py start"
