@@ -245,7 +245,20 @@ STEALTH_PID=""
 BROWSER_KIND="${CORTEXAGENT_BROWSER:-chromium}"
 if [ "${CORTEXAGENT_BROWSER_ENABLED:-1}" = "1" ]; then
   if ! ss -ltn 2>/dev/null | grep -q ":9224 "; then
-    if [ "${BROWSER_KIND}" = "chromium" ]; then
+    # 2026-09-27 (owner): "i need it to just open 2 and wait for login only. if
+    # the browser gets closed it should NOT reopen it." The port guard above
+    # only catches a browser that is still RUNNING, so before this every session
+    # start relaunched one the owner had deliberately closed. This marker makes
+    # the autostart ONCE PER BOOT: it records the boot id, so it self-invalidates
+    # on reboot (opens again) while a close inside the same boot is respected.
+    # Force it open now: rm ~/.cortexagent/.browser-autostart
+    _BOOT_MARK="$HOME/.cortexagent/.browser-autostart"
+    _BOOT_ID="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)"
+    if [ -n "${_BOOT_ID}" ] && \
+       [ "$(cat "${_BOOT_MARK}" 2>/dev/null || true)" = "${_BOOT_ID}" ]; then
+      echo "comms browser already opened this boot and is now closed — leaving it closed" >&2
+      echo "  (open it now: rm ${_BOOT_MARK}, then start cortexagent)" >&2
+    elif [ "${BROWSER_KIND}" = "chromium" ]; then
       CHROMIUM_BIN="${CORTEXAGENT_CHROMIUM_BIN:-$(command -v chromium || command -v chromium-browser || true)}"
       if [ -n "${CHROMIUM_BIN}" ]; then
         # PROFILE FIX 2026-09-27: this defaulted to $HOME/.cortexagent/chromium-cdp-profile,
@@ -268,6 +281,7 @@ if [ "${CORTEXAGENT_BROWSER_ENABLED:-1}" = "1" ]; then
         # leaked tabs accumulate where nobody can see or close them (53 stale
         # tabs were found on 2026-09-27). Do NOT re-add --headless=new.
         nohup "${CHROMIUM_BIN}" --remote-debugging-port=9224 \
+          --remote-allow-origins=* \
           --no-first-run --no-default-browser-check \
           --user-data-dir="${CHROMIUM_DATA_DIR}" \
           --start-maximized \
@@ -275,6 +289,9 @@ if [ "${CORTEXAGENT_BROWSER_ENABLED:-1}" = "1" ]; then
           > "${HOME}/.cortexagent/logs/chromium-cdp.log" 2>&1 &
         STEALTH_PID=$!
         sleep 1
+        # marker written only after a real launch, so an uninstalled browser
+        # never arms the once-per-boot lock
+        printf '%s' "${_BOOT_ID}" > "${_BOOT_MARK}" 2>/dev/null || true
       else
         echo "default browser not installed; skipping CDP session" >&2
       fi
@@ -284,6 +301,19 @@ fi
 
 export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11436}"
 export no_proxy="127.0.0.1,localhost,.local${no_proxy:+,$no_proxy}"
+
+# Agent lane → the slimtoken lane proxy (slimtoken-lane.service, :11598 → :11599).
+# 2026-09-27 (owner): "fix it so it doesn't bypass slimtoken." The TS cortex
+# agent reads its provider baseUrl from ~/.cortex/agent/extensions/models.ts,
+# which honours CORTEXAGENT_LOCAL_BASE and defaults to the local model directly
+# (:11599) — that default is exactly what made every compression panel read
+# "bypasses slimtoken". Removing this block restores the direct lane.
+# The probe keeps a dead proxy from bricking the TUI: no answer → go direct.
+if curl -sN --max-time 2 http://127.0.0.1:11598/v1/models >/dev/null 2>&1; then
+  export CORTEXAGENT_LOCAL_BASE="${CORTEXAGENT_LOCAL_BASE:-http://127.0.0.1:11598/v1}"
+else
+  echo "slimtoken lane proxy :11598 not answering — using the local model directly" >&2
+fi
 unset no_proxy_bypass 2>/dev/null || true
 
 export CLAUDE_MODEL_NAME="cortexagent"
