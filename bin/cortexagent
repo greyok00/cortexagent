@@ -243,7 +243,25 @@ trap _on_kill INT TERM HUP
 
 STEALTH_PID=""
 BROWSER_KIND="${CORTEXAGENT_BROWSER:-chromium}"
-if [ "${CORTEXAGENT_BROWSER_ENABLED:-1}" = "1" ]; then
+
+# WHO IS ALLOWED TO AUTOSTART A BROWSER (2026-09-27)
+# This defaulted to ON, so a fresh install of cortexagent launched chromium and
+# opened a Google Voice tab on a machine that never asked for one. This launcher
+# is the only PUBLISHED code that can open a browser at all — slimtoken contains
+# no browser code whatsoever — so a careless default here is how an installer who
+# merely wanted token optimization ends up with tabs on their desktop.
+# Now: an explicit CORTEXAGENT_BROWSER_ENABLED always wins. With no explicit
+# value, the browser starts ONLY on a machine that already has a comms-browser
+# config (launcher-config.json, written when the browser profile is set up), so
+# the owner's machine behaves exactly as before while a new machine does nothing
+# until its user opts in.
+_LAUNCHER_CFG="$HOME/.cortexagent/chromium-profile/launcher-config.json"
+_BROWSER_ENABLED="${CORTEXAGENT_BROWSER_ENABLED:-}"
+if [ -z "${_BROWSER_ENABLED}" ]; then
+  if [ -f "${_LAUNCHER_CFG}" ]; then _BROWSER_ENABLED=1; else _BROWSER_ENABLED=0; fi
+fi
+
+if [ "${_BROWSER_ENABLED}" = "1" ]; then
   if ! ss -ltn 2>/dev/null | grep -q ":9224 "; then
     # 2026-09-27 (owner): "i need it to just open 2 and wait for login only. if
     # the browser gets closed it should NOT reopen it." The port guard above
@@ -269,7 +287,7 @@ if [ "${CORTEXAGENT_BROWSER_ENABLED:-1}" = "1" ]; then
         # history was ever saved and every site demanded 2FA again.
         # Now read the launcher config so cortexagent and chromium-relaunch.sh share ONE
         # profile. Precedence: explicit env override > launcher-config.json > known-good dir.
-        _LAUNCHER_CFG="$HOME/.cortexagent/chromium-profile/launcher-config.json"
+        # (_LAUNCHER_CFG is set above, before the opt-in test that reads it.)
         _CFG_PROFILE_DIR=""
         if [ -f "${_LAUNCHER_CFG}" ]; then
           _CFG_PROFILE_DIR="$(python3 -c "import json;print(json.load(open('${_LAUNCHER_CFG}')).get('user_data_dir',''))" 2>/dev/null || true)"
@@ -296,6 +314,13 @@ if [ "${CORTEXAGENT_BROWSER_ENABLED:-1}" = "1" ]; then
         echo "default browser not installed; skipping CDP session" >&2
       fi
     fi
+  fi
+else
+  # Only when the user never said anything: an explicit 0 is obeyed silently.
+  if [ -z "${CORTEXAGENT_BROWSER_ENABLED:-}" ]; then
+    echo "comms browser: no browser profile configured on this machine — not opening one." >&2
+    echo "  to use the comms browser here, either set up a profile so ${_LAUNCHER_CFG}" >&2
+    echo "  exists, or opt in explicitly: export CORTEXAGENT_BROWSER_ENABLED=1" >&2
   fi
 fi
 

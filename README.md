@@ -269,6 +269,30 @@ MIT — see [LICENSE](LICENSE).
 
 ## Changelog
 
+**v0.7.6 (2026-09-27) — the browser is yours, and it stays where you put it.**
+Four fixes from one hunt into why the debugging browser kept multiplying.
+
+The launcher used to open its two tabs on **every session start**: the only guard
+was "is port 9224 already listening", so closing the browser simply meant the next
+start reopened it, forever. It is now **once per boot** — the launcher records the
+boot id, opens the tabs once, and a close inside the same boot is honoured
+(`rm ~/.cortexagent/.browser-autostart` to force one open). It also launched
+against `~/.cortexagent/chromium-cdp-profile`, a **second, near-empty profile**
+with no cookies and no history, which made every automated visit a signed-out
+session and every site ask for 2FA again; it now reads the same
+`launcher-config.json` that `bin/chromium-relaunch.sh` reads, so there is one
+profile holding your real logins. And autostart is now **opt-in**: a machine with
+no browser profile configured gets no browser launch and a one-line note saying
+how to enable it, instead of tabs nobody asked for. A machine that is already set
+up behaves exactly as before.
+
+Also in this release: the compression panel now states **how old** its figure is,
+**where** it came from, and whether a compressor is even in the agent's path
+(`lib/event_feed.py`) rather than presenting a stale number as current, and the
+feed cursor starts at the end of the append-only log so a newly connected client
+is not replayed weeks of old events. The route vocabulary is finished — lanes are
+`local` / `cloud`, roles are `main` / `helper` — in the notes and the installer.
+
 **v0.7.5.1 (2026-09-26) — hotfix: TUI display.** Tool output is expanded by
 default — ctrl+o now starts ON (it collapses on demand) instead of hiding
 tool results behind a collapsed one-liner. The banner credits the author
