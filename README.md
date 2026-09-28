@@ -367,3 +367,72 @@ The in-TUI memory tools broke three ways at once. All three were reproduced firs
 
 - **The agent looped forever instead of working.** `memory_search` in the bundled memory MCP server (`memory/mcp_server.py`) matched the entire multi-word query as one exact substring (`LIKE '%whole query%'` in SQLite), so real queries returned `[]` every time and the agent kept re-asking memory, then grepping its own session logs in circles. Search is now per-token — AND across tokens, best-ranked first, OR fallback when the strict match is empty — and returns in under 0.1s. Verified end-to-end over the real MCP protocol.
 - **The same whole-query substring bug** was fixed in the CortexLLM universal-memory server (`cortexllm_mcp_server.py`, deployed at `~/.config/cortexllm`), whose search never saw the `.jsonl` hot tier and required whole-query matches.
+
+**v0.7.3 (2026-09-23) — full audit.**
+
+A full-codebase audit pass, 60+ findings applied.
+
+### Changed
+
+- **Shrink — net −17.8k lines.** Dead code removed: tray, menu, `browser_pool`/`stable`, `model_switcher`, `tui_status`, `version.py`.
+- **The cloud dispatcher is now an optional MCP server.** Disable it and CortexAgent is fully offline; all cloud functionality lives behind that one server.
+- **Versions aligned to 0.7.3** across all workspaces and lockfiles.
+- **README** gains a hybrid local/cloud section, a generic browser, optional OAuth, and a self-verify table.
+
+### Security
+
+- **PII purge** — zero personal identifiers in code, docs, images or config.
+
+Verified with `bin/verify`: manifest, contract, smoke, feature catalog 77/77, model package.
+
+**v0.7.2 (2026-09-10) — CLI routing fix.**
+
+### Fixed
+
+- **Subcommands dispatch again.** `cortexagent models status`, `cortexagent doctor`, `cortexagent queue list` and the rest of the control plane were falling through to the interactive agent and hanging. The entry point now routes every non-subcommand invocation straight through to the session launcher, and handles only the nine control-plane subcommands itself.
+- **`run --list-models`** no longer silently drops the flag.
+
+### Changed
+
+- README gains a full command list: subcommands, session flags, and the `bin/` maintenance tools.
+
+**v0.7.1 (2026-09-10) — bug-fix sweep.**
+
+Fixes and docs only, no behavior changes.
+
+### Fixed
+
+- **Overseer state writes are atomic** — no torn state files on crash.
+- Dead code from earlier refactors removed (simplify sweep across the repo).
+- Perf fixes in hot paths.
+
+### Changed
+
+- **README rewritten for clarity**, and the project origin history corrected: it began as a unified session bridge across coding agents (Codex, Claude), became a Claude wrapper, then had its core replaced with pi.dev — it did not start as a fork of pi.dev.
+
+Verified with `bin/verify` (four-layer self-check: PASS).
+
+**v0.7.0 (2026-09-09) — CLI-only, one model.**
+
+### Changed
+
+- **One terminal window.** CortexAgent is CLI-only — the separate floating console is gone, and everything happens in a single command-line session.
+- **One model.** The assistant runs a single large model stored on your machine. Smaller helper models and the image tools were removed, freeing memory and removing moving parts.
+- **A cleaner README**, rewritten for non-technical readers, with a real screenshot of the command line.
+
+No behavior change to privacy: everything still runs locally, with no cloud, no API key and nothing uploaded. This release passed the built-in automated self-check (`bin/verify`) before shipping.
+
+**v0.6.0 (2026-08-24) — web UI removed.**
+
+### Changed
+
+- **Web UI removed** — the repository is code + README only; the terminal TUI and floating console remain.
+- **All source minified**, with comments and docstrings stripped.
+- **Native `.so` build via Cython by default**, with a graceful `.py` fallback.
+- **Connection reuse and bytearray I/O** on hot paths.
+
+### Security
+
+- PII audited.
+
+Verified with `bin/verify` (four-layer gate): 1,537 files with no drift, 84 feature checks, all green.
