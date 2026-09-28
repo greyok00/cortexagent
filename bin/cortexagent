@@ -327,6 +327,17 @@ fi
 export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11436}"
 export no_proxy="127.0.0.1,localhost,.local${no_proxy:+,$no_proxy}"
 
+# WHICH SLIMTOKEN PROFILE THIS SESSION USES (2026-09-27, owner: "there's 2
+# profiles ... coding mode that's lossless [minimal] versus the realtime mode for
+# optimal response time"). `code` is the default and the minimal one: your newest
+# turns and every fenced block reach the model byte-for-byte, and only OLD
+# material is abbreviated, always with a marker saying what was dropped.
+# `realtime` is the lossy one for STT/TTS conversation — never for building.
+# This exports the profile for slimtoken processes started FROM this session
+# (the MCP tools, `slimtoken optimize`, the skill). The lane service itself is a
+# separate systemd unit with its own pins — see the unit, not this line.
+export SLIMTOKEN_MODE="${SLIMTOKEN_MODE:-${CORTEXAGENT_SLIMTOKEN_MODE:-code}}"
+
 # Agent lane → the slimtoken lane proxy (slimtoken-lane.service, :11598 → :11599).
 # 2026-09-27 (owner): "fix it so it doesn't bypass slimtoken." The TS cortex
 # agent reads its provider baseUrl from ~/.cortex/agent/extensions/models.ts,

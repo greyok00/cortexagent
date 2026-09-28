@@ -4,7 +4,7 @@
 
 ![CortexAgent session](assets/cortexagent-cli.png)
 
-CortexAgent runs on your machine: a local llama.cpp model spawned and owned by the launcher, a terminal session pinned to it, automatic memory across sessions, local browser automation, and token compression. Everything binds to `127.0.0.1`. No accounts, no telemetry.
+CortexAgent runs on your machine: a local llama.cpp model spawned and owned by the launcher, a terminal session pinned to it, automatic memory across sessions, local browser automation, and token compression in two profiles — a minimal coding one by default, and a lossy one for real-time conversation. Everything binds to `127.0.0.1`. No accounts, no telemetry.
 
 Cloud is **optional and separate**: a hybrid lane built around one MCP server — a scheduler + cloud queue that takes work the local loop escalates. Don't configure it and cortexagent is fully offline; nothing cloud exists. See [The hybrid lane](#the-hybrid-lane) and [Security](#security).
 
@@ -145,6 +145,30 @@ The hybrid lane is a single piece: an MCP server that owns everything cloud. It'
 - **Cloud work runs as a separate lane.** Queued jobs are graded for complexity, batched, and executed by the cloud optimizer — alongside the local model, never interrupting it. The two lanes claim work independently, so a busy brain never blocks a queued send.
 - **Cloud traffic is minified on the way out.** Every cloud request passes through the local SlimToken cloud lane first (`:11435` — distill + dedup, tool schemas untouched) before reaching the raw backend (`:11600`).
 - **With the dispatcher disabled, none of this exists.** No queue, no grading, no cloud calls — the session is pure local.
+
+### The two SlimToken profiles
+
+Everything local passes through SlimToken, which runs in one of **two profiles**.
+The default is the minimal one, and it is the one you want for building.
+
+| Profile | Set with | What it does | Use it for |
+|---|---|---|---|
+| **`code`** (default) | `SLIMTOKEN_MODE=code` | Your **newest turns and every fenced code block reach the model byte-for-byte.** Only OLD material is abbreviated: a duplicate tool result is stubbed (its bytes are still later in the conversation), old prose is shortened, and an old file read keeps head + tail with a `[slimtoken-compressed] N B -> M B` marker saying what was dropped. Tool schemas are left exactly as written, so tool-calling is unaffected. | agent work — edits, tool calls, anything you will be held to |
+| **`realtime`** | `SLIMTOKEN_MODE=realtime` | Gives up the newest turns to buy response speed: elides old user turns as well as assistant turns, cuts prose to 160 characters, shortens **even the newest tool result**. | talking — STT/TTS conversation, where nothing is being built |
+
+Measured on SlimToken's shipped fixtures (`slimtoken modes --measure`): `code`
+saves **68.5%** on an agent session and **0.0%** on a spoken conversation;
+`realtime` saves 70.9% and 59.5% respectively. That 0% is why there are two
+profiles instead of one setting — the minimal profile has no lever on speech, and
+the profile that does have one is lossy.
+
+**Choosing one.** `CORTEXAGENT_SLIMTOKEN_MODE` sets the profile for SlimToken
+processes started *from* a session — the MCP tools, `slimtoken optimize`, the
+Agent Skill — and an explicit `SLIMTOKEN_MODE` overrides it. The lane services
+are separate systemd units with their own pins, so change those in the unit, not
+in your shell. The compression panel reports the profile the serving process is
+actually in, read from its own `/proc/<pid>/environ`, so it shows what is running
+rather than what a config file claims.
 
 ---
 
@@ -292,6 +316,23 @@ Also in this release: the compression panel now states **how old** its figure is
 feed cursor starts at the end of the append-only log so a newly connected client
 is not replayed weeks of old events. The route vocabulary is finished — lanes are
 `local` / `cloud`, roles are `main` / `helper` — in the notes and the installer.
+
+**The two SlimToken profiles are now documented and selectable** (see [The two
+SlimToken profiles](#the-two-slimtoken-profiles)). `code` — the default — is the
+minimal profile: your newest turns and every fenced block reach the model
+byte-for-byte, tool schemas are untouched, and only old material is abbreviated,
+with a marker saying what was dropped. `realtime` is the lossy profile for
+STT/TTS conversation, and must never run agent work. `CORTEXAGENT_SLIMTOKEN_MODE`
+selects one for the SlimToken processes a session starts.
+
+One panel bug came out of that, found while wiring it up: the compression panel
+read the stage flags out of the serving process's environment with a default of
+**"1"**, which was correct before profiles existed and wrong after — a lane
+running `code` has tools/system/messages OFF without any variable being set
+anywhere, so the panel named three stages that were not running. It now resolves
+the profile first (from SlimToken's own mode table, not a copy) and reports the
+profile alongside the stages. Verified against the live lane: `code`,
+`dedup + distill`.
 
 **v0.7.5.1 (2026-09-26) — hotfix: TUI display.** Tool output is expanded by
 default — ctrl+o now starts ON (it collapses on demand) instead of hiding

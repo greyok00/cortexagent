@@ -146,32 +146,71 @@ def _ledger_age_s(stats: dict, mtime: float) -> float:
         return max(0.0, time.time() - mtime)
     return max(0.0, time.time() - ts)
 
-def _compressor_stages(pid: str) -> list:
-    """Which rewriting stages this slimtoken process is actually running with.
+_ALL_STAGES = ("dedup", "distill", "tools", "system", "messages")
+
+# Mirrors slimtoken's profiles.MODES, and only used if slimtoken is not
+# importable from this interpreter — the import below is preferred, because a
+# copy here goes stale the moment a mode's stage list changes.
+_MODE_STAGES_FALLBACK = {
+    "code": {"dedup", "distill"},
+    "realtime": {"tools", "system", "messages", "dedup", "distill"},
+}
+DEFAULT_MODE = "code"
+
+
+def _mode_stages() -> dict:
+    """Mode name -> the stages that mode turns on, from slimtoken itself."""
+    try:
+        from slimtoken.profiles import MODES
+        table = {name: set(m.get("stages") or ()) for name, m in MODES.items()}
+        if table:
+            return table
+    except Exception:
+        pass
+    return {k: set(v) for k, v in _MODE_STAGES_FALLBACK.items()}
+
+
+def _compressor_profile(pid: str) -> dict:
+    """The mode and the rewriting stages a running slimtoken actually has on.
 
     Read from the process's own environment, not from a unit file: the unit is
     one of several places a stage can be switched and the process is what is
-    serving. `SLIMTOKEN_MINIFY=0` — or every MINIFY_* flag off — means the proxy
+    serving. `SLIMTOKEN_MINIFY=0` — or no stage on at all — means the proxy
     forwards request bodies untouched (proxy._is_fast_path), so a lane can be
     fronted by slimtoken and still have nothing compressed on it.
+
+    THE MODE SUPPLIES THE DEFAULTS. Reading the MINIFY_* flags with a default of
+    "1" was wrong the moment modes existed: a lane running `code` has tools,
+    system and messages OFF without any of those variables being set anywhere,
+    so the panel reported three stages that were not running. An explicit
+    MINIFY_<STAGE> in the process environment still beats the mode, which is the
+    same precedence slimtoken itself applies.
     """
     try:
         raw = Path(f"/proc/{pid}/environ").read_bytes().decode("utf-8", "replace")
     except OSError:
-        return []
+        return {"mode": "", "stages": []}
     env = {}
     for item in raw.split("\x00"):
         if "=" in item:
             k, v = item.split("=", 1)
             env[k.strip()] = v.strip()
 
-    def on(name: str, default: str = "1") -> bool:
+    table = _mode_stages()
+    mode = env.get("SLIMTOKEN_MODE", DEFAULT_MODE).strip().lower() or DEFAULT_MODE
+    if mode not in table:
+        mode = DEFAULT_MODE
+    in_mode = table.get(mode, set())
+
+    def on(name: str, default: str) -> bool:
         return env.get(name, default).strip().lower() in ("1", "true", "yes", "on")
 
-    if not on("SLIMTOKEN_MINIFY"):
-        return []
-    return [s for s in ("dedup", "distill", "tools", "system", "messages")
-            if on(f"SLIMTOKEN_MINIFY_{s.upper()}")]
+    if not on("SLIMTOKEN_MINIFY", "1"):
+        return {"mode": mode, "stages": []}
+    return {"mode": mode,
+            "stages": [s for s in _ALL_STAGES
+                       if on(f"SLIMTOKEN_MINIFY_{s.upper()}",
+                             "1" if s in in_mode else "0")]}
 
 
 def _compressor_state(lane: str) -> dict:
@@ -208,7 +247,7 @@ def _compressor_state(lane: str) -> dict:
                 inst["ports"].append(parts[i + 1])
             elif part == "--upstream" and i + 1 < len(parts):
                 inst["upstreams"].append(parts[i + 1])
-        inst["stages"] = _compressor_stages(entry)
+        inst.update(_compressor_profile(entry))
         instances.append(inst)
 
     ports = sorted({p for i in instances for p in i["ports"]})
@@ -238,6 +277,10 @@ def _compressor_state(lane: str) -> dict:
         # ollama fronts run with stages on and would otherwise report rewriting
         # that never touches the agent's traffic.
         "stages": fronting["stages"] if fronting else [],
+        # Which profile that instance runs: `code` (the minimal one, newest turns
+        # untouched) or `realtime` (lossy, for talking to a model). Empty when no
+        # slimtoken is in the path.
+        "mode": fronting.get("mode", "") if fronting else "",
         "lane": lane or None,
         "lane_port": lane_port or None,
         "in_path": fronting is not None,
