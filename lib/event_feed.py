@@ -146,6 +146,34 @@ def _ledger_age_s(stats: dict, mtime: float) -> float:
         return max(0.0, time.time() - mtime)
     return max(0.0, time.time() - ts)
 
+def _compressor_stages(pid: str) -> list:
+    """Which rewriting stages this slimtoken process is actually running with.
+
+    Read from the process's own environment, not from a unit file: the unit is
+    one of several places a stage can be switched and the process is what is
+    serving. `SLIMTOKEN_MINIFY=0` — or every MINIFY_* flag off — means the proxy
+    forwards request bodies untouched (proxy._is_fast_path), so a lane can be
+    fronted by slimtoken and still have nothing compressed on it.
+    """
+    try:
+        raw = Path(f"/proc/{pid}/environ").read_bytes().decode("utf-8", "replace")
+    except OSError:
+        return []
+    env = {}
+    for item in raw.split("\x00"):
+        if "=" in item:
+            k, v = item.split("=", 1)
+            env[k.strip()] = v.strip()
+
+    def on(name: str, default: str = "1") -> bool:
+        return env.get(name, default).strip().lower() in ("1", "true", "yes", "on")
+
+    if not on("SLIMTOKEN_MINIFY"):
+        return []
+    return [s for s in ("dedup", "distill", "tools", "system", "messages")
+            if on(f"SLIMTOKEN_MINIFY_{s.upper()}")]
+
+
 def _compressor_state(lane: str) -> dict:
     """Is a compressor actually in the path the agent's traffic takes?
 
@@ -155,8 +183,15 @@ def _compressor_state(lane: str) -> dict:
     — the live case on 2026-09-27 — if the agent talks to a lane nothing fronts
     (traffic goes to llama-server :11599 while slimtoken fronts ollama :11600).
     So probe the compressor itself, live, and report which of those it is.
+
+    A lane is fronted when a running slimtoken listens ON the lane's port, or
+    when it forwards TO the lane's port — the second case is the lane proxy
+    added 2026-09-27 (slimtoken-lane.service :11598 -> llama-server :11599),
+    where the agent's own base_url is the proxy and the lane port is only ever
+    an upstream. Reading the listen ports alone called that "bypasses
+    slimtoken" while the proxy was serving the agent's traffic.
     """
-    ports, upstreams = [], []
+    instances = []
     for entry in os.listdir("/proc"):
         if not entry.isdigit():
             continue
@@ -167,24 +202,45 @@ def _compressor_state(lane: str) -> dict:
         parts = [p for p in raw.split("\x00") if p]
         if not parts or "slimtoken" not in " ".join(parts):
             continue
+        inst = {"ports": [], "upstreams": []}
         for i, part in enumerate(parts):
             if part == "--port" and i + 1 < len(parts):
-                ports.append(parts[i + 1])
+                inst["ports"].append(parts[i + 1])
             elif part == "--upstream" and i + 1 < len(parts):
-                upstreams.append(parts[i + 1])
-    lane_port = ""
-    if lane:
+                inst["upstreams"].append(parts[i + 1])
+        inst["stages"] = _compressor_stages(entry)
+        instances.append(inst)
+
+    ports = sorted({p for i in instances for p in i["ports"]})
+    upstreams = sorted({u for i in instances for u in i["upstreams"]})
+
+    def _port(url: str) -> str:
         try:
-            lane_port = str(urlparse(lane).port or "")
+            return str(urlparse(url).port or "")
         except ValueError:
-            lane_port = ""
+            return ""
+
+    upstream_ports = sorted({p for p in (_port(u) for u in upstreams) if p})
+    lane_port = _port(lane) if lane else ""
+
+    fronting = None
+    for inst in instances:
+        if lane_port and (lane_port in inst["ports"]
+                          or lane_port in {_port(u) for u in inst["upstreams"]}):
+            fronting = inst
+            break
     return {
         "running": bool(ports or upstreams),
-        "ports": sorted(set(ports)),
-        "upstreams": sorted(set(upstreams)),
+        "ports": ports,
+        "upstreams": upstreams,
+        "upstream_ports": upstream_ports,
+        # Only the instance that fronts the lane answers for the lane: the two
+        # ollama fronts run with stages on and would otherwise report rewriting
+        # that never touches the agent's traffic.
+        "stages": fronting["stages"] if fronting else [],
         "lane": lane or None,
         "lane_port": lane_port or None,
-        "in_path": bool(lane_port) and lane_port in ports,
+        "in_path": fronting is not None,
     }
 
 def _compression_snapshot() -> dict:
