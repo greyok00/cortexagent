@@ -293,136 +293,77 @@ MIT — see [LICENSE](LICENSE).
 
 ## Changelog
 
-**v0.7.6 (2026-09-27) — the browser is yours, and it stays where you put it.**
-Four fixes from one hunt into why the debugging browser kept multiplying.
+**v0.7.6 (2026-09-27)**
 
-The launcher used to open its two tabs on **every session start**: the only guard
-was "is port 9224 already listening", so closing the browser simply meant the next
-start reopened it, forever. It is now **once per boot** — the launcher records the
-boot id, opens the tabs once, and a close inside the same boot is honoured
-(`rm ~/.cortexagent/.browser-autostart` to force one open). It also launched
-against `~/.cortexagent/chromium-cdp-profile`, a **second, near-empty profile**
-with no cookies and no history, which made every automated visit a signed-out
-session and every site ask for 2FA again; it now reads the same
-`launcher-config.json` that `bin/chromium-relaunch.sh` reads, so there is one
-profile holding your real logins. And autostart is now **opt-in**: a machine with
-no browser profile configured gets no browser launch and a one-line note saying
-how to enable it, instead of tabs nobody asked for. A machine that is already set
-up behaves exactly as before.
+Four fixes and three additions, from one hunt into why the debugging browser kept multiplying.
 
-Also in this release: the compression panel now states **how old** its figure is,
-**where** it came from, and whether a compressor is even in the agent's path
-(`lib/event_feed.py`) rather than presenting a stale number as current, and the
-feed cursor starts at the end of the append-only log so a newly connected client
-is not replayed weeks of old events. The route vocabulary is finished — lanes are
-`local` / `cloud`, roles are `main` / `helper` — in the notes and the installer.
+### Fixed
 
-**The two SlimToken profiles are now documented and selectable** (see [The two
-SlimToken profiles](#the-two-slimtoken-profiles)). `code` — the default — is the
-minimal profile: your newest turns and every fenced block reach the model
-byte-for-byte, tool schemas are untouched, and only old material is abbreviated,
-with a marker saying what was dropped. `realtime` is the lossy profile for
-STT/TTS conversation, and must never run agent work. `CORTEXAGENT_SLIMTOKEN_MODE`
-selects one for the SlimToken processes a session starts.
+- **The browser reopened on every session start.** The launcher's only guard was "is port 9224 already listening", so closing the browser simply meant the next session start reopened it, forever. It now records the boot id and opens its two tabs once per boot; a close inside the same boot is honoured. Force one open: `rm ~/.cortexagent/.browser-autostart`.
+- **The browser ran on a second, empty profile.** It launched against `~/.cortexagent/chromium-cdp-profile` — no cookies, no history — so every automated visit was a signed-out session and every site asked for 2FA again. It now reads the same `launcher-config.json` as `bin/chromium-relaunch.sh`, so one profile holds your real logins.
+- **Chromium rejected the control connection.** The launcher omitted `--remote-allow-origins=*`, which `bin/chromium-relaunch.sh` and `chromium-cw.service` both pass. Chromium logged `Rejected an incoming WebSocket connection from the http://127.0.0.1:9224 origin`, after which the Playwright path gave up for the rest of the session.
+- **The compression panel named stages that were not running.** It read the stage flags from the serving process's environment with a default of `1` — correct before modes existed, wrong after, because a lane running `code` has `tools`, `system` and `messages` off with no variable set anywhere. It now resolves the mode from SlimToken's own mode table, not a copy, and reports the mode alongside the stages.
+- **The compression panel presented a stale figure as current.** It now states the age of the number, where it came from, and whether a compressor is in the agent's path at all.
+- **A newly connected feed client was replayed weeks of old events.** The cursor now starts at the end of the append-only log.
 
-One panel bug came out of that, found while wiring it up: the compression panel
-read the stage flags out of the serving process's environment with a default of
-**"1"**, which was correct before profiles existed and wrong after — a lane
-running `code` has tools/system/messages OFF without any variable being set
-anywhere, so the panel named three stages that were not running. It now resolves
-the profile first (from SlimToken's own mode table, not a copy) and reports the
-profile alongside the stages. Verified against the live lane: `code`,
-`dedup + distill`.
+### Added
 
-**v0.7.5.1 (2026-09-26) — hotfix: TUI display.** Tool output is expanded by
-default — ctrl+o now starts ON (it collapses on demand) instead of hiding
-tool results behind a collapsed one-liner. The banner credits the author
-(`greyok00` is now the branding default instead of an empty string), and the
-TUI reports its real version (0.7.5.1) instead of a stale 0.7.3.x from the
-shipped bundle. Assistant code blocks already display by default
-(owner directive 2026-09-23) — the collapsed tool-output pane was what was
-hiding them.
+- **Browser autostart is opt-in.** `CORTEXAGENT_BROWSER_ENABLED` decides. With nothing set, a machine with no browser profile configured gets no launch and a one-line note saying how to enable it; a machine already set up behaves exactly as before.
+- **`CORTEXAGENT_SLIMTOKEN_MODE`** selects the SlimToken mode for the SlimToken processes a session starts.
+- **SlimToken's two modes are selectable and documented** — `code` (default) and `realtime`. See the [SlimToken v0.6.0 release](https://github.com/greyok00/slimtoken/releases/tag/v0.6.0).
 
-**v0.7.5 (2026-09-26) — hotfix: memory tools.** The in-TUI memory tools
-broke three ways at once; all three reproduced first, then fixed:
+### Changed
 
-- **`memory_read(limit=…)` threw.** The tool schema advertised a `limit`
-  parameter the function never accepted — every call carrying it died with
-  a `TypeError`. It is now honored (default 20), and reads are compact:
-  hot reads were returning 50 full-transcript rows (~11.5k chars) straight
-  into the model's context; they return 20 rows of 400-char previews.
-- **Multi-token search always returned `[]`.** The OR-fallback query bound
-  its hit-count placeholders (in the `SELECT`) *before* the `profile`
-  placeholder in the `WHERE`, so a LIKE pattern landed in the profile
-  filter and nothing could match — single-token queries still worked,
-  which is what hid it. Placeholder binding now follows SQL text order.
-  The same one-line bug shipped in `memory/mcp_server.py` and is fixed
-  there too.
-- **Curated memory was invisible.** Search only scanned warm + hot for the
-  agent's own profile; the cold tier — where curated facts live, including
-  rules stored under the `shared` profile — was never consulted. Cold is
-  now scanned first (its own ranked OR-fallback included), and cold reads
-  span the shared, Claude, and agent profiles. Registry also drops a
-  duplicate `memory_write` schema entry.
+- **Route vocabulary is consistent.** Lanes are `local` / `cloud`; roles are `main` / `helper`. Applied in the notes and the installer.
 
-**v0.7.4 (2026-09-26) — toolbelt: uncapped, wired, one researcher.** The
-react loop's hidden 16-tool cap is gone — the model now sees its full
-registered toolbelt (31 tools with the default configuration;
-`CORTEXAGENT_MAX_TOOLS` re-introduces a cap as an opt-in). Three fixes
-land with it:
+**v0.7.5.1 (2026-09-26) — hotfix: TUI display.**
 
-- **MCP servers actually load now.** The launcher-generated `mcp.json`
-  wrote each server as a single `command` string (`"python3 /path/to/x.py"`)
-  the client tried to execute as one filename — every generated server
-  (dispatcher, secops, messenger, …) silently failed to spawn. The config
-  now emits proper `{command, args}` pairs, and the client splits legacy
-  single-string entries for backward compatibility.
-- **One researcher, not fifty.** New `CORTEXAGENT_DISABLED_TOOLS`
-  blocklist (honored by both tool listing and tool calls) retires the
-  domain one-offs — `ingest_domain`, `rag_query`, `query_llm` self-calls,
-  `download`, `add_llm_provider`, `coding_practices`, and the destructive
-  `memory_clear` — in favor of the research pipeline plus a new RAG
-  companion server (`rag_mcp.py`: FTS5/BM25 over the CortexLLM store —
-  cold facts, wiki layer, coding practices — returning cited results with
-  provenance and freshness, and an explicit no-match marker so the model
-  can't paper over gaps with invented answers). Process-skills no longer
-  register as model tools either.
-- **Memory injection is per-run again.** The hot recent-memory block is
-  re-injected into the system prompt on every agent run (idempotent, last
-  40 entries) instead of once per TUI process, so resumed runs get their
-  memory back.
+### Fixed
 
-**v0.7.3.2 (2026-09-23) — hotfix: session memory amnesia.** The bundled
-memory extension called the hot-memory API with swapped arguments
-(`append('user', prompt)` instead of `append(prompt, 'user')`) and passed a
-`platform` keyword that `read_last()` doesn't accept — every write stored
-garbled rows and every read **threw and was silently swallowed**, so a
-resumed session had zero memory of anything it did. Fixed the calls, and
-each agent run now also records what it *did* (last tool names + final
-output) as an assistant row, so resume sees actions, not just questions.
-Legacy garbled rows are normalized on read. Same hotfix train, 2026-09-23:
+- **Tool output is expanded by default.** ctrl+o now starts ON and collapses on demand, instead of hiding tool results behind a collapsed one-liner. Assistant code blocks already displayed by default (owner directive 2026-09-23); the collapsed tool-output pane was what was hiding them.
+- **The banner credits the author.** `greyok00` is the branding default instead of an empty string.
+- **The TUI reports its real version** instead of a stale 0.7.3.x read from the shipped bundle.
 
-- **Memory amnesia fixed** — correct `memory_thin` API usage, run summaries
-  written on `agent_end`, memory failures now log instead of vanishing.
-  The fixed extension ships in-repo as `extensions/memory.ts`.
-- **Compression panel reads real data** — it pointed at a dead
-  `~/.cortexagent/minify_stats.json` path and always showed "no data yet";
-  it now reads SlimToken's live stats file
-  (`~/.local/state/slimtoken/stats.json`), legacy path as fallback.
-- **Dispatcher queue auto-prunes** — stale `blocked` tasks sat in the
-  queue forever (prune only ran inside done/block, retention was 24h),
-  freezing the Tasks panel on an old list. Now the heartbeat prunes every
-  60s, blocked tasks expire after 1h, and the panel lists 6 tasks.
+**v0.7.5 (2026-09-26) — hotfix: memory tools.**
 
-**v0.7.3.1 (2026-09-23) — memory loop fix.** Fixed the bug that made the
-agent loop forever instead of working: `memory_search` in the bundled memory
-MCP server (`memory/mcp_server.py`) matched the *entire multi-word query as
-one exact substring* (`LIKE '%whole query%'` in SQLite), so real queries
-returned `[]` every time and the agent kept re-asking memory, then grepping
-its own session logs in circles. Search is now per-token (AND across tokens,
-best-ranked-first, OR fallback when the strict match is empty) and returns
-in <0.1s. Verified end-to-end over the real MCP protocol. The same disease
-was fixed in the CortexLLM universal-memory server
-(`cortexllm_mcp_server.py`, deployed at `~/.config/cortexllm`) — its search
-never saw the `.jsonl` hot tier and required whole-query substring matches;
-both are covered by this release.
+The in-TUI memory tools broke three ways at once. All three were reproduced first, then fixed.
+
+### Fixed
+
+- **`memory_read(limit=…)` threw.** The tool schema advertised a `limit` parameter the function never accepted, so every call carrying it died with a `TypeError`. It is now honored, default 20.
+- **Hot reads were oversized.** They returned 50 full-transcript rows (~11.5k chars) straight into the model's context; they now return 20 rows of 400-char previews.
+- **Multi-token search always returned `[]`.** The OR-fallback query bound its hit-count placeholders (in the `SELECT`) before the `profile` placeholder in the `WHERE`, so a LIKE pattern landed in the profile filter and nothing could match. Single-token queries still worked, which hid it. Placeholder binding now follows SQL text order. The same bug shipped in `memory/mcp_server.py` and is fixed there too.
+- **Curated memory was invisible.** Search scanned only warm + hot for the agent's own profile; the cold tier — where curated facts live, including rules stored under the `shared` profile — was never consulted. Cold is now scanned first, its own ranked OR-fallback included, and cold reads span the shared, Claude and agent profiles.
+- **A duplicate `memory_write` schema entry** was dropped from the registry.
+
+**v0.7.4 (2026-09-26) — toolbelt: uncapped, wired, one researcher.**
+
+### Changed
+
+- **The react loop's hidden 16-tool cap is gone.** The model now sees its full registered toolbelt — 31 tools with the default configuration. `CORTEXAGENT_MAX_TOOLS` re-introduces a cap as an opt-in.
+- **One researcher instead of fifty.** New `CORTEXAGENT_DISABLED_TOOLS` blocklist, honored by both tool listing and tool calls, retires the domain one-offs: `ingest_domain`, `rag_query`, `query_llm` self-calls, `download`, `add_llm_provider`, `coding_practices`, and the destructive `memory_clear`. Process-skills no longer register as model tools either.
+
+### Fixed
+
+- **MCP servers actually load now.** The launcher-generated `mcp.json` wrote each server as a single `command` string (`"python3 /path/to/x.py"`), which the client tried to execute as one filename, so every generated server (dispatcher, secops, messenger, …) silently failed to spawn. The config now emits `{command, args}` pairs, and the client splits legacy single-string entries for backward compatibility.
+- **Memory injection is per-run again.** The hot recent-memory block is re-injected into the system prompt on every agent run — idempotent, last 40 entries — instead of once per TUI process, so resumed runs get their memory back.
+
+### Added
+
+- **RAG companion server** (`rag_mcp.py`) — FTS5/BM25 over the CortexLLM store (cold facts, wiki layer, coding practices), returning cited results with provenance and freshness, and an explicit no-match marker so the model cannot paper over a gap with an invented answer.
+
+**v0.7.3.2 (2026-09-23) — hotfix: session memory amnesia.**
+
+### Fixed
+
+- **A resumed session had no memory of anything it did.** The bundled memory extension called the hot-memory API with swapped arguments (`append('user', prompt)` instead of `append(prompt, 'user')`) and passed a `platform` keyword that `read_last()` does not accept. Every write stored garbled rows and every read threw and was silently swallowed. The calls are fixed, legacy garbled rows are normalized on read, and memory failures now log instead of vanishing. The fixed extension ships in-repo as `extensions/memory.ts`.
+- **Each run now records what it did.** Last tool names and the final output are written as an assistant row on `agent_end`, so resume sees actions, not just questions.
+- **The compression panel read a dead path** (`~/.cortexagent/minify_stats.json`) and always showed "no data yet". It now reads SlimToken's live stats file (`~/.local/state/slimtoken/stats.json`), with the legacy path as fallback.
+- **The dispatcher queue never pruned stale tasks.** Only done/block pruned and retention was 24h, so `blocked` tasks sat in the queue forever and froze the Tasks panel on an old list. The heartbeat now prunes every 60s, blocked tasks expire after 1h, and the panel lists 6 tasks.
+
+**v0.7.3.1 (2026-09-23) — memory loop fix.**
+
+### Fixed
+
+- **The agent looped forever instead of working.** `memory_search` in the bundled memory MCP server (`memory/mcp_server.py`) matched the entire multi-word query as one exact substring (`LIKE '%whole query%'` in SQLite), so real queries returned `[]` every time and the agent kept re-asking memory, then grepping its own session logs in circles. Search is now per-token — AND across tokens, best-ranked first, OR fallback when the strict match is empty — and returns in under 0.1s. Verified end-to-end over the real MCP protocol.
+- **The same whole-query substring bug** was fixed in the CortexLLM universal-memory server (`cortexllm_mcp_server.py`, deployed at `~/.config/cortexllm`), whose search never saw the `.jsonl` hot tier and required whole-query matches.
