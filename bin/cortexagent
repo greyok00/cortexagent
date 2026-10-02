@@ -271,7 +271,7 @@ if [ -z "${_BROWSER_ENABLED}" ]; then
 fi
 
 if [ "${_BROWSER_ENABLED}" = "1" ]; then
-  if ! ss -ltn 2>/dev/null | grep -q ":9224 "; then
+  if ! ss -ltn 2>/dev/null | grep -q ":9222 "; then
     # 2026-09-27 (owner): "i need it to just open 2 and wait for login only. if
     # the browser gets closed it should NOT reopen it." The port guard above
     # only catches a browser that is still RUNNING, so before this every session
@@ -307,7 +307,7 @@ if [ "${_BROWSER_ENABLED}" = "1" ]; then
         # must never run headless again: a headless instance is invisible, so
         # leaked tabs accumulate where nobody can see or close them (53 stale
         # tabs were found on 2026-09-27). Do NOT re-add --headless=new.
-        nohup "${CHROMIUM_BIN}" --remote-debugging-port=9224 \
+        nohup "${CHROMIUM_BIN}" --remote-debugging-port=9222 \
           --remote-allow-origins=* \
           --no-first-run --no-default-browser-check \
           --user-data-dir="${CHROMIUM_DATA_DIR}" \
