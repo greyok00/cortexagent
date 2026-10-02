@@ -1,5 +1,5 @@
 [Unit]
-Description=CortexAgent stealth Chrome (Patchright/Chrome + CDP on :9222)
+Description=CortexAgent stealth Chrome (Patchright/Chrome + CDP on :9223)
 Documentation=https://github.com/greyok00/cortexagent
 After=graphical-session.target
 

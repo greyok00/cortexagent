@@ -173,8 +173,8 @@ install_stealth_chrome_systemd() {
   fi
   local py
   py="$(command -v python3 || echo /usr/bin/python3)"
-  local chrome_bin="${CORTEXAGENT_CHROME_BIN:-/usr/bin/google-chrome}"
-  local cdp_port="${CORTEXAGENT_CDP_PORT:-9222}"
+  local chrome_bin="${CORTEXAGENT_CHROME_BIN:-/usr/bin/chromium}"
+  local cdp_port="${CORTEXAGENT_CDP_PORT:-9223}"
   local user_data_dir="${CORTEXAGENT_CHROME_USER_DATA_DIR:-${HOME}/.config/chrome-stealth-profile}"
   mkdir -p "$(dirname "${dst}")"
   if [ -f "${dst}" ] && [ ! -f "${dst}.bak" ]; then

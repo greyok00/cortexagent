@@ -5,7 +5,7 @@ Patchright + Chrome-channel stack that:
 
   * Patches CDP Runtime.enable leak at the binary level (anti-bot bypass)
   * Uses an isolated persistent profile (~/.config/chrome-stealth-profile/)
-  * Spins up on demand via `google-chrome --remote-debugging-port=9223`
+  * Spins up on demand via `chromium --remote-debugging-port=9223`
   * Lets multiple sub-agents share tabs through one persistent context
   * Applies the cortexagent/stealth init script (fingerprint spoof)
   * Adds anti-throttling flags so background tabs don't get suspended
@@ -36,8 +36,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 USER_DATA_DIR = Path.home() / ".config" / "chrome-stealth-profile"
-CHROME_BIN = os.environ.get("CORTEX_STEALTH_CHROME", "/usr/bin/google-chrome")
-CDP_PORT = int(os.environ.get("CORTEX_STEALTH_CDP_PORT", "9222"))
+CHROME_BIN = os.environ.get("CORTEX_STEALTH_CHROME", "/usr/bin/chromium")
+# :9223 is the stealth browser's own port — the comms browser is on :9224 and
+# they must never share one. 2026-10-02 owner directive.
+CDP_PORT = int(os.environ.get("CORTEX_STEALTH_CDP_PORT", "9223"))
 CDP_URL = f"http://127.0.0.1:{CDP_PORT}"
 
 STEALTH_FLAGS = [
@@ -95,7 +97,7 @@ def start_chrome(display: str = ":99",
     ensure_xvfb(display)
     if _is_chrome_running():
         print(f"🟢 stealth chrome already on :{port}", flush=True)
-        ps = subprocess.run(["pgrep", "-af", "google-chrome"],
+        ps = subprocess.run(["pgrep", "-af", f"chromium.*--remote-debugging-port={port}"],
                             capture_output=True, text=True)
         return subprocess.Popen(["true"])
 
@@ -134,7 +136,12 @@ def start_chrome(display: str = ":99",
 def stop_chrome() -> bool:
     killed = False
     for sig in ("TERM", "KILL"):
-        r = subprocess.run(["pkill", f"-{sig}", "-f", "google-chrome.*--remote-debugging-port"],
+        # Port-specific on purpose (2026-10-02): a bare
+        # "chromium.*--remote-debugging-port" pattern also matches the comms
+        # browser on :9224, so stopping stealth would have killed the owner's
+        # logged-in browser too. Only ever match the stealth port.
+        r = subprocess.run(["pkill", f"-{sig}", "-f",
+                            f"chromium.*--remote-debugging-port={CDP_PORT}"],
                            capture_output=True)
         if r.returncode == 0:
             killed = True

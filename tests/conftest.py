@@ -14,7 +14,7 @@ for p in (ROOT, os.path.join(ROOT, "lib")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-CDP_HTTP = "http://127.0.0.1:9222"
+CDP_HTTP = "http://127.0.0.1:9223"
 
 def _reap_blank_tabs() -> None:
 
