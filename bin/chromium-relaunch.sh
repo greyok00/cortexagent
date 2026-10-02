@@ -4,8 +4,8 @@ set -euo pipefail
 
 CONFIG="$HOME/.cortexagent/chromium-profile/launcher-config.json"
 
-if ss -ltnp 2>/dev/null | grep -q ":9224 "; then
-    echo "Default browser already running on :9224 — attaching to existing session"
+if ss -ltnp 2>/dev/null | grep -q ":9222 "; then
+    echo "Default browser already running on :9222 — attaching to existing session"
     echo "Open any pinned tab in the existing window:"
     for url in $(python3 -c "
 import json, sys
@@ -28,7 +28,7 @@ PROFILE_DIR=$(python3 -c "import json; c=json.load(open('$CONFIG')); print(c['us
 
 echo "Launching default browser with profile: $PROFILE_DIR"
 nohup /usr/lib/chromium/chromium \
-    --remote-debugging-port=9224 \
+    --remote-debugging-port=9222 \
     --remote-allow-origins=* \
     --no-first-run \
     --show-component-extension-options \
@@ -47,8 +47,8 @@ CHROMIUM_PID=$!
 echo "Browser PID: $CHROMIUM_PID"
 
 for i in $(seq 1 30); do
-    if curl -sf http://127.0.0.1:9224/json >/dev/null 2>&1; then
-        echo "CDP ready on :9224"
+    if curl -sf http://127.0.0.1:9222/json >/dev/null 2>&1; then
+        echo "CDP ready on :9222"
         break
     fi
     sleep 0.5
@@ -58,7 +58,7 @@ python3 -c "
 import json, subprocess, time
 cfg = json.load(open('$CONFIG'))
 for tab in cfg['pinned_tabs']:
-    cmd = ['chromium', '--remote-debugging-port=9224', '--new-window', tab['url']]
+    cmd = ['chromium', '--remote-debugging-port=9222', '--new-window', tab['url']]
     subprocess.run(cmd, capture_output=True)
     time.sleep(1)
 " 2>/dev/null || echo "Note: tab opening may need manual follow-up"

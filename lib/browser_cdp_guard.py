@@ -57,7 +57,7 @@ def _parse_proc_tcp(port: int) -> List[str]:
         pass
     return hits
 
-def assert_localhost(port: int = 9224) -> bool:
+def assert_localhost(port: int = 9222) -> bool:
 
     binds = _parse_proc_tcp(port)
     if not binds:
@@ -145,8 +145,8 @@ class CDPGuard:
             pass
 
 def _port_of(bc: Any) -> int:
-    url = getattr(bc, "CDP_HTTP", "http://127.0.0.1:9224")
+    url = getattr(bc, "CDP_HTTP", "http://127.0.0.1:9222")
     try:
         return int(url.rsplit(":", 1)[1])
     except Exception:
-        return 9224
+        return 9222
