@@ -182,7 +182,7 @@ rather than what a config file claims.
 | SlimToken cloud lane | `127.0.0.1:11435` | minifies cloud-model requests (distill + dedup, tool schemas untouched) |
 | SlimToken local lane | `127.0.0.1:11436` | full compression pipeline for everything else |
 | Raw ollama backend | `127.0.0.1:11600` | optional cloud models — zero VRAM, used only if configured |
-| CDP (default browser) | `127.0.0.1:9222` | page-level browser automation |
+| CDP (default browser) | `127.0.0.1:9224` | page-level browser automation |
 | Hybrid lane (dispatcher) | stdio — no port | scheduler + cloud queue; only exists if you enable it |
 
 Everything binds to `127.0.0.1` — never `0.0.0.0`. Enforced in code, checked by `bin/verify`.
@@ -299,9 +299,9 @@ Four fixes and three additions, from one hunt into why the debugging browser kep
 
 ### Fixed
 
-- **The browser reopened on every session start.** The launcher's only guard was "is port 9222 already listening", so closing the browser simply meant the next session start reopened it, forever. It now records the boot id and opens its two tabs once per boot; a close inside the same boot is honoured. Force one open: `rm ~/.cortexagent/.browser-autostart`.
+- **The browser reopened on every session start.** The launcher's only guard was "is port 9224 already listening", so closing the browser simply meant the next session start reopened it, forever. It now records the boot id and opens its two tabs once per boot; a close inside the same boot is honoured. Force one open: `rm ~/.cortexagent/.browser-autostart`.
 - **The browser ran on a second, empty profile.** It launched against `~/.cortexagent/chromium-cdp-profile` — no cookies, no history — so every automated visit was a signed-out session and every site asked for 2FA again. It now reads the same `launcher-config.json` as `bin/chromium-relaunch.sh`, so one profile holds your real logins.
-- **Chromium rejected the control connection.** The launcher omitted `--remote-allow-origins=*`, which `bin/chromium-relaunch.sh` and `chromium-cw.service` both pass. Chromium logged `Rejected an incoming WebSocket connection from the http://127.0.0.1:9222 origin`, after which the Playwright path gave up for the rest of the session.
+- **Chromium rejected the control connection.** The launcher omitted `--remote-allow-origins=*`, which `bin/chromium-relaunch.sh` and `chromium-cw.service` both pass. Chromium logged `Rejected an incoming WebSocket connection from the http://127.0.0.1:9224 origin`, after which the Playwright path gave up for the rest of the session.
 - **The compression panel named stages that were not running.** It read the stage flags from the serving process's environment with a default of `1` — correct before modes existed, wrong after, because a lane running `code` has `tools`, `system` and `messages` off with no variable set anywhere. It now resolves the mode from SlimToken's own mode table, not a copy, and reports the mode alongside the stages.
 - **The compression panel presented a stale figure as current.** It now states the age of the number, where it came from, and whether a compressor is in the agent's path at all.
 - **A newly connected feed client was replayed weeks of old events.** The cursor now starts at the end of the append-only log.
