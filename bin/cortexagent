@@ -137,11 +137,11 @@ if [ -f "${REPO_ROOT}/config/settings.json.template" ]; then
 fi
 
 FIRECRAWL_ENABLED="${CORTEXAGENT_FIRECRAWL_ENABLED:-1}"
-BRAVE_ENABLED="${CORTEXAGENT_BRAVE_ENABLED:-1}"
+BROWSER_MCP_ENABLED="${CORTEXAGENT_BROWSER_MCP_ENABLED:-1}"
 MEMORY_CMD="python3 ${REPO_ROOT}/memory/mcp_server.py"
-python3 - "${REPO_ROOT}" "${CONFIG_DIR}" "${MEMORY_CMD}" "${FIRECRAWL_ENABLED}" "${BRAVE_ENABLED}" <<'PY'
+python3 - "${REPO_ROOT}" "${CONFIG_DIR}" "${MEMORY_CMD}" "${FIRECRAWL_ENABLED}" "${BROWSER_MCP_ENABLED}" <<'PY'
 import json, os, sys
-repo_root, config_dir, memory_cmd, fire_enabled, brave_enabled = sys.argv[1:6]
+repo_root, config_dir, memory_cmd, fire_enabled, browser_mcp_enabled = sys.argv[1:6]
 def _split(cmd):
     parts = cmd.split()
     return {"command": parts[0], "args": parts[1:]} if len(parts) > 1 else {"command": cmd}
@@ -151,7 +151,7 @@ if _mem_script and os.path.exists(_mem_script):
     servers["cortexagent"] = _split(memory_cmd)
 if fire_enabled == "1":
     servers["firecrawl"] = _split(f"python3 {os.path.join(repo_root, 'lib', 'firecrawl_proxy.py')}")
-if brave_enabled == "1":
+if browser_mcp_enabled == "1":
     venv_python = os.path.expanduser("~/.cortexagent/venv/bin/python3")
     if not os.path.exists(venv_python):
         venv_python = "python3"

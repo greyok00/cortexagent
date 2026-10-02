@@ -432,10 +432,9 @@ def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
     except Exception:
         return False
 
-def _raise_brave_window() -> bool:
-
-    for pattern in ("Brave-browser", "brave-browser.Brave-browser",
-                    "google-chrome.Google-chrome", "Chromium"):
+def _raise_browser_window() -> bool:
+    # Chromium only (2026-10-02 owner directive: Brave removed from CortexAgent).
+    for pattern in ("chromium.Chromium", "google-chrome.Google-chrome", "Chromium"):
         try:
             r = subprocess.run(
                 ["wmctrl", "-x", "-a", pattern],
@@ -446,7 +445,7 @@ def _raise_brave_window() -> bool:
             pass
     try:
         r = subprocess.run(
-            ["wmctrl", "-a", "Brave"],
+            ["wmctrl", "-a", "Chromium"],
             capture_output=True, timeout=2)
         if r.returncode == 0:
             return True
@@ -454,7 +453,7 @@ def _raise_brave_window() -> bool:
         pass
 
     try:
-        for pat in ("Brave", "brave", "google-chrome", "Chromium"):
+        for pat in ("chromium", "Chromium", "google-chrome"):
             r = subprocess.run(
                 ["xdotool", "search", "--name", pat],
                 capture_output=True, text=True, timeout=2)
@@ -485,14 +484,14 @@ def _focus_tab(tab: dict) -> bool:
     _ft_dprint(f"[focus_tab] CDP bringToFront: {cdp_ok}")
     if cdp_ok:
 
-        if _raise_brave_window():
+        if _raise_browser_window():
             return True
 
     title = (tab.get("title") or "").strip()
     if title:
         decoded = _html_decode(title)
 
-        candidates = [decoded, f"{decoded} - Brave", f"{decoded} – Brave"]
+        candidates = [decoded, f"{decoded} - Chromium", f"{decoded} – Chromium"]
 
         seen = set()
         candidates = [c for c in candidates
@@ -538,12 +537,12 @@ def _focus_tab(tab: dict) -> bool:
 
         try:
             r = subprocess.run(
-                ["xdotool", "search", "--classname", "brave-browser"],
+                ["xdotool", "search", "--classname", "chromium"],
                 capture_output=True, text=True, timeout=2,
             )
             wids = [w for w in (r.stdout or "").split() if w.strip().isdigit()]
             _ft_dprint(
-                f"[focus_tab]   --classname brave-browser → {len(wids)} wid(s)")
+                f"[focus_tab]   --classname chromium → {len(wids)} wid(s)")
             best = _pick_best_wid(wids, decoded)
             if best:
                 subprocess.run(
@@ -560,7 +559,7 @@ def _focus_tab(tab: dict) -> bool:
 
     cdp_ok = _bring_tab_to_front_via_cdp(tab)
 
-    _raise_brave_window()
+    _raise_browser_window()
     return cdp_ok or True
 
 def _pick_best_wid(wids: list[str], title: str) -> str | None:

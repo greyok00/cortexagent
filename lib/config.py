@@ -216,7 +216,7 @@ class Config:
             "CORTEXAGENT_INLINE_SCROLL", "display", "inline_scroll", False)
 
         self.browser_enabled = _env_bool(
-            "CORTEXAGENT_BRAVE_ENABLED", "integrations", "browser_enabled", True)
+            "CORTEXAGENT_BROWSER_MCP_ENABLED", "integrations", "browser_enabled", True)
         self.firecrawl_enabled = _env_bool(
             "CORTEXAGENT_FIRECRAWL_ENABLED", "integrations", "firecrawl_enabled", True)
 

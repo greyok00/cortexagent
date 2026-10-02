@@ -503,13 +503,13 @@ def mitre_for_cve(cve_id: str) -> list[str]:
 
 _LOCAL_MITIGATIONS: dict[str, str] = {
     "M1041": "Encrypt Sensitive Information (nftables + unbound DoT)",
-    "M1056": "Pre-compromise (Brave Shields, CSP strict-dynamic)",
+    "M1056": "Pre-compromise (browser shields, CSP strict-dynamic)",
     "M1031": "Network Intrusion Prevention (Suricata, nftables)",
     "M1037": "Filter Network Traffic (UFW + dnsmasq blocklist)",
     "M1026": "Principle of Least Privilege (systemd hardening, capability drop)",
     "M1018": "Disable or Remove Feature or Program (seccomp, Landlock)",
     "M1028": "Operating System Configuration (sysctl hardening, Lockdown LSM)",
-    "M1054": "Software Configuration (Brave managed policies, hardening.json)",
+    "M1054": "Software Configuration (browser managed policies, hardening.json)",
     "M1047": "Audit (auditd, SIEM ingest)",
     "M1032": "Multi-factor Authentication (YubiKey + pam_u2f)",
     "M1057": "User Training",

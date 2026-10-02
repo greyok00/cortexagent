@@ -53,7 +53,7 @@ def _render_settings(home: str) -> str:
     tpl = (_REPO_ROOT / "config" / "settings.json.template").read_text()
     return tpl.replace("{{HOME}}", home)
 
-def _render_mcp(memory_cmd: str, fire_enabled: str, brave_enabled: str) -> tuple[str, bool]:
+def _render_mcp(memory_cmd: str, fire_enabled: str, browser_mcp_enabled: str) -> tuple[str, bool]:
 
     servers: dict = {}
     mem_script = memory_cmd.split()[-1] if memory_cmd else ""
@@ -63,7 +63,7 @@ def _render_mcp(memory_cmd: str, fire_enabled: str, brave_enabled: str) -> tuple
     if fire_enabled == "1":
         servers["firecrawl"] = {
             "command": f"python3 {os.path.join(str(_REPO_ROOT), 'lib', 'firecrawl_proxy.py')}"}
-    if brave_enabled == "1":
+    if browser_mcp_enabled == "1":
         venv_py = os.path.expanduser("~/.cortexagent/venv/bin/python3")
         if not os.path.exists(venv_py):
             venv_py = "python3"
@@ -126,9 +126,9 @@ def _check_settings(cfg_dir: Path, home: str, dry: bool) -> Check:
     dst.write_text(want)
     return Check("settings.json", FIXED, drift_str)
 
-def _check_mcp(cfg_dir: Path, memory_cmd: str, fire: str, brave: str, dry: bool) -> Check:
+def _check_mcp(cfg_dir: Path, memory_cmd: str, fire: str, browser_mcp: str, dry: bool) -> Check:
     dst = cfg_dir / "mcp.json"
-    want, has_ca = _render_mcp(memory_cmd, fire, brave)
+    want, has_ca = _render_mcp(memory_cmd, fire, browser_mcp)
     if dst.exists() and dst.read_text() == want:
         return Check("mcp.json", HEALTHY,
                      "cortexagent present" if has_ca else "cortexagent correctly absent")
@@ -225,13 +225,13 @@ def run(dry: bool = False, no_patch: bool = False) -> list[Check]:
     cfg_dir = Path(os.environ.get("CORTEXAGENT_CONFIG_DIR", str(Path.home() / ".cortexagent-config")))
     home = str(Path.home())
     memory_cmd = f"python3 {_REPO_ROOT}/memory/mcp_server.py"
-    brave = os.environ.get("CORTEXAGENT_BRAVE_ENABLED", "0")
+    browser_mcp = os.environ.get("CORTEXAGENT_BROWSER_MCP_ENABLED", "0")
     fire_enabled = os.environ.get("CORTEXAGENT_FIRECRAWL_ENABLED", "0")
     checks: list[Check] = []
     checks.append(_check_config_dir(cfg_dir, dry))
     checks.append(_check_profile_at_runtime())
     checks.append(_check_settings(cfg_dir, home, dry))
-    checks.append(_check_mcp(cfg_dir, memory_cmd, fire_enabled, brave, dry))
+    checks.append(_check_mcp(cfg_dir, memory_cmd, fire_enabled, browser_mcp, dry))
     checks.append(_check_binary_patch(no_patch, dry))
     checks.append(_check_asset())
     checks.append(_check_launcher_wiring())
