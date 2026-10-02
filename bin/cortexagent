@@ -181,6 +181,15 @@ if os.path.exists(lazy_config):
                 )
     except Exception:
         pass
+# Quiet-SIGINT shim: the TUI's python MCP children share its process group, so
+# a Ctrl+C at the terminal kills each of them mid-call with a KeyboardInterrupt
+# traceback into the operator's terminal (2026-10-02). Wrap every python server
+# (including lazy proxies) so an interrupt exits silently instead.
+_shim = os.path.join(repo_root, "lib", "mcp-sigint-shim.py")
+if os.path.exists(_shim):
+    for _server in servers.values():
+        if os.path.basename(_server["command"]).startswith("python"):
+            _server["args"] = [_shim, *_server["args"]]
 mcp = {"mcpServers": servers}
 with open(os.path.join(config_dir, "mcp.json"), "w") as f:
     json.dump(mcp, f, indent=2)
@@ -262,7 +271,7 @@ if [ -z "${_BROWSER_ENABLED}" ]; then
 fi
 
 if [ "${_BROWSER_ENABLED}" = "1" ]; then
-  if ! ss -ltn 2>/dev/null | grep -q ":9224 "; then
+  if ! ss -ltn 2>/dev/null | grep -q ":9222 "; then
     # 2026-09-27 (owner): "i need it to just open 2 and wait for login only. if
     # the browser gets closed it should NOT reopen it." The port guard above
     # only catches a browser that is still RUNNING, so before this every session
@@ -298,7 +307,7 @@ if [ "${_BROWSER_ENABLED}" = "1" ]; then
         # must never run headless again: a headless instance is invisible, so
         # leaked tabs accumulate where nobody can see or close them (53 stale
         # tabs were found on 2026-09-27). Do NOT re-add --headless=new.
-        nohup "${CHROMIUM_BIN}" --remote-debugging-port=9224 \
+        nohup "${CHROMIUM_BIN}" --remote-debugging-port=9222 \
           --remote-allow-origins=* \
           --no-first-run --no-default-browser-check \
           --user-data-dir="${CHROMIUM_DATA_DIR}" \

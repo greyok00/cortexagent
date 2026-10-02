@@ -37,7 +37,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 USER_DATA_DIR = Path.home() / ".config" / "chrome-stealth-profile"
 CHROME_BIN = os.environ.get("CORTEX_STEALTH_CHROME", "/usr/bin/google-chrome")
-CDP_PORT = int(os.environ.get("CORTEX_STEALTH_CDP_PORT", "9224"))
+CDP_PORT = int(os.environ.get("CORTEX_STEALTH_CDP_PORT", "9222"))
 CDP_URL = f"http://127.0.0.1:{CDP_PORT}"
 
 STEALTH_FLAGS = [
