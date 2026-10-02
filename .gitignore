@@ -96,3 +96,27 @@ addons/
 three.module.min.js
 patch_ub2560.py
 analysis.txt
+
+# ── Session scratch from the Kali / Wolf / ROM work — local-only ────────────
+# Probe scripts, scans and logs an agent session left in the repo root. KEEP
+# LOCALLY — banned from upload. Not deleted (user directive).
+kernel-*.sh
+kernel-boot.ps1
+kill-kitleftovers.sh
+quick-state2.sh
+census.sh
+kit-control.py
+relaunch-check.sh
+relaunch-check.ps1
+symvers-gen.py
+target-dict.sh
+wd_native.py
+wolfsave.exe
+scan-raw.txt
+scanlog.txt
+playbook/
+# Windows paths that became literal filenames — a backslash IN the name, not a
+# directory separator. Created by accident, not content: left on disk, kept out
+# of git, and safe to delete by hand.
+RadioLog\\*
+WolfLogger\\*
