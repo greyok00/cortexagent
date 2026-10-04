@@ -4,7 +4,8 @@
 Patchright + Chrome-channel stack that:
 
   * Patches CDP Runtime.enable leak at the binary level (anti-bot bypass)
-  * Uses an isolated persistent profile (~/.config/chrome-stealth-profile/)
+  * Uses the user's regular persistent chromium profile — the same session
+    with active logins, never a fresh or private profile
   * Spins up on demand via `chromium --remote-debugging-port=9223`
   * Lets multiple sub-agents share tabs through one persistent context
   * Applies the cortexagent/stealth init script (fingerprint spoof)
@@ -35,10 +36,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-USER_DATA_DIR = Path.home() / ".config" / "chrome-stealth-profile"
+USER_DATA_DIR = Path.home() / ".config" / "chromium"
 CHROME_BIN = os.environ.get("CORTEX_STEALTH_CHROME", "/usr/bin/chromium")
-# :9223 is the stealth browser's own port — the comms browser is on :9224 and
-# they must never share one. 2026-10-02 owner directive.
+# :9223 is the ONE CDP port CortexAgent uses (owner layout 2026-10-02).
 CDP_PORT = int(os.environ.get("CORTEX_STEALTH_CDP_PORT", "9223"))
 CDP_URL = f"http://127.0.0.1:{CDP_PORT}"
 
@@ -89,12 +89,20 @@ def ensure_xvfb(display: str = ":99") -> bool:
           file=sys.stderr, flush=True)
     return False
 
-def start_chrome(display: str = ":99",
+def start_chrome(display: Optional[str] = None,
                  user_data_dir: Optional[Path] = None,
                  port: int = CDP_PORT,
                  background: bool = True,
                  extra_args: Optional[list[str]] = None) -> subprocess.Popen:
-    ensure_xvfb(display)
+    # Regular persistent session mode (owner 2026-10-02: NOT headless): prefer
+    # the real display this process inherited, so the window is visible and
+    # shares the desktop. Xvfb is only a fallback when no real display exists.
+    if display is None:
+        display = os.environ.get("DISPLAY") or ":99"
+    if display == ":99":
+        ensure_xvfb(display)
+    else:
+        print(f"🖥️ stealth chrome on real display {display}", flush=True)
     if _is_chrome_running():
         print(f"🟢 stealth chrome already on :{port}", flush=True)
         ps = subprocess.run(["pgrep", "-af", f"chromium.*--remote-debugging-port={port}"],
@@ -137,9 +145,9 @@ def stop_chrome() -> bool:
     killed = False
     for sig in ("TERM", "KILL"):
         # Port-specific on purpose (2026-10-02): a bare
-        # "chromium.*--remote-debugging-port" pattern also matches the comms
-        # browser on :9224, so stopping stealth would have killed the owner's
-        # logged-in browser too. Only ever match the stealth port.
+        # "chromium.*--remote-debugging-port" pattern would also match the
+        # owner's own Brave (:9224) and Firefox debug instances, so a broad
+        # stop would kill those too. Only ever match :9223.
         r = subprocess.run(["pkill", f"-{sig}", "-f",
                             f"chromium.*--remote-debugging-port={CDP_PORT}"],
                            capture_output=True)

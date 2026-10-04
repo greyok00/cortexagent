@@ -40,7 +40,7 @@ except Exception:
     _ws_client = None
     _HAS_WS_CLIENT = False
 
-CDP_HTTP = "http://127.0.0.1:9222"
+CDP_HTTP = "http://127.0.0.1:9223"
 CDP_URL = CDP_HTTP
 
 _profile: Optional[Dict[str, Any]] = None
@@ -275,7 +275,7 @@ def _isolated_eval(target_id: str, expression: str, timeout: float = 8.0) -> Any
 def start_guard(kill: bool = False) -> Any:
     global _guard
     if _guard is None:
-        _guard = browser_cdp_guard.CDPGuard(port=9222, on_alert=None)
+        _guard = browser_cdp_guard.CDPGuard(bc=sys.modules[__name__])
     _guard.start()
     return _guard
 

@@ -175,7 +175,10 @@ install_stealth_chrome_systemd() {
   py="$(command -v python3 || echo /usr/bin/python3)"
   local chrome_bin="${CORTEXAGENT_CHROME_BIN:-/usr/bin/chromium}"
   local cdp_port="${CORTEXAGENT_CDP_PORT:-9223}"
-  local user_data_dir="${CORTEXAGENT_CHROME_USER_DATA_DIR:-${HOME}/.config/chrome-stealth-profile}"
+  # The one browser must share the user's regular chromium profile
+  # (active logins) and the real display — never an isolated profile.
+  local user_data_dir="${CORTEXAGENT_CHROME_USER_DATA_DIR:-${HOME}/.config/chromium}"
+  local dsp="${CORTEXAGENT_DISPLAY:-${DISPLAY:-:0}}"
   mkdir -p "$(dirname "${dst}")"
   if [ -f "${dst}" ] && [ ! -f "${dst}.bak" ]; then
     cp -a "${dst}" "${dst}.bak"
@@ -187,6 +190,7 @@ install_stealth_chrome_systemd() {
       -e "s|{{CHROME}}|${chrome_bin}|g" \
       -e "s|{{CDP_PORT}}|${cdp_port}|g" \
       -e "s|{{USER_DATA_DIR}}|${user_data_dir}|g" \
+      -e "s|{{DISPLAY}}|${dsp}|g" \
       "${tmpl}" > "${dst}"
   echo "    wrote ${dst}"
   if systemctl --user daemon-reload >/dev/null 2>&1; then

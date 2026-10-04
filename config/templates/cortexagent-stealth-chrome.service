@@ -21,7 +21,7 @@ ExecStart={{CHROME}} \
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15
-Environment=DISPLAY=:99
+Environment=DISPLAY={{DISPLAY}}
 Environment=XAUTHORITY=%h/.Xauthority
 
 [Install]
