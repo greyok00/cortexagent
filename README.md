@@ -153,14 +153,15 @@ The default is the minimal one, and it is the one you want for building.
 
 | Profile | Set with | What it does | Use it for |
 |---|---|---|---|
-| **`code`** (default) | `SLIMTOKEN_MODE=code` | Your **newest turns and every fenced code block reach the model byte-for-byte.** Only OLD material is abbreviated: a duplicate tool result is stubbed (its bytes are still later in the conversation), old prose is shortened, and an old file read keeps head + tail with a `[slimtoken-compressed] N B -> M B` marker saying what was dropped. Tool schemas are left exactly as written, so tool-calling is unaffected. | agent work — edits, tool calls, anything you will be held to |
+| **`code`** (default) | `SLIMTOKEN_MODE=code` | **No tool result is ever rewritten** — not an old one, not a new one — and every fenced code block reaches the model byte-for-byte. Only two things are removed: a duplicate tool result is stubbed (its bytes are still later in the conversation) and old assistant prose is shortened. Tool schemas are left exactly as written, so tool-calling is unaffected. | agent work — edits, tool calls, anything you will be held to |
 | **`realtime`** | `SLIMTOKEN_MODE=realtime` | Gives up the newest turns to buy response speed: elides old user turns as well as assistant turns, cuts prose to 160 characters, shortens **even the newest tool result**. | talking — STT/TTS conversation, where nothing is being built |
 
 Measured on SlimToken's shipped fixtures (`slimtoken modes --measure`): `code`
-saves **68.5%** on an agent session and **0.0%** on a spoken conversation;
-`realtime` saves 70.9% and 59.5% respectively. That 0% is why there are two
-profiles instead of one setting — the minimal profile has no lever on speech, and
-the profile that does have one is lossy.
+saves **73.1%** when the same file is read every turn, and **0.0%** on both a
+session of distinct reads and a spoken conversation; `realtime` saves 85.3% and
+59.5% on those two. Those zeros are why there are two profiles instead of one
+setting — the minimal profile has no lossless lever left once nothing is
+duplicated, and the profile that does have one spends evidence to get it.
 
 **Choosing one.** `CORTEXAGENT_SLIMTOKEN_MODE` sets the profile for SlimToken
 processes started *from* a session — the MCP tools, `slimtoken optimize`, the
@@ -182,7 +183,7 @@ rather than what a config file claims.
 | SlimToken cloud lane | `127.0.0.1:11435` | minifies cloud-model requests (distill + dedup, tool schemas untouched) |
 | SlimToken local lane | `127.0.0.1:11436` | full compression pipeline for everything else |
 | Raw ollama backend | `127.0.0.1:11600` | optional cloud models — zero VRAM, used only if configured |
-| CDP (default browser) | `127.0.0.1:9222` | page-level browser automation |
+| CDP (the one browser) | `127.0.0.1:9223` | page-level browser automation — regular persistent chromium session |
 | Hybrid lane (dispatcher) | stdio — no port | scheduler + cloud queue; only exists if you enable it |
 
 Everything binds to `127.0.0.1` — never `0.0.0.0`. Enforced in code, checked by `bin/verify`.
@@ -292,6 +293,24 @@ MIT — see [LICENSE](LICENSE).
 ---
 
 ## Changelog
+
+**v0.7.7 (2026-10-04)**
+
+One browser on `:9223` sharing your real chromium profile, and a control-connection guard that no longer crashes on construction.
+
+### Fixed
+
+- **`browser_control.start_guard()` raised `TypeError` on every call.** It constructed `CDPGuard(port=9222, on_alert=None)`, but `CDPGuard.__init__` takes `bc` — the browser module it reads `CDP_HTTP` and `_ws_cache` from. Every caller died with `CDPGuard.__init__() got an unexpected keyword argument 'port'` (`lib/patchright_chrome_mcp.py:196`). It now passes `bc=sys.modules[__name__]`. Constructing is fixed; detecting is not — nothing in the tree ever populates `_ws_cache`, so the guard's poll loop still has no sockets to watch.
+- **The stealth browser forced a virtual display.** `config/templates/cortexagent-stealth-chrome.service` pinned `Environment=DISPLAY=:99`, so the window opened on an Xvfb screen nobody could see even when a desktop was available. The template now takes `{{DISPLAY}}`, `install.sh` substitutes the real one, and `lib/stealth/worker.py` starts on the inherited `$DISPLAY`, falling back to Xvfb only when there is no real display.
+
+### Changed
+
+- **One CDP port, `:9223`.** The launcher, `bin/chromium-relaunch.sh`, `actions/open_url.py`, `lib/browser_control.py` and `lib/browser_cdp_guard.py` used or defaulted to `:9222` while `lib/stealth/worker.py` and `install.sh` used `:9223`, so the port a caller reached for depended on which file it read. Everything now agrees on `:9223`, and `assets/cortexagent-workflow.svg` shows it.
+- **The one browser uses your real chromium profile.** `install.sh` defaulted the user-data dir to `~/.config/chrome-stealth-profile` — a profile with no cookies — so every automated visit was a signed-out session. It now defaults to `~/.config/chromium`, the profile holding your live logins, matching `launcher-config.json` (`user_data_dir`, `cdp_port: 9223`).
+- **The launcher no longer forces Google Voice and Gmail open.** Session start dropped the hardcoded `https://voice.google.com/` + `https://mail.google.com/` pair, so an autostart no longer adds tabs nobody asked for. Pinned tabs are still opened by `bin/chromium-relaunch.sh` from `launcher-config.json`.
+- **`bin/chromium-relaunch.sh` lost its stale second-window hint.** It advertised `chromium --remote-debugging-port=9225 --existing-profile-dir=…`, a port nothing listens on.
+
+Verified with `bin/verify` (six-layer gate): PASS.
 
 **v0.7.6 (2026-09-27)**
 
