@@ -146,8 +146,8 @@ def stop_chrome() -> bool:
     for sig in ("TERM", "KILL"):
         # Port-specific on purpose (2026-10-02): a bare
         # "chromium.*--remote-debugging-port" pattern would also match the
-        # owner's own Brave (:9224) and Firefox debug instances, so a broad
-        # stop would kill those too. Only ever match :9223.
+        # owner's own Firefox debug instance (:9222), so a broad stop would
+        # kill that too. Only ever match this worker's own port, :9223.
         r = subprocess.run(["pkill", f"-{sig}", "-f",
                             f"chromium.*--remote-debugging-port={CDP_PORT}"],
                            capture_output=True)
@@ -158,7 +158,7 @@ def stop_chrome() -> bool:
             return True
     return not _is_chrome_running()
 
-async def connect(cdp_url: str = CDP_URL, headless: bool = True) -> Any:
+async def connect(cdp_url: str = CDP_URL) -> Any:
     try:
         from patchright.async_api import async_playwright
         _lib = "patchright"
@@ -176,7 +176,7 @@ async def connect(cdp_url: str = CDP_URL, headless: bool = True) -> Any:
     print(f"[stealth] connected via {_lib} on {cdp_url}", flush=True)
     return pw, browser, ctx
 
-async def get_or_create_tab(ctx, task_id: str, headless: bool = True):
+async def get_or_create_tab(ctx, task_id: str):
     page = await ctx.new_page()
     page.set_default_timeout(45_000)
     seed = profile_seed(task_id)

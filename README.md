@@ -294,6 +294,23 @@ MIT — see [LICENSE](LICENSE).
 
 ## Changelog
 
+**v0.7.8 (2026-10-04)**
+
+The status strip leads with your messages instead of a cloud/local readout, and the verify gate stops hardcoding one model name.
+
+### Changed
+
+- **The status strip shows your messages, not the cloud split.** `lib/cloud_state.py` counted `route == "cloud"` records in the dispatcher queue log and printed the split at the head of the strip; once that log went empty the segment sat on a stale "100% local" that never moved. It now leads with the messenger — the letter `M`, then how many texts and how many emails are waiting, counted per `channel` from `~/.config/messenger/unreplied.json` — in the slot the cloud readout held. The dispatcher `q{queued} r{running}` segment went with it: it read the status block with a regex for "queued"/"running" while the block writes "waiting"/"busy", so it rendered `q0 r0` no matter what the queue did.
+- **`bin/verify` asks the conf which model it serves** instead of grepping for one fine-tune's name. The old check passed only for that one string and reported `cloud-only` for every other configured model, even a properly configured one. It now reads `[backend] model_path` from `~/.cortexagent/cortexagent.conf` and checks that the GGUF exists.
+- **`DEFAULTS-NOTE.md` names a reference build rather than a fine-tune.** The local-model row now reads standard **Qwen3.6-35B-A3B** (MoE, 35B total / 3B active, 262k native) and says any GGUF the conf points at works.
+- **Autocompact threshold raised 85 → 90** (`bin/cortexagent`), so a session compacts later and keeps more of the conversation intact.
+
+### Fixed
+
+- **`lib/stealth/worker.py` lost an unused parameter and a wrong comment.** `connect()` and `get_or_create_tab()` took `headless=True` and never read it — the CDP port and the user-data dir already decide where the window opens — so the parameter is gone. The stop-comment named Brave on `:9224` as the instance a broad `pkill` would hit; the real second debug instance is Firefox on `:9222`.
+
+Verified with `bin/verify` (six-layer gate): PASS.
+
 **v0.7.7 (2026-10-04)**
 
 One browser on `:9223` sharing your real chromium profile, and a control-connection guard that no longer crashes on construction.

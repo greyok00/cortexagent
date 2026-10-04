@@ -4,7 +4,7 @@
 
 | What | Started by | Config lives in | Port |
 |------|-----------|-----------------|------|
-| Local llama model (Qwen3.6-35B-A3B IQ3_XS) | the `cortexagent` launcher ITSELF — spawned as a direct child via `scripts/pdeathspawn.py` (PR_SET_PDEATHSIG=SIGKILL: kernel kills llama-server the instant the launcher dies — any exit path, no daemon, no systemd); legacy systemd-owned instances are killed+swept at launch. Context auto-fits: 98304 → 73728 → 49152 → 32768, first size that fits the free VRAM wins (display/desktop VRAM varies per session — 2026-09-22 log showed `cudaMalloc OOM` at 98304 with only 14.3 GiB free; 73728 served in ~13s) | `~/.cortexagent/cortexagent.conf` `[backend] model_path` (read via `python3 lib/config.py local`) | **11599** (alias `cortexagent`) |
+| Local llama model (reference build: standard **Qwen3.6-35B-A3B** — MoE, 35B total / 3B active, 262k native; any GGUF the conf points at works) | the `cortexagent` launcher ITSELF — spawned as a direct child via `scripts/pdeathspawn.py` (PR_SET_PDEATHSIG=SIGKILL: kernel kills llama-server the instant the launcher dies — any exit path, no daemon, no systemd); legacy systemd-owned instances are killed+swept at launch. Context auto-fits: 98304 → 73728 → 49152 → 32768, first size that fits the free VRAM wins (display/desktop VRAM varies per session — 2026-09-22 log showed `cudaMalloc OOM` at 98304 with only 14.3 GiB free; 73728 served in ~13s) | `~/.cortexagent/cortexagent.conf` `[backend] model_path` (read via `python3 lib/config.py local`) | **11599** (alias `cortexagent`) |
 | slimtoken CLOUD lane (minify+dedup → ollama) | `slimtoken` compose | `~/canaryshare/compose.yaml` | **11435** (hard-baked 2026-09-21) |
 | slimtoken LOCAL lane (minify+goodies → ollama) | same container | same | **11436** (hard-baked 2026-09-21) |
 | Raw ollama backend (CLOUD models only — zero local manifests, verified 2026-09-22) | `ollama` container | same | **11600** |
@@ -63,4 +63,7 @@ It is NOT part of cortexagent's contract and nothing depends on it.
 
 Written 2026-09-20 after the owner saw 8801 open unexpectedly; updated
 2026-09-22 for the :11599 direct-llama architecture (grammar proxy + :8080
-removed, single cloud/local conf split).
+removed, single cloud/local conf split). Updated 2026-10-04: the local-model
+row no longer names a specific fine-tune — the reference build is standard
+Qwen3.6-35B-A3B, and `bin/verify` now reads whichever `model_path` the conf
+sets instead of string-matching one model name.

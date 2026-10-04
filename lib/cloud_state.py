@@ -1,3 +1,19 @@
+"""Status-strip state: the messenger area leads, then the ops indicators.
+
+2026-10-04 (owner order): the cloud readout that used to head this strip is
+gone. It counted `route == "cloud"` records in ~/dispatcher/data/queue.jsonl,
+and after that file went empty it had nothing to report, so the strip sat on a
+stale "100% local" that never moved. The messenger took the slot it held: the
+letter `M`, then how many texts and how many emails are waiting.
+
+The dispatcher's `q{queued} r{running}` segment went with it — it read that
+MCP server's status block with a regex for "queued"/"running" while the block
+writes "waiting"/"busy", so it rendered q0 r0 no matter what the queue did.
+
+Waiting counts come from ~/.config/messenger/unreplied.json: one entry per open
+inbound message, each tagged `channel` ("sms" = text, "email" = email).
+"""
+
 from __future__ import annotations
 
 import json
@@ -5,13 +21,10 @@ import pathlib
 from typing import Any, Dict, List, Optional, Tuple
 
 DISPATCHER_DIR = pathlib.Path.home() / "dispatcher" / "data"
-QUEUE_LOG = DISPATCHER_DIR / "queue.jsonl"
 METRICS_LOG = DISPATCHER_DIR / "metrics.jsonl"
 TRIAGE_LOG = DISPATCHER_DIR / "secops-triage.log"
-MCP_STATUS = pathlib.Path.home() / ".cortexagent" / "mcp-status" / "dispatcher.json"
 UNREPLIED = pathlib.Path.home() / ".config" / "messenger" / "unreplied.json"
 
-_QUEUE_TAIL = 600
 _METRICS_TAIL = 200
 
 def _tail_lines(path: pathlib.Path, n: int) -> List[str]:
@@ -30,22 +43,6 @@ def _read_json(path: pathlib.Path) -> Optional[Dict[str, Any]]:
 
 def collect() -> Dict[str, Any]:
     out: Dict[str, Any] = {}
-
-    cloud = local = 0
-    for line in _tail_lines(QUEUE_LOG, _QUEUE_TAIL):
-        try:
-            rec = json.loads(line)
-        except ValueError:
-            continue
-        if rec.get("op") != "add":
-            continue
-        if rec.get("route") == "cloud":
-            cloud += 1
-        else:
-            local += 1
-    total = cloud + local
-    out["routes"] = {"cloud": cloud, "local": local,
-                     "pct_cloud": round(100 * cloud / total, 1) if total else None}
 
     events: List[Tuple[str, str, str]] = []
     for line in _tail_lines(METRICS_LOG, _METRICS_TAIL):
@@ -69,11 +66,16 @@ def collect() -> Dict[str, Any]:
     out["secops"] = {"verdict": verdict, "action": action}
 
     unr = _read_json(UNREPLIED) or {}
-    out["messaging"] = {"unreplied": int(unr.get("count", 0)),
-                        "checked": str(unr.get("ts", "—"))}
-
-    st = _read_json(MCP_STATUS) or {}
-    out["dispatch"] = [str(x) for x in st.get("lines", [])][:2]
+    items = unr.get("unreplied")
+    if not isinstance(items, list):
+        items = []
+    out["messaging"] = {
+        "texts": sum(1 for e in items
+                     if isinstance(e, dict) and e.get("channel") == "sms"),
+        "emails": sum(1 for e in items
+                      if isinstance(e, dict) and e.get("channel") == "email"),
+        "checked": str(unr.get("ts", "—")),
+    }
     return out
 
 def strip_text() -> str:
@@ -96,23 +98,18 @@ def strip_text() -> str:
 
     segs: List[str] = []
 
-    r = d["routes"]
-    pct = r["pct_cloud"]
-    if pct is not None:
-        segs.append(f"☁{pct:.0f}%·⬢{100 - pct:.0f}%")
-    else:
-        segs.append(dim("☁—"))
+    # Messenger leads: the letter M sits where the cloud icon used to, then one
+    # count per channel. Red with a "!" means something is waiting on a reply.
+    m = d["messaging"]
 
-    disp = d["dispatch"]
-    if disp:
-        import re
-        m = re.findall(r"(\d+)\s+(queued|running)", disp[0])
-        counts = {k: v for v, k in m}
-        segs.append(dim(f"q{counts.get('queued', 0)} "
-                        f"r{counts.get('running', 0)}"))
+    def waiting(n: int, noun: str) -> str:
+        if n:
+            return red(f"{n} {noun}{'s' if n != 1 else ''}!")
+        return green(f"{noun}s ✓")
 
-    un = d["messaging"]["unreplied"]
-    segs.append(red(f"✉{un}!") if un else green("✉✓"))
+    segs.append("M")
+    segs.append(waiting(m["texts"], "text"))
+    segs.append(waiting(m["emails"], "email"))
 
     v = d["secops"]["verdict"]
     if v:
