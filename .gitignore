@@ -95,6 +95,5 @@ wd_native.py
 wolfsave.exe
 scan-raw.txt
 scanlog.txt
-playbook/
 RadioLog\\*
 WolfLogger\\*
