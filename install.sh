@@ -45,7 +45,7 @@ python3 - "${REPO_ROOT}/config" "${CONFIG_DIR}" "${MEMORY_CMD}" "${HOME}" "${REP
 import json, os, sys, shutil
 config_dir, isolated_dir, memory_cmd, home, repo_root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 
-# 1. mcp.json (templated by install into isolated config dir)
+
 mcp_tpl = os.path.join(config_dir, "mcp.json.template")
 mcp_out = os.path.join(isolated_dir, "mcp.json")
 if os.path.exists(mcp_tpl):
@@ -56,7 +56,7 @@ if os.path.exists(mcp_tpl):
     open(mcp_out, "w").write(raw + "\n")
     print(f"    wrote {mcp_out}")
 
-# 2. settings.json (templated by install — $HOME and config dir)
+
 sett_tpl = os.path.join(config_dir, "settings.json.template")
 sett_out = os.path.join(isolated_dir, "settings.json")
 if os.path.exists(sett_tpl):
@@ -66,7 +66,7 @@ if os.path.exists(sett_tpl):
     open(sett_out, "w").write(raw)
     print(f"    wrote {sett_out}")
 
-# 3. CLAUDE.md → isolated config dir (so ours loads, not the global one)
+
 src_md = os.path.join(config_dir, "CLAUDE.md")
 dst_md = os.path.join(isolated_dir, "CLAUDE.md")
 if os.path.exists(src_md):
@@ -175,8 +175,8 @@ install_stealth_chrome_systemd() {
   py="$(command -v python3 || echo /usr/bin/python3)"
   local chrome_bin="${CORTEXAGENT_CHROME_BIN:-/usr/bin/chromium}"
   local cdp_port="${CORTEXAGENT_CDP_PORT:-9223}"
-  # The one browser must share the user's regular chromium profile
-  # (active logins) and the real display — never an isolated profile.
+  
+  
   local user_data_dir="${CORTEXAGENT_CHROME_USER_DATA_DIR:-${HOME}/.config/chromium}"
   local dsp="${CORTEXAGENT_DISPLAY:-${DISPLAY:-:0}}"
   mkdir -p "$(dirname "${dst}")"

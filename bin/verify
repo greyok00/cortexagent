@@ -64,9 +64,9 @@ else
   fail "models-json" "model registration drifted — see layer-5 check"
   ANY=1
 fi
-# Model-agnostic on purpose (2026-10-04): this used to grep the conf for one
-# specific fine-tune's name, so every other model reported "cloud-only" even
-# though a model was configured. Ask the conf what it serves instead.
+
+
+
 _mp=$(grep -E '^model_path' "$HOME/.cortexagent/cortexagent.conf" 2>/dev/null \
       | cut -d= -f2 | xargs)
 if [ -n "$_mp" ]; then

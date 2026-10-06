@@ -95,12 +95,12 @@ def _handle_write(args: Dict[str, Any]) -> Dict[str, Any]:
     return _ok("saved")
 
 def _handle_search(args: Dict[str, Any]) -> Dict[str, Any]:
-    # 2026-09-23 fix (memory loop root cause #2): the old version ran
-    # LIKE '%<entire multi-word query>%' — an exact-substring match that
-    # almost never fires, so real queries returned [] and the agent fell
-    # back to grepping its own session files in circles. Now: per-token
-    # AND match (all tokens present, best ranked first), falling back to
-    # best-token-count OR if the strict match is empty.
+
+
+
+
+
+
     query = args.get("query", "").lower()
     limit = int(args.get("limit", 10))
     import re as _re
@@ -125,7 +125,7 @@ def _handle_search(args: Dict[str, Any]) -> Dict[str, Any]:
             (PROFILE, *[f"%{t}%" for t in tokens], limit),
         ).fetchall()
         if not rows:
-            # OR fallback, ranked by number of matched tokens
+
             conds = " OR ".join("LOWER(content) LIKE ?" for _ in tokens)
             hits = " + ".join(
                 f"(CASE WHEN LOWER(content) LIKE ? THEN 1 ELSE 0 END)"
@@ -134,11 +134,11 @@ def _handle_search(args: Dict[str, Any]) -> Dict[str, Any]:
                 f"SELECT role, content, timestamp, ({hits}) AS hits "
                 f"FROM Memory_Warm WHERE profile = ? AND ({conds}) "
                 f"ORDER BY hits DESC, id DESC LIMIT ?",
-                # 2026-09-26: bind in SQL placeholder order — the hits CASE
-                # placeholders in the SELECT bind before the profile ? in the
-                # WHERE, so the old (PROFILE, *like*2, limit) tuple fed a LIKE
-                # pattern into the profile filter and the fallback always
-                # returned [].
+
+
+
+
+
                 (*[f"%{t}%" for t in tokens], PROFILE,
                  *[f"%{t}%" for t in tokens], limit),
             ).fetchall()

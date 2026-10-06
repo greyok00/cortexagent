@@ -1,18 +1,4 @@
-"""Status-strip state: the messenger area leads, then the ops indicators.
 
-2026-10-04 (owner order): the cloud readout that used to head this strip is
-gone. It counted `route == "cloud"` records in ~/dispatcher/data/queue.jsonl,
-and after that file went empty it had nothing to report, so the strip sat on a
-stale "100% local" that never moved. The messenger took the slot it held: the
-letter `M`, then how many texts and how many emails are waiting.
-
-The dispatcher's `q{queued} r{running}` segment went with it — it read that
-MCP server's status block with a regex for "queued"/"running" while the block
-writes "waiting"/"busy", so it rendered q0 r0 no matter what the queue did.
-
-Waiting counts come from ~/.config/messenger/unreplied.json: one entry per open
-inbound message, each tagged `channel` ("sms" = text, "email" = email).
-"""
 
 from __future__ import annotations
 
@@ -98,8 +84,8 @@ def strip_text() -> str:
 
     segs: List[str] = []
 
-    # Messenger leads: the letter M sits where the cloud icon used to, then one
-    # count per channel. Red with a "!" means something is waiting on a reply.
+
+
     m = d["messaging"]
 
     def waiting(n: int, noun: str) -> str:

@@ -1,7 +1,5 @@
 import type { ExtensionAPI } from "@cortex/coding-agent";
 
-// Repo root = parent of extensions/ — derived, so no user path is hardcoded
-// in the repo (the smoke gate scans public output for /home/user).
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const PY = "python3";
 
@@ -16,14 +14,11 @@ async function runPy(code: string, args: string[]): Promise<string> {
 		});
 		return stdout;
 	} catch (err) {
-		// Never silently swallow memory failures again — log to stderr so the
-		// session log shows why memory injection is missing.
 		process.stderr.write(`[memory-ext] ${err}\n`);
 		return "";
 	}
 }
 
-// API (lib/memory_thin.py): append(content, role="user", *, session=…)
 async function savePrompt(prompt: string): Promise<void> {
 	if (!prompt.trim()) return;
 	await runPy(
@@ -32,8 +27,6 @@ async function savePrompt(prompt: string): Promise<void> {
 	);
 }
 
-// API: read_last(n) — no platform kwarg (that call used to TypeError every time,
-// which silently killed memory injection: session resume had zero memory).
 async function readRecent(n: number): Promise<string> {
 	return runPy(
 		"import json,sys; from lib.memory_thin import read_last; " +
@@ -42,8 +35,6 @@ async function readRecent(n: number): Promise<string> {
 	);
 }
 
-// Append what the agent actually DID this agent run (last assistant text +
-// tool names), so resume knows what happened, not just what was asked.
 async function saveRunSummary(messages: unknown[]): Promise<void> {
 	try {
 		let lastText = "";
@@ -64,12 +55,9 @@ async function saveRunSummary(messages: unknown[]): Promise<void> {
 		const line = `[run] tools: ${tools.slice(-12).join(",") || "none"}\n[run] last output: ${summary}`;
 		await runPy("from lib.memory_thin import append; append(__import__('sys').argv[1], 'assistant')", [line]);
 	} catch {
-		// never block the session on memory writes
 	}
 }
 
-// Legacy hot-memory rows were written with role/content swapped
-// ({"role": <prompt>, "content": "user"}) — normalize on read.
 function formatMemory(raw: string): string {
 	try {
 		const entries = JSON.parse(raw) as Array<{ role?: string; content?: string; timestamp?: string }>;
@@ -100,8 +88,6 @@ export default function memoryExtension(pi: ExtensionAPI): void {
 
 		const memory = formatMemory(await readRecent(40));
 		if (!memory) return;
-		// runner.ts rebuilds systemPrompt fresh per run, so append is safe;
-		// strip any existing block first so re-entry never stacks duplicates.
 		const current = (event.systemPrompt ?? "").replace(
 			/\n\n<recent_memory>[\s\S]*?<\/recent_memory>\n?/g,
 			"",

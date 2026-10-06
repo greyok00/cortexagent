@@ -433,7 +433,7 @@ def _bring_tab_to_front_via_cdp(tab: dict) -> bool:
         return False
 
 def _raise_browser_window() -> bool:
-    # Chromium only (2026-10-02 owner directive: Brave removed from CortexAgent).
+
     for pattern in ("chromium.Chromium", "google-chrome.Google-chrome", "Chromium"):
         try:
             r = subprocess.run(

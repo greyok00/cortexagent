@@ -15,7 +15,10 @@ while [[ $# -gt 0 ]]; do
     --json)        JSON=1; shift ;;
     --watch)       INTERVAL="${2:-2}"; shift 2 ;;
     -h|--help)
-      grep '^#' "$0" | sed 's/^# \?//'
+      printf 'Usage: %s [--json] [--watch SECONDS]\n\n' "$(basename "$0")"
+      printf '  --json          machine-readable health snapshot\n'
+      printf '  --watch SECONDS refresh the snapshot every SECONDS (default 2)\n'
+      printf '  -h, --help      this help\n'
       exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -28,7 +31,7 @@ import sys
 
 want_json = sys.argv[1] == "1"
 
-# Repo + lib on path so `import browser_control` works regardless of cwd.
+
 from pathlib import Path
 import os
 repo = Path(os.environ["CORTEXAGENT_REPO"])
@@ -39,8 +42,8 @@ import browser_control as bc
 
 h = bc.health()
 
-# Add tab count (uses the TTL-cached list_tabs — does not extra-hit /json
-# when called within ~150ms of any other engine call).
+
+
 try:
     tabs = bc.list_tabs()
     h["tab_count"] = len(tabs)
@@ -52,7 +55,7 @@ if want_json:
     print(json.dumps(h, indent=2))
     sys.exit(0 if h.get("cdp_reachable") else 1)
 
-# Human summary — compact, scannable, table-like.
+
 ok = h.get("cdp_reachable")
 marker = "✅" if ok else "❌"
 print(f"{marker} Browser engine  ({h.get('browser', '?')})")

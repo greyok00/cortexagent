@@ -103,15 +103,15 @@ case "${1:-}" in
     cat <<EOF
 cortexagent-siem — SIEM/SOAR bridge wrapper
 
-  cortexagent-siem --test                 # round-trip fake CVE
-  cortexagent-siem --push-recent          # push recent CVEs to SIEM
-  cortexagent-siem --push-hardening       # push hardening snapshot
-  cortexagent-siem --soar-recent          # dry-run SOAR on recent CVEs
-  cortexagent-siem --soar-recent --live   # live: writes firewall_commands.jsonl
-  cortexagent-siem --soar-posture         # dry-run SOAR for hardening fails
-  cortexagent-siem --stats                # SIEM finding counts
-  cortexagent-siem --history 10           # last 10 SOAR playbook runs
-  cortexagent-siem --install-schedule     # register 06:47 SIEM + 06:53 SOAR daily
+  cortexagent-siem --test                 
+  cortexagent-siem --push-recent          
+  cortexagent-siem --push-hardening       
+  cortexagent-siem --soar-recent          
+  cortexagent-siem --soar-recent --live   
+  cortexagent-siem --soar-posture         
+  cortexagent-siem --stats                
+  cortexagent-siem --history 10           
+  cortexagent-siem --install-schedule     
 EOF
     ;;
   *)

@@ -256,7 +256,7 @@ def test_config_user_shared() -> R:
     finally:
         shutil.rmtree(state, ignore_errors=True)
 
-PII_PATTERNS = ["/home/user", "GreyOK00", "fc-", "sk-ant-"]
+PII_PATTERNS = [str(Path.home()), "GreyOK00", "fc-", "sk-ant-"]
 PII_EXCLUDE_DIRS = {".git", "node_modules", "__pycache__", ".cortexagent",
                     ".cortexagent-config", ".cortexagent-test", ".claude",
                     "cortex", "backup", ".backups", ".snapshots",
@@ -868,7 +868,7 @@ def test_overseer_unit_template() -> R:
         return R("overseer unit template exists", "overseer", False, "template missing")
     txt = tpl.read_text(errors="ignore")
     checks = {
-        "no_/home/user": "/home/user" not in txt,
+        "no_home_path": str(Path.home()) not in txt,
         "uses_{{REPO_ROOT}}": "{{REPO_ROOT}}" in txt,
         "no_ollama_Wants": "ollama.service" not in txt,
         "has_DISPLAY": "DISPLAY=" in txt,
@@ -949,7 +949,7 @@ def test_daemon_unit_template() -> R:
         return R("daemon unit template exists", "daemoncfg", False, "template missing")
     txt = tpl.read_text(errors="ignore")
     checks = {
-        "no_/home/user": "/home/user" not in txt,
+        "no_home_path": str(Path.home()) not in txt,
         "uses_{{REPO_ROOT}}": "{{REPO_ROOT}}" in txt,
         "After_overseer": "cortexagent-overseer.service" in txt,
         "Wants_overseer": "Wants=cortexagent-overseer.service" in txt,

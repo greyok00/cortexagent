@@ -75,10 +75,10 @@ case "${1:-}" in
     cat <<EOF
 cortexagent-harden — hardening status wrapper
 
-  cortexagent-harden                       # human summary of all subsystems
-  cortexagent-harden --json                # full JSON snapshot
-  cortexagent-harden --subsystem nftables  # one subsystem JSON
-  cortexagent-harden --install-schedule    # register 07:23 daily + Sun 06:33 nft check
+  cortexagent-harden                       
+  cortexagent-harden --json                
+  cortexagent-harden --subsystem nftables  
+  cortexagent-harden --install-schedule    
   cortexagent-harden --uninstall-schedule
 EOF
     ;;

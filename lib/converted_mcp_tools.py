@@ -104,10 +104,10 @@ class OntologyEngine:
                     cls._instance = cls()
         return cls._instance
 
-# Cold facts are curated and cross-platform: the shared rule store plus each
-# harness's own profile. Hot/warm stay strictly per-platform (transcript).
+
+
 _COLD_PROFILES_STATIC = ("shared", "platform:claude")
-_READ_PREVIEW = 400  # chars per row — hot is a transcript log; keep reads compact
+_READ_PREVIEW = 400
 
 
 def _preview(text, limit: int = _READ_PREVIEW) -> str:
@@ -174,18 +174,18 @@ def memory_write(tier: str, content: str, platform: str = "cortexagent",
 def memory_search(query: str, limit: int = 10) -> dict:
 
     try:
-        # 2026-09-24 fix (agent "no memory" root cause): the old version called
-        # domain_db.search("default", ...) — an empty ontology domain, never the
-        # memory tiers — so every real query returned [] and the agent recalled
-        # nothing (wolflogger IP, creds, share names all lost). Per-token AND
-        # match with an OR fallback ranked by hit count.
-        # 2026-09-26 fixes: (1) the OR fallback bound its hit-count placeholders
-        # in the SELECT *before* the profile placeholder, so a LIKE pattern
-        # landed in the profile filter and every multi-token query returned []
-        # (single-token AND still worked, which masked it) — bind in SQL order:
-        # hits, profile, or-conds, limit. (2) Cold was never scanned — curated
-        # facts (agent_critical_rules etc.) live under 'shared'/'platform:claude'
-        # and were invisible to a platform-scoped warm+hot search.
+
+
+
+
+
+
+
+
+
+
+
+
         import re as _re
         from memory.db import db
         profile = f"platform:{os.environ.get('CORTEXAGENT_PLATFORM', 'cortexagent')}"
@@ -196,8 +196,8 @@ def memory_search(query: str, limit: int = 10) -> dict:
         like_params = [f"%{t}%" for t in tokens]
         results = []
         con = db.reader()
-        # Cold first: curated facts outrank the raw transcript. Memory_Cold's
-        # text column is `fact`, not `content` — build its conditions separately.
+
+
         cold_profiles = (*_COLD_PROFILES_STATIC, profile)
         marks = ",".join("?" for _ in cold_profiles)
         cold_conds = " AND ".join("LOWER(fact) LIKE ?" for _ in tokens)

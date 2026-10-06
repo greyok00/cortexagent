@@ -39,8 +39,8 @@ def _smoke() -> int:
     if f is not None and f <= 0:
         print("❌ free_mib() should be > 0 on a GPU box")
         fails += 1
-    # 2026-09-22: pin one snapshot before deriving anything — live VRAM
-    # shifts between nvidia-smi calls, so un-pinned checks race the machine.
+
+
     globals()["free_mib"] = lambda: f
     b = budget_mib()
     print(f"budget_mib() = {b} (buffer={CFG.vram_buffer_mb})")

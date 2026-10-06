@@ -1,13 +1,5 @@
-/* ──────────────────────────────────────────────────────────
-   THEMES — 12 swappable themes via [data-theme="<slug>"]
-   Each block declares the full token set for that theme.
-   Switch via theme-switcher.js (localStorage + URL hash).
-   ──────────────────────────────────────────────────────────
-*/
 
-/* 1 ── NEUTRAL (default — see tokens.css) ── */
 
-/* 2 ── POLAROID WALL (warm paper, rust accent) ── */
 [data-theme="polaroid"] {
   --el-bg: #faf3e3; --el-panel: #f1e8d0; --el-panel-2: #e8dec2; --el-panel-3: #ddd0a8;
   --el-line: #d4c69b; --el-line-2: #c4b88a; --el-line-strong: #a89868;
@@ -25,7 +17,6 @@
   --el-font-display: 'Space Grotesk', sans-serif;
 }
 
-/* 3 ── COCKPIT PANEL (aviation HMI dark, amber accent) ── */
 [data-theme="cockpit"] {
   --el-bg: #0a1218; --el-panel: #0f1a22; --el-panel-2: #14242e; --el-panel-3: #1a2e3a;
   --el-line: #1c2a36; --el-line-2: #142028; --el-line-strong: #2c3e4e;
@@ -44,7 +35,6 @@
   --el-font-mono: 'JetBrains Mono', 'Courier New', monospace;
 }
 
-/* 4 ── COCKPIT PAPER (warm paper cockpit) ── */
 [data-theme="cockpit-paper"] {
   --el-bg: #1a1814; --el-panel: #252118; --el-panel-2: #2e2a1f; --el-panel-3: #38331f;
   --el-line: #3d3628; --el-line-2: #2d2718; --el-line-strong: #5a4f38;
@@ -61,7 +51,6 @@
   --el-font-display: 'JetBrains Mono', 'Courier New', monospace;
 }
 
-/* 5 ── CONSOLE LOG (GitHub Dark, blue accent) ── */
 [data-theme="console"] {
   --el-bg: #0e1117; --el-panel: #161b22; --el-panel-2: #1c2128; --el-panel-3: #252c36;
   --el-line: #30363d; --el-line-2: #21262d; --el-line-strong: #444c56;
@@ -80,7 +69,6 @@
   --el-font-mono: 'JetBrains Mono', 'SF Mono', monospace;
 }
 
-/* 6 ── COMPACT STAT BLOCK (neutral dark grey, orange accent) ── */
 [data-theme="compact"] {
   --el-bg: #1a1a1a; --el-panel: #252525; --el-panel-2: #2e2e2e; --el-panel-3: #383838;
   --el-line: #3a3a3a; --el-line-2: #2a2a2a; --el-line-strong: #4a4a4a;
@@ -95,7 +83,6 @@
   --el-focus-ring: rgba(255,140,66,.55);
 }
 
-/* 7 ── CASEBOOK NOTEBOOK (cream paper, warm brown accent) ── */
 [data-theme="casebook"] {
   --el-bg: #f5efe0; --el-panel: #ebe2c8; --el-panel-2: #e0d5b0; --el-panel-3: #d4c89a;
   --el-line: #c9b985; --el-line-2: #b9a975; --el-line-strong: #998855;
@@ -112,7 +99,6 @@
   --el-font-display: 'EB Garamond', serif;
 }
 
-/* 8 ── AGENT PAPER (textbook figure, white paper, teal) ── */
 [data-theme="agent-paper"] {
   --el-bg: #ffffff; --el-panel: #f8fafc; --el-panel-2: #e8eef2; --el-panel-3: #cdd8e0;
   --el-line: #cdd8e0; --el-line-2: #aab8c5; --el-line-strong: #5a6b7a;
@@ -129,7 +115,6 @@
   --el-font-display: 'Fraunces', 'Cormorant Garamond', 'Times New Roman', serif;
 }
 
-/* 9 ── AGENT PULSE (dark canvas, breathing pulse, amber) ── */
 [data-theme="agent-pulse"] {
   --el-bg: #0a0d12; --el-panel: #11161e; --el-panel-2: #1d2530; --el-panel-3: #2a3340;
   --el-line: #1d2530; --el-line-2: #11161e; --el-line-strong: #3a4452;
@@ -147,7 +132,6 @@
   --el-font-display: 'Space Grotesk', sans-serif;
 }
 
-/* 10 ── AGENT HISTORY (git-log on warm paper) ── */
 [data-theme="agent-history"] {
   --el-bg: #fafaf7; --el-panel: #f5efe3; --el-panel-2: #ebe3d1; --el-panel-3: #ddd0a8;
   --el-line: #ddd0a8; --el-line-2: #c4b88a; --el-line-strong: #998855;
@@ -165,7 +149,6 @@
   --el-font-mono: 'JetBrains Mono', 'SF Mono', monospace;
 }
 
-/* 11 ── TERMINAL (CRT, pure green-on-black) ── */
 [data-theme="terminal"] {
   --el-bg: #000000; --el-panel: #0a0a0a; --el-panel-2: #141414; --el-panel-3: #1e1e1e;
   --el-line: #1e3a1e; --el-line-2: #142814; --el-line-strong: #2c5a2c;
@@ -184,7 +167,6 @@
   --el-font-mono: 'JetBrains Mono', 'Courier New', monospace;
 }
 
-/* 12 ── SWISS (editorial high-contrast B/W + 1 accent) ── */
 [data-theme="swiss"] {
   --el-bg: #fafafa; --el-panel: #ffffff; --el-panel-2: #f0f0f0; --el-panel-3: #e5e5e5;
   --el-line: #d4d4d4; --el-line-2: #b0b0b0; --el-line-strong: #202020;

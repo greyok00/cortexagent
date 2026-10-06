@@ -30,25 +30,25 @@ RING_SIZE = 200
 POLL_INTERVAL = 1.0
 BRIDGE_POLL = 0.5
 
-# Three writers have produced compression numbers. Only the newest one is worth
-# reporting, and its age has to travel with the numbers: slimtoken was stopped
-# on purpose 2026-09-27 00:11, so whichever file it left behind is frozen at the
-# moment it stopped. Reporting that figure without its age is what made the
-# panel read as "putting in hard numbers" (owner report 2026-09-27).
+
+
+
+
+
 COMPRESSION_SOURCES = (
     ("token_tracker", TOKEN_TRACKER),
     ("slimtoken-local", MINIFY_STATS),
     ("slimtoken", SLIMTOKEN_STATS),
 )
 
-# Older than this and the compression numbers describe a run that has ended.
+
 COMPRESSION_LIVE_WINDOW_S = 600
 
-# The only route vocabulary cortexagent speaks is local/cloud. The retired
-# entry names in this table come from the old two-model size scheme; each is
-# mapped to the lane it stood for and translated on read, so an old record or a
-# replayed bridge line cannot put those words back into the feed (owner request
-# 2026-09-27: route words are local/cloud only).
+
+
+
+
+
 LEGACY_ROUTE_WORDS = {
     "big": "local", "large": "local", "model": "local", "local": "local",
     "onprem": "local", "on-prem": "local",
@@ -67,7 +67,7 @@ def _read_json(path: Path, default=None):
         return default
 
 def _cfg():
-    """The live configuration object, or None when it cannot be imported."""
+
     try:
         from lib.config import CFG
         return CFG
@@ -75,7 +75,7 @@ def _cfg():
         return None
 
 def _active_model_name() -> str:
-    """The model the agent is actually running, as the launcher names it."""
+
     for var in ("CORTEXAGENT_ACTIVE_MODEL", "CLAUDE_MODEL_NAME",
                 "CORTEXAGENT_MODEL_NAME"):
         val = os.environ.get(var)
@@ -87,30 +87,21 @@ def _active_model_name() -> str:
     return ""
 
 def route_for_model(model: str, base_url: str = "") -> str:
-    """Map a model or endpoint onto the two route names: local or cloud.
 
-    A name carrying ``:cloud`` (or pointing at the ollama cloud port 11600) is
-    the cloud lane; anything else served from this machine is the local lane.
-    """
     text = f"{model or ''} {base_url or ''}".strip().lower()
     if ":cloud" in text or "11600" in text:
         return "cloud"
     return "local" if text else "unknown"
 
 def normalize_route(word, model: str = "", base_url: str = "") -> str:
-    """Translate a recorded route word into local/cloud.
 
-    A recorded word is honoured first (the retired vocabulary is translated by
-    LEGACY_ROUTE_WORDS), and only then is the live model consulted, so a route
-    that was genuinely chosen still reads as chosen.
-    """
     w = str(word or "").strip().lower()
     if w in LEGACY_ROUTE_WORDS:
         return LEGACY_ROUTE_WORDS[w]
     return route_for_model(model or w, base_url)
 
 def _newest_source(sources):
-    """The most recently written of `sources` as (name, path, mtime)."""
+
     best = None
     for name, path in sources:
         try:
@@ -122,17 +113,7 @@ def _newest_source(sources):
     return best
 
 def _ledger_age_s(stats: dict, mtime: float) -> float:
-    """How long ago the numbers were written — the ledger's own word first.
 
-    `last_run_ts` is when the writer last ran. A file's mtime is not: these
-    ledgers get rewritten without a new compression (token_tracker.json's total
-    is republished on every restart), so a fresh mtime next to a five-day-old
-    total is exactly the shape that makes a frozen figure look live — it made
-    this snapshot report 37 minutes for a writer that stopped 2026-09-22.
-    Epoch seconds are what token_tracker writes, ISO strings what slimtoken
-    writes, so both are accepted. mtime remains the fallback when the ledger
-    carries no timestamp at all.
-    """
     raw = stats.get("last_run_ts")
     ts = None
     if isinstance(raw, (int, float)) and raw > 0:
@@ -148,9 +129,9 @@ def _ledger_age_s(stats: dict, mtime: float) -> float:
 
 _ALL_STAGES = ("dedup", "distill", "tools", "system", "messages")
 
-# Mirrors slimtoken's profiles.MODES, and only used if slimtoken is not
-# importable from this interpreter — the import below is preferred, because a
-# copy here goes stale the moment a mode's stage list changes.
+
+
+
 _MODE_STAGES_FALLBACK = {
     "code": {"dedup", "distill"},
     "realtime": {"tools", "system", "messages", "dedup", "distill"},
@@ -159,7 +140,7 @@ DEFAULT_MODE = "code"
 
 
 def _mode_stages() -> dict:
-    """Mode name -> the stages that mode turns on, from slimtoken itself."""
+
     try:
         from slimtoken.profiles import MODES
         table = {name: set(m.get("stages") or ()) for name, m in MODES.items()}
@@ -171,21 +152,7 @@ def _mode_stages() -> dict:
 
 
 def _compressor_profile(pid: str) -> dict:
-    """The mode and the rewriting stages a running slimtoken actually has on.
 
-    Read from the process's own environment, not from a unit file: the unit is
-    one of several places a stage can be switched and the process is what is
-    serving. `SLIMTOKEN_MINIFY=0` — or no stage on at all — means the proxy
-    forwards request bodies untouched (proxy._is_fast_path), so a lane can be
-    fronted by slimtoken and still have nothing compressed on it.
-
-    THE MODE SUPPLIES THE DEFAULTS. Reading the MINIFY_* flags with a default of
-    "1" was wrong the moment modes existed: a lane running `code` has tools,
-    system and messages OFF without any of those variables being set anywhere,
-    so the panel reported three stages that were not running. An explicit
-    MINIFY_<STAGE> in the process environment still beats the mode, which is the
-    same precedence slimtoken itself applies.
-    """
     try:
         raw = Path(f"/proc/{pid}/environ").read_bytes().decode("utf-8", "replace")
     except OSError:
@@ -214,22 +181,7 @@ def _compressor_profile(pid: str) -> dict:
 
 
 def _compressor_state(lane: str) -> dict:
-    """Is a compressor actually in the path the agent's traffic takes?
 
-    The panels used to answer "is compression working?" from a runs counter, and
-    a counter only moves when a request passes through a compressor. That is not
-    the same question: the counter is frozen if the compressor is gone, idle, or
-    — the live case on 2026-09-27 — if the agent talks to a lane nothing fronts
-    (traffic goes to llama-server :11599 while slimtoken fronts ollama :11600).
-    So probe the compressor itself, live, and report which of those it is.
-
-    A lane is fronted when a running slimtoken listens ON the lane's port, or
-    when it forwards TO the lane's port — the second case is the lane proxy
-    added 2026-09-27 (slimtoken-lane.service :11598 -> llama-server :11599),
-    where the agent's own base_url is the proxy and the lane port is only ever
-    an upstream. Reading the listen ports alone called that "bypasses
-    slimtoken" while the proxy was serving the agent's traffic.
-    """
     instances = []
     for entry in os.listdir("/proc"):
         if not entry.isdigit():
@@ -273,13 +225,13 @@ def _compressor_state(lane: str) -> dict:
         "ports": ports,
         "upstreams": upstreams,
         "upstream_ports": upstream_ports,
-        # Only the instance that fronts the lane answers for the lane: the two
-        # ollama fronts run with stages on and would otherwise report rewriting
-        # that never touches the agent's traffic.
+
+
+
         "stages": fronting["stages"] if fronting else [],
-        # Which profile that instance runs: `code` (the minimal one, newest turns
-        # untouched) or `realtime` (lossy, for talking to a model). Empty when no
-        # slimtoken is in the path.
+
+
+
         "mode": fronting.get("mode", "") if fronting else "",
         "lane": lane or None,
         "lane_port": lane_port or None,
@@ -287,15 +239,7 @@ def _compressor_state(lane: str) -> dict:
     }
 
 def _compression_snapshot() -> dict:
-    """Compression numbers plus the age, origin, and live state of the numbers.
 
-    `age_s` is how long ago the compressor last ran (see `_ledger_age_s`). When
-    it is large the numbers are a record of a compressor that is no longer
-    running, not live traffic — consumers must say so rather than render them as
-    current. `compressor` says whether one is running at all and whether it is
-    even in the agent's request path, so a frozen counter can be explained
-    instead of just dated.
-    """
     compressor = _compressor_state(_routing_snapshot().get("base_url") or "")
     empty = {
         "runs": 0, "tokens_in": 0, "tokens_out": 0, "tokens_saved": 0,
@@ -308,7 +252,7 @@ def _compression_snapshot() -> dict:
         return empty
     name, path, mtime = picked
     s = _read_json(path, {}) or {}
-    # token_tracker.json has a "total" key wrapping the stats
+
     if "total" in s:
         s = s["total"]
     elif "proxy" in s:
@@ -329,14 +273,7 @@ def _compression_snapshot() -> dict:
     }
 
 def _routing_snapshot() -> dict:
-    """The live route, in local/cloud terms.
 
-    Nothing in this tree writes routing_state.json — its writer, the grammar
-    proxy, was deleted 2026-09-22 — so the route is derived from the model the
-    agent is running instead of being replayed from a frozen file. The recorded
-    state is consulted only for what it still truthfully describes (which mode
-    was selected, and when it was recorded).
-    """
     recorded = _read_json(ROUTING_STATE, {}) or {}
     model = (_active_model_name() or str(recorded.get("model") or "")).strip()
     route = normalize_route(recorded.get("route"), model, "")
@@ -426,9 +363,9 @@ class EventFeed:
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
 
-        # Compression changes on a runs increase OR on the compressor's own state
-        # (started, stopped, in/out of the agent's path) — a counter frozen five
-        # days ago with a compressor that just died is a change consumers need.
+
+
+
         self._last_compression = None
         self._last_routing = None
         self._last_memory_write = None
@@ -492,13 +429,13 @@ class EventFeed:
 
     def _watch_bridge(self) -> None:
 
-        # Start at the END of the bridge. The bridge is an append-only log of
-        # every session message since 2026-08-19, so replaying it from line 0
-        # delivered weeks of stale events to each new client as if they were
-        # current — 815 of those lines carry the retired size-scheme route name,
-        # why the feed kept announcing it (owner report 2026-09-27: "cortexagent
-        # is calling routing=big"). Only lines appended after this process starts
-        # are events.
+
+
+
+
+
+
+
         try:
             if BRIDGE_FILE.exists():
                 with BRIDGE_FILE.open() as f:
@@ -513,9 +450,9 @@ class EventFeed:
                         lines = f.read().splitlines()
                     for idx, line in enumerate(lines[self._bridge_cursor:],
                                                start=self._bridge_cursor):
-                        # Advance past every line examined, parsed or not, so a
-                        # malformed line cannot make the cursor drift and replay
-                        # its neighbours.
+
+
+
                         self._bridge_cursor = idx + 1
                         if not line.strip():
                             continue
@@ -527,8 +464,8 @@ class EventFeed:
                         content = ev.get("content", "")
 
                         if etype == "routing":
-                            # Rebuild from fields, translated to local/cloud —
-                            # the recorded `content` still carries the old word.
+
+
                             route = normalize_route(ev.get("route"), str(ev.get("model") or ""))
                             model = ev.get("model") or ""
                             mode = ev.get("router_mode") or ""
@@ -555,8 +492,8 @@ class EventFeed:
 
         while not self._shutdown.is_set():
 
-            # Watch the same source the snapshot reports, so a change in which
-            # file is newest cannot leave the two disagreeing.
+
+
             m = _compression_snapshot()
             runs = m.get("runs", 0)
             comp = m.get("compressor") or {}
@@ -588,7 +525,7 @@ class EventFeed:
                                "info", {"route": r.get("route"), "model": r.get("model")})
                 self._last_routing = rkey
 
-            # Also watch scheduling (tasks)
+
             ss = _scheduling_snapshot()
             if ss is not None:
                 sskey = (ss.get("task_count", 0), tuple(sorted(ss.get("by_state", {}).items())))

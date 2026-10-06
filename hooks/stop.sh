@@ -41,7 +41,7 @@ with open(path, errors="replace") as fh:
             continue
         last_uuid = d.get("uuid") or ""
         last_text = text
-# uuid cannot contain spaces; space-separate uuid and text for the bash read
+
 print(last_uuid.replace(" ", "_") + " " + last_text[:10000].replace("\n", " "))
 PY
 )"

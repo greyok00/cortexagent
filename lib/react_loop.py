@@ -20,7 +20,7 @@ from lib.output_frame import frame_output
 MAX_STEPS = 8
 TOOL_TIMEOUT = 60
 
-MAX_TOOLS = int(os.environ.get("CORTEXAGENT_MAX_TOOLS", "0") or 0)  # 0 = no cap
+MAX_TOOLS = int(os.environ.get("CORTEXAGENT_MAX_TOOLS", "0") or 0)
 
 STUB_MODE = os.environ.get("CORTEXAGENT_TOOL_STUBS", "1") == "1"
 SOCRATIC_KEYWORDS = (

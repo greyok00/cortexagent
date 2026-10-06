@@ -76,14 +76,14 @@ case "${1:-}" in
     cat <<EOF
 cortexagent-cve — CVE / MITRE threat-intel wrapper
 
-  cortexagent-cve                      # poll last 7d (NVD+KEV+EPSS+GHSA)
-  cortexagent-cve --since=24h          # custom window
-  cortexagent-cve --include-osv        # also query OSV.dev for our pinned deps
+  cortexagent-cve                      
+  cortexagent-cve --since=24h          
+  cortexagent-cve --include-osv        
   cortexagent-cve --lookup CVE-2024-3094
-  cortexagent-cve --mitre T1190        # reverse: CVEs mapped to technique
-  cortexagent-cve --coverage           # MITRE M-code coverage
-  cortexagent-cve --smoke              # offline self-test
-  cortexagent-cve --install-schedule   # register daily cron in overseer
+  cortexagent-cve --mitre T1190        
+  cortexagent-cve --coverage           
+  cortexagent-cve --smoke              
+  cortexagent-cve --install-schedule   
   cortexagent-cve --uninstall-schedule
 EOF
     ;;

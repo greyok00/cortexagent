@@ -157,7 +157,7 @@ def test_overseer_dispatch(i: int) -> Dict:
                 "id": f"test-{i}",
                 "type": "llm",
                 "prompt": f"Test task #{i}: Calculate 2+2 and explain your reasoning.",
-                "system": "You are a helpful assistant.",
+                "system": "Local test dispatcher.",
                 "timeout": 30,
             },
             state=state

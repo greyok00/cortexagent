@@ -1,10 +1,6 @@
-# ── Local install artifacts (templated from *.template with machine paths) ──
 config/mcp.json
 config/settings.json
 
-# ── Memory / runtime data — NEVER commit personal memory ───────────────────
-# These are local-only. The repo ships fresh/empty seed files (memory/seed/),
-# never a user's real memory DBs/logs/sessions.
 *.db
 *.db-shm
 *.db-wal
@@ -20,19 +16,16 @@ memory/cold/
 logs/
 **/logs/
 
-# ── Personal automation scripts — local-only, never published ───────────────
 scripts/coursera_*.py
 scripts/find_captcha_host.py
 scripts/watch_tab_spawner.py
 bin/gpu-mode
 
-# ── CortexLLM vendored runtime artifacts (code is committed, data is not) ──
 cortexllm/*.db
 cortexllm/**/*.db
 cortexllm/**/*.jsonl
 cortexllm/**/*.log
 
-# ── Build / packaging artifacts ─────────────────────────────────────────────
 .cortexagent-config/
 dist/
 build/
@@ -40,10 +33,8 @@ build/
 *.bin
 !bin/cortexagent
 
-# ── Local Claude Code settings (machine-specific permissions) ──────────────
 .claude/settings.local.json
 
-# ── Editor / OS noise ───────────────────────────────────────────────────────
 *.swp
 *.swo
 *.swo
@@ -52,35 +43,28 @@ __pycache__/
 *.so
 *.pyc
 *.pyo
-# ── Local backups — never commit ────────────────────────────────
 *.bak*
 *.bak-ctx*
 *.pre-wolf-*
 .backups/
 .snapshots/
 /.cortex/agent/AGENTS.md
-# ── Session / superpowers metadata — never commit ─────────────
 .SAFETY_QUICK_REF
 .SNAPSHOT_STATUS
 .release-notes.md
 .superpowers/manifest/
 
-# ── Docs / notes — local-only, NEVER re-upload (user HARD rule) ───
 docs/
 prompts/pca_agent.md
 *.bak-merged
 cortex/
 
-# ── Bundled vendor blobs / one-off patch scripts — local-only ───
 three.module.min.js
 addons/controls/OrbitControls.js
 static/
 patch_ub2560.py
 profiles/
 
-# ── Personal one-off research/session scripts (2026-09-21 audit) ────────────
-# Session-mentioned scripts that became code but nothing in cortexagent uses.
-# KEEP LOCALLY — banned from upload. Not deleted (user directive).
 scripts/ingest_*.py
 scripts/e2e_integration.py
 scripts/eval_overseer.py
@@ -97,9 +81,6 @@ three.module.min.js
 patch_ub2560.py
 analysis.txt
 
-# ── Session scratch from the Kali / Wolf / ROM work — local-only ────────────
-# Probe scripts, scans and logs an agent session left in the repo root. KEEP
-# LOCALLY — banned from upload. Not deleted (user directive).
 kernel-*.sh
 kernel-boot.ps1
 kill-kitleftovers.sh
@@ -115,8 +96,5 @@ wolfsave.exe
 scan-raw.txt
 scanlog.txt
 playbook/
-# Windows paths that became literal filenames — a backslash IN the name, not a
-# directory separator. Created by accident, not content: left on disk, kept out
-# of git, and safe to delete by hand.
 RadioLog\\*
 WolfLogger\\*

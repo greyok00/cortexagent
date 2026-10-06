@@ -181,10 +181,10 @@ if os.path.exists(lazy_config):
                 )
     except Exception:
         pass
-# Quiet-SIGINT shim: the TUI's python MCP children share its process group, so
-# a Ctrl+C at the terminal kills each of them mid-call with a KeyboardInterrupt
-# traceback into the operator's terminal (2026-10-02). Wrap every python server
-# (including lazy proxies) so an interrupt exits silently instead.
+
+
+
+
 _shim = os.path.join(repo_root, "lib", "mcp-sigint-shim.py")
 if os.path.exists(_shim):
     for _server in servers.values():
@@ -201,9 +201,9 @@ export CORTEXAGENT_MCP_CONFIG="${CONFIG_DIR}/mcp.json"
 if [ -z "${CORTEXAGENT_MCP_SERVERS:-}" ]; then
   export CORTEXAGENT_MCP_SERVERS="dispatcher,research,rag"
 fi
-# domain-researcher clones are replaced by the single research pipeline
+
 export CORTEXAGENT_DISABLED_TOOLS="${CORTEXAGENT_DISABLED_TOOLS:-add_llm_provider,coding_practices,ingest_domain,rag_query,download,query_llm,memory_clear}"
-# process-skills dir is a dev-workflow artifact, not a runtime tool surface
+
 export CORTEXAGENT_SKILLS_DIR="${CORTEXAGENT_SKILLS_DIR:-/nonexistent-no-skills}"
 
 bash "${HOME}/.cortexllm/scripts/memory-daemon.sh" start 2>/dev/null || true
@@ -253,17 +253,17 @@ trap _on_kill INT TERM HUP
 STEALTH_PID=""
 BROWSER_KIND="${CORTEXAGENT_BROWSER:-chromium}"
 
-# WHO IS ALLOWED TO AUTOSTART A BROWSER (2026-09-27)
-# This defaulted to ON, so a fresh install of cortexagent launched chromium and
-# opened a Google Voice tab on a machine that never asked for one. This launcher
-# is the only PUBLISHED code that can open a browser at all — slimtoken contains
-# no browser code whatsoever — so a careless default here is how an installer who
-# merely wanted token optimization ends up with tabs on their desktop.
-# Now: an explicit CORTEXAGENT_BROWSER_ENABLED always wins. With no explicit
-# value, the browser starts ONLY on a machine that already has a comms-browser
-# config (launcher-config.json, written when the browser profile is set up), so
-# the owner's machine behaves exactly as before while a new machine does nothing
-# until its user opts in.
+
+
+
+
+
+
+
+
+
+
+
 _LAUNCHER_CFG="$HOME/.cortexagent/chromium-profile/launcher-config.json"
 _BROWSER_ENABLED="${CORTEXAGENT_BROWSER_ENABLED:-}"
 if [ -z "${_BROWSER_ENABLED}" ]; then
@@ -272,13 +272,13 @@ fi
 
 if [ "${_BROWSER_ENABLED}" = "1" ]; then
   if ! ss -ltn 2>/dev/null | grep -q ":9223 "; then
-    # 2026-09-27 (owner): "i need it to just open 2 and wait for login only. if
-    # the browser gets closed it should NOT reopen it." The port guard above
-    # only catches a browser that is still RUNNING, so before this every session
-    # start relaunched one the owner had deliberately closed. This marker makes
-    # the autostart ONCE PER BOOT: it records the boot id, so it self-invalidates
-    # on reboot (opens again) while a close inside the same boot is respected.
-    # Force it open now: rm ~/.cortexagent/.browser-autostart
+    
+    
+    
+    
+    
+    
+    
     _BOOT_MARK="$HOME/.cortexagent/.browser-autostart"
     _BOOT_ID="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)"
     if [ -n "${_BOOT_ID}" ] && \
@@ -288,25 +288,25 @@ if [ "${_BROWSER_ENABLED}" = "1" ]; then
     elif [ "${BROWSER_KIND}" = "chromium" ]; then
       CHROMIUM_BIN="${CORTEXAGENT_CHROMIUM_BIN:-$(command -v chromium || command -v chromium-browser || true)}"
       if [ -n "${CHROMIUM_BIN}" ]; then
-        # PROFILE FIX 2026-09-27: this defaulted to $HOME/.cortexagent/chromium-cdp-profile,
-        # a SEPARATE, near-empty profile (no cookies, no history) from the one
-        # bin/chromium-relaunch.sh uses. Result: every automated visit was a logged-out
-        # session, so Google bounced it to accounts.google.com -> workspace.google.com
-        # marketing page, and each retry opened another tab. It also meant no session
-        # history was ever saved and every site demanded 2FA again.
-        # Now read the launcher config so cortexagent and chromium-relaunch.sh share ONE
-        # profile. Precedence: explicit env override > launcher-config.json > known-good dir.
-        # (_LAUNCHER_CFG is set above, before the opt-in test that reads it.)
+        
+        
+        
+        
+        
+        
+        
+        
+        
         _CFG_PROFILE_DIR=""
         if [ -f "${_LAUNCHER_CFG}" ]; then
           _CFG_PROFILE_DIR="$(python3 -c "import json;print(json.load(open('${_LAUNCHER_CFG}')).get('user_data_dir',''))" 2>/dev/null || true)"
         fi
         CHROMIUM_DATA_DIR="${CORTEXAGENT_CHROMIUM_DATA_DIR:-${_CFG_PROFILE_DIR:-$HOME/.browser-automation/chromium-profile}}"
         mkdir -p "${CHROMIUM_DATA_DIR}" "${HOME}/.cortexagent/logs"
-        # HEADLESS DISABLED 2026-09-27 on the owner's instruction. This browser
-        # must never run headless again: a headless instance is invisible, so
-        # leaked tabs accumulate where nobody can see or close them (53 stale
-        # tabs were found on 2026-09-27). Do NOT re-add --headless=new.
+        
+        
+        
+        
         nohup "${CHROMIUM_BIN}" --remote-debugging-port=9223 \
           --remote-allow-origins=* \
           --no-first-run --no-default-browser-check \
@@ -315,8 +315,8 @@ if [ "${_BROWSER_ENABLED}" = "1" ]; then
           > "${HOME}/.cortexagent/logs/chromium-cdp.log" 2>&1 &
         STEALTH_PID=$!
         sleep 1
-        # marker written only after a real launch, so an uninstalled browser
-        # never arms the once-per-boot lock
+        
+        
         printf '%s' "${_BOOT_ID}" > "${_BOOT_MARK}" 2>/dev/null || true
       else
         echo "default browser not installed; skipping CDP session" >&2
@@ -324,7 +324,7 @@ if [ "${_BROWSER_ENABLED}" = "1" ]; then
     fi
   fi
 else
-  # Only when the user never said anything: an explicit 0 is obeyed silently.
+  
   if [ -z "${CORTEXAGENT_BROWSER_ENABLED:-}" ]; then
     echo "comms browser: no browser profile configured on this machine — not opening one." >&2
     echo "  to use the comms browser here, either set up a profile so ${_LAUNCHER_CFG}" >&2
@@ -335,24 +335,24 @@ fi
 export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11436}"
 export no_proxy="127.0.0.1,localhost,.local${no_proxy:+,$no_proxy}"
 
-# WHICH SLIMTOKEN PROFILE THIS SESSION USES (2026-09-27, owner: "there's 2
-# profiles ... coding mode that's lossless [minimal] versus the realtime mode for
-# optimal response time"). `code` is the default and the minimal one: your newest
-# turns and every fenced block reach the model byte-for-byte, and only OLD
-# material is abbreviated, always with a marker saying what was dropped.
-# `realtime` is the lossy one for STT/TTS conversation — never for building.
-# This exports the profile for slimtoken processes started FROM this session
-# (the MCP tools, `slimtoken optimize`, the skill). The lane service itself is a
-# separate systemd unit with its own pins — see the unit, not this line.
+
+
+
+
+
+
+
+
+
 export SLIMTOKEN_MODE="${SLIMTOKEN_MODE:-${CORTEXAGENT_SLIMTOKEN_MODE:-code}}"
 
-# Agent lane → the slimtoken lane proxy (slimtoken-lane.service, :11598 → :11599).
-# 2026-09-27 (owner): "fix it so it doesn't bypass slimtoken." The TS cortex
-# agent reads its provider baseUrl from ~/.cortex/agent/extensions/models.ts,
-# which honours CORTEXAGENT_LOCAL_BASE and defaults to the local model directly
-# (:11599) — that default is exactly what made every compression panel read
-# "bypasses slimtoken". Removing this block restores the direct lane.
-# The probe keeps a dead proxy from bricking the TUI: no answer → go direct.
+
+
+
+
+
+
+
 if curl -sN --max-time 2 http://127.0.0.1:11598/v1/models >/dev/null 2>&1; then
   export CORTEXAGENT_LOCAL_BASE="${CORTEXAGENT_LOCAL_BASE:-http://127.0.0.1:11598/v1}"
 else

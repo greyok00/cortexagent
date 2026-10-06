@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""research/pipeline.py — search, scrape, and deep-research pipeline.
 
-Local-only: SearXNG JSON API first (127.0.0.1:9999 → :8888), firecrawl
-(when a key is present in ~/.cortexagent/research/.env) as a fallback for
-hard-to-fetch pages. Keys are used inside this module's outbound requests
-only and are scrubbed from everything that leaves this process.
-"""
 from __future__ import annotations
 
 import json
@@ -25,7 +19,7 @@ UA = "Mozilla/5.0 (X11; Linux x86_64) CortexAgent-Research/1.0"
 EXCLUDED = set(SITES.get("excluded", []))
 
 
-# ── search ──────────────────────────────────────────────────────────────────
+
 
 def search(query: str, category: str = "general", max_results: int = 12,
            time_range: str = "", language: str = "") -> dict:
@@ -69,10 +63,10 @@ def search(query: str, category: str = "general", max_results: int = 12,
                 "firecrawl": research_keys.has("FIRECRAWL_API_KEY")}}
 
 
-# ── scrape ──────────────────────────────────────────────────────────────────
+
 
 class _Extract(HTMLParser):
-    """Readable-text extractor: drop script/style/nav junk, keep headings."""
+
     _SKIP = {"script", "style", "noscript", "svg", "nav", "footer", "header",
              "aside", "form", "iframe", "button", "select", "template"}
 
@@ -145,7 +139,7 @@ def scrape(url: str, max_chars: int = 20000) -> dict:
                 return {"ok": False, "error": f"non-text content-type: {ctype}",
                         "url": url, "status": status}
     except Exception as e:
-        # firecrawl fallback (key-based, stays in-process)
+
         k = research_keys.get("FIRECRAWL_API_KEY")
         if k:
             fc = _firecrawl_scrape(url, k)
@@ -168,7 +162,7 @@ def scrape(url: str, max_chars: int = 20000) -> dict:
 
 def _firecrawl_scrape(url: str, key: str) -> dict | None:
     try:
-        import httpx  # local dep for the fallback lane only
+        import httpx
         r = httpx.post(
             "https://api.firecrawl.dev/v1/scrape",
             headers={"Authorization": f"Bearer {key}"},
@@ -190,11 +184,11 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
 
 
-# ── deep pipeline ───────────────────────────────────────────────────────────
+
 
 def deep(question: str, categories: list[str] | None = None,
          max_pages: int = 8, max_chars_per_page: int = 8000) -> dict:
-    """Search → select diverse domains → scrape → extract → cited brief."""
+
     cats = categories or _pick_categories(question)
     search_plan: list[dict] = []
     pool: dict[str, dict] = {}
@@ -207,7 +201,7 @@ def deep(question: str, categories: list[str] | None = None,
             for r in s["results"]:
                 pool.setdefault(r["url"], r)
 
-    # primary-tier first, then secondary; cap pages per domain for diversity
+
     def rank(r: dict) -> tuple[int, int]:
         return (0 if r["tier"] == "primary" else 1 if r["tier"] == "secondary" else 2,
                 -len(r["snippet"]))
@@ -267,7 +261,7 @@ _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9])")
 
 
 def _extract_facts(question: str, pages: list[dict]) -> list[dict]:
-    """Keyword-overlap sentence extraction with per-fact source attribution."""
+
     q_terms = {w for w in re.findall(r"[a-z]{4,}", question.lower())}
     facts: list[dict] = []
     for p in pages:
@@ -282,7 +276,7 @@ def _extract_facts(question: str, pages: list[dict]) -> list[dict]:
             if score >= 2:
                 facts.append({"text": s, "source_url": p["url"],
                               "source_domain": p["domain"], "tier": p["tier"]})
-    # dedupe near-identical sentences, merge sources per fact text
+
     merged: dict[str, dict] = {}
     for f in facts:
         key = f["text"][:120]

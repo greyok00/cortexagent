@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""CortexAgent stealth browser worker.
 
-Patchright + Chrome-channel stack that:
-
-  * Patches CDP Runtime.enable leak at the binary level (anti-bot bypass)
-  * Uses the user's regular persistent chromium profile — the same session
-    with active logins, never a fresh or private profile
-  * Spins up on demand via `chromium --remote-debugging-port=9223`
-  * Lets multiple sub-agents share tabs through one persistent context
-  * Applies the cortexagent/stealth init script (fingerprint spoof)
-  * Adds anti-throttling flags so background tabs don't get suspended
-
-This is intentionally separate from the main TUI / daemon so the user can
-run an all-night clickworker / scraper on it without affecting the chat
-session.
-
-NOTE: as of 2026-08-28 the integration into CortexAgent's TUI/MCP is NOT
-done yet — the user paused that work. Keep this file standalone and
-expose only the simple `run / connect / shutdown` surface until the
-integration lands.
-"""
 
 from __future__ import annotations
 
@@ -38,7 +18,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 USER_DATA_DIR = Path.home() / ".config" / "chromium"
 CHROME_BIN = os.environ.get("CORTEX_STEALTH_CHROME", "/usr/bin/chromium")
-# :9223 is the ONE CDP port CortexAgent uses (owner layout 2026-10-02).
+
 CDP_PORT = int(os.environ.get("CORTEX_STEALTH_CDP_PORT", "9223"))
 CDP_URL = f"http://127.0.0.1:{CDP_PORT}"
 
@@ -94,9 +74,9 @@ def start_chrome(display: Optional[str] = None,
                  port: int = CDP_PORT,
                  background: bool = True,
                  extra_args: Optional[list[str]] = None) -> subprocess.Popen:
-    # Regular persistent session mode (owner 2026-10-02: NOT headless): prefer
-    # the real display this process inherited, so the window is visible and
-    # shares the desktop. Xvfb is only a fallback when no real display exists.
+
+
+
     if display is None:
         display = os.environ.get("DISPLAY") or ":99"
     if display == ":99":
@@ -144,10 +124,10 @@ def start_chrome(display: Optional[str] = None,
 def stop_chrome() -> bool:
     killed = False
     for sig in ("TERM", "KILL"):
-        # Port-specific on purpose (2026-10-02): a bare
-        # "chromium.*--remote-debugging-port" pattern would also match the
-        # owner's own Firefox debug instance (:9222), so a broad stop would
-        # kill that too. Only ever match this worker's own port, :9223.
+
+
+
+
         r = subprocess.run(["pkill", f"-{sig}", "-f",
                             f"chromium.*--remote-debugging-port={CDP_PORT}"],
                            capture_output=True)

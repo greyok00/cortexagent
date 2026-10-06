@@ -19,7 +19,7 @@ MAX_TOOL_OUTPUT = None
 
 TOOLS: Dict[str, Dict[str, Any]] = {}
 
-# CORTEXAGENT_DISABLED_TOOLS: csv of tool names the model must never see/call.
+
 _DISABLED: set = {s.strip() for s in os.environ.get("CORTEXAGENT_DISABLED_TOOLS", "").split(",") if s.strip()}
 
 def register_tool(name: str, schema: Dict[str, Any], handler: Callable,

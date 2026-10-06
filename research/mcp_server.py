@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""research — MCP stdio server. Real research mode for cortexagent.
 
-Tools: research_search, research_scrape, research_deep, research_sites.
-Local-first: SearXNG on 127.0.0.1, scraper keys from a chmod-600 env file,
-keys never appear in tool results (see keys.py redact()).
-Register: python3 ~/cortexagent/research/mcp_server.py  (stdio, ~/.mcp.json)
-"""
 import json
 import sys
 import traceback
