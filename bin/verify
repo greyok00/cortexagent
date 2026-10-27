@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+REPO="$(pwd)"
+
+ok()  { printf "✅ %-32s %s\n" "$1" "$2"; }
+fail(){ printf "❌ %-32s %s\n" "$1" "$2"; }
+trap 'echo "=== verify ABORTED ==="; exit 1' INT TERM
+
+ANY=0
+
+echo "── Layer 0: native build state ──"
+python3 tools/build_opt.py --check 2>/dev/null | sed 's/^/  /'
+
+echo "── Layer 1: manifest drift ──"
+python3 tools/build_manifest.py >/dev/null 2>&1
+if python3 tools/verify_manifest.py --quiet; then
+  ok "manifest" "no drift"
+else
+  fail "manifest" "DRIFT PERSISTS AFTER REBUILD — check tools/verify_manifest.py"
+  ANY=1
+fi
+
+echo "── Layer 2: doc-vs-code contract ──"
+if python3 tools/contract_test.py --quiet 2>/dev/null \
+   || python3 tools/contract_test.py >/dev/null; then
+  ok "contract" "doc matches code"
+else
+  fail "contract" "DOC GAP — see tools/contract_test.py"
+  ANY=1
+fi
+
+echo "── Layer 3: smoke harness (--no-live) ──"
+if python3 tools/smoke_all.py --no-live >/tmp/smoke_all.log 2>&1; then
+  ok "smoke" "all layers green"
+else
+  fail "smoke" "see /tmp/smoke_all.log"
+  ANY=1
+  tail -30 /tmp/smoke_all.log | sed 's/^/    /'
+fi
+
+echo "── Layer 4: feature catalog ──"
+if python3 tools/verify_feature_catalog.py --quiet 2>/dev/null \
+   || python3 tools/verify_feature_catalog.py >/dev/null; then
+  ok "feature-catalog" "all features reachable"
+else
+  fail "feature-catalog" "FEATURE MISSING — see tools/verify_feature_catalog.py"
+  ANY=1
+fi
+
+echo "── Layer 5: model package ──"
+if python3 - "$HOME/.cortex/agent/models.json" <<'PYEOF'
+import json, sys
+try:
+    m = json.load(open(sys.argv[1]))
+    assert isinstance(m.get("providers", {}), dict), "providers must be an object"
+except Exception as e:
+    print("models.json check failed: %s" % e, file=sys.stderr)
+    sys.exit(1)
+PYEOF
+then
+  ok "models-json" "parses"
+else
+  fail "models-json" "model registration drifted — see layer-5 check"
+  ANY=1
+fi
+
+
+
+_mp=$(grep -E '^model_path' "$HOME/.cortexagent/cortexagent.conf" 2>/dev/null \
+      | cut -d= -f2 | xargs)
+if [ -n "$_mp" ]; then
+  if [ -f "$_mp" ]; then
+    ok "server-model" "conf serves local model (${_mp##*/})"
+  else
+    fail "server-model" "model_path set but GGUF missing: ${_mp}"
+    ANY=1
+  fi
+else
+  ok "server-model" "no local model in conf — cloud-only"
+fi
+echo
+if [ "$ANY" = "0" ]; then
+  echo "=== verify PASS ==="
+else
+  echo "=== verify FAIL ==="
+fi
+exit "$ANY"

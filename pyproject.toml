@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cortexagent"
+version = "0.8.0"
+description = "A minimal, local-first agent harness: reasoning loop, one NJSON memory file, token compression, and a control socket. Domain tools live in external MCP servers."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+[project.scripts]
+cortexagent = "engine.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/greyok00/cortexagent"
+Repository = "https://github.com/greyok00/cortexagent"
+Issues = "https://github.com/greyok00/cortexagent/issues"
+
+[tool.setuptools.packages.find]
+include = ["lib*", "engine*", "memory*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.so", "*.png", "*.css", "*.json", "*.txt"]

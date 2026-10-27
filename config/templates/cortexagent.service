@@ -1,0 +1,15 @@
+[Unit]
+Description=CortexAgent persistent backend daemon (control socket + session tracking)
+Documentation=https://github.com/greyok00/cortexagent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={{PYTHON}} {{REPO_ROOT}}/lib/daemon.py run
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+Environment=CORTEXAGENT_REPO={{REPO_ROOT}}
+
+[Install]
+WantedBy=default.target

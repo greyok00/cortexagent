@@ -1,0 +1,395 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
+
+if [ $# -gt 0 ] && { [ "$1" = "--restart" ] || [ "$1" = "restart" ]; }; then
+  echo "🔄 Restarting CortexAgent daemon..."
+  systemctl --user restart cortexagent.service || { echo "❌ daemon restart failed" >&2; exit 1; }
+  _up=0
+  for _i in $(seq 1 30); do
+    if python3 "$REPO_ROOT/lib/control.py" 2>/dev/null | grep -q "daemon present: True"; then _up=1; break; fi
+    sleep 1
+  done
+  if [ "$_up" != "1" ]; then echo "❌ daemon control socket not up after 30s" >&2; exit 1; fi
+  echo "✅ Restart complete — daemon up"
+  exit 0
+fi
+
+if [ $# -gt 0 ] && { [ "$1" = "--claude" ] || [ "$1" = "claude" ]; }; then
+  shift
+  _CLAUDE_BIN=""
+  for _candidate in \
+    "$HOME/.local/bin/claude" \
+    "$HOME/.openclaw/bin/claude" \
+    $(ls -d $HOME/.nvm/versions/node/*/bin/claude 2>/dev/null | tail -1) \
+    "$(command -v claude 2>/dev/null)"; do
+    if [ -n "$_candidate" ] && [ -x "$_candidate" ]; then
+      _CLAUDE_BIN="$_candidate"
+      break
+    fi
+  done
+  if [ -z "$_CLAUDE_BIN" ]; then
+    echo "❌ --claude: upstream claude binary not found" >&2
+    exit 1
+  fi
+  export CLAUDE_CONFIG_DIR="${HOME}/.claude"
+  printf '\033]0;CortexAgent (claude)\007'
+  exec "$_CLAUDE_BIN" "$@"
+fi
+
+CORTEX_FAMILY_SERVICES="cortexagent.service cortexagent-stealth-chrome.service"
+systemctl --user start $CORTEX_FAMILY_SERVICES 2>/dev/null || true
+for _i in 1 2 3 4 5 6 7 8 9 10; do
+  python3 "$REPO_ROOT/lib/control.py" 2>/dev/null | grep -q "daemon present: True" && break
+  sleep 1
+done
+_clear_stale_locks() {
+  for lf in /tmp/cortexagent-cdp.lock; do
+    if [ -f "$lf" ]; then
+      age=$(( $(date +%s) - $(stat -c %Y "$lf" 2>/dev/null || echo 0) ))
+      if [ "$age" -gt 120 ]; then rm -f "$lf"
+        echo "[launcher] cleared stale lock $lf (age ${age}s)" >&2
+      fi
+    fi
+  done
+}
+_clear_stale_locks
+
+_MODEL_PID=""
+_start_model() {
+  local _p
+  _p="$(pgrep -f 'llama-server.*--port 11599' 2>/dev/null | head -1 || true)"
+  if [ -n "${_p}" ] && grep -q cortexagent-model "/proc/${_p}/cgroup" 2>/dev/null; then
+    kill "${_p}" 2>/dev/null || true
+    for _i in $(seq 1 15); do
+      [ -z "$(pgrep -f 'llama-server.*--port 11599' 2>/dev/null)" ] && break
+      sleep 1
+    done
+  fi
+  _p="$(pgrep -f 'llama-server.*--port 11599' 2>/dev/null | head -1 || true)"
+  if [ -z "${_p}" ]; then
+    eval "$(LD_LIBRARY_PATH= /usr/bin/python3 "$REPO_ROOT/lib/config.py" local 2>/dev/null || true)"
+    [ -n "${CORTEXAGENT_MODEL:-}" ] || CORTEXAGENT_MODEL="$HOME/models/Qwen3.6-35B-A3B-Q4_K_M.gguf"
+    [ -f "${CORTEXAGENT_MODEL}" ] || { echo "[launcher] model not found: ${CORTEXAGENT_MODEL}" >&2; return 0; }
+    mkdir -p "${HOME}/.cortexagent/logs"
+    for _ctx in 131072 98304 73728 49152; do
+      python3 "$REPO_ROOT/scripts/pdeathspawn.py" \
+        env LD_LIBRARY_PATH="${CORTEXAGENT_LLAMA_DIR:-$HOME/llama.cpp/build}" \
+        "${CORTEXAGENT_LLAMA_DIR:-$HOME/llama.cpp/build}/llama-server" \
+        -m "${CORTEXAGENT_MODEL}" -c "${_ctx}" -fa on -ctk q4_0 -ctv q4_0 \
+        -np 1 -b 2048 -ub 1024 --kv-unified --host 127.0.0.1 --port 11599 \
+        --alias cortexagent >> "${HOME}/.cortexagent/logs/llama-server.log" 2>&1 &
+      _MODEL_PID=$!
+      for _i in $(seq 1 190); do
+        kill -0 "${_MODEL_PID}" 2>/dev/null || break
+        curl -s --max-time 2 http://127.0.0.1:11599/health 2>/dev/null | grep -q '"status":"ok"' && break
+        sleep 1
+      done
+      curl -s --max-time 2 http://127.0.0.1:11599/health 2>/dev/null | grep -q '"status":"ok"' && break
+      kill "${_MODEL_PID}" 2>/dev/null || true
+      wait "${_MODEL_PID}" 2>/dev/null || true
+      _MODEL_PID=""
+    done
+  fi
+  if curl -s --max-time 2 http://127.0.0.1:11599/health 2>/dev/null | grep -q '"status":"ok"'; then
+    python3 "$REPO_ROOT/scripts/pdeathspawn.py" \
+      python3 "$REPO_ROOT/scripts/warm_model.py" >/dev/null 2>&1 || true
+  fi
+}
+_start_model
+
+WELCOME_SCREEN="${CORTEXAGENT_WELCOME_SCREEN:-hidden}"
+for arg in "$@"; do
+  case "$arg" in
+    --welcome-screen=*) WELCOME_SCREEN="${arg#--welcome-screen=}" ;;
+    --welcome-screen)   WELCOME_SCREEN="hidden" ;;
+  esac
+done
+
+_AGENT_SETTINGS="${HOME}/.cortex/agent/settings.json"
+python3 - "$_AGENT_SETTINGS" <<'PY'
+import json, sys
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+data["defaultProvider"] = "cortex-local"
+data["defaultModel"] = "cortexagent"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+
+AGENT_CLI="${CORTEXAGENT_CLI:-cortex}"
+export CORTEX_OFFLINE=1
+export CORTEX_QUIET=1
+
+CONFIG_DIR="${CORTEXAGENT_CONFIG_DIR:-$HOME/.cortexagent-config}"
+mkdir -p "${CONFIG_DIR}"
+[ -f "${REPO_ROOT}/config/settings.json" ] || { echo "missing ${REPO_ROOT}/config/settings.json — run ${REPO_ROOT}/install.sh" >&2; exit 1; }
+if [ -f "${REPO_ROOT}/config/settings.json.template" ]; then
+  sed -e "s|{{HOME}}|${HOME}|g" "${REPO_ROOT}/config/settings.json.template" > "${CONFIG_DIR}/settings.json"
+fi
+
+FIRECRAWL_ENABLED="${CORTEXAGENT_FIRECRAWL_ENABLED:-1}"
+BROWSER_MCP_ENABLED="${CORTEXAGENT_BROWSER_MCP_ENABLED:-1}"
+MEMORY_CMD="python3 ${REPO_ROOT}/memory/mcp_server.py"
+python3 - "${REPO_ROOT}" "${CONFIG_DIR}" "${MEMORY_CMD}" "${FIRECRAWL_ENABLED}" "${BROWSER_MCP_ENABLED}" <<'PY'
+import json, os, sys
+repo_root, config_dir, memory_cmd, fire_enabled, browser_mcp_enabled = sys.argv[1:6]
+def _split(cmd):
+    parts = cmd.split()
+    return {"command": parts[0], "args": parts[1:]} if len(parts) > 1 else {"command": cmd}
+servers = {}
+_mem_script = memory_cmd.split()[-1] if memory_cmd else ""
+if _mem_script and os.path.exists(_mem_script):
+    servers["cortexagent"] = _split(memory_cmd)
+if fire_enabled == "1":
+    servers["firecrawl"] = _split(f"python3 {os.path.join(repo_root, 'lib', 'firecrawl_proxy.py')}")
+if browser_mcp_enabled == "1":
+    venv_python = os.path.expanduser("~/.cortexagent/venv/bin/python3")
+    if not os.path.exists(venv_python):
+        venv_python = "python3"
+    servers["patchright_chrome"] = _split(f"{venv_python} {os.path.join(repo_root, 'lib', 'patchright_chrome_mcp.py')}")
+for _name, _cmd in (
+    ("dispatcher", os.path.expanduser("~/dispatcher/server.py")),
+    ("workers", os.path.expanduser("~/workers/mcp-server.py")),
+):
+    if os.path.exists(_cmd):
+        servers[_name] = _split(f"python3 {_cmd}")
+lazy_config = os.path.expanduser("~/.cortexagent/config/lazy_mcp_servers.json")
+if os.path.exists(lazy_config):
+    try:
+        for entry in json.load(open(lazy_config)):
+            name = entry.get("name")
+            cmd = entry.get("command", [])
+            if isinstance(cmd, list):
+                cmd = " ".join(cmd)
+            if name and cmd:
+                servers[f"lazy_{name}"] = _split(
+                    f"python3 {os.path.join(repo_root, 'lib', 'lazy_mcp_proxy.py')} --name {name}",
+                )
+    except Exception:
+        pass
+
+
+
+
+_shim = os.path.join(repo_root, "lib", "mcp-sigint-shim.py")
+if os.path.exists(_shim):
+    for _server in servers.values():
+        if os.path.basename(_server["command"]).startswith("python"):
+            _server["args"] = [_shim, *_server["args"]]
+mcp = {"mcpServers": servers}
+with open(os.path.join(config_dir, "mcp.json"), "w") as f:
+    json.dump(mcp, f, indent=2)
+    f.write("\n")
+PY
+
+export CLAUDE_CONFIG_DIR="${CONFIG_DIR}"
+export CORTEXAGENT_MCP_CONFIG="${CONFIG_DIR}/mcp.json"
+if [ -z "${CORTEXAGENT_MCP_SERVERS:-}" ]; then
+  export CORTEXAGENT_MCP_SERVERS="dispatcher"
+fi
+
+export CORTEXAGENT_DISABLED_TOOLS="${CORTEXAGENT_DISABLED_TOOLS:-add_llm_provider,coding_practices,ingest_domain,rag_query,download,query_llm,memory_clear}"
+
+export CORTEXAGENT_SKILLS_DIR="${CORTEXAGENT_SKILLS_DIR:-/nonexistent-no-skills}"
+
+
+_CLEANUP_DONE=0
+_KILLED=0
+cleanup() {
+  [ "${_CLEANUP_DONE}" = 1 ] && return
+  _CLEANUP_DONE=1
+  trap '' INT TERM
+  if [ -n "${STEALTH_PID:-}" ] && kill -0 "${STEALTH_PID}" 2>/dev/null; then
+    kill "${STEALTH_PID}" 2>/dev/null || true
+    wait "${STEALTH_PID}" 2>/dev/null || true
+  fi
+  if [ -n "${_MODEL_PID:-}" ] && kill -0 "${_MODEL_PID}" 2>/dev/null; then
+    kill "${_MODEL_PID}" 2>/dev/null || true
+    wait "${_MODEL_PID}" 2>/dev/null || true
+  fi
+  python3 - <<'PYSCRUB' 2>/dev/null || true
+import json, urllib.request
+try:
+    r = urllib.request.urlopen("http://127.0.0.1:11600/api/ps", timeout=3)
+    for m in json.loads(r.read()).get("models", []):
+        name = m.get("name")
+        if name:
+            urllib.request.urlopen(urllib.request.Request(
+                "http://127.0.0.1:11600/api/generate",
+                data=json.dumps({"model": name, "keep_alive": 0}).encode(),
+                headers={"Content-Type": "application/json"}), timeout=10)
+except Exception:
+    pass
+PYSCRUB
+  python3 -c "import sys; sys.path.insert(0,'$REPO_ROOT'); from lib import control; \
+control.send_request('session-end', timeout=5)" 2>/dev/null || true
+  systemctl --user stop $CORTEX_FAMILY_SERVICES 2>/dev/null || true
+}
+
+_on_kill() {
+  _KILLED=1
+  cleanup
+  exit 130
+}
+trap cleanup EXIT PIPE
+trap _on_kill INT TERM HUP
+
+STEALTH_PID=""
+BROWSER_KIND="${CORTEXAGENT_BROWSER:-chromium}"
+
+
+
+
+
+
+
+
+
+
+
+
+_LAUNCHER_CFG="$HOME/.cortexagent/chromium-profile/launcher-config.json"
+_BROWSER_ENABLED="${CORTEXAGENT_BROWSER_ENABLED:-}"
+if [ -z "${_BROWSER_ENABLED}" ]; then
+  if [ -f "${_LAUNCHER_CFG}" ]; then _BROWSER_ENABLED=1; else _BROWSER_ENABLED=0; fi
+fi
+
+if [ "${_BROWSER_ENABLED}" = "1" ]; then
+  if ! ss -ltn 2>/dev/null | grep -q ":9223 "; then
+    
+    
+    
+    
+    
+    
+    
+    _BOOT_MARK="$HOME/.cortexagent/.browser-autostart"
+    _BOOT_ID="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)"
+    if [ -n "${_BOOT_ID}" ] && \
+       [ "$(cat "${_BOOT_MARK}" 2>/dev/null || true)" = "${_BOOT_ID}" ]; then
+      echo "CortexAgent browser already opened this boot and is now closed — leaving it closed" >&2
+      echo "  (open it now: rm ${_BOOT_MARK}, then start cortexagent)" >&2
+    elif [ "${BROWSER_KIND}" = "chromium" ]; then
+      CHROMIUM_BIN="${CORTEXAGENT_CHROMIUM_BIN:-$(command -v chromium || command -v chromium-browser || true)}"
+      if [ -n "${CHROMIUM_BIN}" ]; then
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        _CFG_PROFILE_DIR=""
+        if [ -f "${_LAUNCHER_CFG}" ]; then
+          _CFG_PROFILE_DIR="$(python3 -c "import json;print(json.load(open('${_LAUNCHER_CFG}')).get('user_data_dir',''))" 2>/dev/null || true)"
+        fi
+        CHROMIUM_DATA_DIR="${CORTEXAGENT_CHROMIUM_DATA_DIR:-${_CFG_PROFILE_DIR:-$HOME/.browser-automation/chromium-profile}}"
+        mkdir -p "${CHROMIUM_DATA_DIR}" "${HOME}/.cortexagent/logs"
+        
+        
+        
+        
+        nohup "${CHROMIUM_BIN}" --remote-debugging-port=9223 \
+          --remote-allow-origins=* \
+          --no-first-run --no-default-browser-check \
+          --user-data-dir="${CHROMIUM_DATA_DIR}" \
+          --start-maximized \
+          > "${HOME}/.cortexagent/logs/chromium-cdp.log" 2>&1 &
+        STEALTH_PID=$!
+        sleep 1
+        
+        
+        printf '%s' "${_BOOT_ID}" > "${_BOOT_MARK}" 2>/dev/null || true
+      else
+        echo "default browser not installed; skipping CDP session" >&2
+      fi
+    fi
+  fi
+else
+  
+  if [ -z "${CORTEXAGENT_BROWSER_ENABLED:-}" ]; then
+    echo "comms browser: no browser profile configured on this machine — not opening one." >&2
+    echo "  to use the comms browser here, either set up a profile so ${_LAUNCHER_CFG}" >&2
+    echo "  exists, or opt in explicitly: export CORTEXAGENT_BROWSER_ENABLED=1" >&2
+  fi
+fi
+
+export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11436}"
+export no_proxy="127.0.0.1,localhost,.local${no_proxy:+,$no_proxy}"
+
+
+
+
+
+
+
+
+
+
+export SLIMTOKEN_MODE="${SLIMTOKEN_MODE:-${CORTEXAGENT_SLIMTOKEN_MODE:-code}}"
+
+
+
+
+
+
+
+
+if curl -sN --max-time 2 http://127.0.0.1:11598/v1/models >/dev/null 2>&1; then
+  export CORTEXAGENT_LOCAL_BASE="${CORTEXAGENT_LOCAL_BASE:-http://127.0.0.1:11598/v1}"
+else
+  echo "slimtoken lane proxy :11598 not answering — using the local model directly" >&2
+fi
+unset no_proxy_bypass 2>/dev/null || true
+
+export CLAUDE_MODEL_NAME="cortexagent"
+export CLAUDE_CODE_SUBAGENT_MODEL="cortexagent"
+
+unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
+unset CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN 2>/dev/null || true
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="131072"
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW="131072"
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS="64000"
+unset CLAUDE_AUTOCOMPACT_PCT_OVERRIDE 2>/dev/null || true
+export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=90
+
+unset ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
+
+if [ "${CORTEXAGENT_ALT_SCREEN:-1}" = "0" ]; then
+  export CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1
+else
+  unset CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN 2>/dev/null || true
+fi
+if [ "${WELCOME_SCREEN}" = "full" ]; then
+  unset IS_DEMO 2>/dev/null || true
+else
+  export IS_DEMO=1
+fi
+export CLAUDE_CODE_DISABLE_UPDATE=1
+export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
+printf '\033]0;Cortex\007'
+
+python3 "${REPO_ROOT}/lib/banner.py" --model "$(basename "${CORTEXAGENT_MODEL:-}" .gguf 2>/dev/null)" 2>/dev/null || true
+cd "${REPO_ROOT}"
+FILTERED_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --welcome-screen|--welcome-screen=*) ;;
+    *) FILTERED_ARGS+=("$arg") ;;
+  esac
+done
+
+${AGENT_CLI} "${FILTERED_ARGS[@]}"
+echo "cortex session ended — cleaning up..."
+cleanup

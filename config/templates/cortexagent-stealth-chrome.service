@@ -1,0 +1,28 @@
+[Unit]
+Description=CortexAgent stealth Chrome (Patchright/Chrome + CDP on :9223)
+Documentation=https://github.com/greyok00/cortexagent
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart={{CHROME}} \
+  --remote-debugging-port={{CDP_PORT}} \
+  --remote-debugging-address=127.0.0.1 \
+  --user-data-dir={{USER_DATA_DIR}} \
+  --disable-blink-features=AutomationControlled \
+  --disable-background-timer-throttling \
+  --disable-backgrounding-occluded-windows \
+  --disable-renderer-backgrounding \
+  --disable-ipc-flooding-protection \
+  --no-first-run \
+  --no-default-browser-check \
+  --no-sandbox \
+  about:blank
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+Environment=DISPLAY={{DISPLAY}}
+Environment=XAUTHORITY=%h/.Xauthority
+
+[Install]
+WantedBy=graphical-session.target

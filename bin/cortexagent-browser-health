@@ -1,0 +1,89 @@
+#!/bin/bash
+
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
+
+PY="${PYTHON:-python3}"
+
+INTERVAL="0"
+JSON=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json)        JSON=1; shift ;;
+    --watch)       INTERVAL="${2:-2}"; shift 2 ;;
+    -h|--help)
+      printf 'Usage: %s [--json] [--watch SECONDS]\n\n' "$(basename "$0")"
+      printf '  --json          machine-readable health snapshot\n'
+      printf '  --watch SECONDS refresh the snapshot every SECONDS (default 2)\n'
+      printf '  -h, --help      this help\n'
+      exit 0 ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+_snapshot() {
+  "$PY" - "$JSON" <<'PYEOF'
+import json
+import sys
+
+want_json = sys.argv[1] == "1"
+
+
+from pathlib import Path
+import os
+repo = Path(os.environ["CORTEXAGENT_REPO"])
+sys.path.insert(0, str(repo))
+sys.path.insert(0, str(repo / "lib"))
+
+import browser_control as bc
+
+h = bc.health()
+
+
+
+try:
+    tabs = bc.list_tabs()
+    h["tab_count"] = len(tabs)
+except Exception as e:
+    h["tab_count"] = None
+    h["tabs_error"] = str(e)[:120]
+
+if want_json:
+    print(json.dumps(h, indent=2))
+    sys.exit(0 if h.get("cdp_reachable") else 1)
+
+
+ok = h.get("cdp_reachable")
+marker = "✅" if ok else "❌"
+print(f"{marker} Browser engine  ({h.get('browser', '?')})")
+print(f"  reachable: {'yes' if ok else 'NO'}")
+if not ok:
+    print(f"  error:     {h.get('error', h.get('cdp_error', '?'))}")
+print(f"  uptime:    {h.get('uptime_sec', 0):.1f}s")
+print(f"  tabs:      {h.get('tab_count', '?')}")
+print()
+print(f"  calls:       {h.get('calls', 0)}")
+print(f"  reconnects:  {h.get('reconnects', 0)}")
+print(f"  retries:     {h.get('retries', 0)}")
+print(f"  failures:    {h.get('failures', 0)}")
+print(f"  /json hits:  {h.get('json_fetches', 0)}")
+print(f"  cached_ws:   {h.get('cached_sockets', 0)}")
+print(f"  last_call:   {h.get('last_call_ms', 0):.1f}ms")
+sys.exit(0 if ok else 1)
+PYEOF
+}
+
+if [[ "$INTERVAL" == "0" ]]; then
+  _snapshot
+else
+  trap 'echo; exit 0' INT
+  while true; do
+    clear 2>/dev/null || true
+    echo "── cortexagent-browser-health (every ${INTERVAL}s, Ctrl-C to stop) ──"
+    _snapshot || true
+    sleep "$INTERVAL"
+  done
+fi

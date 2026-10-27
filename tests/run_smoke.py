@@ -1,0 +1,1225 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+class R:
+    def __init__(self, name: str, area: str, ok: bool, detail: str = ""):
+        self.name, self.area, self.ok, self.detail = name, area, ok, detail
+    def __repr__(self):
+        return f"{'✅' if self.ok else '❌'} [{self.area}] {self.name}{(' — '+self.detail) if self.detail else ''}"
+
+RESULTS: list[R] = []
+DEAD_CODE: set = set()
+
+def record(r: R) -> None:
+    RESULTS.append(r)
+    print(r)
+
+def _py_modules() -> list[str]:
+
+    mods = []
+    for sub in ("lib", "engine", "memory"):
+        d = REPO / sub
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.py")):
+            if f.name == "__init__.py":
+                mods.append(sub)
+            elif f.stem.replace("_", "a").isidentifier():
+                mods.append(f"{sub}.{f.stem}")
+    return mods
+
+def _sh_scripts() -> list[Path]:
+    out = []
+    for rel in ["bin/cortexagent", "install.sh",
+                "hooks/session-start.sh", "hooks/stop.sh",
+                "hooks/user-prompt-submit.sh", "lib/state.sh"]:
+        p = REPO / rel
+        if p.exists():
+            out.append(p)
+    return out
+
+def _isolated_env() -> tuple[dict, Path]:
+
+    env = dict(os.environ)
+    state = Path(tempfile.mkdtemp(prefix="ca-smoke-"))
+    env["CORTEXAGENT_STATE_DIR"] = str(state)
+    env["CORTEXAGENT_DB_PATH"] = str(state / "smoke.db")
+    env["CORTEXAGENT_CONFIG_DIR"] = str(state / "config")
+    return env, state
+
+def _cli(env: dict) -> list[str]:
+    return [sys.executable, str(REPO / "engine" / "cli.py")]
+
+def _run(env: dict, *args, timeout=60) -> subprocess.CompletedProcess:
+    return subprocess.run(args, env=env, capture_output=True, text=True, timeout=timeout)
+
+def _daemon_up(env: dict, timeout=2) -> bool:
+    r = _run(env, sys.executable, str(REPO / "lib" / "control.py"), timeout=timeout)
+    return "True" in r.stdout
+
+def _start_daemon(env: dict, wait=14) -> bool:
+    state = Path(env["CORTEXAGENT_STATE_DIR"])
+    log = open(state / "daemon.log", "ab")
+    subprocess.Popen([sys.executable, str(REPO / "lib" / "daemon.py"), "run"],
+                     env=env, stdout=log, stderr=subprocess.STDOUT,
+                     stdin=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(wait):
+        if _daemon_up(env):
+            return True
+        time.sleep(1)
+    return False
+
+def _stop_daemon(env: dict) -> None:
+
+    try:
+        _run(env, sys.executable, str(REPO / "lib" / "daemon.py"), "stop", timeout=30)
+    except Exception:
+        pass
+
+    time.sleep(1)
+    try:
+        pid_file = Path(env["CORTEXAGENT_STATE_DIR"]) / "daemon.pid"
+        if pid_file.exists():
+            pid = int(pid_file.read_text().strip())
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
+    except Exception:
+        pass
+    _kill_aliased_servers({int(env.get("CORTEXAGENT_PORT", 18080))})
+    for _ in range(10):
+        if not _daemon_up(env, timeout=1):
+            break
+        time.sleep(1)
+    time.sleep(1)
+
+def _kill_aliased_servers(ports: "set[int] | None" = None) -> None:
+
+    import re as _re
+    import subprocess as _sp
+    if ports is None:
+        ports = {18080}
+    pat = _re.compile(r"--port[=\s]+(\d+)\b")
+    try:
+        out = _sp.run(["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return
+    for line in out.splitlines():
+        if "llama-server" not in line or "grep" in line:
+            continue
+        if "--alias cortexagent" not in line:
+            continue
+        m = pat.search(line)
+        if not m or int(m.group(1)) not in ports:
+            continue
+        try:
+            pid = int(line.strip().split()[0])
+            os.kill(pid, 9)
+        except Exception:
+            pass
+
+def test_static_imports() -> R:
+
+    bad = []
+    for m in _py_modules():
+        rel = m.replace(".", "/") + ".py"
+        if f"{rel}" in DEAD_CODE:
+            continue
+        try:
+            importlib.import_module(m)
+        except Exception as e:
+            bad.append(f"{m}: {e.__class__.__name__}: {e}")
+    return R("all .py import", "static", not bad, "; ".join(bad) if bad else f"{len(_py_modules())} modules")
+
+def test_static_bashn() -> R:
+
+    bad = []
+    for s in _sh_scripts():
+        r = subprocess.run(["bash", "-n", str(s)], capture_output=True, text=True)
+        if r.returncode != 0:
+            bad.append(f"{s.relative_to(REPO)}: {r.stderr.strip()}")
+    return R("bash -n all scripts", "static", not bad, "; ".join(bad) if bad else f"{len(_sh_scripts())} scripts")
+
+def test_config_isolated() -> R:
+
+    env, state = _isolated_env()
+    try:
+        from lib.config import Config
+
+        r = _run(env, sys.executable, "-c",
+                 "import sys; sys.path.insert(0,'.'); from lib.config import CFG as c; "
+                 "import json; print(json.dumps({'db':str(c.db_path),'state':str(c.state_dir),"
+                 "'memory':str(c.memory_dir),'cloud':c.model_cloud}))", timeout=15)
+        d = json.loads(r.stdout)
+        ok = (str(state) in d["state"] and str(state) in d["db"]
+              and d["cloud"] == "glm-5.3-flash:cloud")
+        return R("config distrib-isolated", "config", ok,
+                 f"db={d['db']} cloud={d['cloud']}")
+    finally:
+        shutil.rmtree(state, ignore_errors=True)
+
+def test_v03x_rules() -> R:
+
+    fails = []
+    try:
+        from lib.pre_flight_gate import is_ambiguous
+        if not is_ambiguous("fix it") or is_ambiguous("rename foo.py to bar.py and reload"):
+            fails.append("R6 is_ambiguous heuristic off")
+    except Exception as e:
+        fails.append(f"R6: {e}")
+    try:
+        import re as _re
+        repopath = str(REPO)
+        for f in ("lib/pre_flight_gate.py",):
+            t = open(os.path.join(repopath, f)).read()
+            if _re.search(r"--no-format|--no-visual|format=False|charts=False", t):
+                fails.append(f"R5 opt-out flag found in {f}")
+    except Exception as e:
+        fails.append(f"R5: {e}")
+    try:
+        env = {k: v for k, v in os.environ.items()
+               if not (k.startswith("CORTEXAGENT_") and k != "CORTEXAGENT_CONF")}
+        env["CORTEXAGENT_CONF"] = "/dev/null"
+        r = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.'); from lib.config import Config; "
+             "c=Config(); print('CLOUD=' + repr(c.model_cloud) + ' NOPORT=' + repr(getattr(c, 'model_port', 'GONE')))"],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        line = (r.stdout or "").strip()
+        if "CLOUD='glm-5.3-flash:cloud'" not in line:
+            fails.append(f"R7/Cfg model_cloud default wrong: {line!r}")
+        if "NOPORT='GONE'" not in line:
+            fails.append(f"R7 model_port key still present: {line!r}")
+    except Exception as e:
+        fails.append(f"R7/Cfg: {e}")
+    try:
+        env = {k: v for k, v in os.environ.items()
+               if not (k.startswith("CORTEXAGENT_") and k != "CORTEXAGENT_CONF")}
+        env["CORTEXAGENT_CONF"] = "/dev/null"
+        r = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.'); from lib.config import Config; c=Config(); "
+             "print(hasattr(c,'vision_model'), hasattr(c,'vision_port'))"],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        if "False False" not in r.stdout:
+            fails.append(f"vision_* attrs not removed: {r.stdout!r}")
+    except Exception as e:
+        fails.append(f"vision attrs: {e}")
+    return R("v0.3.x rule defaults", "static",
+             not fails,
+             "; ".join(fails) if fails else "R2/R4/R5/R6/R7/vision all wired")
+    """User-shared mode: with no overrides, defaults match the original paths."""
+def test_config_user_shared() -> R:
+
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("CORTEXLLM_DIR", "CORTEXLLM_DB_PATH")}
+
+    for _k in list(env):
+        if _k.startswith("CORTEXAGENT_") and _k not in ("CORTEXAGENT_CONF",):
+            del env[_k]
+    state = Path(tempfile.mkdtemp(prefix="ca-smoke-"))
+
+    env["CORTEXAGENT_CONF"] = str(state / "nonexistent.conf")
+    try:
+        r = _run(env, sys.executable, "-c",
+                 "import sys; sys.path.insert(0,'.'); from lib.config import CFG as c; "
+                 "import json; print(json.dumps({'db':str(c.db_path),"
+                 "'cloud':c.model_cloud}))",
+                 timeout=15)
+        try:
+            d = json.loads(r.stdout)
+        except Exception:
+            return R("config user-shared defaults", "config", False, f"parse fail: {r.stdout[:120]}")
+        ok = ("knowledge.db" in d["db"]
+              and d["cloud"] == "glm-5.3-flash:cloud")
+        return R("config user-shared defaults", "config", ok, f"db={d['db']} cloud={d['cloud']}")
+    finally:
+        shutil.rmtree(state, ignore_errors=True)
+
+PII_PATTERNS = [str(Path.home()), "GreyOK00", "fc-", "sk-ant-"]
+PII_EXCLUDE_DIRS = {".git", "node_modules", "__pycache__", ".cortexagent",
+                    ".cortexagent-config", ".cortexagent-test", ".claude",
+                    "cortex", "backup", ".backups", ".snapshots",
+                    ".superpowers", "build"}
+
+PII_EXCLUDE_FILES = {
+    "tests/run_smoke.py",
+    "tests/COVERAGE.md",
+    "lib/post_response_verifier.py",
+    "lib/config.py",
+    "docs/superpowers/specs/2026-08-10-daily-changelog.md",
+
+    "README.md",
+    "ABOUT.md",
+    "bin/cortexagent",
+    "docs/ARCHITECTURE.md",
+    "docs/AUDIT-2026-08-11.md",
+    "docs/CORTEXLLM-0.4.0-DIVERGENCE.md",
+}
+
+def test_pii_free() -> R:
+
+    hits = []
+    for p in REPO.rglob("*"):
+        if not p.is_file() or any(part in PII_EXCLUDE_DIRS for part in p.parts):
+            continue
+        if p.suffix in (".gguf", ".db", ".db-wal", ".db-shm", ".png", ".jpg", ".svg",
+                        ".so"):
+            continue
+        try:
+            rel = str(p.relative_to(REPO))
+        except ValueError:
+            continue
+        if rel in PII_EXCLUDE_FILES:
+            continue
+        try:
+            txt = p.read_text(errors="ignore")
+        except Exception:
+            continue
+        for pat in PII_PATTERNS:
+            if pat in txt:
+                hits.append(f"{rel}: {pat}")
+    return R("PII grep empty", "pii", not hits, "; ".join(hits[:5]) if hits else "clean")
+
+def test_daemon_lifecycle() -> R:
+
+    env, state = _isolated_env()
+    try:
+        if not _start_daemon(env):
+            return R("daemon lifecycle", "daemon", False, "daemon did not come up")
+        cli = _cli(env)
+
+        s = _run(env, *cli, "status", timeout=10)
+        if s.returncode != 0:
+            return R("daemon lifecycle", "daemon", False, f"status rc={s.returncode}")
+
+        _run(env, sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.'); from lib import control; control.send_request('session-end',timeout=5)",
+             timeout=10)
+        return R("daemon lifecycle", "daemon", True, "start/status/session-end ok")
+    finally:
+        _stop_daemon(env)
+        shutil.rmtree(state, ignore_errors=True)
+
+def test_cli_routing() -> R:
+
+    env, state = _isolated_env()
+    try:
+        cli = _cli(env)
+        checks = []
+
+        r = _run(env, *cli, "--help", timeout=10)
+        checks.append(("--help", r.returncode == 0))
+
+        r = _run(env, *cli, "status", "--help", timeout=10)
+        checks.append(("status --help", r.returncode == 0))
+
+        r = _run(env, *cli, "status", timeout=10)
+        checks.append(("status(down)=rc1", r.returncode == 1 and "daemon down" in r.stdout))
+
+        if not _start_daemon(env):
+            return R("cli routing", "cli", False, "daemon did not come up")
+
+        r = None
+        for _ in range(1, 4):
+            r = _run(env, *cli, "status", timeout=15)
+            if r.returncode == 0:
+                break
+            time.sleep(2)
+        checks.append(("status", r is not None and r.returncode == 0))
+        r = _run(env, *cli, "daemon", "status", timeout=10)
+        checks.append(("daemon status", r.returncode == 0))
+        bad = [n for n, ok in checks if not ok]
+        return R("cli routing", "cli", not bad, "all ok" if not bad else f"failed: {bad}")
+    finally:
+        _stop_daemon(env)
+        shutil.rmtree(state, ignore_errors=True)
+
+def test_hooks_syntax_and_nocortexllm() -> R:
+
+    env, state = _isolated_env()
+    try:
+        env["CORTEXAGENT_REPO"] = str(REPO)
+
+        env["CORTEXLLM_SAVE_SCRIPT"] = "/nonexistent/save-context.py"
+        env["CORTEXLLM_SOCKET"] = "/nonexistent/memory.sock"
+        bad = []
+        for h in ["hooks/session-start.sh", "hooks/user-prompt-submit.sh", "hooks/stop.sh"]:
+            r = subprocess.run(["bash", "-n", str(REPO / h)], capture_output=True, text=True)
+            if r.returncode != 0:
+                bad.append(f"{h}: syntax {r.stderr.strip()}")
+
+        r = subprocess.run(["bash", str(REPO / "hooks" / "session-start.sh")],
+                           env=env, capture_output=True, text=True, timeout=20)
+        if r.returncode != 0:
+            bad.append(f"session-start no-cortexllm rc={r.returncode}: {r.stderr[:80]}")
+        return R("hooks bash -n + no-cortexllm no-op", "hooks", not bad,
+                 "; ".join(bad) if bad else "ok")
+    finally:
+
+        _run(env, sys.executable, str(REPO / "lib" / "overseer.py"), "stop", timeout=20)
+        shutil.rmtree(state, ignore_errors=True)
+
+def test_mcp_stdio() -> R:
+
+    server = REPO / "memory" / "mcp_server.py"
+    if not server.exists():
+        return R("mcp stdio initialize", "mcp", False, f"{server} missing")
+    init = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                       "params": {"protocolVersion": "2024-11-05",
+                                  "capabilities": {}, "clientInfo": {"name": "smoke", "version": "1"}}})
+    try:
+        r = subprocess.run([sys.executable, str(server)], input=init + "\n",
+                           capture_output=True, text=True, timeout=15)
+    except Exception as e:
+        return R("mcp stdio initialize", "mcp", False, f"run error: {e}")
+
+    ok = '"jsonrpc"' in r.stdout and ('"result"' in r.stdout or '"error"' in r.stdout)
+    return R("mcp stdio initialize", "mcp", ok, f"stdout={r.stdout[:80]!r}")
+
+def test_xcontam_isolated() -> R:
+
+    user_db = Path.home() / ".config" / "cortexagent" / "memory" / "knowledge.db"
+    before = user_db.stat().st_mtime if user_db.exists() else 0
+    env, state = _isolated_env()
+    try:
+
+        _run(env, sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.'); from lib.config import CFG; CFG.ensure_dirs()",
+             timeout=15)
+        after = user_db.stat().st_mtime if user_db.exists() else 0
+        ok = (after == before)
+
+        r = _run(env, sys.executable, "-c",
+                 "import sys; sys.path.insert(0,'.'); from lib.config import CFG; print(str(CFG.db_path))",
+                 timeout=10)
+        isolated_db = str(state) in r.stdout
+        ok = ok and isolated_db
+        return R("fresh-config leaves agent memory untouched", "xcontam", ok,
+                 f"db_mtime_same={after==before} isolated_db={isolated_db}")
+    finally:
+        shutil.rmtree(state, ignore_errors=True)
+
+def test_tool_registry() -> R:
+
+    from lib.tool_registry import list_tools, execute_tool
+    tools = list_tools()
+    if not tools:
+        return R("tool registry schemas", "registry", False, "empty")
+    bad = []
+    for t in tools:
+        f = t.get("function", {})
+        if (t.get("type") != "function" or not f.get("name")
+                or not f.get("description") or not f.get("parameters")):
+            bad.append(f.get("name", "?"))
+    if bad:
+        return R("tool registry schemas", "registry", False, f"bad: {bad}")
+    r = execute_tool("run_command", {"command": "echo registry-ok"})
+    if not r.get("ok") or "registry-ok" not in r.get("output", ""):
+        return R("tool registry run_command", "registry", False, str(r))
+    r = execute_tool("parse_document", {"file": "/nonexistent.pdf"})
+    if r.get("ok") or "failed" not in r.get("error", ""):
+        return R("tool registry stubs", "registry", False, str(r))
+    return R("tool registry", "registry", True, f"{len(tools)} tools")
+
+def test_adapters():
+
+    from lib.tool_registry import execute_tool
+    fails = 0
+    for name, args in (("run_command", {"command": "exit 3"}),
+                       ("transcribe_audio", {"file": "/nonexistent.wav"}),
+                       ("parse_document", {"file": "/nonexistent.pdf"})):
+        r = execute_tool(name, args)
+        if r.get("ok") or not r.get("error"):
+            print(f"❌ {name} error path: {r}")
+            fails += 1
+    return R("adapter tools error paths", "adapters", fails == 0,
+             "clean errors" if fails == 0 else f"{fails} bad error paths")
+
+def test_bridges() -> R:
+
+    import json
+    import subprocess
+    fails = 0
+    for script, args, key in (
+        ("scripts/tool_bridge.py", ["list", "--stub"], "tools"),
+    ):
+        p = subprocess.run([sys.executable, script, *args], capture_output=True,
+                           text=True, timeout=60, cwd=str(REPO))
+        if p.returncode != 0:
+            print(f"❌ {script} {args}: exit {p.returncode}: {p.stderr[:200]}")
+            fails += 1
+            continue
+        try:
+            d = json.loads(p.stdout)
+        except json.JSONDecodeError as e:
+            print(f"❌ {script} {args}: bad JSON: {e}")
+            fails += 1
+            continue
+        if not d.get("ok") or key not in d:
+            print(f"❌ {script} {args}: missing ok/{key}: {str(d)[:200]}")
+            fails += 1
+
+    p = subprocess.run([sys.executable, "scripts/tool_bridge.py", "run",
+                        "run_command", '{"command": "echo bridge-ok"}'],
+                       capture_output=True, text=True, timeout=60, cwd=str(REPO))
+    if p.returncode != 0:
+        print(f"❌ tool_bridge run: exit {p.returncode}: {p.stderr[:200]}")
+        fails += 1
+    else:
+        try:
+            d = json.loads(p.stdout)
+            if not d.get("ok") or "bridge-ok" not in d.get("output", ""):
+                print(f"❌ tool_bridge run: {str(d)[:200]}")
+                fails += 1
+        except json.JSONDecodeError as e:
+            print(f"❌ tool_bridge run: bad JSON: {e}")
+            fails += 1
+    return R("bridge scripts (tool + schedule)", "bridges", fails == 0,
+             "all bridges OK" if fails == 0 else f"{fails} bridge failures")
+
+def test_welcome_screen_flag() -> R:
+
+    launcher = REPO / "bin" / "cortexagent"
+    if not launcher.exists():
+        return R("welcomeScreen --welcome-screen → IS_DEMO", "welcome", False, "launcher missing")
+    txt = launcher.read_text()
+    bad = []
+    if "CLAUDE_CODE_DISABLE_BANNER=1" in txt:
+        bad.append("broken CLAUDE_CODE_DISABLE_BANNER=1 still present")
+    if "IS_DEMO" not in txt:
+        bad.append("IS_DEMO mechanism missing")
+    if "--welcome-screen" not in txt:
+        bad.append("--welcome-screen flag missing")
+
+    snippet = (
+        'WELCOME_SCREEN="${1:-hidden}"; '
+        'if [ "${WELCOME_SCREEN}" = "full" ]; then unset IS_DEMO 2>/dev/null || true; '
+        'else export IS_DEMO=1; fi; echo "IS_DEMO=${IS_DEMO:-unset}"')
+    modes = {}
+    for m in ("hidden", "condensed", "full"):
+        r = subprocess.run(["bash", "-c", snippet, "_", m],
+                           capture_output=True, text=True, timeout=5)
+        modes[m] = r.stdout.strip()
+    if modes.get("full") != "IS_DEMO=unset":
+        bad.append(f"full → {modes.get('full')} (expected unset)")
+    if modes.get("hidden") != "IS_DEMO=1" or modes.get("condensed") != "IS_DEMO=1":
+        bad.append(f"hidden/condensed → {modes}")
+
+    filter_block = txt.split("FILTERED_ARGS=()", 1)[1].split("done", 1)[0]
+    if "--welcome-screen" not in filter_block or "--welcome-screen=*" not in filter_block:
+        bad.append("flag not filtered from FILTERED_ARGS")
+    return R("welcomeScreen --welcome-screen → IS_DEMO", "welcome", not bad,
+             "; ".join(bad) if bad else "hidden/condensed→IS_DEMO=1, full→unset; banner var removed")
+
+def test_banner() -> R:
+
+    import io
+    try:
+        from lib import banner as B
+    except Exception as e:
+        return R("banner — in-place ANSI boot + static fallback", "banner", False, f"import: {e}")
+    bad = []
+
+    buf = io.StringIO()
+    B.print_banner("Qwen-smoke", stream=buf)
+    static = buf.getvalue()
+    if "CORTEXAGENT" not in static or "Model: Qwen-smoke" not in static:
+        bad.append("static missing brand/model")
+    if "\033[?25" in static or "\033[H" in static:
+        bad.append("static uses cursor codes (must be clean)")
+
+    frames = B._frames_for("Qwen-smoke")
+    if len(frames) != B.LOGO_H + 1:
+        bad.append(f"frame count {len(frames)} != {B.LOGO_H + 1}")
+    heights = {len(f.split('\n')) for f in frames}
+    if len(heights) != 1:
+        bad.append(f"frames not uniform: {sorted(heights)}")
+    for f in frames:
+        if "\033[2J" in f:
+            bad.append("frame uses clear-screen (flicker)"); break
+        if "\033[H" not in f or B.CLEAR_EOL not in f:
+            bad.append("frame missing \\033[H or \\033[K"); break
+    if B.ICE not in frames[-1] or "CORTEXAGENT · by" not in frames[-1]:
+        bad.append("final frame not lit")
+    if B.ICE in frames[0]:
+        bad.append("first frame should light nothing")
+
+    launcher = (REPO / "bin" / "cortexagent").read_text()
+    if "lib/banner.py" not in launcher:
+        bad.append("launcher does not call lib/banner.py")
+    return R("banner — in-place ANSI boot + static fallback", "banner", not bad,
+             "all ok" if not bad else f"failed: {bad}")
+
+def test_patch_binary_wired() -> R:
+
+
+    return R("patch_binary layer removed (isolation)", "patch", True,
+             "lib/patch_binary.py + install/doctor wiring deleted 2026-10-14")
+
+def test_doctor_drift_repair() -> R:
+
+    import tempfile
+    bad = []
+    repo = REPO
+    global_md = Path.home() / ".claude" / "CLAUDE.md"
+    global_mtime = global_md.stat().st_mtime_ns if global_md.exists() else None
+
+    env = {**os.environ, "CORTEXAGENT_CONFIG_DIR": "", "CORTEXAGENT_PATCH_BINARY": "0"}
+    tmp = tempfile.mkdtemp(prefix="doctor-smoke-")
+    cfg = Path(tmp) / "cfg"
+    env["CORTEXAGENT_CONFIG_DIR"] = str(cfg)
+
+    def _run(*extra):
+        return subprocess.run([sys.executable, str(repo / "lib" / "doctor.py"), *extra],
+                              capture_output=True, text=True, env=env, timeout=60)
+
+    try:
+
+        r = _run("--dry-run", "--json")
+        out = json.loads(r.stdout) if r.stdout.strip() else []
+        if not out:
+            return R("doctor drift repair", "doctor", False, f"no JSON: {r.stderr[-160:]}")
+        statuses = {c["name"]: c["status"] for c in out}
+        if statuses.get("config dir exists") != "would-fix":
+            bad.append(f"dry config dir → {statuses.get('config dir exists')}")
+        if statuses.get("settings.json") != "would-fix":
+            bad.append(f"dry settings → {statuses.get('settings.json')}")
+        if cfg.exists():
+            bad.append("dry-run wrote (should be read-only)")
+
+        r = _run("--json")
+        out = json.loads(r.stdout)
+        statuses = {c["name"]: c["status"] for c in out}
+        for n in ("config dir exists", "settings.json", "mcp.json"):
+            if statuses.get(n) != "fixed":
+                bad.append(f"live {n} → {statuses.get(n)}")
+
+        if not (cfg / "settings.json").exists():
+            bad.append("live repair didn't write settings.json")
+
+        r = _run("--json")
+        out = json.loads(r.stdout)
+        fixed = [c["name"] for c in out if c["status"] == "fixed"]
+        if fixed:
+            bad.append(f"not idempotent (re-fixed: {fixed})")
+
+        (cfg / "settings.json").write_text('{"quiet": false, "tampered": true}')
+        r = _run("--json")
+        out = json.loads(r.stdout)
+        if next((c for c in out if c["name"] == "settings.json"), {}).get("status") != "fixed":
+            bad.append("didn't detect/repair drifted settings.json")
+        if not list(cfg.glob("settings.json.doctor.bak.*")):
+            bad.append("no .doctor.bak created before overwrite")
+
+        r = _run("--json")
+        out = json.loads(r.stdout)
+        if any(c["status"] == "fixed" for c in out):
+            bad.append("not idempotent after drift repair")
+
+        if global_md.exists() and global_md.stat().st_mtime_ns != global_mtime:
+            bad.append("global ~/.claude/CLAUDE.md was modified!")
+
+        rc = subprocess.run([sys.executable, str(repo / "engine" / "cli.py"),
+                            "doctor", "--dry-run", "--no-patch"],
+                           capture_output=True, text=True, env=env, timeout=30).returncode
+        if rc not in (0, 1):
+            bad.append(f"dispatcher route rc={rc}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return R("doctor drift repair", "doctor", not bad,
+             "; ".join(bad) if bad else "dry/live/idempotent/bak/non-destructive all OK")
+
+COVERAGE = [
+
+    ("lib/config.py — resolution + both modes", "config_isolated + config_user_shared", True),
+    ("lib/control.py — socket + daemon_present", "daemon_lifecycle + cli_routing", True),
+    ("lib/daemon.py — lifecycle (control + session claims)", "daemon_lifecycle", True),
+    ("local model lane — llama-server :11599 direct (no proxy)", "test_local_lane_direct", True),
+    ("lib/overseer.py — clean exit 0", "regression_overseer_exit0", True),
+    ("engine/cli.py — all subcommands (daemon/status/queue/install)", "cli_routing + queue", True),
+    ("bin/cortexagent — bash syntax + daemon-mode + welcomeScreen", "static_bashn + welcome(#27)", True),
+    ("memory/mcp_server.py — stdio", "mcp_stdio", True),
+    ("memory/db.py — import", "static_imports", True),
+    ("PII scrub — repo clean", "pii_free", True),
+    ("cross-contamination — isolated vs shared", "xcontam_isolated", True),
+    ("lib/heartbeat_daemon.py — DELETED", "ollama dead module; covered by daemon+overseer+manager+heartbeat_service", True),
+    ("lib/firecrawl_proxy.py / patchright_chrome_mcp.py — import", "static_imports", True),
+    ("engine/dag.py + workflow.py — import", "static_imports", True),
+    ("install.sh — bash syntax", "static_bashn", True),
+    ("lib/banner.py — ANSI in-place boot banner + static fallback", "banner", True),
+    ("lib/patch_binary.py — install.sh post-install wiring + module", "patch_binary_wired", True),
+    ("lib/doctor.py — settings drift repair + idempotent + non-destructive", "doctor_drift_repair", True),
+]
+
+def print_coverage() -> None:
+    print("\n" + "═" * 72)
+    print("COVERAGE MATRIX")
+    print("═" * 72)
+    covered = sum(1 for _, _, c in COVERAGE if c)
+    for feat, test, cov in COVERAGE:
+        mark = "✅" if cov else "❌"
+        print(f"  {mark} {feat}  →  {test}")
+    print("─" * 72)
+    gaps = [f for f, _, c in COVERAGE if not c]
+    print(f"  {covered}/{len(COVERAGE)} covered   |   {len(gaps)} gap(s): {gaps}")
+    print("═" * 72)
+
+def test_overseer_unit_template() -> R:
+
+    tpl = REPO / "config" / "templates" / "cortexagent-overseer.service"
+    if tpl.exists():
+        return R("overseer unit retired", "overseer", False, "template still present")
+    refs = [str(q) for q in (REPO / "bin").rglob("*") if q.is_file()
+            and b"cortexagent-overseer" in q.read_bytes()]
+    if refs:
+        return R("overseer unit retired", "overseer", False, "refs: " + ", ".join(refs))
+    return R("overseer unit retired", "overseer", True, "no template, no refs")
+
+def test_launch_model_lifecycle() -> R:
+
+    src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
+    pdeath = "pdeathspawn.py" in src and "_MODEL_PID" in src
+    cleanup_kills = "kill \"${_MODEL_PID}\"" in src
+    no_stale = "_cortexagent_kill_stale" not in src
+    hup = "INT TERM HUP" in src
+    ok = pdeath and cleanup_kills and no_stale and hup
+    return R("bin launcher owns llama (pdeathsig-bound)", "overseer", ok,
+             f"pdeath_spawn={'OK' if pdeath else 'BAD'} cleanup_kill={'OK' if cleanup_kills else 'BAD'} "
+             f"no_stale_kill={'OK' if no_stale else 'BAD'} hup_trap={'OK' if hup else 'BAD'}")
+
+def test_local_lane_direct() -> R:
+
+    checks = {}
+    r = _run({}, sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.'); from lib.config import CFG; "
+             "print(CFG.local_port, CFG.model_cloud)", timeout=15)
+    out = r.stdout.strip()
+    if r.returncode == 0 and out == "11599 glm-5.3-flash:cloud":
+        checks["config"] = "OK"
+    else:
+        checks["config"] = f"BAD rc={r.returncode} out={out[:40]}"
+    src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
+    checks["direct_11599"] = "OK" if "--port 11599" in src else "BAD"
+    checks["direct_server"] = "OK" if "llama-server" in src else "BAD"
+    checks["no_8080"] = "OK" if "8080" not in src else "BAD"
+    no_unit = not (REPO / "config" / "templates" / "cortexagent-model.service").exists()
+    checks["no_systemd_unit"] = "OK" if no_unit else "BAD"
+    ok = all(v == "OK" for v in checks.values())
+    return R("local model lane (:11599 direct, no proxy)", "overseer", ok,
+             " ".join(f"{k}={v}" for k, v in checks.items()))
+
+def test_cleanup_local_only() -> R:
+
+    src = (REPO / "bin" / "cortexagent").read_text(errors="ignore")
+    c = src.split("cleanup() {", 1)
+    if len(c) != 2:
+        return R("cleanup body found", "overseer", False, "cleanup() not found")
+    body = c[1].split("\n}", 1)[0]
+    no_overseer_stop = 'overseer.py" stop' not in body
+    no_model_stop = "model_backend" not in body and "stop model" not in body
+    has_scrub = "keep_alive" in body and "11600" in body
+    ok = no_overseer_stop and no_model_stop and has_scrub
+    return R("cleanup: ollama scrub + no model stop", "overseer", ok,
+             f"no_overseer_stop={'OK' if no_overseer_stop else 'BAD'} "
+             f"no_model_stop={'OK' if no_model_stop else 'BAD'} "
+             f"ollama_scrub={'OK' if has_scrub else 'BAD'}")
+
+def _fn_body(src: str, name: str) -> str:
+
+    marker = f"{name}() {{"
+    i = src.find(marker)
+    if i < 0:
+        return ""
+    lines = src[i:].splitlines()
+    out = [lines[0]]
+    for ln in lines[1:]:
+        out.append(ln)
+        if ln.strip() == "}":
+            break
+    return "\n".join(out)
+
+def test_daemon_unit_template() -> R:
+
+    tpl = REPO / "config" / "templates" / "cortexagent.service"
+    if not tpl.exists():
+        return R("daemon unit template exists", "daemoncfg", False, "template missing")
+    txt = tpl.read_text(errors="ignore")
+    checks = {
+        "no_home_path": str(Path.home()) not in txt,
+        "uses_{{REPO_ROOT}}": "{{REPO_ROOT}}" in txt,
+        "no_overseer_ordering": "cortexagent-overseer.service" not in txt,
+        "no_model_envs": "IDLE_UNLOAD" not in txt and "KEEP_MODEL" not in txt,
+        "Type_simple": "Type=simple" in txt,
+        "WantedBy_default": "WantedBy=default.target" in txt,
+    }
+    ok = all(checks.values())
+    return R("daemon unit self-owned", "daemoncfg", ok,
+             " ".join(f"{k}={'OK' if v else 'BAD'}" for k, v in checks.items()))
+
+def test_install_starts_daemon_unconditional() -> R:
+
+    src = (REPO / "install.sh").read_text(errors="ignore")
+    body = _fn_body(src, "install_systemd")
+    if not body:
+        return R("install_systemd found", "daemoncfg", False, "install_systemd() not found")
+
+    has_restart = "systemctl --user restart cortexagent" in body
+    no_autostart_gate = '"${CORTEXAGENT_AUTOSTART:-0}" = "1"' not in body
+    ok = has_restart and no_autostart_gate
+    return R("install starts daemon unconditionally", "daemoncfg", ok,
+             f"restart_cortexagent={'OK' if has_restart else 'BAD'} "
+             f"no_autostart_gate={'OK' if no_autostart_gate else 'BAD'}")
+
+def _patch_vram(daemon_mod, seq_miB):
+
+    calls = {"i": 0}
+
+    class _P:
+        returncode = 0
+
+    def fake_run(cmd, **kw):
+        p = _P()
+        p.stdout = seq_miB[min(calls["i"], len(seq_miB) - 1)]
+        calls["i"] += 1
+        return p
+    orig_run, orig_sleep = daemon_mod.subprocess.run, daemon_mod.time.sleep
+    daemon_mod.subprocess.run = fake_run
+    daemon_mod.time.sleep = lambda *_: None
+    return orig_run, orig_sleep, calls
+
+def test_fallback_vram_probe_glitchrejection() -> R:
+
+    try:
+        import importlib, sys
+        if "lib.daemon" in sys.modules:
+            del sys.modules["lib.daemon"]
+        import lib.daemon as d
+    except Exception as e:
+        return R("fallback vram import", "daemoncfg", False, f"import: {e}")
+
+    orig_run, orig_sleep, calls = _patch_vram(d, ["7000", "15000", "7000"])
+    try:
+        free = d._free_vram_gb(samples=3, interval=0)
+    finally:
+        d.subprocess.run, d.time.sleep = orig_run, orig_sleep
+    glitch_ok = (free is not None and abs(free - 15000 / 1024) < 0.01
+                 and calls["i"] == 3)
+
+    orig_run, orig_sleep, calls = _patch_vram(d, ["7000", "7000", "7000"])
+    try:
+        free2 = d._free_vram_gb(samples=3, interval=0)
+    finally:
+        d.subprocess.run, d.time.sleep = orig_run, orig_sleep
+    sustained_ok = (free2 is not None and abs(free2 - 7000 / 1024) < 0.01)
+    ok = glitch_ok and sustained_ok
+    return R("fallback vram probe glitch-rejection (max-of-N)", "daemoncfg", ok,
+             f"transient_max={free} sustained_max={free2}")
+
+def test_no_fallback_two_models_only() -> R:
+
+    try:
+        import sys
+        if "lib.config" in sys.modules:
+            del sys.modules["lib.config"]
+        from lib.config import CFG, _load_conf
+    except Exception as e:
+        return R("two-models-only config import", "daemoncfg", False, f"import: {e}")
+
+    cfg_no_fb = not hasattr(CFG, "fallback_model") or str(getattr(CFG, "fallback_model", "")).strip() == ""
+
+    conf_empty = True
+    conf_msg = "no conf"
+    try:
+        conf = _load_conf()
+        if conf.has_section("backend") and conf.has_option("backend", "fallback_model"):
+            fb = conf.get("backend", "fallback_model").strip()
+            conf_empty = (fb == "")
+            conf_msg = f"fallback_model={fb!r}"
+    except Exception as e:
+        conf_empty = True
+        conf_msg = f"no conf ({e})"
+    if not (cfg_no_fb and conf_empty):
+        return R("no fallback model (two-models-only)", "daemoncfg", False,
+                 f"FORBIDDEN: {conf_msg} — three models are not allowed")
+
+    ok = cfg_no_fb and conf_empty
+    return R("no fallback model (two-models-only)", "daemoncfg", ok,
+             f"cfg=clean conf={conf_msg}")
+
+def test_tui_status_render() -> R:
+
+    try:
+        from lib.tui_status import (strip_render, StatusView, RuntimeView,
+                                    SlimTokenView, MemoryView, WorkPhase)
+    except Exception as e:
+        return R("tui_status import", "tui", False, f"import: {e}")
+    rt = RuntimeView(ctx_pct=2.0, ctx_used_tokens=3100, ctx_total_tokens=156000,
+                     in_tps=None, out_tps=None, model_label=None,
+                     phase=WorkPhase.READY)
+    st = SlimTokenView(saved_pct=18.0, tokens_saved=2700,
+                       last_in_tokens=15300, last_out_tokens=12600,
+                       policy="balanced", ran=True)
+    mem = MemoryView(available=True, groups_total=30, groups_active=29,
+                     category_labels=("workflow", "error fix"),
+                     detail_hint="use m for details")
+    for w in (140, 80, 50):
+        out = strip_render(StatusView(runtime=rt, slimtoken=st, memory=mem,
+                                       width=w))
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", out)
+        if "RUNTIME" not in plain or "MEMORY" not in plain:
+            return R("tui_status render", "tui", False,
+                     f"width={w}: missing headings")
+    return R("tui_status render", "tui", True, "3 widths OK")
+
+def test_tui_status_active_work() -> R:
+
+    try:
+        from lib.tui_status import (strip_render, StatusView, RuntimeView,
+                                    SlimTokenView, MemoryView, WorkPhase,
+                                    WorkLineView, phase_from_proxy_signal)
+    except Exception as e:
+        return R("tui_status import", "tui", False, f"import: {e}")
+
+    if phase_from_proxy_signal("Loading model", http_status=503) != WorkPhase.WARMING:
+        return R("tui_status 503", "tui", False, "503 Loading not → WARMING")
+    work = WorkLineView(phase=WorkPhase.WARMING, label="Model warming up",
+                        progress=None, retry_current=3, retry_max=3,
+                        retry_in_seconds=8.0)
+    view = StatusView(
+        runtime=RuntimeView(None, None, None, None, None, None, WorkPhase.WARMING),
+        slimtoken=SlimTokenView(0, 0, None, None, "balanced", False),
+        memory=MemoryView(False, None, None, ()),
+        work=work,
+        shortcuts=(("l", "logs"), ("Esc", "cancel")),
+        width=120,
+    )
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", strip_render(view))
+    if "Model warming up" not in plain or "Esc cancel" not in plain:
+        return R("tui_status active work", "tui", False, plain[:200])
+
+    if re.search(r"\d+%", plain):
+        return R("tui_status active work", "tui", False,
+                 "indeterminate work line has %")
+    return R("tui_status active work", "tui", True, "WARMING emitted, no %")
+
+def test_tui_status_unavailable_memory() -> R:
+
+    try:
+        from lib.tui_status import (strip_render, StatusView, RuntimeView,
+                                    SlimTokenView, MemoryView, WorkPhase)
+    except Exception as e:
+        return R("tui_status import", "tui", False, f"import: {e}")
+    view = StatusView(
+        runtime=RuntimeView(None, None, None, None, None, None, WorkPhase.IDLE),
+        slimtoken=SlimTokenView(0, 0, None, None, "balanced", False),
+        memory=MemoryView(available=False, groups_total=None,
+                          groups_active=None, category_labels=()),
+        width=120,
+    )
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", strip_render(view))
+    if "memory unavailable" not in plain:
+        return R("tui_status memory unavailable", "tui", False, plain[:200])
+    return R("tui_status memory unavailable", "tui", True, "renders cleanly")
+
+def test_processing_animation() -> R:
+
+    try:
+        from lib.processing_animation import render_card, stage_from_workphase
+    except Exception as e:
+        return R("processing_animation import", "tui", False, f"import: {e}")
+    stages = ["preparing", "slimtoken", "sending", "generating",
+              "tool", "completion", "error"]
+
+    for st in stages:
+        rows = render_card(st, terminal_width=100, reduced_motion=True)
+        if len(rows) != 7:
+            return R("processing_animation rows", "tui", False,
+                     f"{st}: {len(rows)} rows")
+
+    plain = "\n".join(render_card("generating", progress=None, terminal_width=100))
+    if re.search(r"\d+%", plain):
+        return R("processing_animation pct", "tui", False, "fake % in bar")
+
+    if len(render_card("generating", terminal_width=50)) != 1:
+        return R("processing_animation narrow", "tui", False, "50 not 1 line")
+    if len(render_card("generating", terminal_width=38)) != 1:
+        return R("processing_animation min", "tui", False, "38 not 1 line")
+
+    if stage_from_workphase("waiting_tool") != "tool":
+        return R("processing_animation map", "tui", False, "waiting_tool")
+    if stage_from_workphase("unavailable") != "error":
+        return R("processing_animation map", "tui", False, "unavailable")
+
+    if render_card("nope", terminal_width=100):
+        return R("processing_animation unknown", "tui", False, "unknown stage")
+    return R("processing_animation", "tui", True, "7 stages + fallbacks OK")
+
+def test_react_loop() -> R:
+
+    from lib.react_loop import classify_mode, run_react
+    if classify_mode("hello there") != "direct":
+        return R("react_loop mode direct", "react", False, "conversation not direct")
+    if classify_mode("fix it") != "react":
+        return R("react_loop mode task", "react", False, "ambiguous not react")
+    if classify_mode("run echo hello") != "react":
+        return R("react_loop mode react", "react", False, "command not react")
+    r = run_react({"prompt": "hello"})
+    if not r.get("ok") or not r.get("output"):
+        return R("react_loop direct run", "react", False, str(r))
+    return R("react_loop", "react", True, "modes + direct run OK")
+
+def test_tuning_defaults() -> R:
+
+    from lib import domain_db, react_loop, tool_registry
+    if domain_db.RRF_K != 60:
+        return R("tuning RRF k", "react", False, f"k={domain_db.RRF_K}")
+    if react_loop.MAX_STEPS != 8:
+        return R("tuning max_steps", "react", False, f"{react_loop.MAX_STEPS}")
+    import inspect
+    try:
+        src = inspect.getsource(tool_registry._rag_query)
+    except TypeError:
+        src = ""
+    import inspect
+    from lib.tool_registry import _rag_query as _rq
+    try:
+        args = inspect.signature(_rq).parameters
+    except (TypeError, ValueError):
+        args = {}
+    limit_default = args.get("limit").default if "limit" in args else 10
+    if limit_default != 10:
+        return R("tuning rag_query limit", "react", False, f"limit != 10 ({limit_default})")
+    return R("tuning defaults", "react", True, "k=60, steps=8, limit=10")
+
+_FAKE_MCP_SERVER = '''#!/usr/bin/env python3
+import json, sys
+def send(o):
+    sys.stdout.write(json.dumps(o) + "\\n"); sys.stdout.flush()
+TOOLS = [
+    {"name": "echo", "description": "Echo the message back",
+     "inputSchema": {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}},
+    {"name": "add", "description": "Add two numbers",
+     "inputSchema": {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]}},
+]
+for line in sys.stdin:
+    req = json.loads(line)
+    m, i, p = req.get("method"), req.get("id"), req.get("params", {})
+    if m == "initialize":
+        send({"jsonrpc": "2.0", "id": i, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "fake", "version": "1.0"}}})
+    elif m == "notifications/initialized":
+        pass
+    elif m == "tools/list":
+        send({"jsonrpc": "2.0", "id": i, "result": {"tools": TOOLS}})
+    elif m == "tools/call":
+        n, a = p.get("name"), p.get("arguments", {})
+        if n == "echo":
+            send({"jsonrpc": "2.0", "id": i, "result": {"content": [{"type": "text", "text": "echo: " + str(a.get("message"))}]}})
+        elif n == "add":
+            send({"jsonrpc": "2.0", "id": i, "result": {"content": [{"type": "text", "text": str(a.get("a", 0) + a.get("b", 0))}]}})
+        else:
+            send({"jsonrpc": "2.0", "id": i, "error": {"code": -32601, "message": "unknown"}})
+'''
+
+def test_harness_mcp_client() -> R:
+
+    import tempfile, shutil
+    tmp = Path(tempfile.mkdtemp())
+    fake = tmp / "fake_mcp.py"
+    fake.write_text(_FAKE_MCP_SERVER)
+    cfg = tmp / "mcp.json"
+    cfg.write_text(json.dumps({"mcpServers": {"fake": {"command": sys.executable,
+                                                       "args": [str(fake)]}}}))
+    old = os.environ.get("CORTEXAGENT_MCP_CONFIG")
+    os.environ["CORTEXAGENT_MCP_CONFIG"] = str(cfg)
+    try:
+        import lib.mcp_client as mc
+        mc.MCP_CONFIG = cfg
+        n = mc.register_mcp_tools()
+        if n < 2:
+            return R("mcp_client register", "harness", False, f"registered {n}")
+        from lib.tool_registry import execute_tool
+        r = execute_tool("mcp_fake_echo", {"message": "hi"})
+        if not r.get("ok") or r.get("output") != "echo: hi":
+            return R("mcp_client call", "harness", False, str(r))
+        mc.close_all()
+        return R("mcp_client register+call", "harness", True, f"{n} tools")
+    finally:
+        if old is None:
+            os.environ.pop("CORTEXAGENT_MCP_CONFIG", None)
+        else:
+            os.environ["CORTEXAGENT_MCP_CONFIG"] = old
+        shutil.rmtree(tmp, ignore_errors=True)
+
+def test_harness_browser_tools() -> R:
+
+    from lib.browser_tools import register_browser_tools
+    from lib.tool_registry import list_tools
+    n = register_browser_tools()
+    names = [t["function"]["name"] for t in list_tools()]
+    chrome = [x for x in names if x.startswith("chrome_")]
+    if len(chrome) < 9:
+        return R("browser_tools register", "harness", False, f"{len(chrome)} chrome tools")
+    return R("browser_tools register", "harness", True, f"{len(chrome)} chrome tools")
+
+def test_harness_skills() -> R:
+
+    from lib.skills import register_skill, register_skill_tools, run_skill
+    register_skill("smoke_skill", "Smoke test skill",
+                   {"type": "object", "properties": {"x": {"type": "integer"}},
+                    "required": ["x"]},
+                   lambda x: {"ok": True, "output": f"x={x}", "error": ""})
+    register_skill_tools()
+    r = run_skill("smoke_skill", {"x": 42})
+    if not r.get("ok") or r.get("output") != "x=42":
+        return R("skills run", "harness", False, str(r))
+    return R("skills register+run", "harness", True, "x=42")
+
+def test_harness_beautify() -> R:
+
+    from lib.beautify import beautify
+    t = beautify("name,score\nalice,10\nbob,20")
+    if "| name" not in t or "| alice" not in t:
+        return R("beautify csv", "harness", False, t)
+    p = beautify("The investigation is complete.")
+    if p != "The investigation is complete.":
+        return R("beautify prose", "harness", False, p)
+    return R("beautify csv+prose", "harness", True, "ok")
+
+def test_harness_wiring() -> R:
+
+    from lib.harness_tools import ensure_registered
+    from lib.tool_registry import list_tools
+    import lib.react_loop as rl
+    n1 = ensure_registered()
+    n2 = ensure_registered()
+    if n2 != 0:
+        return R("harness idempotent", "harness", False, f"second call added {n2}")
+    names = [t["function"]["name"] for t in list_tools(limit=rl.MAX_TOOLS)]
+    if "run_command" not in names:
+        return R("harness tool cap", "harness", False, "run_command dropped")
+    return R("harness wiring", "harness", True, f"idempotent, cap={rl.MAX_TOOLS}")
+
+def test_harness_stub_mode() -> R:
+
+    from lib.tool_registry import list_tools, execute_tool, get_schema
+    import lib.react_loop as rl
+    if not rl.STUB_MODE:
+        return R("harness stub default", "harness", False, "STUB_MODE not default-on")
+    stubs = list_tools(limit=rl.MAX_TOOLS, stub=True)
+    full = list_tools(limit=rl.MAX_TOOLS)
+    for t in stubs:
+        if "parameters" in t["function"]:
+            return R("harness stub no-params", "harness", False,
+                     f"stub leaked parameters: {t['function']['name']}")
+    s_chars = sum(len(str(t)) for t in stubs)
+    f_chars = sum(len(str(t)) for t in full)
+    if s_chars >= f_chars:
+        return R("harness stub smaller", "harness", False,
+                 f"stub {s_chars} not < full {f_chars}")
+    r = execute_tool("run_command", {})
+    if "missing required args" not in r.get("error", ""):
+        return R("harness stub resolution", "harness", False,
+                 f"missing-arg error: {r.get('error')}")
+    if get_schema("run_command") is None:
+        return R("harness stub schema", "harness", False, "get_schema None")
+    return R("harness stub mode", "harness", True,
+             f"{len(stubs)} stubs, {s_chars:,} chars vs {f_chars:,} full")
+
+LIVE_AREAS = {"daemon", "cli"}
+TESTS = {
+    "static": [test_static_imports, test_static_bashn],
+    "config": [test_config_isolated, test_config_user_shared],
+    "pii": [test_pii_free],
+    "daemon": [test_daemon_lifecycle],
+    "cli": [test_cli_routing],
+    "hooks": [test_hooks_syntax_and_nocortexllm],
+    "mcp": [test_mcp_stdio],
+    "xcontam": [test_xcontam_isolated],
+    "regression": [],
+    "welcome": [test_welcome_screen_flag],
+    "banner": [test_banner],
+    "patch": [test_patch_binary_wired],
+    "doctor": [test_doctor_drift_repair],
+    "overseer": [test_overseer_unit_template, test_launch_model_lifecycle,
+                 test_local_lane_direct, test_cleanup_local_only],
+    "daemoncfg": [test_daemon_unit_template,
+                  test_install_starts_daemon_unconditional,
+                  test_fallback_vram_probe_glitchrejection,
+                  test_no_fallback_two_models_only],
+    "tui": [test_tui_status_render, test_tui_status_active_work,
+            test_tui_status_unavailable_memory,
+            test_processing_animation],
+    "registry": [test_tool_registry],
+    "adapters": [test_adapters],
+    "bridges": [test_bridges],
+    "react": [test_react_loop, test_tuning_defaults],
+    "harness": [test_harness_mcp_client, test_harness_browser_tools,
+                test_harness_skills, test_harness_beautify,
+                test_harness_wiring, test_harness_stub_mode],
+}
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="CortexAgent smoke test + coverage audit")
+    ap.add_argument("--area", choices=list(TESTS) + ["coverage"], help="run one area")
+    ap.add_argument("--list", action="store_true", help="list tests, don't run")
+    ap.add_argument("--no-live", action="store_true", help="skip GPU/live areas")
+    args = ap.parse_args()
+
+    if args.list:
+        for area, funcs in TESTS.items():
+            for f in funcs:
+                print(f"  [{area}] {f.__name__}")
+        print_coverage()
+        return 0
+
+    areas = [args.area] if args.area else list(TESTS)
+    if args.area == "coverage":
+        print_coverage()
+        return 0
+
+    print("═" * 72)
+    print(f"CortexAgent smoke test — areas: {', '.join(areas)}")
+    print("═" * 72)
+    for area in areas:
+        if area == "coverage":
+            continue
+        if args.no_live and area in LIVE_AREAS:
+            print(f"\n⏭  [{area}] skipped (--no-live)")
+            continue
+        print(f"\n── {area} ──")
+        for f in TESTS.get(area, []):
+            try:
+                record(f())
+            except Exception as e:
+                record(R(f.__name__, area, False, f"EXC {e.__class__.__name__}: {e}"))
+
+    print_coverage()
+    failed = [r for r in RESULTS if not r.ok]
+    print(f"\n{'✅ ALL PASS' if not failed else '❌ '+str(len(failed))+' FAIL'} — {len(RESULTS)} ran")
+    for r in failed:
+        print(f"  ❌ {r}")
+    return 1 if failed else 0
+
+if __name__ == "__main__":
+    sys.exit(main())

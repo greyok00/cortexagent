@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cortexagent": {
+      "command": "{{CORTEXAGENT_MCP_CMD}}"
+    },
+    "greysearch": {
+      "command": "python3 {{REPO_ROOT}}/lib/scraper/greysearch_mcp.py"
+    }
+  }
+}

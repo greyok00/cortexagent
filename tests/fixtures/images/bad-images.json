@@ -1,0 +1,37 @@
+{
+  "_comment": "Shared image-gate fixture (2026-10-19): the research-side relevance.gate_image and the build-side site_render.gate_section_images must agree on every case. Stock-library, hero, ad-network, and unverifiable short-alt images are rejected; a diagram with a descriptive alt survives.",
+  "bad": [
+    {
+      "src": "https://a/adobestock_1.jpg",
+      "alt": "AdobeStock 1754904224 Preview",
+      "why": "stock library asset"
+    },
+    {
+      "src": "https://b/_next/image?url=x",
+      "alt": "SOC analysts facing wall displays",
+      "why": "next.js hero image proxy"
+    },
+    {
+      "src": "https://ids4.ad.gt/api/v1/ip_match",
+      "alt": "AI is changing the economics",
+      "why": "ad-network pixel"
+    },
+    {
+      "src": "https://image2.pubmatic.com/AdServer/x",
+      "alt": "AI is changing the economics",
+      "why": "ad-network pixel"
+    },
+    {
+      "src": "https://example.com/upload/1234.png",
+      "alt": "PowerShell logging",
+      "why": "alt too short to verify topicality"
+    }
+  ],
+  "good": [
+    {
+      "src": "https://learn.microsoft.com/fig3-powershell-script-block-logging.svg",
+      "alt": "Figure 3: PowerShell script block logging pipeline",
+      "why": "diagram with a descriptive, topical alt"
+    }
+  ]
+}
