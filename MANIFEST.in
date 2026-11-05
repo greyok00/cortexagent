@@ -1,0 +1,26 @@
+# The application itself is fetched at install time, never vendored.
+# This sdist ships the installer package only.
+prune cortex
+prune lib
+prune bin
+prune engine
+prune hooks
+prune addons
+prune tools
+prune scripts
+prune tests
+prune docs
+prune data
+prune memory
+prune profiles
+prune static
+prune extensions
+prune actions
+prune assets
+prune logs
+prune research
+
+recursive-exclude * *.so *.pyc *.pyo *.min.js *.log *.pid *.bak
+
+include LICENSE
+include PIP.md

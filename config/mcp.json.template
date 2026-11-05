@@ -1,0 +1,49 @@
+{
+  "mcpServers": {
+    "cortexagent": {
+      "command": "python3",
+      "args": [
+        "{{REPO_ROOT}}/memory/mcp_server.py"
+      ],
+      "description": "CortexAgent memory MCP: hot/warm/cold memory read, append, search, and stats over the local memory store."
+    },
+    "patchright": {
+      "command": "python3",
+      "args": [
+        "{{REPO_ROOT}}/lib/patchright_chrome_mcp.py"
+      ],
+      "description": "Browser control over a local Chrome DevTools endpoint (navigate, fetch, click, type, evaluate, snapshot). Enabled with CORTEXAGENT_BROWSER_MCP_ENABLED=1; opt-out by leaving it unset."
+    },
+    "slimtoken": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "slimtoken.mcp_server"
+      ],
+      "description": "slimtoken context-compression MCP server (external package, installed separately). Auto-enabled when the slimtoken package is importable; opt-out with CORTEXAGENT_SLIMTOKEN=0."
+    },
+    "greysearch": {
+      "command": "python3",
+      "args": [
+        "{{GREYSEARCH_MCP_ROOT}}/greysearch_mcp.py"
+      ],
+      "description": "greysearch keyless web-research MCP (external checkout, installed separately): keyless search lanes plus greysearch/greysearch_health tools, optional FIRECRAWL_API_KEY. Auto-enabled when the checkout is present; opt-out with CORTEXAGENT_GREYSEARCH=0."
+    },
+    "firecrawl": {
+      "command": "python3",
+      "args": [
+        "{{REPO_ROOT}}/lib/firecrawl_proxy.py"
+      ],
+      "description": "Optional Firecrawl API proxy lane. Enabled with CORTEXAGENT_FIRECRAWL_ENABLED=1."
+    },
+    "_lazy": {
+      "command": "python3",
+      "args": [
+        "{{REPO_ROOT}}/lib/lazy_mcp_proxy.py",
+        "--name",
+        "{{LAZY_MCP_NAME}}"
+      ],
+      "description": "Template for extra servers declared in ~/.cortexagent/config/lazy_mcp_servers.json: each entry is surfaced as lazy_{name} through the stdio proxy."
+    }
+  }
+}

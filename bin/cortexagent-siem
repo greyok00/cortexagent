@@ -1,0 +1,122 @@
+#!/bin/bash
+
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+export CORTEXAGENT_REPO="${CORTEXAGENT_REPO:-$REPO_ROOT}"
+
+PY="${PYTHON:-python3}"
+export PYTHONPATH="${PYTHONPATH:-}:${HOME}/security-console:${REPO_ROOT}"
+
+_install_schedule() {
+  echo "🗓  Registering daily SIEM ingest (06:47)..."
+  TMP_SCRIPT="$(mktemp --suffix=.py)"
+  trap 'rm -f "$TMP_SCRIPT"' RETURN
+  cat > "$TMP_SCRIPT" <<PYEOF
+import sys
+sys.path.insert(0, ${REPO_ROOT@Q})
+from lib.overseer import schedule_add
+schedule_add(
+    name='siem_ingest_daily',
+    task_type='command',
+    schedule_type='cron',
+    schedule_value='47 6 * * *',
+    prompt='',
+    command='siem_ingest',
+    output='',
+    system='',
+)
+print('  ✓ registered: siem_ingest_daily (cron 47 6 * * *)')
+PYEOF
+  "$PY" "$TMP_SCRIPT"
+  rm -f "$TMP_SCRIPT"
+
+  echo "🗓  Registering daily SOAR playbook run (06:53)..."
+  TMP_SCRIPT="$(mktemp --suffix=.py)"
+  trap 'rm -f "$TMP_SCRIPT"' RETURN
+  cat > "$TMP_SCRIPT" <<PYEOF
+import sys
+sys.path.insert(0, ${REPO_ROOT@Q})
+from lib.overseer import schedule_add
+schedule_add(
+    name='soar_playbooks_daily',
+    task_type='command',
+    schedule_type='cron',
+    schedule_value='53 6 * * *',
+    prompt='',
+    command='soar_playbooks',
+    output='',
+    system='',
+)
+print('  ✓ registered: soar_playbooks_daily (cron 53 6 * * *)')
+PYEOF
+  "$PY" "$TMP_SCRIPT"
+  rm -f "$TMP_SCRIPT"
+  trap - RETURN
+}
+
+case "${1:-}" in
+  --test)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.siem_bridge --test
+    ;;
+  --push-recent)
+    shift
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.siem_bridge --push-recent "$@"
+    ;;
+  --push-hardening)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.siem_bridge --push-hardening
+    ;;
+  --soar-recent)
+    shift
+    cd "$REPO_ROOT"
+    if [ "${1:-}" = "--live" ]; then
+      exec "$PY" -m lib.soar_playbooks --run-on-recent
+    fi
+    exec "$PY" -m lib.soar_playbooks --run-on-recent --dry-run
+    ;;
+  --soar-posture)
+    shift
+    cd "$REPO_ROOT"
+    if [ "${1:-}" = "--live" ]; then
+      exec "$PY" -m lib.soar_playbooks --run-posture
+    fi
+    exec "$PY" -m lib.soar_playbooks --run-posture --dry-run
+    ;;
+  --stats)
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.siem_bridge --stats
+    ;;
+  --history)
+    shift
+    N="${1:-10}"
+    cd "$REPO_ROOT"
+    exec "$PY" -m lib.soar_playbooks --history "$N"
+    ;;
+  --install-schedule)
+    _install_schedule
+    ;;
+  --help|-h|help)
+    cat <<EOF
+cortexagent-siem — SIEM/SOAR bridge wrapper
+
+  cortexagent-siem --test                 
+  cortexagent-siem --push-recent          
+  cortexagent-siem --push-hardening       
+  cortexagent-siem --soar-recent          
+  cortexagent-siem --soar-recent --live   
+  cortexagent-siem --soar-posture         
+  cortexagent-siem --stats                
+  cortexagent-siem --history 10           
+  cortexagent-siem --install-schedule     
+EOF
+    ;;
+  *)
+    echo "Unknown arg: ${1:-}" >&2
+    "$0" --help >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+
+
+from __future__ import annotations
+
+import asyncio
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+USER_DATA_DIR = Path.home() / ".config" / "chromium"
+CHROME_BIN = os.environ.get("CORTEX_STEALTH_CHROME", "/usr/bin/chromium")
+
+CDP_PORT = int(os.environ.get("CORTEX_STEALTH_CDP_PORT", "9223"))
+CDP_URL = f"http://127.0.0.1:{CDP_PORT}"
+
+STEALTH_FLAGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-ipc-flooding-protection",
+    "--no-sandbox",
+]
+
+from lib.stealth.seed import profile_seed
+from lib.stealth.profiles import derive_profile
+from lib.stealth.init_script import build_init_script
+
+def _is_chrome_running() -> bool:
+    try:
+        out = subprocess.check_output(
+            ["curl", "-s", "--max-time", "2", f"{CDP_URL}/json/version"],
+            stderr=subprocess.DEVNULL,
+        )
+        return b"Browser" in out
+    except Exception:
+        return False
+
+def start_chrome(display: Optional[str] = None,
+                 user_data_dir: Optional[Path] = None,
+                 port: int = CDP_PORT,
+                 background: bool = True,
+                 extra_args: Optional[list[str]] = None) -> subprocess.Popen:
+
+
+
+    if display is None:
+        display = os.environ.get("DISPLAY", "")
+    if not display:
+
+
+        raise RuntimeError(
+            "stealth chrome refused to launch: DISPLAY is not set "
+            "no ghost browsers: automation runs on the real display only)"
+        )
+    print(f"🖥️ stealth chrome on real display {display}", flush=True)
+    if _is_chrome_running():
+        print(f"🟢 stealth chrome already on :{port}", flush=True)
+        return subprocess.Popen(["true"])
+
+    profile = user_data_dir or USER_DATA_DIR
+    profile.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        CHROME_BIN,
+        f"--remote-debugging-port={port}",
+        "--remote-debugging-address=127.0.0.1",
+        f"--user-data-dir={profile}",
+        *STEALTH_FLAGS,
+        *(extra_args or []),
+        "about:blank",
+    ]
+    env = os.environ.copy()
+    env["DISPLAY"] = display
+    print(f"🚀 launching stealth chrome: {' '.join(cmd)}", flush=True)
+
+    if background:
+        proc = subprocess.Popen(
+            cmd, env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, start_new_session=True,
+        )
+    else:
+        proc = subprocess.run(cmd, env=env, check=False)
+        proc = subprocess.Popen(["true"])
+    for _ in range(40):
+        if _is_chrome_running():
+            print(f"✅ stealth chrome CDP ready on :{port}", flush=True)
+            return proc
+        time.sleep(0.25)
+    raise RuntimeError(f"stealth chrome did not open CDP on :{port} within 10s")
+
+def stop_chrome() -> bool:
+    for sig in ("TERM", "KILL"):
+
+
+
+
+        subprocess.run(["pkill", f"-{sig}", "-f",
+                            f"chromium.*--remote-debugging-port={CDP_PORT}"],
+                           capture_output=True)
+        time.sleep(1)
+        if not _is_chrome_running():
+            return True
+    return not _is_chrome_running()
+
+async def connect(cdp_url: str = CDP_URL) -> Any:
+    try:
+        from patchright.async_api import async_playwright
+        _lib = "patchright"
+    except Exception:
+        from playwright.async_api import async_playwright
+        _lib = "playwright"
+
+    pw = await async_playwright().start()
+    browser = await pw.chromium.connect_over_cdp(cdp_url)
+    contexts = browser.contexts
+    if not contexts:
+        ctx = await browser.new_context()
+    else:
+        ctx = contexts[0]
+    print(f"[stealth] connected via {_lib} on {cdp_url}", flush=True)
+    return pw, browser, ctx
+
+async def get_or_create_tab(ctx, task_id: str):
+    page = await ctx.new_page()
+    page.set_default_timeout(45_000)
+    seed = profile_seed(task_id)
+    profile = derive_profile(seed=seed)
+    js = build_init_script(profile)
+    try:
+        await page.add_init_script(js)
+    except Exception as e:
+        print(f"[stealth] init-script injection failed: {e}", flush=True)
+    return page
+
+async def fetch(url: str, cdp_url: str = CDP_URL) -> Dict[str, Any]:
+    pw, browser, ctx = await connect(cdp_url)
+    try:
+        page = await get_or_create_tab(ctx, task_id=url)
+        await page.goto(url, wait_until="domcontentloaded")
+        return {
+            "url": page.url,
+            "title": await page.title(),
+            "text": await page.evaluate("() => document.body.innerText"),
+        }
+    finally:
+        await pw.stop()
+
+def cli_start() -> int:
+    start_chrome()
+    return 0 if _is_chrome_running() else 1
+
+def cli_stop() -> int:
+    return 0 if stop_chrome() else 1
+
+def cli_status() -> int:
+    if _is_chrome_running():
+        print(f"� stealth chrome CDP up on {CDP_URL}")
+        return 0
+    print(f"🔴 stealth chrome CDP down ({CDP_URL})")
+    return 1
+
+def cli_fetch(url: str) -> int:
+    out = asyncio.run(fetch(url))
+    print(f"title: {out['title']}")
+    print(f"url:   {out['url']}")
+    print("---")
+    print((out["text"] or "")[:4000])
+    return 0
+
+def main() -> int:
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    if args[0] == "start":
+        return cli_start()
+    if args[0] == "stop":
+        return cli_stop()
+    if args[0] == "status":
+        return cli_status()
+    if args[0] == "fetch" and len(args) >= 2:
+        return cli_fetch(args[1])
+    print(__doc__)
+    return 2
+
+if __name__ == "__main__":
+    sys.exit(main())

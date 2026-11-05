@@ -1,0 +1,64 @@
+#!/bin/bash
+set -eu
+
+REPO_ROOT="${CORTEXAGENT_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+. "${REPO_ROOT}/lib/state.sh"
+cc_state_init
+
+payload="$(cat || true)"
+transcript="$(printf '%s' "$payload" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    sys.stdout.write(d.get("transcript_path") or "")
+except Exception:
+    pass
+' 2>/dev/null || true)"
+
+[ -n "${transcript}" ] && [ -f "${transcript}" ] || exit 0
+
+read -r uuid text <<< "$(python3 - "${transcript}" <<'PY'
+import json, sys
+path = sys.argv[1]
+last_uuid = ""
+last_text = ""
+with open(path, errors="replace") as fh:
+    for line in fh:
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        if d.get("type") != "assistant":
+            continue
+        msg = d.get("message") or {}
+        blocks = msg.get("content") or []
+        if not isinstance(blocks, list):
+            continue
+        parts = [b.get("text", "") for b in blocks
+                 if isinstance(b, dict) and b.get("type") == "text" and b.get("text")]
+        text = " ".join(parts).strip()
+        if not text:
+            continue
+        last_uuid = d.get("uuid") or ""
+        last_text = text
+
+print(last_uuid.replace(" ", "_") + " " + last_text[:10000].replace("\n", " "))
+PY
+)"
+
+[ -n "${text}" ] || exit 0
+[ -n "${uuid}" ] || exit 0
+
+marker="$(_cortexagent_state_dir)/last-assistant-uuid"
+if [ -f "${marker}" ] && [ "$(cat "${marker}" 2>/dev/null || true)" = "${uuid}" ]; then
+  exit 0
+fi
+
+PYTHONPATH="${REPO_ROOT}" python3 -c "
+from lib.memory_thin import append
+import sys
+sys.stdout.write(str(append('assistant', sys.argv[1], platform='cortexagent')))
+" "${text}" >/dev/null 2>&1 || true
+printf '%s' "${uuid}" > "${marker}"
+
+exit 0

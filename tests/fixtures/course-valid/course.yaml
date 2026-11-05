@@ -1,0 +1,45 @@
+schema: 1
+title: "Proof Course"
+slug: "proof-course"
+family: "test"
+summary: "A small course used to test the manifest, validator, and builder."
+workload_hours: 100
+prerequisites: ["Basic command line"]
+outcomes: ["Explain the mechanism."]
+guide: "guide.md"
+modules:
+  - &module
+    number: 1
+    slug: "why"
+    title: "Why It Fails"
+    high_level_issue: "The old model assumes files."
+    objectives: ["State the failure condition."]
+    lessons: ["The assumption", "The failure"]
+    key_terms: ["signature"]
+    guide_sections: ["How it works"]
+    readings:
+      - {title: "Doc", authors: "Vendor", year: 2024, type: "official_docs",
+         url: "https://example.gov/doc", why: "Defines the model."}
+      - {title: "Paper", authors: "Researcher", year: 2023, type: "paper",
+         url: "https://example.org/paper", why: "Measures the failure."}
+    videos:
+      - {title: "Talk", creator: "Conference", year: 2024, duration: "30 min",
+         url: "https://youtu.be/example", why: "Shows the mechanism."}
+    assignments:
+      - {title: "Problem set", type: "problem_set",
+         deliverable: "One page of analysis.", rubric: ["Correctness — 60%", "Clarity — 40%"]}
+    self_check: ["Why does the model fail?"]
+    bridge: "Next we look at the memory model."
+  - {<<: *module, number: 2, slug: "memory", title: "Memory Foundations"}
+  - {<<: *module, number: 3, slug: "powershell", title: "PowerShell Execution"}
+  - {<<: *module, number: 4, slug: "persistence", title: "Persistence"}
+  - {<<: *module, number: 5, slug: "injection", title: "Process Injection"}
+  - {<<: *module, number: 6, slug: "sysmon", title: "Sysmon Telemetry"}
+  - {<<: *module, number: 7, slug: "logging", title: "PowerShell Logging"}
+  - {<<: *module, number: 8, slug: "detection", title: "Detection Engineering"}
+  - {<<: *module, number: 9, slug: "response", title: "Incident Response"}
+  - {<<: *module, number: 10, slug: "capstone", title: "Capstone"}
+capstone:
+  title: "Final project"
+  deliverable: "A working detection rule set."
+  rubric: ["Coverage — 50%", "False positives — 50%"]

@@ -1,0 +1,5 @@
+signature:
+  definition: "A reusable pattern that identifies a known behavior in telemetry."
+  example: "A detection rule that matches a specific command line."
+  module: 1
+  guide_section: "How it works"
