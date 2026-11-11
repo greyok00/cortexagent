@@ -1,0 +1,92 @@
+{
+  "query": "Uber Eats bicycle bike delivery requirements",
+  "candidate_count": 15,
+  "scraped_count": 3,
+  "accepted_count": 0,
+  "quarantined_count": 3,
+  "rejected_count": 4,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://chefsstage.com/uber-eats-bike-delivery-how-reliable-is-it/",
+      "decision": "reject",
+      "reason": "thin_content: 13 chars of main text (< 800)"
+    },
+    {
+      "url": "https://chefsstage.com/can-i-do-uber-eats-on-a-bike/",
+      "decision": "reject",
+      "reason": "thin_content: 13 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=TmWJt_npWv8",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://help.uber.com/en/driving-and-delivering/article/sign-up-for-delivery-with-bicycle-or-on-foot?nodeId=d89506e6-5d67-42cd-aa2a-64e9f30b0a42",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://worldlinksites.com/navigating-the-city-by-bike-the-rise-of-uber-eats-bicycle-deliveries/",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) requirements never appear while the broader head terms (uber, eats, bicycle, bike, delivery) do \u2014 the page answers the head of the question, not the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://www.uber.com/us/en/deliver/bike-delivery/",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) requirements never appear while the broader head terms (uber, eats, bicycle, bike, delivery) do \u2014 the page answers the head of the question, not the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://www.uber.com/au/en/u/e-bikes-marketplace/",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) requirements never appear while the broader head terms (uber, eats, bicycle, bike, delivery) do \u2014 the page answers the head of the question, not the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://med.noridianmedicare.com/web/jddme/topics/documentation/proof-of-delivery",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://librarylinknj.org/delivery/statslog",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.lawinsider.com/dictionary/delivery-requirements",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.fedex.com/en-us/delivery-options/signature-services.html",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://support.getbyrd.com/en/knowledge-base/delivery-guidelines-and-requirements",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://oag.dc.gov/release/attorney-general-schwalb-requires-delivery-company",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.transit.dot.gov/regulations-and-guidance/buy-america/post-delivery-review-requirements",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.uber.com/us/en/deliver/",
+      "decision": "deprioritized",
+      "reason": "same-domain cap (2) reached"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "query": "UPS package handler pay rate Teamsters contract 2025",
+  "candidate_count": 14,
+  "scraped_count": 1,
+  "accepted_count": 0,
+  "quarantined_count": 1,
+  "rejected_count": 9,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://about.ups.com/us/en/our-company/great-employer.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.12; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://greenslate.com/blog/september-2025-iatse-and-teamsters-rate-increases",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.12; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.indeed.com/cmp/UPS/salaries/Package-Handler/Phoenix-AZ",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.ziprecruiter.com/Jobs/Ups-Package-Handler/-in-Phoenix,AZ",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.indeed.com/cmp/UPS/salaries/Package-Handler/Arizona",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://teamster.org/wp-content/uploads/2024/01/13124UPSWESTERNREGIONSUPPLEMENTALAGREEMENT.pdf",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.12; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.jobs-ups.com/us/en/warehouse-workers",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.12; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://about.ups.com/us/en/newsroom/negotiations/negotiations-basics/working-at-ups.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://teamster.org/wp-content/uploads/2024/02/83796-UPS-NORCAL-SUPPLEMENT-and-SORT-RIDER-BOOK-FOR-WEB-1.pdf",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.00; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.glassdoor.com/Salary/UPS-Part-Time-Package-Handler-Salaries-E3012_D_KO4,29.htm",
+      "decision": "quarantine",
+      "reason": "title coverage 0.00; body coverage 0.38; headings coverage 0.00 [deterministic judge \u2014 research guide]",
+      "relevance_score": 55
+    },
+    {
+      "url": "https://www.facebook.com/teamsters/posts/every-week-teamsters-approve-first-contracts-that-positively-transform-lives-tea/1386786496823481/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    },
+    {
+      "url": "http://ofm.wa.gov/hr-policies/labor-relations/collective-bargaining-agreements/teamsters-local-760-2025-27/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    },
+    {
+      "url": "https://teamster.org/wp-content/uploads/2024/01/10424UPSNATIONALMASTERFINAL.pdf",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    },
+    {
+      "url": "https://teamster.org/wp-content/uploads/2024/08/82924ARCNationalMasterAgreement20242028Redline.pdf",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

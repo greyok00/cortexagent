@@ -1,0 +1,47 @@
+{
+  "query": "Gopuff Phoenix driver vehicle requirements",
+  "candidate_count": 9,
+  "scraped_count": 3,
+  "accepted_count": 3,
+  "quarantined_count": 1,
+  "rejected_count": 4,
+  "accepted_sources": [
+    "https://therideshareguy.com/gopuff-driver-review/",
+    "https://smartmiles.app/gig-driver-requirements/gopuff/",
+    "https://www.ridesharingdriver.com/gopuff-delivery-driver-requirements/"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.careerbuilder.com/job-details/gopuff-delivery-driver-choose-when-you-work-phoenix-az--eb9041e4-c373-4034-bac4-8be4baee8c64",
+      "decision": "reject",
+      "reason": "empty result"
+    },
+    {
+      "url": "https://gopuff.com/gfj/1-gopuff-delivery-driver-gigs-sun-lakes-az-69a6938ba2cd3e040ce2b36b",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.40; body coverage 0.20; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.ziprecruiter.com/Jobs/Delivery-Driver-With-No-Car/-in-Phoenix,AZ",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.40; body coverage 0.40; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.indeed.com/cmp/Gopuff/reviews?fjobcat=driver&ftext=Gas",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.20; body coverage 0.20; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.appjobs.com/phoenix/gopuff",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) requirements never appear while the broader head terms (gopuff, phoenix, driver, vehicle) do \u2014 the page answers the head of the question, not the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://deliver.gopuff.com/signup",
+      "decision": "reject",
+      "reason": "search/tag/category/feed/pagination URL"
+    }
+  ],
+  "quality_warnings": []
+}

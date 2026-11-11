@@ -1,0 +1,81 @@
+@layer el-tokens {
+
+
+
+:root,
+[data-theme] {
+
+  /* ── v0.2.0 workflow + motion layer (append-only; originals untouched) ── */
+
+  --el-dur-surface:  280ms;
+  --el-dur-flow:     360ms;
+  --el-dur-progress: 520ms;
+
+  /* critically damped - the "quiet" entry for a serious research desk */
+  --el-ease-quiet:   cubic-bezier(.32, .72, .36, 1);
+
+  /* stage-semantic colors: defaults ride existing status tokens;
+     themes may remap per personality */
+  --el-stage-active:  var(--el-accent);
+  --el-stage-done:    var(--el-ok);
+  --el-stage-running: var(--el-accent);
+  --el-stage-stale:   var(--el-fail);
+
+  /* reading surface (long-form research desk) */
+  --el-measure:    68ch;
+  --el-facts-paper: var(--el-panel);
+  --el-facts-ink:   var(--el-ink);
+  --el-font-serif:  'Iowan Old Style', Palatino, 'Palatino Linotype', Georgia, serif;
+
+  /* press depth (kept beside --el-press so components can scale by token) */
+  --el-press-scale: 0.96;
+
+}
+
+}
+
+/* obsidian (v2 layer mirror, 2026-11-09) */
+@layer el-tokens {
+[data-theme="obsidian"] {
+  --el-bg: #070a12; --el-panel: #0d1420; --el-panel-2: #131c2c; --el-panel-3: #1a2536;
+  --el-line: #1c2738; --el-line-2: #141d2a; --el-line-strong: #31445d;
+  --el-ink: #dbe6f4; --el-ink-soft: #8fa3bd; --el-mute: #5d6f88; --el-on-accent: #061019;
+  --el-accent: #63a4ff; --el-accent-hover: #8bbcff; --el-accent-soft: rgba(99,164,255,0.13);
+  --el-ok: #2dd4bf; --el-warn: #fbbf24; --el-fail: #fb7185; --el-info: #93c5fd;
+  --el-live: #22d3ee; --el-teal: #2dd4bf;
+  --el-shadow-1: 0 1px 2px rgba(2,6,14,.5); --el-shadow-2: 0 6px 18px rgba(2,6,14,.55);
+  --el-shadow-3: 0 16px 48px rgba(2,6,14,.7); --el-overlay: rgba(2,4,10,.68);
+  --el-focus-ring: rgba(99,164,255,.55);
+  --el-font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --el-font-display: 'Space Grotesk', 'Inter', ui-sans-serif, sans-serif;
+  --el-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --el-r-sm: 4px; --el-r-md: 6px; --el-r-lg: 10px; --el-r-xl: 16px;
+  --el-bar-h: 3px; --el-ctl-pad-y: 9px; --el-ctl-pad-x: 14px; --el-ctl-min-h: 38px;
+  --el-card-pad: 20px; --el-head-weight: 640; --el-head-tracking: -0.005em;
+  --el-label-tracking: 0.11em;
+  --gs-lib-card: color-mix(in oklab, var(--el-panel) 92%, var(--el-accent) 8%);
+}
+}
+
+/* 2026-11-10: "paper" light palette added for cortex-agent's library theme
+   switching (owner: include the ui framework to change the library theme).
+   Same token names, inverted greys; accents kept. */
+[data-theme="paper"] {
+  --el-bg: #f6f7f9; --el-panel: #ffffff; --el-panel-2: #f0f2f5; --el-panel-3: #e7eaef;
+  --el-line: #d9dde3; --el-line-2: #e3e6eb; --el-line-strong: #b9c0c9;
+  --el-ink: #16181d; --el-ink-soft: #4a505a; --el-mute: #7a828d; --el-on-accent: #ffffff;
+  --el-accent: #1d64c8; --el-accent-hover: #15519f; --el-accent-soft: rgba(29,100,200,0.10);
+  --el-ok: #0d8f7f; --el-warn: #b45309; --el-fail: #c2364f; --el-info: #2563eb;
+  --el-live: #0891b2; --el-teal: #0d8f7f;
+  --el-shadow-1: 0 1px 2px rgba(20,26,38,.10); --el-shadow-2: 0 6px 18px rgba(20,26,38,.12);
+  --el-shadow-3: 0 16px 48px rgba(20,26,38,.16); --el-overlay: rgba(240,242,246,.72);
+  --el-focus-ring: rgba(29,100,200,.45);
+  --el-font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --el-font-display: 'Space Grotesk', 'Inter', ui-sans-serif, sans-serif;
+  --el-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --el-r-sm: 4px; --el-r-md: 6px; --el-r-lg: 10px; --el-r-xl: 16px;
+  --el-bar-h: 3px; --el-ctl-pad-y: 9px; --el-ctl-pad-x: 14px; --el-ctl-min-h: 38px;
+  --el-card-pad: 20px; --el-head-weight: 640; --el-head-tracking: -0.005em;
+  --el-label-tracking: 0.11em;
+  --gs-lib-card: color-mix(in oklab, var(--el-panel) 94%, var(--el-accent) 6%);
+}

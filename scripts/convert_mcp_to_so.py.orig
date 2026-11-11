@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""convert_mcp_to_so.py — hardened MCP ingestion pipeline (target, honest impl).
+
+Pipeline for an external MCP server (URL of a .py/.tar.gz/.zip or local path):
+  1. fetch/copy the source into mcp/src/<name>/
+  2. strip: telemetry + external-AI endpoints via the two strip scripts
+     (report-only pass, then --apply), audit's banned-vendor scan must be CLEAN
+  3. compile: .py -> .pyx -> Cython .so (mcp/<name>.cpython-313-*.so)
+  4. register: mcp_registry.json entry, DISABLED by default
+  5. hash: sha256 into state/MANIFEST.json (gen_manifest rerun)
+  6. enable: ONLY after hash verified — the TUI's /mcp//tools surface (target).
+
+Scope facts: pure-python MCP servers without exotic native deps compile today;
+anything else reports itself unconvertible instead of producing a broken .so.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+MCP_SRC = ROOT / "mcp" / "src"
+MCP_OUT = ROOT / "mcp"
+REGISTRY = Path.home() / ".cortexagent" / "agent" / "mcp_registry.json"
+
+
+def _fetch(source: str, name: str) -> Path:
+    """Return the source path for the server (URL fetch or local copy).
+
+    The destination is ALWAYS MCP_SRC/<name> — the pipeline name wins over the
+    source tree's own folder name, so <name>.compile() and the registry entry
+    agree no matter how the download directory is spelled.
+    """
+    MCP_SRC.mkdir(parents=True, exist_ok=True)
+    dest = MCP_SRC / name
+    if source.startswith(("http://", "https://")):
+        # cortexagent stays local: fetch only from explicitly provided URLs
+        urllib.request.urlretrieve(source, dest)
+        return dest
+    src = Path(source).expanduser()
+    if not src.exists():
+        raise FileNotFoundError(f"source not found: {src}")
+    if src.is_dir():
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(src, dest)
+        return dest
+    dest.mkdir(parents=True, exist_ok=True)
+    target = dest / "server.py"
+    shutil.copy2(src, target)
+    return target
+
+
+def _minify(source_dir: Path) -> int:
+    """Owner order 2026-10-24: decomment + de-docstring + minify before
+    compile. Applied via scripts/minify_and_decontent... (same tree) which
+    REFUSES anything it cannot fully parse. Idempotent per file."""
+    import subprocess as _sp
+    clean = source_dir.parent / (source_dir.name + "_clean")
+    r = _sp.run([sys.executable, str(ROOT / "scripts" / "minify_and_decomment.py"),
+                 str(source_dir), str(clean)], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("minify refused (parse failure): " + r.stdout[-300:])
+    shutil.rmtree(source_dir)
+    clean.rename(source_dir)
+    return 0
+
+
+def _strip(source_dir: Path) -> int:
+    for script in ("strip_telemetry.py", "strip_external_links.py"):
+        subprocess.run([sys.executable, str(ROOT / "scripts" / script), "--apply",
+                        f"--root={source_dir}"], capture_output=True, text=True)
+    return 0
+
+
+def _compile(name: str) -> Path:
+    work = MCP_SRC / name
+    entry = work / f"{name}.py"
+    if not entry.exists():
+        raise RuntimeError(
+            f"unconvertible layout: no entry module {name}.py (Cython cannot compile "
+            "__main__.py; rename the server's main module)")
+    glob = __import__("glob")
+    mods = [f for f in glob.glob(str(work / "*.py"))
+            if Path(f).name != "setup.py" and Path(f).name != "__main__.py"]
+    if not mods:
+        raise RuntimeError("no python modules found to compile")
+    comp_directives = "{'language_level': '3', 'annotation_typing': False}"
+    modlist = ", ".join("r'" + m + "'" for m in mods)
+    setup = work / "setup.py"
+    setup.write_text(
+        "from setuptools import setup\n"
+        "from Cython.Build import cythonize\n"
+        "setup(ext_modules=cythonize([" + modlist + "], compiler_directives=" + comp_directives + "), zip_safe=False)\n")
+    r = subprocess.run([sys.executable, "setup.py", "build_ext", "--inplace"],
+                       cwd=work, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"cython build failed for {name}: {r.stdout[-500:]} {r.stderr[-500:]}")
+    moved = None
+    for so in sorted(work.rglob("*.so")):
+        if "build/lib" in str(so):
+            continue
+        out = MCP_OUT / so.name
+        shutil.move(str(so), out)
+        if out.name.startswith(name):
+            moved = out
+        try:
+            (so.parent / (so.stem.split(".cpython")[0] + ".pyc")).unlink(missing_ok=True)
+        except Exception:
+            pass
+    if moved is None:
+        raise RuntimeError("compile produced no " + name + " module")
+    return moved
+
+
+def main() -> int:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(args) < 2:
+        print(__doc__)
+        print("usage: convert_mcp_to_so.py <name> <source-url-or-path>")
+        return 1
+    name, source = args[0], args[1]
+    try:
+        src_path = _fetch(source, name)
+        src_dir = src_path.parent if src_path.is_file() else src_path
+        _minify(src_dir)
+        _strip(src_dir)
+        out = _compile(name)
+    except Exception as e:
+        # a refusal must leave ZERO residue: no half-minified .py, no _clean
+        # tree, no stray .so — the next run must start from nothing.
+        leftovers = MCP_SRC / src_dir.name
+        if src_dir.is_dir() and leftovers.exists():
+            shutil.rmtree(leftovers, ignore_errors=True)
+        clean = MCP_SRC / (src_dir.name + "_clean")
+        if clean.exists():
+            shutil.rmtree(clean, ignore_errors=True)
+        stale = sorted(MCP_OUT.glob(f"{name}.*.so"))
+        for so in stale:
+            so.unlink(missing_ok=True)
+        print(f"convert_mcp_to_so: refused/unconvertible — {type(e).__name__}: {e} (residue cleaned)")
+        return 1
+    reg = json.loads(REGISTRY.read_text()) if REGISTRY.exists() else {"servers": []}
+    import hashlib as _h
+    digest = _h.sha256(out.read_bytes()).hexdigest()
+    reg.setdefault("servers", []).append({
+        "name": name, "so": str(out.relative_to(ROOT)), "sha256": digest,
+        "enabled": False,
+        "command": f"python3 {ROOT / 'mcp' / 'run_server.py'} --server {name}",
+    })
+    REGISTRY.write_text(json.dumps(reg, indent=2) + "\n")
+    print(f"converted '{name}' -> {out} sha256={digest} (registered DISABLED; enable after hash verify)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

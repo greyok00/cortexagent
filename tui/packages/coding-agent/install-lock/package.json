@@ -1,0 +1,19 @@
+{
+  "name": "@cortex/coding-agent-install",
+  "version": "0.7.3",
+  "private": true,
+  "description": "Lockfile root used by the Cortex installer and updater.",
+  "dependencies": {
+    "@cortex/coding-agent": "0.84.1"
+  },
+  "overrides": {
+    "protobufjs": "7.6.5",
+    "rimraf": "6.1.2",
+    "gaxios": {
+      "rimraf": "6.1.2"
+    }
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

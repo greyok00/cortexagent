@@ -1,0 +1,79 @@
+{
+  "query": "ASU federal work study award student employment office",
+  "candidate_count": 16,
+  "scraped_count": 6,
+  "accepted_count": 4,
+  "quarantined_count": 2,
+  "rejected_count": 6,
+  "accepted_sources": [
+    "https://www.bu.edu/seo/work-study/",
+    "https://tuition.asu.edu/forms/off-campus-fws-agreement",
+    "https://hr.uiowa.edu/careers/employment-categories-and-classifications/student-employment",
+    "https://students.asu.edu/admitted/jobs-careers"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://tuition.asu.edu/forms/fa-fws-adjustment",
+      "decision": "reject",
+      "reason": "thin_content: 743 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.csn.edu/work-study",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.bu.edu/seo/supervisors/soty/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://news.asu.edu/20260204-law-journalism-and-politics-entrylevel-public-affairs-class-educates-thousands-students",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://employment.indianapolis.iu.edu/events-resources/events/of-the-year/index.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.12; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://graduate.asu.edu/other-funding-resources",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.00; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://studentemployment.asu.edu/students/preparing-student-employment/federal-work-study",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) office never appear while the broader head terms (asu, federal, work, study, award, student, employment) do \u2014 the page answers the head of the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://workpluscollective.org/insights/asu-state-student-employment-report-2024-2025",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) award, office never appear while the broader head terms (asu, federal, work, study, student, employment) do \u2014 the page answers the head of the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://studentemployment.asu.edu/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://studentemployment.siu.edu/student-employment-awards/index.php",
+      "decision": "reject",
+      "reason": "search/tag/category/feed/pagination URL"
+    },
+    {
+      "url": "https://www.txst.edu/studentemployment/student-employees/nsew/sera.html",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    },
+    {
+      "url": "https://www.aber.ac.uk/en/news/archive/2018/08/title-216053-en.html",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    }
+  ],
+  "quality_warnings": []
+}

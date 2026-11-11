@@ -1,0 +1,79 @@
+{
+  "query": "BLS Phoenix metropolitan area wage data delivery drivers",
+  "candidate_count": 13,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 11,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.bls.gov/regions/west/news-release/occupationalemploymentandwages_phoenix.htm",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.bls.gov/regions/west/az_phoenix_msa.htm",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.12; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.bls.gov/regions/west/summary/blssummary_phoenix.pdf",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.bls.gov/regions/west/news-release/consumerpriceindex_phoenix.htm",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.12; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.bls.gov/regions/west/arizona.htm",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.00; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.onlinedegree.com/careers/transportation-warehousing/delivery-driver/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.glassdoor.com/Salary/Uber-Eats-Delivery-Driver-Phoenix-Salaries-EJI_IE9569657.0,9_KO10,25_IL.26,33_IM678.htm",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.indeed.com/q-bls-certification-l-phoenix,-az-jobs.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.payscale.com/research/US/Job=Delivery_Driver/Hourly_Rate",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://nyc.streetsblog.org/2024/07/15/delivery-worker-minimum-wage-brings-order-to-industry-data-shows",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.12; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://boostpoint.com/delivery-driver-job-description/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.bls.gov/eag/eag.az_phoenix_msa.htm",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    },
+    {
+      "url": "https://www.indeed.com/career-advice/pay-salary/how-much-do-pizza-delivery-drivers-make",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

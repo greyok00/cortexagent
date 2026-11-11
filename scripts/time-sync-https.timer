@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodically re-sync clock over HTTPS (drift correction)
+
+[Timer]
+# Fire shortly after boot (covers a power-loss boot), then periodically so
+# the freerunning RTC never drifts far while the machine is up.
+OnBootSec=45s
+OnUnitActiveSec=15min
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

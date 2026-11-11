@@ -1,0 +1,66 @@
+import { type Component, Container, type Focusable } from "@cortexagent/tui";
+import type { SessionTreeNode } from "../../../core/session-manager.ts";
+export type FilterMode = "default" | "no-tools" | "user-only" | "labeled-only" | "all";
+declare class TreeList implements Component {
+    private flatNodes;
+    private filteredNodes;
+    private selectedIndex;
+    private currentLeafId;
+    private maxVisibleLines;
+    private filterMode;
+    private searchQuery;
+    private toolCallMap;
+    private multipleRoots;
+    private showLabelTimestamps;
+    private activePathIds;
+    private visibleParentMap;
+    private visibleChildrenMap;
+    private lastSelectedId;
+    private foldedNodes;
+    onSelect?: (entryId: string) => void;
+    onCancel?: () => void;
+    onCopy?: (text: string | undefined) => void;
+    onLabelEdit?: (entryId: string, currentLabel: string | undefined) => void;
+    constructor(tree: SessionTreeNode[], currentLeafId: string | null, maxVisibleLines: number, initialSelectedId?: string, initialFilterMode?: FilterMode);
+    private findNearestVisibleIndex;
+    private buildActivePath;
+    private flattenTree;
+    private applyFilter;
+    private recalculateVisualStructure;
+    private getSearchableText;
+    invalidate(): void;
+    getSearchQuery(): string;
+    getSelectedNode(): SessionTreeNode | undefined;
+    copySelected(): void;
+    updateNodeLabel(entryId: string, label: string | undefined, labelTimestamp?: string): void;
+    private getStatusLabels;
+    render(width: number): string[];
+    private getEntryDisplayText;
+    private formatLabelTimestamp;
+    private extractContent;
+    private extractFullContent;
+    private getEntryCopyText;
+    private hasTextContent;
+    private formatToolCall;
+    handleInput(keyData: string): void;
+    private isFoldable;
+    private findBranchSegmentStart;
+}
+export declare class TreeSelectorComponent extends Container implements Focusable {
+    private treeList;
+    private labelInput;
+    private labelInputContainer;
+    private treeContainer;
+    private onLabelChangeCallback?;
+    onCopy?: (text: string | undefined) => void;
+    private _focused;
+    get focused(): boolean;
+    set focused(value: boolean);
+    constructor(tree: SessionTreeNode[], currentLeafId: string | null, terminalHeight: number, onSelect: (entryId: string) => void, onCancel: () => void, onLabelChange?: (entryId: string, label: string | undefined) => void, initialSelectedId?: string, initialFilterMode?: FilterMode);
+    private showLabelInput;
+    private hideLabelInput;
+    handleInput(keyData: string): void;
+    getTreeList(): TreeList;
+}
+export {};
+//# sourceMappingURL=tree-selector.d.ts.map

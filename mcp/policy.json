@@ -1,0 +1,93 @@
+{
+  "mode": "greypentest-hardened-v1",
+  "execution_mode": "allowlist",
+  "allowlist": [
+    "nmap",
+    "nikto",
+    "gobuster",
+    "dirb",
+    "whatweb",
+    "dig",
+    "openssl",
+    "sqlmap",
+    "ffuf",
+    "gobuster",
+    "wafw00f",
+    "arjun",
+    "dalfox",
+    "nuclei",
+    "httpx",
+    "katana",
+    "naabu",
+    "subfinder",
+    "dnsx",
+    "feroxbuster",
+    "sslscan",
+    "enum4linux",
+    "smbclient",
+    "hydra",
+    "medusa",
+    "masscan",
+    "onesixtyone",
+    "snmpwalk",
+    "dnsrecon",
+    "unicornscan",
+    "wp-cli",
+    "/usr/bin/openssl",
+    "/usr/bin/file",
+    "/usr/bin/xxd",
+    "/usr/bin/sha256sum",
+    "/usr/bin/md5sum",
+    "/usr/bin/strings",
+    "/usr/bin/python3",
+    "/usr/bin/python3.13",
+    "maigret",
+    "sherlock",
+    "exiftool",
+    "ssh-audit",
+    "nbtscan",
+    "adb",
+    "ideviceinfo",
+    "idevice_id",
+    "lynis",
+    "enum4linux-ng",
+    "nxc",
+    "testssl",
+    "amass",
+    "theHarvester",
+    "blackbird",
+    "waymore",
+    "git",
+    "gitleaks"
+  ],
+  "http": {
+    "allow": [
+      "127.0.0.1",
+      "randybarham.com",
+      "www.randybarham.com"
+    ],
+    "allow_hosts": [
+      "randybarham.com",
+      "www.randybarham.com"
+    ],
+    "lab_nets": [
+      "10.0.0.0/8",
+      "172.16.0.0/12",
+      "192.168.0.0/16"
+    ],
+    "tls_insecure": false,
+    "osint_allow_hosts": [
+      "crt.sh",
+      "api.github.com",
+      "keybase.io",
+      "www.bing.com",
+      "raw.githubusercontent.com",
+      "gitlab.com"
+    ]
+  },
+  "notes": "Fail-closed policy: any error reading this file denies everything. Timeouts may only be tightened. NEVER set execution_mode to anything else; localhost/link-local/metadata nets are unreachable through the http gate no matter what is written here. Populate allowlist with the absolute paths of the scanners available on THIS box; populate http.allow with explicit lab targets only.",
+  "exec_timeout_cap": 320,
+  "deny": [
+    "holehe"
+  ]
+}

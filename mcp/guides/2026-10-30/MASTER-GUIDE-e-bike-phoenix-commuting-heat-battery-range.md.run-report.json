@@ -1,0 +1,116 @@
+{
+  "query": "e-bike Phoenix commuting heat battery range",
+  "candidate_count": 26,
+  "scraped_count": 7,
+  "accepted_count": 7,
+  "quarantined_count": 1,
+  "rejected_count": 6,
+  "accepted_sources": [
+    "https://www.liv-cycling.com/global/e-bike-battery-range",
+    "https://cellsaviors.com/ebike-range-calculator",
+    "https://americancycletech.com/arizona-heat-ebike-battery-guide/",
+    "https://americancycletech.com/e-bike-battery-care-in-phoenix-summer-complete-maintenance-guide/",
+    "https://greenmoov.app/articles/en/how-to-choose-an-ebike-for-summer-commuting-heat-range-and-safety-guide",
+    "https://electricbikeexplorer.com/how-hot-is-too-hot-for-an-ebike-battery/",
+    "https://biketips.com/e-bike-battery-range-guide/"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.facebook.com/groups/lectricebikesowners/posts/4466548000284421/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.rideapart.com/features/733993/ebike-battery-range-estimates-accuracy/",
+      "decision": "reject",
+      "reason": "thin_content: 512 chars of main text (< 800)"
+    },
+    {
+      "url": "https://e-gobike.co.uk/e-bike-battery-ranges-vs-manufacturers-claims/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.17; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.phoenixch.org.uk/news/e-bike-and-e-scooter-safety",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.33; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.pittcycle.com/product-list/accessories-1109/e-bike-batteries-kits-1229/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://haoqiebike.com/blogs/news/beat-the-heat-summer-commuting-haoqi-mustang-ebike?srsltid=AYCX9vLRXOeQoiL1z0EXPQnmbp5g4hPqWUp4UeUGGYlBwg4TzBd71cxv",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.17; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://americancycletech.com/ebike-vs-gas-scooter-phoenix/",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) range never appear while the broader head terms (bike, phoenix, commuting, heat, battery) do \u2014 the page answers the head of the question, not the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://bicycles.stackexchange.com/questions/100440/cycling-in-the-heat-around-phoenix-40c-days-what-am-i-still-missing",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.kjzz.org/kjzz-news/2025-12-23/3-metro-phoenix-cities-are-trying-to-make-riding-e-scooters-e-bikes-more-safe",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://smittysebikes.com/3-best-places-to-ride-e-bikes-in-phoenix-arizona/",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://www.campfirecycling.com/blog/tag/commute-by-bike",
+      "decision": "reject",
+      "reason": "search/tag/category/feed/pagination URL"
+    },
+    {
+      "url": "https://www.ford.com/electric/ev-range/?srsltid=AYCX9vK5gwOYZZ4lPHtO3zrZ2VlKQzLoYOZOCQSYceNEAJvDT31CekJb",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.caranddriver.com/features/g32634624/ev-longest-driving-range/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.skoda.co.uk/electric-hybrid-cars/electric-car-range-explained",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.redrc.net/2025/02/lrp-1s-competition-battery-range/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://coltura.org/electric-car-battery-range/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.hansonconcretegarages.co.uk/battery-garages-range/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://help.tessie.com/article/162-understanding-battery-metrics",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.toyotaownersclub.com/forums/topic/225378-battery-capacity-range-and-efficiency/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    }
+  ],
+  "quality_warnings": []
+}

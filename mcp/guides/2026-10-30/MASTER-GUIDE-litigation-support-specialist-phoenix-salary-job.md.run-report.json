@@ -1,0 +1,67 @@
+{
+  "query": "litigation support specialist Phoenix salary job",
+  "candidate_count": 12,
+  "scraped_count": 2,
+  "accepted_count": 2,
+  "quarantined_count": 0,
+  "rejected_count": 3,
+  "accepted_sources": [
+    "https://www.linkedin.com/jobs/view/litigation-support-specialist-at-gust-rosenfeld-plc-4466466650",
+    "https://quickandconfidential.com/phoenix-litigation-support-for-out-of-state-attorneys/"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.indeed.com/q-litigation-support-l-phoenix,-az-jobs.html",
+      "decision": "reject",
+      "reason": "thin_content: 180 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.ziprecruiter.com/c/Gust-Rosenfeld/Job/Litigation-Support-Specialist/-in-Phoenix,AZ?jid=193d591187a6921e",
+      "decision": "reject",
+      "reason": "thin_content: 268 chars of main text (< 800)"
+    },
+    {
+      "url": "https://jobs.alanet.org/job/9407/legal-support-specialist-arizona-litigation/",
+      "decision": "reject",
+      "reason": "thin_content: 257 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.hpclawyers.com/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://www.indeed.com/career/salaries",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.hourlysalaries.com/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://careers.usnews.com/best-jobs/rankings/best-paying-jobs",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.careeronestop.org/Toolkit/Wages/find-salary.aspx",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.gov.uk/skilled-worker-visa/your-job",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.indeed.com/career-advice/finding-a-job/jobs-that-pay-200k",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 2 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

@@ -1,0 +1,170 @@
+{
+ "copied": [
+  {
+   "src": "~/cortex-agent/lib/adapters/base.py",
+   "dst": "tools/adapters_base.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/adapters/searxng_adapter.py",
+   "dst": "tools/adapters_searxng.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/adapters/registry.py",
+   "dst": "tools/adapters_registry.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/browser_control.py",
+   "dst": "tools/browser_control.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/browser_tools.py",
+   "dst": "tools/browser_tools.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/browser_console.py",
+   "dst": "tools/browser_console.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/browser_cdp_guard.py",
+   "dst": "tools/browser_cdp_guard.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/kali_bank.py",
+   "dst": "tools/kali_bank.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/charts.py",
+   "dst": "tools/charts.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/document_adapter.py",
+   "dst": "tools/document_adapter.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/pdf_knowledge.py",
+   "dst": "tools/pdf_knowledge.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/fast_extract.py",
+   "dst": "tools/fast_extract.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/popup_themes.py",
+   "dst": "tools/popup_themes.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/memory_daemon.py",
+   "dst": "services/memory_daemon.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/memory_thin.py",
+   "dst": "services/memory_thin.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/scheduler/store.py",
+   "dst": "services/scheduler_store.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/scheduler/recovery.py",
+   "dst": "services/scheduler_recovery.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/scheduler/ui.py",
+   "dst": "services/scheduler_ui.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/patchright_scraper.py",
+   "dst": "tools/patchright_scraper.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/browser_session.py",
+   "dst": "tools/browser_session.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/browser_ports.py",
+   "dst": "tools/browser_ports.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/research_injection.py",
+   "dst": "tools/research_injection.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/searxng_integrated.py",
+   "dst": "tools/searxng_integrated.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/searx_fallback.py",
+   "dst": "tools/searx_fallback.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/page_clean.py",
+   "dst": "tools/page_clean.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/relevance.py",
+   "dst": "tools/relevance.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/guide_scrub.py",
+   "dst": "tools/guide_scrub.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/keys.py",
+   "dst": "tools/optional/keys.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/greysearch_publisher.py",
+   "dst": "tools/optional/publisher.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/greysearch_site_builder.py",
+   "dst": "tools/optional/site_builder.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/pdf_export.py",
+   "dst": "tools/optional/pdf_export.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/photos.py",
+   "dst": "tools/optional/photos.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/pipeline_sites.py",
+   "dst": "tools/optional/pipeline_sites.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/site_render.py",
+   "dst": "tools/optional/site_render.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/site_guardrails.py",
+   "dst": "tools/optional/site_guardrails.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/tuning.py",
+   "dst": "tools/optional/tuning.py"
+  },
+  {
+   "src": "~/cortex-agent/core/greysearch/research_integration.py",
+   "dst": "tools/research_integration.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/stealth/__init__.py",
+   "dst": "tools/stealth/__init__.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/stealth/profiles.py",
+   "dst": "tools/stealth/profiles.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/stealth/init_script.py",
+   "dst": "tools/stealth/init_script.py"
+  },
+  {
+   "src": "~/cortex-agent/lib/stealth/seed.py",
+   "dst": "tools/stealth/seed.py"
+  }
+ ],
+ "vendor": [],
+ "errors": []
+}

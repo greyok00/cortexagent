@@ -1,0 +1,50 @@
+{
+  "name": "@cortexagent/server",
+  "version": "0.7.3.2",
+  "description": "cortexagent \u2014 hardened, fully offline agent wired to its own local models (compiled core, frozen tree)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    },
+    "./unix": {
+      "types": "./dist/transports/unix/index.d.ts",
+      "import": "./dist/transports/unix/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "shx rm -rf dist",
+    "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+    "build": "tsgo -p tsconfig.build.json",
+    "test": "vitest --run",
+    "typecheck": "tsgo -p tsconfig.test.json",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "cortex",
+    "server"
+  ],
+  "author": "GreyOK00",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@cortexagent/ai": "^0.7.3",
+    "@cortexagent/protocol": "^0.7.3"
+  },
+  "devDependencies": {
+    "shx": "0.4.0",
+    "vitest": "4.1.9"
+  }
+}

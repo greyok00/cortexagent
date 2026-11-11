@@ -1,0 +1,78 @@
+/* Greysearch library — category chips, record browse, record reader,
+   search-as-you-type against /api/library/search. Obsidian night desk. */
+
+.gs-lib-cats{display:flex;flex-wrap:wrap;gap:6px 14px;margin:26px 0 8px;max-width:880px}
+.gs-lib-cat{background:none;border:0;border-radius:2px;padding:4px 2px;cursor:pointer;
+  font-family:var(--rr-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--el-mute);box-shadow:inset 0 -1px 0 transparent}
+.gs-lib-cat:hover{color:var(--el-ink)}
+.gs-lib-cat.sel{color:var(--el-ink);box-shadow:inset 0 -2px 0 var(--el-accent)}
+
+.gs-lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:18px;margin-top:22px}
+.gs-lib-card{background:var(--el-panel);border:1px solid var(--el-line);
+  border-radius:var(--el-r-md);padding:18px 18px 14px;display:flex;flex-direction:column;gap:10px;
+  transition:border-color var(--el-dur-fast) var(--el-ease-quiet),
+             transform var(--el-dur-fast) var(--el-ease-quiet)}
+.gs-lib-card:hover{border-color:var(--el-accent);transform:var(--el-lift,none)}
+.gs-lib-card h3{margin:0;font-family:var(--el-font-display);font-size:18px;font-weight:620}
+.gs-lib-card h3 a{color:var(--el-ink);text-decoration:none}
+.gs-lib-card h3 a:hover{color:var(--el-accent)}
+.gs-lib-n{font-family:var(--rr-mono);font-size:9px;letter-spacing:.12em;color:var(--el-accent)}
+.gs-lib-hosts{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 0}
+.gs-lib-chip{font-family:var(--rr-mono);font-size:8.5px;color:var(--el-ink-soft);
+  border:1px solid var(--el-line-strong);border-radius:3px;padding:2px 7px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px}
+.gs-lib-open{margin-top:auto;align-self:flex-start;background:none;cursor:pointer;
+  border:1px solid var(--el-accent);color:var(--el-accent);border-radius:2px;
+  padding:7px 14px;font-family:var(--rr-sans);font-size:11px;font-weight:700;
+  letter-spacing:.07em;text-transform:uppercase}
+.gs-lib-open:hover{background:var(--el-accent-soft)}
+.gs-lib-open[aria-expanded="true"]{background:var(--el-accent);color:var(--el-on-accent)}
+.gs-lib-recs{display:none;border-top:1px solid var(--el-line-2);margin-top:6px;padding-top:8px;
+  max-height:300px;overflow:auto}
+.gs-lib-recs.is-open{display:block}
+.gs-lib-rec{display:block;width:100%;text-align:left;background:none;border:0;
+  border-bottom:1px solid var(--el-line-2);padding:9px 2px;cursor:pointer;color:var(--el-ink-soft)}
+.gs-lib-rec:hover{color:var(--el-ink)}
+.gs-lib-rec b{display:block;font-weight:500;font-size:14px;line-height:1.4;color:inherit}
+.gs-lib-rec small{font-family:var(--rr-mono);font-size:8px;letter-spacing:.04em;color:var(--el-mute)}
+
+.gs-lib-hits h2{margin:34px 0 12px;padding-top:12px;border-top:1px solid var(--el-ink);
+  font-size:24px;font-weight:600}
+.gs-lib-hit{border-bottom:1px solid var(--el-line-2);padding:12px 2px;cursor:pointer}
+.gs-lib-hit:hover{border-bottom-color:var(--el-accent)}
+.gs-lib-hit .lib-band{font-family:var(--rr-mono);font-size:8.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--el-mute)}
+.gs-lib-hit [data-band="firm"]{color:var(--el-ok)}
+.gs-lib-hit [data-band="soft"]{color:var(--el-warn)}
+.gs-lib-hit .lib-id{color:var(--el-accent)}
+.gs-lib-hit h4{margin:4px 0 3px;font-size:16px;font-weight:560;color:var(--el-ink)}
+.gs-lib-hit p{margin:0;font-size:14px;line-height:1.55;color:var(--el-ink-soft);
+  max-width:72ch;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+
+/* record reader (inspector body) */
+.gs-lib-doc .lib-src{margin:2px 0 14px}
+.gs-lib-doc h4{margin:18px 0 8px;font-size:16px;color:var(--el-ink)}
+.gs-lib-doc .lib-body{white-space:pre-wrap;font-size:15.5px;line-height:1.7;
+  color:var(--el-ink-soft);max-width:72ch}
+.gs-lib-doc .lib-body b,.gs-lib-doc .lib-body strong{color:var(--el-ink)}
+.gs-lib-doc .lib-meta{font-family:var(--rr-mono);font-size:9px;letter-spacing:.06em;
+  color:var(--el-mute);margin-bottom:10px;line-height:1.8}
+.gs-lib-insp-actions{display:flex;gap:6px;align-items:center}
+.gs-lib-insp-actions .gs-tact{background:none;border:1px solid var(--el-line-strong);
+  color:var(--el-ink);border-radius:2px;padding:4px 9px;font-family:var(--rr-mono);
+  font-size:9px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
+  text-decoration:none}
+.gs-lib-insp-actions .gs-tact:hover{border-color:var(--el-accent);color:var(--el-accent)}
+
+.gs-lib-empty{max-width:56ch;color:var(--el-mute);font-size:15px;line-height:1.6}
+.gs-block-h{font-size:20px}
+
+@media (max-width:560px){
+  .gs-lib-grid{grid-template-columns:1fr}
+  .gs-lib-cats{gap:4px 10px}
+}
+@media (prefers-reduced-motion:reduce){
+  .gs-lib-card,.gs-lib-cat,.gs-lib-open{transition:none}
+}

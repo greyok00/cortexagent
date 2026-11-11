@@ -1,0 +1,99 @@
+{
+  "query": "the rideshare guy Phoenix UberX earnings per hour",
+  "candidate_count": 17,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 4,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.luxtimes.lu/businessandfinance/uber-posts-earnings-beat-as-rideshare-demand-remains-strong/17284491.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.33; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://therideshareguy.com/interview-with-ubers-ceo/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.17; body coverage 0.33; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.mapquest.com/us/arizona/rideshare-guy-720042739",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.17; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://gridwise.io/blog/uberx-vs-uber-comfort-vs-uber-black",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.33; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://rideshare-cars.com/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://directory.libsyn.com/shows/view/id/therideshareguy",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.fox10phoenix.com/news/86-year-old-arizona-man-missing-after-canceled-rideshare",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://therideshareguy.com/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://www.businessyab.com/explore/united_states/arizona/maricopa_county/phoenix/estrella_village/rideshare_cars_phoenix",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://shapirolawaz.com/phoenix-rideshare-accident-lawyer/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.facebook.com/ridesharecarsphoenix/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (17%)"
+    },
+    {
+      "url": "https://www.glassdoor.com/Salaries/uberx-driver-salary-SRCH_KO0,12.htm",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.uber.com/us/en/drive/how-much-drivers-make/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.uberpeople.net/threads/how-much-do-you-make-per-hour.106705/page-6",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=BqXIdPYQ2Jo",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.ibtimes.com/study-finds-uber-lyft-drivers-earn-median-income-337-hour-2659195",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.uberpeople.net/threads/how-much-do-you-make-per-hour.106705/page-2",
+      "decision": "reject",
+      "reason": "low topic-token coverage (17%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

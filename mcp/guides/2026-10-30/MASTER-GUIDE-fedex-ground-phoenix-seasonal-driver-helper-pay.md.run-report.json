@@ -1,0 +1,84 @@
+{
+  "query": "FedEx Ground Phoenix seasonal driver helper pay",
+  "candidate_count": 14,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 10,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.indeed.com/q-fedex-ground-l-phoenix,-az-jobs.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.43; body coverage 0.00; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.ziprecruiter.com/Jobs/Fedex-Ground-Ground/-in-Phoenix,AZ",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.43; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.ziprecruiter.com/Jobs/Driver-Helper/-in-Phoenix,AZ",
+      "decision": "reject",
+      "reason": "thin_content: 268 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.indeed.com/cmp/UPS/salaries/Drivers-Helper/Phoenix-AZ",
+      "decision": "reject",
+      "reason": "thin_content: 180 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.commercialsearch.com/news/fedex-opens-phoenix-area-facility/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.29; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.jobs-ups.com/us/en/driver-helpers",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.29; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.indeed.com/cmp/Sysco/salaries/Drivers-Helper",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.29; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.indeed.com/cmp/Amazon.com/salaries/Drivers-Helper",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.29; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.indeed.com/cmp/Amazon-Dsp/reviews?fjobtitle=Drivers+Helper",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.29; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.glassdoor.es/Empleos/FedEx-Empleos-E246.htm",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.14; body coverage 0.57; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://speedwaymedia.com/2021/11/03/fedex-racing-express-facts-phoenix-raceway-2/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%)"
+    },
+    {
+      "url": "https://www.arizonasportsfans.com/forum/threads/trey-mcbrides-big-season-earns-spot-among-fedex-player-of-year-nominees.1064290/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%)"
+    },
+    {
+      "url": "https://careers.fedex.com/jobs",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%)"
+    },
+    {
+      "url": "https://www.indeed.com/career/drivers-helper/salaries",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

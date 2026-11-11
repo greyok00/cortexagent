@@ -1,0 +1,81 @@
+{
+  "query": "Uber Eats bike courier sign up requirements",
+  "candidate_count": 13,
+  "scraped_count": 2,
+  "accepted_count": 0,
+  "quarantined_count": 2,
+  "rejected_count": 4,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.getwhizz.com/blog/for-delivery/uber-eats-bicycle-requirements?srsltid=AYCX9vK1dPtB9enkGKWGPJzG1etkbjCEXx1pvmqiRguNEyhoEwssqVMo",
+      "decision": "reject",
+      "reason": "thin_content: 410 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.uber.com/us/en/deliver/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.33; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=TmWJt_npWv8",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://help.uber.com/en/driving-and-delivering/article/sign-up-for-delivery-with-bicycle-or-on-foot?nodeId=d89506e6-5d67-42cd-aa2a-64e9f30b0a42",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.17; body coverage 0.17; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.facebook.com/groups/711770277045389/posts/1176501323905613/",
+      "decision": "quarantine",
+      "reason": "title coverage 0.17; body coverage 0.50; headings coverage 0.00 [deterministic judge \u2014 research guide]",
+      "relevance_score": 64
+    },
+    {
+      "url": "https://www.uber.com/au/en/u/e-bikes-marketplace/",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) courier, requirements never appear while the broader head terms (uber, eats, bike, sign) do \u2014 the page answers the head of the question, not the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://www.uber.com/us/en/deliver/bike-delivery/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://identiti.net/news-insights/2025/ada-signage-requirements-in-2025-a-compliance-guide-for-businesses/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://greendotsign.com/ada-sign-height-requirements/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.phoenix.gov/administration/departments/pdd/commercial-multifamily-building/commercial-plan-reviews-permits/signs.html",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.glendaleaz.gov/files/assets/city/v/1/transportation/documents/sign-requirements-guidelines.pdf",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://nfsa.org/2025/09/08/whats-your-sign-a-look-at-nfpa-25-signage/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://weeklysafety.com/blog/work-zone-temporary-traffic-control-signs",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

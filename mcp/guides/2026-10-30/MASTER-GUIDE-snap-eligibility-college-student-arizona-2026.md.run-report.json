@@ -1,0 +1,79 @@
+{
+  "query": "SNAP eligibility college student Arizona 2026",
+  "candidate_count": 16,
+  "scraped_count": 6,
+  "accepted_count": 4,
+  "quarantined_count": 2,
+  "rejected_count": 2,
+  "accepted_sources": [
+    "https://collegesnapproject.org/arizona",
+    "https://www.clasp.org/publications/report/brief/snap-policy-brief-college-student-eligibility/",
+    "https://polifinus.com/personal-finance/snap-payment/can-college-students-qualify-for-snap-benefits/",
+    "https://ccrc.tc.columbia.edu/arccnetwork/2024/09/05/college-students-dont-participate-snap/"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.pa.gov/agencies/dhs/resources/snap/snap-college-students",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.17; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.collegeaidservices.net/2025/01/17/updated-guidance-expands-access-to-snap-benefits-for-eligible-college-students/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.17; body coverage 0.33; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://oregonhunger.org/snap-for-students/",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) arizona, 2026 never appear while the broader head terms (snap, eligibility, college, student) do \u2014 the page answers the head of the question, not ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://www.norwoodnews.org/snap-eligibility-boosted-for-up-to-nearly-75000-community-college-students/",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) arizona, 2026 never appear while the broader head terms (snap, eligibility, college, student) do \u2014 the page answers the head of the question, not ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://azmirror.com/voter-guides/2026-general-election/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://commonsenseinstituteus.org/research/arizona-local-ballot-guide/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.azleg.gov/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://www.multistate.us/elections/results/arizona-2026",
+      "decision": "reject",
+      "reason": "search/tag/category/feed/pagination URL"
+    },
+    {
+      "url": "https://www.nbcnews.com/politics/2026-elections/arizona-results",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://ballotpedia.org/Arizona_2026_ballot_measures",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.azcleanelections.gov/november-3-2026/maricopa",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.goldwaterinstitute.org/2026ballot/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    }
+  ],
+  "quality_warnings": []
+}

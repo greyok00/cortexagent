@@ -1,0 +1,78 @@
+/* screens.ui — built guide sites get the screen feel + the floating pill.
+   Appended to site_render's rendered page at wiring time (install via
+   ensure_kit's copy chain, same as theme.css/site-kit.js).
+
+   Guide sites are documents, so "screens" = clean section landing points;
+   the pill is the animated menu back to the top ("the original search").
+   PRINT/PDF EXEMPTION (campaign rule): under @media print the pill, the
+   snap, and every transition are disabled so the PDF pipeline stays
+   pixel-identical to what the testing campaign verifies. */
+
+html{scroll-snap-type:y proximity}
+.lede, section{scroll-snap-align:start}
+@media (prefers-reduced-motion: reduce){ html{scroll-snap-type:none} }
+
+/* the pill (inherits every theme's palette via the --el-* tokens) */
+.el-screens-pill{
+  position:fixed; right:16px; bottom:16px; z-index:60;
+  width:48px; height:48px; border-radius:50%;
+  border:1px solid var(--el-line); background:var(--el-panel);
+  color:var(--el-ink); cursor:pointer; padding:0;
+  display:grid; place-items:center;
+  box-shadow:0 8px 24px rgba(0,0,0,.45);
+  transform:translateY(96px); opacity:0; visibility:hidden;
+  transition:transform .24s ease, opacity .24s ease, visibility 0s linear .24s;
+  pointer-events:none;
+}
+.el-screens-pill.on{transform:none; opacity:1; visibility:visible;
+  transition:transform .24s ease, opacity .24s ease, visibility 0s;
+  pointer-events:auto}
+.el-screens-pill:hover{border-color:var(--el-accent)}
+.el-screens-pill svg{display:block; width:22px; height:22px}
+.el-screens-pill .ring{
+  position:absolute; inset:-4px; border-radius:50%;
+  border:2px solid var(--el-accent); opacity:0; pointer-events:none;
+}
+.el-screens-pill.on .ring{animation:el-screens-pulse 2.6s ease-out infinite}
+@keyframes el-screens-pulse{
+  0%{opacity:.65; transform:scale(1)}
+  70%{opacity:0; transform:scale(1.35)}
+  100%{opacity:0; transform:scale(1.35)}
+}
+
+.el-screens-menu{
+  position:fixed; right:16px; bottom:72px; z-index:61;
+  min-width:220px; max-height:min(60vh, 480px); overflow:auto;
+  background:var(--el-panel); border:1px solid var(--el-line);
+  border-radius:12px; padding:6px;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);
+  transform-origin:100% 100%;
+  transform:scale(.92); opacity:0; visibility:hidden;
+  transition:transform .24s ease, opacity .24s ease, visibility 0s linear .24s;
+  pointer-events:none;
+}
+.el-screens-menu.open{transform:scale(1); opacity:1; visibility:visible;
+  transition:transform .24s ease, opacity .24s ease, visibility 0s;
+  pointer-events:auto}
+.el-screens-menu button{
+  display:flex; align-items:center; gap:10px; width:100%;
+  background:none; border:0; color:var(--el-ink-soft);
+  font:500 .88rem/1.25 var(--sans); padding:9px 12px;
+  border-radius:8px; cursor:pointer; text-align:left;
+}
+.el-screens-menu button:hover{background:var(--el-panel-2); color:var(--el-ink)}
+.el-screens-menu .totop{color:var(--el-accent); font-weight:600}
+.el-screens-menu .totop:hover{color:var(--el-accent-hover, var(--el-accent))}
+
+@media (prefers-reduced-motion: reduce){
+  .el-screens-pill{transition:none; transform:none}
+  .el-screens-pill .ring{display:none}
+  html{scroll-snap-type:none}
+}
+
+/* PRINT/PDF EXEMPTION — the exported artifacts stay identical */
+@media print{
+  .el-screens-pill, .el-screens-menu{display:none !important}
+  html{scroll-snap-type:none !important}
+  *{transition:none !important; animation:none !important}
+}

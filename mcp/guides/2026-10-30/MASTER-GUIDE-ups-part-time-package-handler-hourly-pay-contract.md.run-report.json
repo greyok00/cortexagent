@@ -1,0 +1,84 @@
+{
+  "query": "UPS part time package handler hourly pay contract",
+  "candidate_count": 14,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 13,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://gridwise.io/blog/ups-pay",
+      "decision": "reject",
+      "reason": "navigation failed: Error: Page.goto: net::ERR_SSL_PROTOCOL_ERROR at https://gridwise.io/blog/ups-pay\nCall log:\n  - navigating to \"https://gridwise.io/blog/ups-p"
+    },
+    {
+      "url": "https://www.facebook.com/UPSjobs/videos/part-time-package-handler/1798164120281350/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.ziprecruiter.com/Salaries/Contract-Package-Handler-Salary",
+      "decision": "reject",
+      "reason": "thin_content: 268 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.ziprecruiter.com/Jobs/Ups-Package-Handler/-in-Phoenix,AZ",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://about.ups.com/us/en/our-company/great-employer/here-are-5-ups-part-timers-you-should-know.html",
+      "decision": "reject",
+      "reason": "thin_content: 259 chars of main text (< 800)"
+    },
+    {
+      "url": "https://careers.fedex.com/seasonal-package-handler-part-time-warehouse-like/job/P25-95109-34",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://about.ups.com/us/en/our-company/great-employer/part-time-possibilities.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://about.ups.com/us/en/our-company/great-employer/top-5-things-you-don-t-know-about-part-time-at-ups.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.38; headings coverage 0.00; thin page penalty; marketing/listicle signal capped to "
+    },
+    {
+      "url": "https://www.indeed.com/cmp/West-Contract-Recruiting,-LLC/salaries/Material-Handler",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.facebook.com/groups/1272052483556145/posts/2202837933810924/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.38; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.jobs-ups.com/us/en/hourly-roles",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://rydercareers-ryder.icims.com/jobs/212738/warehouse-material-handler/job",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.12; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.jobs-ups.com/us/en/warehouse-workers",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.12; body coverage 0.38; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.npmhu.org/media/news/WAGE%20CHART%20PP%2020-2025%20COLA.pdf",
+      "decision": "reject",
+      "reason": "low topic-token coverage (25%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

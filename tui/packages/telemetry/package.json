@@ -1,0 +1,41 @@
+{
+  "name": "@cortexagent/telemetry",
+  "version": "0.7.3.2",
+  "description": "cortexagent \u2014 hardened, fully offline agent wired to its own local models (compiled core, frozen tree)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "shx rm -rf dist",
+    "build": "tsgo -p tsconfig.build.json",
+    "test": "vitest --run",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "telemetry",
+    "tracing",
+    "observability"
+  ],
+  "author": "GreyOK00",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.4",
+    "vitest": "4.1.9"
+  }
+}

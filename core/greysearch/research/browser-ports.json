@@ -1,0 +1,10 @@
+{
+  "version": "greysearch-2026-10-22-r1",
+  "slot_rule": "Greysearch slot map: task-1 -> 9351, task-2 -> 9352, task-3 -> 9353, task-4 -> 9354. Slot ports are DEDICATED to Greysearch — greysearch instances running inside cortexagent keep 9331-9334, so the two families can never reach for the same browser. One browser per task: own port, own profile. Slots are NUMBERS ONLY — not bound to any topic.",
+  "tasks": {
+    "task-1": {"port": 9351, "aliases": ["task-1", "1"], "profile": "~/.cache/greysearch/task-1-profile"},
+    "task-2": {"port": 9352, "aliases": ["task-2", "2"], "profile": "~/.cache/greysearch/task-2-profile"},
+    "task-3": {"port": 9353, "aliases": ["task-3", "3"], "profile": "~/.cache/greysearch/task-3-profile"},
+    "task-4": {"port": 9354, "aliases": ["task-4", "4"], "profile": "~/.cache/greysearch/task-4-profile"}
+  }
+}

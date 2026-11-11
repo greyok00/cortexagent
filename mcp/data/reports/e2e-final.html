@@ -1,0 +1,1004 @@
+<!doctype html><html><head><meta charset='utf-8'>
+<title>Pentest Report — e2e-final</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+color:#1a1a1a;max-width:900px;margin:0 auto;padding:32px;line-height:1.5}
+h1{border-bottom:3px solid #1a1a1a;padding-bottom:8px}
+h2{margin-top:32px;border-left:4px solid #1a1a1a;padding-left:10px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f0f0f0}
+.vec{color:#666;font-size:12px}
+.score{color:#b00;font-weight:700}
+.muted{color:#888}
+code,pre{background:#f6f6f6;border:1px solid #e0e0e0;padding:2px 5px;
+font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+pre{white-space:pre-wrap;word-break:break-word}
+.finding{border:1px solid #ddd;border-left:4px solid #b00;padding:8px 12px;
+margin:12px 0;background:#fafafa}
+details{margin:6px 0} summary{cursor:pointer;font-weight:600}
+.badge{display:inline-block;padding:2px 8px;border-radius:3px;color:#fff;
+font-size:12px;font-weight:700}
+</style></head><body>
+<h1>Penetration Test Report</h1>
+<p><b>Assessment:</b> e2e-final · <b>Category:</b> Web
+· <b>Scope:</b> 127.0.0.1:8899 (lab WP site)<br>
+<b>Generated:</b> 2026-10-29 11:24 UTC · <b>Methodology:</b> NIST SP 800-115 / OWASP WSTG</p>
+
+<h2>Executive Summary</h2>
+<p>This report documents a web application penetration test performed against
+127.0.0.1:8899 (lab WP site). A total of <b>18</b> finding(s) were recorded:
+3 CRITICAL · 4 HIGH · 11 MEDIUM.
+Findings are prioritized by CVSS v3.1 base score. The test covered reconnaissance,
+vulnerability scanning, and analysis phases; exploitation and post-exploitation
+are documented where performed.</p>
+
+<h2>Rules of Engagement</h2>
+<p><b>Objectives:</b> Full pipeline: ssl/ffuf/sqlmap/nmap_vuln + WP CVE enrichment</p>
+<p><b>Scope:</b> 127.0.0.1:8899 (lab WP site)</p>
+<p><b>Constraints:</b> Lab/offline assessment; allowlisted scanners only;
+evidence captured verbatim from scanner output.</p>
+
+<h2>Introduction</h2>
+<p>The engagement assessed the web target for common vulnerabilities across
+reconnaissance, scanning, and analysis. Tooling: nmap, nikto, dirb/gobuster,
+ffuf, whatweb, openssl (TLS), dig — all executed through the GreyTeam fail-closed
+execution gate with CVSS v3.1 scoring.</p>
+
+<h2>Penetration Testing</h2>
+<p>Active scanning was performed against the in-scope target. Results below are
+prioritized by severity.</p>
+
+<h2>Vulnerability Testing — Findings</h2>
+<table><tr><th>#</th><th>Severity</th><th>CVSS</th><th>Finding</th><th>Phase</th></tr>
+<tr><td>1</td><td><b>CRITICAL</b></td><td>10.0</td><td>contact-form-7 5.3.1: CVE-2020-35489 (10.0)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H</span></td><td>2</td></tr><tr><td>2</td><td><b>CRITICAL</b></td><td>9.9</td><td>elementor 2.8.3: CVE-2020-13126 (9.9)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H</span></td><td>2</td></tr><tr><td>3</td><td><b>CRITICAL</b></td><td>9.8</td><td>elementor 2.8.3: CVE-2020-7109 (9.8)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</span></td><td>2</td></tr><tr><td>4</td><td><b>HIGH</b></td><td>7.3</td><td>Outdated component reported by Nikto<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L</span></td><td>2</td></tr><tr><td>5</td><td><b>HIGH</b></td><td>7.3</td><td>Outdated component reported by Nikto<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L</span></td><td>2</td></tr><tr><td>6</td><td><b>HIGH</b></td><td>7.3</td><td>WordPress xmlrpc.php enabled<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L</span></td><td>2</td></tr><tr><td>7</td><td><b>HIGH</b></td><td>7.3</td><td>WordPress wp-cron.php publicly callable<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L</span></td><td>2</td></tr><tr><td>8</td><td><b>MEDIUM</b></td><td>5.3</td><td>Directory/file discovered (gobuster/dirb)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>9</td><td><b>MEDIUM</b></td><td>5.3</td><td>WordPress user enumeration via author feed<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>10</td><td><b>MEDIUM</b></td><td>5.3</td><td>Default/test file present (Nikto)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>11</td><td><b>MEDIUM</b></td><td>5.3</td><td>Informational header exposure (Nikto)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>12</td><td><b>MEDIUM</b></td><td>5.3</td><td>Directory/file discovered (gobuster/dirb)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>13</td><td><b>MEDIUM</b></td><td>5.3</td><td>Informational header exposure (Nikto)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>14</td><td><b>MEDIUM</b></td><td>5.3</td><td>WordPress version disclosed (readme.html)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>15</td><td><b>MEDIUM</b></td><td>5.3</td><td>WordPress plugins directory listable<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>16</td><td><b>MEDIUM</b></td><td>5.3</td><td>WordPress plugin version disclosed (no known CVE in local DB)<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>17</td><td><b>MEDIUM</b></td><td>5.3</td><td>WordPress login page reachable<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr><tr><td>18</td><td><b>MEDIUM</b></td><td>5.3</td><td>WordPress /wp-admin/ reachable<br><span class='vec'>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</span></td><td>2</td></tr></table>
+<h3>Detailed Findings</h3>
+<div class='finding'><h4>1. [CRITICAL] contact-form-7 5.3.1: CVE-2020-35489 (10.0) <span class='score'>10.0</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H</code> (score 10.0, CRITICAL) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> The contact-form-7 (aka Contact Form 7) plugin before 5.3.2 for WordPress allows Unrestricted File Upload and remote code execution because a filename may contain special characters.  -&gt; Upgrade contact-form-7 past the affected range and re-run; verify the fix against the vendor advisory for CVE-2020-35489.</p><pre>contact-form-7 5.3.1 (detected) vs CVE-2020-35489 affected &lt;5.3.2
+[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>2. [CRITICAL] elementor 2.8.3: CVE-2020-13126 (9.9) <span class='score'>9.9</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H</code> (score 9.9, CRITICAL) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> An issue was discovered in the Elementor Pro plugin before 2.9.4 for WordPress, as exploited in the wild in May 2020 in conjunction with CVE-2020-13125. An attacker with the Subscriber role can upload arbitrary executabl  -&gt; Upgrade elementor past the affected range and re-run; verify the fix against the vendor advisory for CVE-2020-13126.</p><pre>elementor 2.8.3 (detected) vs CVE-2020-13126 affected &lt;2.9.4
+[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>3. [CRITICAL] elementor 2.8.3: CVE-2020-7109 (9.8) <span class='score'>9.8</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</code> (score 9.8, CRITICAL) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> The Elementor Page Builder plugin before 2.8.4 for WordPress does not sanitize data during creation of a new template.  -&gt; Upgrade elementor past the affected range and re-run; verify the fix against the vendor advisory for CVE-2020-7109.</p><pre>elementor 2.8.3 (detected) vs CVE-2020-7109 affected &lt;2.8.4
+[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>4. [HIGH] Outdated component reported by Nikto <span class='score'>7.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L</code> (score 7.3, HIGH) · <b>Phase:</b> 2 · <b>Source:</b> nikto</p><p><b>Recommendation:</b> Upgrade the named component; verify the vendor CVE applies before remediating.</p><pre>- Nikto v2.6.0
+---------------------------------------------------------------------------
++ Target IP:          127.0.0.1
++ Target Hostname:    127.0.0.1
++ Target Port:        8899
++ Platform:           Unknown
++ Start Time:         2026-10-29 04:23:13 (GMT-7)
+---------------------------------------------------------------------------
++ Server: SimpleHTTP/0.6 Python/3.13.5
++ No CGI Directories found (use &#x27;-C all&#x27; to force check all possible dirs). CGI tests skipped.
++ [013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
++ [013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
++ [013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
++ [013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
++ [013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
++ [600720] SimpleHTTP/0.6 appears to be outdated (current is at least 1.2).
++ [001578] /backup/: This might be interesting.
++ [003575] /xmlrpc.php: xmlrpc.php was found.
++ [006230] /admin/index.html: Admin login page/section found.
++ [006414] /wp-admin/: Admin login page/section found.
++ [007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options
++ [007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME type. See: https://www.netsparker.com/web-vulnerability-scanner/vulnerabilities/missing-content-type-header/
++ 8195 requests: 4 errors and 12 items reported on the remote host
++ End Time:           2026-10-29 04:23:36 (GMT-7) (23 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+
+
+      *********************************************************************
+      Portions of the server&#x27;s headers (Python/3.13.5) are not in
+      the Nikto 2.6.0 database or are newer than the known string. Would you like
+      to submit this information (*no server specific data*) to CIRT.net
+      for a Nikto update (or you may email to sullo@cirt.net) (y/n)? 
+
++ ERROR: Failed to check for updates: 403</pre></div><div class='finding'><h4>5. [HIGH] Outdated component reported by Nikto <span class='score'>7.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L</code> (score 7.3, HIGH) · <b>Phase:</b> 2 · <b>Source:</b> sqlmap</p><p><b>Recommendation:</b> Upgrade the named component; verify the vendor CVE applies before remediating.</p><pre>___
+       __H__
+ ___ ___[&quot;]_____ ___ ___  {1.10.4#stable}
+|_ -| . [&#x27;]     | .&#x27;| . |
+|___|_  [&quot;]_|_|_|__,|  _|
+      |_|V...       |_|   https://sqlmap.org
+
+[04:23:50] [WARNING] your sqlmap version is outdated
+
+Usage: python3 sqlmap [options]
+
+sqlmap: error: no such option: -q</pre></div><div class='finding'><h4>6. [HIGH] WordPress xmlrpc.php enabled <span class='score'>7.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L</code> (score 7.3, HIGH) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> Disable xmlrpc.php (plugin/WP block) unless the mobile app or Jetpack needs it; it is a brute-force + SSRF pivot surface.</p><pre>[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>7. [HIGH] WordPress wp-cron.php publicly callable <span class='score'>7.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L</code> (score 7.3, HIGH) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> Restrict /wp-cron.php (auth token or IP allowlist); a public wp-cron is a DoS and scheduled-job trigger surface.</p><pre>[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>8. [MEDIUM] Directory/file discovered (gobuster/dirb) <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> nikto</p><p><b>Recommendation:</b> Confirm each discovered path; remove or protect non-public directories (backups, .git, admin panels).</p><pre>- Nikto v2.6.0
+---------------------------------------------------------------------------
++ Target IP:          127.0.0.1
++ Target Hostname:    127.0.0.1
++ Target Port:        8899
++ Platform:           Unknown
++ Start Time:         2026-10-29 04:23:13 (GMT-7)
+---------------------------------------------------------------------------
++ Server: SimpleHTTP/0.6 Python/3.13.5
++ No CGI Directories found (use &#x27;-C all&#x27; to force check all possible dirs). CGI tests skipped.
++ [013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
++ [013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
++ [013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
++ [013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
++ [013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
++ [600720] SimpleHTTP/0.6 appears to be outdated (current is at least 1.2).
++ [001578] /backup/: This might be interesting.
++ [003575] /xmlrpc.php: xmlrpc.php was found.
++ [006230] /admin/index.html: Admin login page/section found.
++ [006414] /wp-admin/: Admin login page/section found.
++ [007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options
++ [007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME type. See: https://www.netsparker.com/web-vulnerability-scanner/vulnerabilities/missing-content-type-header/
++ 8195 requests: 4 errors and 12 items reported on the remote host
++ End Time:           2026-10-29 04:23:36 (GMT-7) (23 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+
+
+      *********************************************************************
+      Portions of the server&#x27;s headers (Python/3.13.5) are not in
+      the Nikto 2.6.0 database or are newer than the known string. Would you like
+      to submit this information (*no server specific data*) to CIRT.net
+      for a Nikto update (or you may email to sullo@cirt.net) (y/n)? 
+
++ ERROR: Failed to check for updates: 403</pre></div><div class='finding'><h4>9. [MEDIUM] WordPress user enumeration via author feed <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> dirb</p><p><b>Recommendation:</b> Disable author archives (?author=1) or restrict /wp-json and /?author= behind auth; hide user IDs in the front end.</p><pre>-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Thu Oct 29 04:23:36 2026
+URL_BASE: http://127.0.0.1:8899/
+WORDLIST_FILES: /usr/share/wordlists/dirb/common.txt
+
+-----------------
+
+*** Generating Wordlist...
+                                                                               
+GENERATED WORDS: 4612
+
+---- Scanning URL: http://127.0.0.1:8899/ ----
+*** Calculating NOT_FOUND code...
+                                                                               
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bash_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bashrc
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cache
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.config
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvs
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvsignore
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.forward
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.git/HEAD
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.hta
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htaccess
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htpasswd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listing
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listings
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.mysql_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.passwd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.perf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.profile
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.rhosts
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.sh_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.ssh
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.subversion
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn/entries
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.swf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.web
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/@
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_
+                                            </pre></div><div class='finding'><h4>10. [MEDIUM] Default/test file present (Nikto) <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> dirb</p><p><b>Recommendation:</b> Remove default/test files (e.g. /default.php, /test, index files) before production.</p><pre>-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Thu Oct 29 04:23:36 2026
+URL_BASE: http://127.0.0.1:8899/
+WORDLIST_FILES: /usr/share/wordlists/dirb/common.txt
+
+-----------------
+
+*** Generating Wordlist...
+                                                                               
+GENERATED WORDS: 4612
+
+---- Scanning URL: http://127.0.0.1:8899/ ----
+*** Calculating NOT_FOUND code...
+                                                                               
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bash_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bashrc
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cache
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.config
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvs
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvsignore
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.forward
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.git/HEAD
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.hta
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htaccess
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htpasswd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listing
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listings
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.mysql_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.passwd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.perf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.profile
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.rhosts
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.sh_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.ssh
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.subversion
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn/entries
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.swf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.web
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/@
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_
+                                            </pre></div><div class='finding'><h4>11. [MEDIUM] Informational header exposure (Nikto) <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> dirb</p><p><b>Recommendation:</b> Strip or reduce Server / X-Powered-By / version headers.</p><pre>-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Thu Oct 29 04:23:36 2026
+URL_BASE: http://127.0.0.1:8899/
+WORDLIST_FILES: /usr/share/wordlists/dirb/common.txt
+
+-----------------
+
+*** Generating Wordlist...
+                                                                               
+GENERATED WORDS: 4612
+
+---- Scanning URL: http://127.0.0.1:8899/ ----
+*** Calculating NOT_FOUND code...
+                                                                               
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bash_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bashrc
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cache
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.config
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvs
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvsignore
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.forward
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.git/HEAD
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.hta
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htaccess
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htpasswd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listing
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listings
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.mysql_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.passwd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.perf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.profile
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.rhosts
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.sh_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.ssh
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.subversion
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn/entries
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.swf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.web
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/@
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_
+                                            </pre></div><div class='finding'><h4>12. [MEDIUM] Directory/file discovered (gobuster/dirb) <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> dirb</p><p><b>Recommendation:</b> Confirm each discovered path; remove or protect non-public directories (backups, .git, admin panels).</p><pre>-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Thu Oct 29 04:23:36 2026
+URL_BASE: http://127.0.0.1:8899/
+WORDLIST_FILES: /usr/share/wordlists/dirb/common.txt
+
+-----------------
+
+*** Generating Wordlist...
+                                                                               
+GENERATED WORDS: 4612
+
+---- Scanning URL: http://127.0.0.1:8899/ ----
+*** Calculating NOT_FOUND code...
+                                                                               
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bash_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bashrc
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cache
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.config
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvs
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvsignore
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.forward
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.git/HEAD
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.hta
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htaccess
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htpasswd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listing
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listings
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.mysql_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.passwd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.perf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.profile
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.rhosts
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.sh_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.ssh
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.subversion
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn/entries
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.swf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.web
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/@
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_
+                                            </pre></div><div class='finding'><h4>13. [MEDIUM] Informational header exposure (Nikto) <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> sqlmap</p><p><b>Recommendation:</b> Strip or reduce Server / X-Powered-By / version headers.</p><pre>___
+       __H__
+ ___ ___[&quot;]_____ ___ ___  {1.10.4#stable}
+|_ -| . [&#x27;]     | .&#x27;| . |
+|___|_  [&quot;]_|_|_|__,|  _|
+      |_|V...       |_|   https://sqlmap.org
+
+[04:23:50] [WARNING] your sqlmap version is outdated
+
+Usage: python3 sqlmap [options]
+
+sqlmap: error: no such option: -q</pre></div><div class='finding'><h4>14. [MEDIUM] WordPress version disclosed (readme.html) <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> Remove /readme.html (or block it) so the exact WP core version is not fingerprintable; keep core patched regardless.</p><pre>[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>15. [MEDIUM] WordPress plugins directory listable <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> Deny directory listing on /wp-content/plugins/; audit the named plugins for known CVEs and remove unused ones.</p><pre>[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>16. [MEDIUM] WordPress plugin version disclosed (no known CVE in local DB) <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> Upgrade the named plugin to the latest release and re-run; the local CVE DB (data/wp-cve-db.json) will then cite the specific CVE if one applies. Plugins are the most common WP RCE vector.</p><pre>[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>17. [MEDIUM] WordPress login page reachable <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> Move/rename the login URL or gate it (WAF, rate-limit, 2FA). A reachable wp-login.php invites credential brute-forcing.</p><pre>[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div><div class='finding'><h4>18. [MEDIUM] WordPress /wp-admin/ reachable <span class='score'>5.3</span></h4><p><b>CVSS:</b> <code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code> (score 5.3, MEDIUM) · <b>Phase:</b> 2 · <b>Source:</b> wordpress</p><p><b>Recommendation:</b> Confirm /wp-admin/ behavior; restrict or redirect if the dashboard should not be publicly discoverable.</p><pre>[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></div>
+
+<h2>Post-Testing Actions</h2>
+<p>Recommendations are listed per finding above. Re-test after remediation to
+confirm closure. No persistent backdoors or test artifacts were left on the
+target beyond recorded evidence.</p>
+
+<h2>Methodology</h2>
+<p>Phases followed NIST SP 800-115: (1) Reconnaissance &amp; Enumeration — DNS,
+technology fingerprinting, TLS analysis; (2) Scanning &amp; Analysis — port scan,
+web vulnerability scan (nikto), directory brute-force (dirb/ffuf), vuln NSE;
+(3) Exploitation — manual, documented; (4) Post-Exploitation — documented.
+CVSS v3.1 base scores computed locally; severity bands: CRITICAL ≥9.0, HIGH
+≥7.0, MEDIUM ≥4.0, LOW &gt;0, INFO =0.</p>
+
+<h2>Phase 1 — Reconnaissance &amp; Enumeration</h2>
+<details><summary>wp_probe · wordpress:</summary><pre>[wordpress probes] base=http://127.0.0.1:8899
+http://127.0.0.1:8899/readme.html -&gt; 200
+wp-version-disclose: 6.4.3
+http://127.0.0.1:8899/wp-json/ -&gt; 0
+http://127.0.0.1:8899/wp-json/wp/v2/users -&gt; 0
+http://127.0.0.1:8899/wp-content/plugins/ -&gt; 200
+wp-plugin-enum: &lt;html&gt;&lt;title&gt;Index of /wp-content/plugins/&lt;/title&gt;&lt;body&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;contact-form-7/&quot;&gt;contact-form-7/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;elementor/&quot;&gt;elementor/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;wordfence/&quot;&gt;wordfence/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;hello/&quot;&gt;hello/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;
+
+wp-plugin-outdated: contact-form-7 5.3.1
+wp-plugin-outdated: elementor 2.8.3
+wp-plugin-outdated: wordfence 7.8.0
+wp-plugin-outdated: hello 1.2.3
+http://127.0.0.1:8899/xmlrpc.php -&gt; 200
+wp-xmlrpc-enabled: status 200
+http://127.0.0.1:8899/wp-cron.php -&gt; 200
+wp-cron-exposed: status 200
+http://127.0.0.1:8899/wp-login.php -&gt; 200
+wp-login-exposed: status 200
+http://127.0.0.1:8899/wp-admin/ -&gt; 200
+wp-admin-exposed: status 200</pre></details><details><summary>scan_output · sqlmap</summary><pre>        ___
+       __H__
+ ___ ___[&quot;]_____ ___ ___  {1.10.4#stable}
+|_ -| . [&#x27;]     | .&#x27;| . |
+|___|_  [&quot;]_|_|_|__,|  _|
+      |_|V...       |_|   https://sqlmap.org
+
+[04:23:50] [WARNING] your sqlmap version is outdated
+
+Usage: python3 sqlmap [options]
+
+sqlmap: error: no such option: -q
+</pre></details><details><summary>scan_output · nmap_vuln</summary><pre>Starting Nmap 7.95 ( https://nmap.org ) at 2026-10-29 04:23 MST
+Nmap done: 0 IP addresses (0 hosts up) scanned in 0.53 seconds
+
+Unable to split netmask from target expression: &quot;http://127.0.0.1:8899&quot;
+WARNING: No targets were specified, so 0 hosts scanned.
+</pre></details><details><summary>scan_output · ffuf</summary><pre>
+[2K                        [Status: 200, Size: 125, Words: 8, Lines: 3, Duration: 4ms][0m
+
+[2Kadmin                   [Status: 301, Size: 0, Words: 1, Lines: 1, Duration: 5ms][0m
+
+[2Kbackup                  [Status: 301, Size: 0, Words: 1, Lines: 1, Duration: 9ms][0m
+
+[2Kindex.html              [Status: 200, Size: 125, Words: 8, Lines: 3, Duration: 3ms][0m
+
+[2Kwp-admin                [Status: 301, Size: 0, Words: 1, Lines: 1, Duration: 3ms][0m
+
+[2Kwp-content              [Status: 301, Size: 0, Words: 1, Lines: 1, Duration: 1ms][0m
+
+[2Kxmlrpc.php              [Status: 200, Size: 38, Words: 2, Lines: 2, Duration: 4ms][0m
+
+
+        /&#x27;___\  /&#x27;___\           /&#x27;___\       
+       /\ \__/ /\ \__/  __  __  /\ \__/       
+       \ \ ,__\\ \ ,__\/\ \/\ \ \ \ ,__\      
+        \ \ \_/ \ \ \_/\ \ \_\ \ \ \ \_/      
+         \ \_\   \ \_\  \ \____/  \ \_\       
+          \/_/    \/_/   \/___/    \/_/       
+
+       2.1.0-dev
+________________________________________________
+
+ :: Method           : GET
+ :: URL              : http://127.0.0.1:8899/FUZZ
+ :: Wordlist         : FUZZ: /usr/share/wordlists/dirb/common.txt
+ :: Follow redirects : false
+ :: Calibration      : false
+ :: Timeout          : 10
+ :: Threads          : 10
+ :: Matcher          : Response status: 200-299,301,302,307,401,403,405,500
+________________________________________________
+
+
+[2K:: Progress: [1/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [11/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [126/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [243/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [293/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [359/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [477/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [570/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [599/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [717/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [835/4614] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::
+[2K:: Progress: [952/4614] :: Job [1/1] :: 961 req/sec :: Duration: [0:00:01] :: Errors: 0 ::
+[2K:: Progress: [1069/4614] :: Job [1/1] :: 961 req/sec :: Duration: [0:00:01] :: Errors: 0 ::
+[2K:: Progress: [1188/4614] :: Job [1/1] :: 980 req/sec :: Duration: [0:00:01] :: Errors: 0 ::
+[2K:: Progress: [1284/4614] :: Job [1/1] :: 704 req/sec :: Duration: [0:00:01] :: Errors: 0 ::
+[2K:: Progress: [1383/4614] :: Job [1/1] :: 769 req/sec :: Duration: [0:00:01] :: Errors: 0 ::
+[2K:: Progress: [1463/4614] :: Job [1/1] :: 657 req/sec :: Duration: [0:00:01] :: Errors: 0 ::
+[2K:: Progress: [1556/4614] :: Job [1/1] :: 769 req/sec :: Duration: [0:00:01] :: Errors: 0 ::
+[2K:: Progress: [1677/4614] :: Job [1/1] :: 1086 req/sec :: Duration: [0:00:01] :: Errors: 0 ::
+[2K:: Progress: [1788/4614] :: Job [1/1] :: 833 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [1880/4614] :: Job [1/1] :: 769 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [1969/4614] :: Job [1/1] :: 704 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [2025/4614] :: Job [1/1] :: 877 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [2071/4614] :: Job [1/1] :: 806 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [2171/4614] :: Job [1/1] :: 833 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [2270/4614] :: Job [1/1] :: 819 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [2344/4614] :: Job [1/1] :: 625 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [2420/4614] :: Job [1/1] :: 625 req/sec :: Duration: [0:00:02] :: Errors: 0 ::
+[2K:: Progress: [2496/4614] :: Job [1/1] :: 666 req/sec :: Duration: [0:00:03] :: Errors: 0 ::
+[2K:: Progress: [2568/4614] :: Job [1/1] :: 555 req/sec :: Duration: [0:00:03] :: Errors: 0 ::
+[2K:: Progress: [2641/4614] :: Job [1/1] :: 617 req/sec :: Duration: [0:00:03] :: Errors: 0 ::
+[2K:: Progress: [2713/4614] :: Job [1/1] :: 581 req/sec :: Duration: [0:00:03] :: Errors: 0 ::
+[2K:: Progress: [2813/4614] :: Job [1/1] :: 847 req/sec :: Duration: [0:00:03] :: Errors: 0 ::
+[2K:: Progress: [2908/4614] :: Job [1/1] :: 847 req/sec :: Duration: [0:00:03] :: Errors: 0 ::
+[2K:: Progress: [2993/4614] :: Job [1/1] :: 704 req/sec :: Duration: [0:00:03] :: Errors: 0 ::
+[2K:: Progress: [3100/4614] :: Job [1/1] :: 961 req/sec :: Duration: [0:00:03] :: Errors: 0 ::
+[2K:: Progress: [3220/4614] :: Job [1/1] :: 1162 req/sec :: Duration: [0:00:04] :: Errors: 0 ::
+[2K:: Progress: [3319/4614] :: Job [1/1] :: 781 req/sec :: Duration: [0:00:04] :: Errors: 0 ::
+[2K:: Progress: [3443/4614] :: Job [1/1] :: 1190 req/sec :: Duration: [0:00:04] :: Errors: 0 ::
+[2K:: Progress: [3572/4614] :: Job [1/1] :: 1020 req/sec :: Duration: [0:00:04] :: Errors: 0 ::
+[2K:: Progress: [3681/4614] :: Job [1/1] :: 925 req/sec :: Duration: [0:00:04] :: Errors: 0 ::
+[2K:: Progress: [3791/4614] :: Job [1/1] :: 909 req/sec :: Duration: [0:00:04] :: Errors: 0 ::
+[2K:: Progress: [3902/4614] :: Job [1/1] :: 833 req/sec :: Duration: [0:00:04] :: Errors: 0 ::
+[2K:: Progress: [4015/4614] :: Job [1/1] :: 961 req/sec :: Duration: [0:00:04] :: Errors: 0 ::
+[2K:: Progress: [4125/4614] :: Job [1/1] :: 909 req/sec :: Duration: [0:00:05] :: Errors: 0 ::
+[2K:: Progress: [4240/4614] :: Job [1/1] :: 892 req/sec :: Duration: [0:00:05] :: Errors: 0 ::
+[2K:: Progress: [4351/4614] :: Job [1/1] :: 862 req/sec :: Duration: [0:00:05] :: Errors: 0 ::
+[2K:: Progress: [4462/4614] :: Job [1/1] :: 943 req/sec :: Duration: [0:00:05] :: Errors: 0 ::
+[2K:: Progress: [4488/4614] :: Job [1/1] :: 1000 r</pre></details><details><summary>scan_output · dirb</summary><pre>
+-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Thu Oct 29 04:23:36 2026
+URL_BASE: http://127.0.0.1:8899/
+WORDLIST_FILES: /usr/share/wordlists/dirb/common.txt
+
+-----------------
+
+*** Generating Wordlist...
+                                                                               
+GENERATED WORDS: 4612
+
+---- Scanning URL: http://127.0.0.1:8899/ ----
+*** Calculating NOT_FOUND code...
+                                                                               
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bash_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.bashrc
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cache
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.config
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvs
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.cvsignore
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.forward
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.git/HEAD
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.hta
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htaccess
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.htpasswd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listing
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.listings
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.mysql_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.passwd
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.perf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.profile
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.rhosts
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.sh_history
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.ssh
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.subversion
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.svn/entries
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.swf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/.web
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/@
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_adm
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_admin
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_ajax
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_archive
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_assets
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_backup
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_baks
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_borders
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_cache
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_catalogs
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_code
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_common
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_conf
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_config
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_css
+                                                                               
+--&gt; Testing: http://127.0.0.1:8899/_data
+                                                                               
+--&gt; Testi</pre></details><details><summary>scan_output · nikto</summary><pre>- Nikto v2.6.0
+---------------------------------------------------------------------------
++ Target IP:          127.0.0.1
++ Target Hostname:    127.0.0.1
++ Target Port:        8899
++ Platform:           Unknown
++ Start Time:         2026-10-29 04:23:13 (GMT-7)
+---------------------------------------------------------------------------
++ Server: SimpleHTTP/0.6 Python/3.13.5
++ No CGI Directories found (use &#x27;-C all&#x27; to force check all possible dirs). CGI tests skipped.
++ [013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
++ [013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
++ [013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
++ [013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
++ [013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
++ [600720] SimpleHTTP/0.6 appears to be outdated (current is at least 1.2).
++ [001578] /backup/: This might be interesting.
++ [003575] /xmlrpc.php: xmlrpc.php was found.
++ [006230] /admin/index.html: Admin login page/section found.
++ [006414] /wp-admin/: Admin login page/section found.
++ [007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options
++ [007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME type. See: https://www.netsparker.com/web-vulnerability-scanner/vulnerabilities/missing-content-type-header/
++ 8195 requests: 4 errors and 12 items reported on the remote host
++ End Time:           2026-10-29 04:23:36 (GMT-7) (23 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+
+
+      *********************************************************************
+      Portions of the server&#x27;s headers (Python/3.13.5) are not in
+      the Nikto 2.6.0 database or are newer than the known string. Would you like
+      to submit this information (*no server specific data*) to CIRT.net
+      for a Nikto update (or you may email to sullo@cirt.net) (y/n)? 
+
++ ERROR: Failed to check for updates: 403
+</pre></details><details><summary>scan_output · nmap_quick</summary><pre>Starting Nmap 7.95 ( https://nmap.org ) at 2026-10-29 04:23 MST
+Nmap done: 0 IP addresses (0 hosts up) scanned in 0.11 seconds
+
+Unable to split netmask from target expression: &quot;http://127.0.0.1:8899&quot;
+WARNING: No targets were specified, so 0 hosts scanned.
+</pre></details><details><summary>ssl · ssl:http://127.0.0.1:8899:443</summary><pre>s_client: -connect argument or target parameter malformed or ambiguous
+</pre></details><details><summary>tech · whatweb:http://127.0.0.1:8899</summary><pre>[1m[34mhttp://127.0.0.1:8899[0m [200 OK] [1mCountry[0m[[0m[22mRESERVED[0m][[1m[31mZZ[0m], [1mHTTPServer[0m[[1m[36mSimpleHTTP/0.6 Python/3.13.5[0m], [1mIP[0m[[0m[22m127.0.0.1[0m], [1mPython[0m[[1m[32m3.13.5[0m], [1mTitle[0m[[1m[33mE2E Test Site[0m]
+</pre></details>
+
+<h2>Appendix — Evidence</h2>
+<p>Full scanner output is retained in the assessment store. Key evidence is
+shown inline with each finding above.</p>
+</body></html>

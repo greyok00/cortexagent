@@ -1,0 +1,64 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { getModel, streamSimple } from "../src/compat.ts";
+import { findEnvKeys, getEnvApiKey } from "../src/env-api-keys.ts";
+import { getSupportedThinkingLevels } from "../src/models.ts";
+
+const originalBasetenApiKey = process.env.BASETEN_API_KEY;
+
+afterEach(() => {
+	if (originalBasetenApiKey === undefined) {
+		delete process.env.BASETEN_API_KEY;
+	} else {
+		process.env.BASETEN_API_KEY = originalBasetenApiKey;
+	}
+});
+
+describe("Baseten models", () => {
+	it("sends Baseten chat_template_args with reasoning effort", async () => {
+		const model = getModel("baseten", "nvidia/Nemotron-120B-A12B");
+		let payload: Record<string, unknown> | undefined;
+
+		await streamSimple(
+			model,
+			{ messages: [{ role: "user", content: "test", timestamp: 0 }] },
+			{
+				apiKey: "test-baseten-key",
+				reasoning: "high",
+				onPayload: (value) => {
+					payload = value as Record<string, unknown>;
+					throw new Error("payload captured");
+				},
+			},
+		).result();
+
+		expect(payload?.chat_template_args).toEqual({ enable_thinking: true });
+		expect(payload?.reasoning_effort).toBeUndefined();
+	});
+
+	it("disables Baseten opt-in reasoning when thinking is off", async () => {
+		const model = getModel("baseten", "nvidia/Nemotron-120B-A12B");
+		let payload: Record<string, unknown> | undefined;
+
+		await streamSimple(
+			model,
+			{ messages: [{ role: "user", content: "test", timestamp: 0 }] },
+			{
+				apiKey: "test-baseten-key",
+				onPayload: (value) => {
+					payload = value as Record<string, unknown>;
+					throw new Error("payload captured");
+				},
+			},
+		).result();
+
+		expect(payload?.chat_template_args).toEqual({ enable_thinking: false });
+		expect(payload?.reasoning_effort).toBeUndefined();
+	});
+
+	it("resolves BASETEN_API_KEY from the environment", () => {
+		process.env.BASETEN_API_KEY = "test-baseten-key";
+
+		expect(findEnvKeys("baseten")).toEqual(["BASETEN_API_KEY"]);
+		expect(getEnvApiKey("baseten")).toBe("test-baseten-key");
+	});
+});

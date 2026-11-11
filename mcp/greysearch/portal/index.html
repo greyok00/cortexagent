@@ -1,0 +1,1090 @@
+<!doctype html><html lang="en" data-theme="obsidian"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Greysearch: a local research station that searches the web, reads the sources, checks the findings, and writes a fully sourced guide."><title>Greysearch - Research station</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/assets/framework/tokens.css"><link rel="stylesheet" href="/assets/framework/tokens-v2.css"><link rel="stylesheet" href="/assets/reading-room.css"><link rel="stylesheet" href="/assets/screens.css"><link rel="stylesheet" href="/assets/portal.css?v=20261104c"><link rel="stylesheet" href="/assets/console.css?v=20261103g"><link rel="stylesheet" href="/assets/framework/elements-workflow.css"><link rel="stylesheet" href="/assets/framework/elements-inspector.css"><link rel="stylesheet" href="/assets/framework/elements-reader.css"><link rel="stylesheet" href="/assets/assist.css?v=20261109a"></head><body class="gs-console" data-screen="search"><a class="gs-skip" href="#q">Skip to the research field</a><header class="gs-top"><div class="gs-top-in"><span class="gs-top-mark">Greysearch</span> <a class="gs-link" href="/" aria-current="page">Station</a> <a class="gs-link" href="/runs.html">Run ledger</a> <a class="gs-link" href="/works.html">Works</a> <button class="gs-link gs-newsearch" id="newsearchbtn" type="button">New search</button> <button class="gs-link gs-drawbtn" id="drawbtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="outrail">Draft</button> <button class="gs-link gs-pubmenu" id="pubmenu" type="button" hidden aria-haspopup="true" aria-expanded="false" aria-controls="pubrail">Publish</button> <span class="gs-top-mid">Local engine · sources read in a real browser</span></div></header><main class="wrap"><p class="gs-kicker">Ask a question, get a guide</p><h1 class="brand">Grey<span>search</span></h1><p class="tag">It searches the web, reads the pages it finds, checks what holds up, and writes a guide with every claim traced to a source.</p><form class="box" id="f"><input id="q" autofocus autocomplete="off" placeholder="What would you like to research?"> <button id="go" type="submit">Research</button></form><p class="gs-formhint" id="formhint" role="status" aria-live="polite" hidden></p><div class="gs-reopen" id="gsreopen" hidden><button id="reopens" type="button"><span class="gs-reopen-pre">Reopen your last search:</span> <span id="reopens-q"></span></button></div><div class="gs-reopen gs-refail" id="gsrefail" hidden><button id="reopens-f" type="button" disabled><span class="gs-reopen-pre">Last search did not finish:</span> <span id="reopens-fq"></span></button><p class="gs-refail-note" id="reopens-note"></p><button id="reopens-resume" type="button" hidden>Resume this search</button></div><div class="depth-row"><span class="gs-depth-label">Report length</span> <button type="button" class="dep" data-len="brief">Brief</button> <button type="button" class="dep sel" data-len="standard">Standard</button> <button type="button" class="dep" data-len="deep">Deep</button> <button type="button" class="dep" data-len="report">Full Report</button></div><div class="depth-row" id="pxy-row"><span class="gs-depth-label">Proxy: off | on</span> <button type="button" class="pxy sel" data-proxy="off">Off</button> <button type="button" class="pxy" data-proxy="on">On</button></div><p class="gs-eng-note pxy-note" id="pxy-note">Proxy mode applies to SEARCHES only; every page the guide reads and every search-result link open without the proxy in every mode. Off means searches explicitly bypass any ambient system proxy.</p><div class="engines-pick" id="engines-pick" hidden><span class="gs-depth-label">Search engines · optional extras</span><div class="gs-kws gs-eng-core" id="eng-core"></div><details class="gs-eng-more" id="eng-more" hidden><summary>More engines</summary><div id="eng-groups"></div></details><p class="gs-eng-note">Checking these adds them to the station's default set for this one search - nothing is replaced. Leave everything unchecked to search as usual.</p></div><div class="gs-steps" aria-label="How a run works"><div class="gs-step"><span class="gs-step-n">01</span><b>Search</b><span>Query the open web.</span></div><div class="gs-step"><span class="gs-step-n">02</span><b>Read</b><span>Open the promising pages.</span></div><div class="gs-step"><span class="gs-step-n">03</span><b>Verify</b><span>Judge each claim against its sources.</span></div><div class="gs-step"><span class="gs-step-n">04</span><b>Write</b><span>Assemble the sourced guide.</span></div></div><section class="gs-latest" id="latest" aria-labelledby="latest-h" hidden><div class="gs-latest-head"><h2 id="latest-h">Your recent researches</h2><a href="/runs.html">Open the full run ledger</a></div><p class="gs-latest-note" id="latest-note"></p><div class="gs-latest-grid" id="latest-grid"></div></section><section class="gs-engine" id="engine" aria-labelledby="engine-h" hidden><h2 id="engine-h">Engine state on this machine</h2><dl class="gs-engine-facts" id="engine-facts"></dl></section><div class="hist" id="hist"><div class="hhead">Saved searches <button id="clearhist">Clear history</button></div><div id="histitems"></div></div><div class="progress" id="prog"><p class="gs-eyebrow">Run in progress</p><ol class="stages" id="stages"><li data-stage="start"><span class="st-n">01</span><span class="st-t">Search the web</span><span class="st-d"></span></li><li data-stage="search_done"><span class="st-n">02</span><span class="st-t">Rank the sources</span><span class="st-d"></span></li><li data-stage="scraped"><span class="st-n">03</span><span class="st-t">Read the pages</span><span class="st-d"></span></li><li data-stage="judged"><span class="st-n">04</span><span class="st-t">Check the findings</span><span class="st-d"></span></li><li data-stage="images"><span class="st-n">05</span><span class="st-t">Gather images</span><span class="st-d"></span></li><li data-stage="audit"><span class="st-n">06</span><span class="st-t">Audit the guide</span><span class="st-d"></span></li><li data-stage="guide"><span class="st-n">07</span><span class="st-t">Write the guide</span><span class="st-d"></span></li></ol><div class="stage" id="stage">starting…</div><div class="gs-livebar"><button id="openlive" class="gs-tact" type="button" hidden>Open the results so far - the run keeps reading</button></div><div class="track"><div class="fill" id="fill"></div></div><div class="err" id="err"></div></div><div class="results" id="res"><div class="gs-doc"><form class="box gs-barbox" id="bars" hidden aria-label="Start a new search"><input id="barq" autocomplete="off" placeholder="What would you like to research?"> <button id="bargo" type="submit">Research</button></form><p class="gs-formhint" id="barhint" role="status" aria-live="polite" hidden></p><details class="gs-barhist" id="barhist" hidden><summary>Saved searches</summary><div id="barhistitems"></div></details><section class="gs-block gs-curate" id="curate" hidden><h2>Curation - read the source, click what belongs</h2><p class="gs-note">Every page this run opened, with its paragraphs shown in full - click a paragraph to keep it, click again to drop it. The gate's verdict is shown, not hidden. Unopened search candidates wait in the last tab: pick any and press Fetch selected and the engine reads them now, straight into this record. Nothing is saved until you press Save research. The search bar above starts a fresh run - this one stays in the Run ledger either way.</p><div class="gs-curbar"><span class="src" id="cur-meta"></span> <span class="src" id="cur-count"></span></div><div class="gs-tabs" role="tablist" aria-label="Curation sections"><button class="gs-tab sel" type="button" data-curtab="paras" aria-selected="true">Paragraphs</button> <button class="gs-tab" type="button" data-curtab="kws" aria-selected="false">Keywords</button> <button class="gs-tab" type="button" data-curtab="imgs" aria-selected="false">Images</button> <button class="gs-tab" type="button" data-curtab="unscraped" aria-selected="false">Turned-away candidates</button></div><div class="gs-curpane" id="cur-paras" role="tabpanel"></div><div class="gs-curpane" id="cur-kws" role="tabpanel" hidden></div><div class="gs-curpane" id="cur-imgs" role="tabpanel" hidden></div><div class="gs-curpane" id="cur-unscraped" role="tabpanel" hidden></div></section><aside class="gs-rail gs-out-rail" id="outrail" aria-label="Draft output"><p class="gs-eyebrow">Draft</p><label class="gs-field">Research set <select id="setsel"><option value="">new set</option></select></label> <label class="gs-field">Name it <input id="setname" class="gs-in" autocomplete="off" placeholder="defaults to your question"></label> <button id="savebtn" class="bbtn" type="button">Save research</button><div class="src" id="savemsg"></div><div id="outdoc" class="brief gs-outdoc" hidden></div><textarea id="outedit" class="gs-outedit" spellcheck="false" hidden aria-label="Edit the draft as markdown"></textarea><div id="outactions" class="gs-outactions"></div><div class="src" id="outmeta"></div><p class="gs-rail-note">Saving keeps the clicked paragraphs, keywords, and images in research/sets/ on this machine and composes the draft in this drawer. The draft is a markdown document - edit it or delete from it, and your edits are what get exported until you press reset. Picking a set and saving again adds this run to it; the research keeps expanding. Nothing publishes from here; Build lives behind Publish in the top menu.</p></aside><div class="gs-doc-main"><h1 class="gs-eyebrow gs-doc-title">Research brief</h1><div class="brief" id="brief">…</div><div class="src gs-path" id="path"></div><section class="gs-block"><h2>Sources</h2><ul class="srcs" id="srcs"></ul></section><section class="gs-block"><h2>Evidence read</h2><div id="researchtext"></div></section><section class="gs-block"><h2>Shape the draft</h2><p class="gs-note">Narrow the scope, or tell the engine what to write from this research.</p><div class="box"><input id="refineq" autocomplete="off" placeholder="e.g. focus only on enterprise defense; make it a PhD-level summary"> <button id="refinego" type="button">Refine</button></div><div id="refineout" class="brief" style="display:none"></div></section><section class="gs-block"><h2>Images</h2><p class="gs-note">Optional. Pick what the published page should use.</p><div class="imgs" id="imgs"></div></section></div><aside class="gs-rail gs-pub-rail" id="pubrail"><p class="gs-eyebrow">Publish</p><label class="gs-field">Site theme <select id="theme"><option value="obsidian">Obsidian</option><option value="master">Master</option><option value="neutral">Neutral</option><option value="polaroid">Polaroid</option><option value="cockpit">Cockpit</option><option value="cockpit-paper">Cockpit-paper</option><option value="console">Console</option><option value="compact">Compact</option><option value="casebook">Casebook</option><option value="agent-paper">Agent-paper</option><option value="agent-history">Agent-history</option><option value="agent-pulse">Agent-pulse</option><option value="aurora">Aurora</option><option value="bespoke">Bespoke</option><option value="swiss">Swiss</option><option value="terminal">Terminal</option><option value="torque">Torque</option><option value="umami">Umami</option></select></label> <button id="build" class="bbtn" type="button">Build the site</button><div class="src" id="built"></div><p class="gs-rail-note">The site is assembled from this brief and its sources. Builds stay on this machine.</p></aside></div></div></main><footer class="gs-foot"><span>Greysearch · research station</span> <span>Every claim traced to a source</span></footer><script>let runId = null, lastRunId = null;
+const $ = id => document.getElementById(id);
+let selectedMeta = [], pickSet = new Set();
+/* ---- live results buffer (data only) -----------------------------------
+   The stage stream feeds this; curate.js owns the paint (window.__curLive).
+   Pages land as the run reads them, positional verdicts arrive per judge
+   batch, and reopening mid-run rebuilds the buffer from the replayed
+   stream. Nothing here touches the DOM; payloads flow through
+   textContent paint paths only. */
+window.__gsLive = {
+  rid: "", query: "", pages: [], dec: [],
+  reset: function (rid) {
+    if (rid === this.rid) return;
+    this.rid = String(rid || ""); this.query = ""; this.pages = []; this.dec = [];
+  },
+  note: function (pg) {
+    if (!pg || !pg.id) return;
+    const i = this.pages.findIndex(p => p && p.id === pg.id);
+    if (i < 0) this.pages.push(pg); else this.pages[i] = pg;
+  },
+  judged: function (start, decs) {
+    if (!Array.isArray(decs)) return;
+    start = Number(start) || 0;
+    for (let i = 0; i < decs.length; i++) this.dec[start + i] = decs[i];
+  },
+};
+/* open the results screen while the run is still reading - the pane is
+   the live preview and the guide replaces it when the run finishes */
+function loadLiveResult(attempt) {
+  const rid = runId || window.__poll_id || lastRunId;
+  if (!rid) return;
+  if (window.__curLive && window.__curLive.open) {
+    if (!window.__curLive.open(rid)) {
+      /* curate.js not up yet or the buffer still empty: retry briefly,
+         then stay on the stage screen (the run itself never blocked) */
+      if ((attempt || 0) < 10) {
+        window.setTimeout(() => loadLiveResult((attempt || 0) + 1), 500);
+      }
+    }
+  }
+}
+$("openlive")?.addEventListener("click", () => {
+  const rid = runId || window.__poll_id || lastRunId;
+  if (!rid) return;
+  lastRunId = lastRunId || rid;
+  if (window.__grOpenResults) window.__grOpenResults();
+  $("openlive").hidden = true;
+  loadLiveResult();
+});
+/* qamode: a page loaded with ?qamode=1 belongs to the acceptance gates.
+   Its submissions carry origin "qa" so they never attach the plain page
+   or paint in the reader's main-page grid, and its reattach fetches
+   origin=all so gate asserts still reach the gate's own runs. */
+const GR_QA = new URLSearchParams(location.search).has("qamode");
+
+/* ---- untrusted-field rendering contract --------------------------------
+   Research results echo third-party web content: source URLs, page
+   titles, image metadata, and the synthesized guide text are all
+   potentially attacker-controlled. Every sink that receives them
+   builds elements with DOM APIs and assigns TEXT with textContent -
+   a text node cannot execute script, whatever it contains.
+   Intentional-HTML exception: liteMd() (assets/lite-md.js, loaded into
+   the page before these scripts) is the one sanctioned markup renderer
+   (it escapes & and < before any wrapping). */
+const HTTP_URL = /^https?:\/\//i;   /* allowlist for link hrefs */
+function linkEl(url) {
+  const a = document.createElement("a");
+  const u = String(url || "");
+  if (HTTP_URL.test(u)) {           /* protocol-checked; DOM assignment */
+    a.href = u;                     /* cannot inject attributes */
+    a.target = "_blank"; a.rel = "noopener";
+    a.textContent = u;
+  } else {
+    a.textContent = u;              /* refused scheme: plain text */
+  }
+  return a;
+}
+/* local site paths come from the backend too: keep only a guides/ tail
+   with sane segments, then URL-encode each segment on the way into an href */
+function safePath(f) {
+  const t = String(f || "").replace(/^.*guides\//, "");
+  if (!t || t.split("/").some(s => !s || s === "." || s === "..")) return "";
+  return t;
+}
+const encPath = t => t.split("/").map(encodeURIComponent).join("/");
+/* one image card builder shared by loadResult and the refine grid */
+function imgCard(c, i, label) {
+  const d = document.createElement("div");
+  d.className = "imgc";
+  const tail = safePath(c.file);
+  if (tail) {
+    const im = document.createElement("img");
+    im.alt = "";
+    im.src = "/imgcand/" + encPath(tail);
+    d.appendChild(im);
+  }
+  const sm = document.createElement("small");
+  sm.textContent = (label ? "para " + (c.para + 1) + ": " : "") + (c.title || "");
+  if (c.license) {
+    sm.appendChild(document.createElement("br"));
+    sm.appendChild(document.createTextNode(c.license));
+  }
+  d.appendChild(sm);
+  d.onclick = () => {
+    (window.__pick || pickSet).has(i) ? (window.__pick || pickSet).delete(i)
+                                      : (window.__pick || pickSet).add(i);
+    d.classList.toggle("sel");
+  };
+  return d;
+}
+function anchorEl(href, label, download) {
+  const a = document.createElement("a");
+  a.href = href; a.textContent = label;
+  if (download) a.setAttribute("download", "");
+  else { a.target = "_blank"; a.rel = "noopener"; }
+  return a;
+}
+
+function estFill(stage, d) {
+  if (stage === "start") return 8;
+  if (stage === "resume") return 30;
+  if (stage === "search_done") return 30;
+  if (stage === "scraped") return 45 + Math.min(30, (d.n || 1) * 6);
+  if (stage === "judged") return 78 + Math.min(10, (d.accepted_so_far || 0));
+  if (stage === "images") return 85;
+  if (stage === "audit") return 90;
+  if (stage === "guide") return 97;
+  return 4;
+}
+function show(s) { $("stage").textContent = s; }
+/* form-level messages must be visible where the user is: #stage and #err
+   live on the progress screen, invisible while the search screen is up.
+   formHint() writes into the search form's own live region. */
+function formHint(s) {
+  const h = $("formhint");
+  if (!h) return;
+  h.hidden = false;
+  h.textContent = s;
+}
+function clearHint() {
+  const h = $("formhint");
+  if (h) { h.hidden = true; h.textContent = ""; }
+}
+
+/* ---- visible, clearable history ---- */
+let _length = "standard";
+document.querySelectorAll(".dep").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll(".dep").forEach(x => x.classList.remove("sel"));
+    b.classList.add("sel");
+    _length = b.dataset.len;
+  });
+});
+
+/* ---- manual search-proxy picker (searches only; scrapes stay direct) --- */
+let _proxy = "off";
+const PXY_KEY = "greysearch-search-proxy";
+(function initProxy() {
+  let saved = "off";
+  try { saved = localStorage.getItem(PXY_KEY) || "off"; } catch (e) {}
+  if (saved !== "off" && saved !== "on") saved = "off";
+  _proxy = saved;
+  document.querySelectorAll("#pxy-row .pxy").forEach(b => {
+    const val = b.getAttribute("data-proxy") || "off";
+    b.classList.toggle("sel", val === _proxy);
+    b.addEventListener("click", () => {
+      _proxy = val;
+      document.querySelectorAll("#pxy-row .pxy").forEach(
+        (x) => x.classList.remove("sel"));
+      b.classList.add("sel");
+      try { localStorage.setItem(PXY_KEY, _proxy); } catch (e) {}
+    });
+  });
+})();
+
+/* ---- optional engine picker (catalog names reach the page only
+   as text nodes; checkbox data-eng values are read with getAttribute) ---
+   Checking these ADDS engines to the station's default set for one search;
+   nothing is replaced and an empty form searches as usual. */
+const ENG_CORE = ["google cse", "startpage", "duckduckgo", "mojeek", "brave",
+  "wikipedia", "arxiv", "github", "google scholar", "google news",
+  "bing news", "bing images", "duckduckgo images"];
+const ENG_GROUP_ORDER = ["general", "images", "news", "videos", "science",
+  "scientific publications", "it", "repos", "code", "software wikis",
+  "social media", "files", "map", "music", "lyrics", "radio", "packages",
+  "weather", "translate", "dictionaries", "define", "currency",
+  "stock images", "wikimedia", "other"];
+const ENG_CORE_LABELS = {"google cse": "Google CSE", "startpage": "Startpage",
+  "duckduckgo": "DuckDuckGo", "mojeek": "Mojeek", "brave": "Brave",
+  "wikipedia": "Wikipedia", "arxiv": "arXiv", "github": "GitHub",
+  "google scholar": "Google Scholar", "google news": "Google News",
+  "bing news": "Bing News", "bing images": "Bing Images",
+  "duckduckgo images": "DuckDuckGo Images"};
+function engLabel(n) {
+  const M = {"cse": "CSE", "it": "IT", "q&a": "Q&A", "osm": "OSM",
+             "arxiv": "arXiv", "github": "GitHub"};
+  return String(n).split(" ").map((w) => {
+    const lw = w.toLowerCase();
+    return M[lw] || (lw.charAt(0).toUpperCase() + lw.slice(1));
+  }).join(" ");
+}
+function engChip(name) {
+  const l = document.createElement("label");
+  l.className = "gs-kw";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.setAttribute("data-eng", name);
+  l.appendChild(cb);
+  /* core chips show a curated label; every other catalog name is shown
+     verbatim - what you see is exactly what the search will request */
+  l.appendChild(document.createTextNode(
+    " " + (ENG_CORE_LABELS[name] || name)));
+  return l;
+}
+fetch("/api/engine").then((r) => r.json()).then((d) => {
+  const cat = (d && d.engine_catalog) || [];
+  if (!cat.length) return;
+  const have = {};
+  cat.forEach((e) => { if (e && e.name) have[String(e.name)] = e; });
+  const core = $("eng-core");
+  ENG_CORE.forEach((n) => { if (have[n]) core.appendChild(engChip(n)); });
+  const groups = {};
+  Object.keys(have).forEach((n) => {
+    if (ENG_CORE.indexOf(n) >= 0) return;
+    const c = (((have[n].categories || [])[0]) || "other").toLowerCase();
+    (groups[c] = groups[c] || []).push(n);
+  });
+  const gwrap = $("eng-groups");
+  const order = ENG_GROUP_ORDER.concat(
+    Object.keys(groups).filter((c) => ENG_GROUP_ORDER.indexOf(c) < 0).sort());
+  order.forEach((c) => {
+    if (!groups[c] || !groups[c].length) return;
+    const h = document.createElement("div");
+    h.className = "gs-enghead";
+    h.textContent = engLabel(c);
+    gwrap.appendChild(h);
+    const w = document.createElement("div");
+    w.className = "gs-kws";
+    groups[c].sort().forEach((n) => w.appendChild(engChip(n)));
+    gwrap.appendChild(w);
+  });
+  if (gwrap.childNodes.length) $("eng-more").hidden = false;
+  $("engines-pick").hidden = !(core.childNodes.length || gwrap.childNodes.length);
+}).catch(() => { /* catalog missed: the picker stays hidden, defaults run */ });
+const HKEY = "greysearch-history";
+function getHist() {
+  try { return JSON.parse(localStorage.getItem(HKEY) || "[]"); }
+  catch (e) { return []; }
+}
+function addHist(q) {
+  const h = [q, ...getHist().filter(x => x !== q)].slice(0, 10);
+  localStorage.setItem(HKEY, JSON.stringify(h));
+  renderHist();
+  renderBarHist();   /* the results-screen bar's saved list stays live too */
+}
+
+/* Security: a query like "<img src=x onerror=...>" executes via innerHTML
+   when history rows render. Rows are built with DOM APIs here:
+   textContent can not execute, whatever the query contains. */
+function renderHist() {
+  const h = getHist();
+  const box = $("hist");
+  const items = document.getElementById("histitems");
+  if (!items) return;
+  if (!h.length) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  items.innerHTML = "";
+  h.forEach(q => {
+    const el = document.createElement("div");
+    el.className = "hitem";
+    el.textContent = q;
+    el.addEventListener("click", () => {
+      $("q").value = q;
+      $("f").dispatchEvent(new Event("submit"));
+    });
+    items.appendChild(el);
+  });
+}
+$("clearhist").addEventListener("click", () => {
+  localStorage.removeItem(HKEY);
+  renderHist();
+});
+renderHist();
+
+/* SSE can die silently (idle drop). A 5s poll is the safety net: when the
+   server says the run is done, the page catches up even without SSE. */
+setInterval(async () => {
+  if (!window.__poll_id) return;
+  try {
+    let resp;
+    try { resp = await fetch("/api/run/" + window.__poll_id); }
+    catch (e) { return; }
+    if (resp.status === 404) {
+      /* the in-memory run is gone (portal restarted): the durable row
+         still says what happened - reattach instead of erasing the
+         poller, so the failure state paints through the reopen row */
+      window.__poll_id = null;
+      runId = null;
+      show("");
+      $("go").disabled = false;
+      window.__grAttachLatest();
+      return;
+    }
+    const j = await resp.json();
+    if (j.status === "done") {
+      lastRunId = window.__poll_id;
+      window.__poll_id = null;
+      runId = null;
+      document.querySelector(".fill").classList.remove("working");
+      $("fill").style.width = "100%";
+      show("Guide finished.");
+      $("go").disabled = false;
+      const fd = $("gsrefail");
+      if (fd && fd.dataset.rid === j.run_id) fd.hidden = true;
+      loadResult();
+    } else if (j.status === "error" || j.status === "interrupted") {
+      const rid = window.__poll_id;
+      const wasInt = j.status === "interrupted";
+      show(wasInt ? "Run was interrupted." : "Run failed.");
+      $("err").textContent = "This run did not finish"
+        + (j.error ? ": " + j.error : ". Try again.");
+      $("go").disabled = false;
+      window.__poll_id = null;
+      window.__grArmRefail(rid, wasInt
+        ? "The portal restarted while this run was working, so the run "
+          + "is marked interrupted and nothing was lost. Resuming it "
+          + "Resume it from the run row when it allows."
+        : "");
+    }
+  } catch (e) {}
+}, 5000);
+
+/* A failed or interrupted run paints itself through the reopen row:
+   the question, the honest note, and a Resume control that stays
+   disabled until the run can re-enter from its durable stages. The
+   done branch hides this strip for its own run (the row reads done). */
+window.__grArmRefail = async function (rid, note) {
+  const box = $("gsrefail");
+  if (!box || !rid) return;
+  box.dataset.rid = rid;
+  let q = "";
+  let rt = null;
+  try {
+    const rj = await (await fetch("/api/run/" + rid)).json();
+    q = String(((rj.result || {}).question || "")).trim();
+    rt = rj.resume || null;
+  } catch (e) { /* best-effort; the id still labels the strip */ }
+  if (!q) {
+    try {
+      const rl = await fetch(GR_QA ? "/api/runs?origin=all"
+                                   : "/api/runs?origin=webui");
+      if (rl.ok) {
+        const lj = await rl.json();
+        const own = (lj.runs || []).filter(x => x.run_id === rid);
+        if (own.length) q = String(own[0].query || "").trim();
+      }
+    } catch (e2) {}
+  }
+  $("reopens-fq").textContent = q || rid;
+  $("reopens-note").textContent = note || "";
+  /* The Resume control arms when the row's resume table says the
+     run re-enters from its durable stages; when it does not, the note
+     above carries the honest reason instead. */
+  const rb = $("reopens-resume");
+  if (rb) {
+    if (rt && rt.can) {
+      rb.dataset.rid = rid;
+      rb.dataset.stage = String(rt.from_stage || "");
+      rb.hidden = false;
+    } else {
+      rb.hidden = true;
+    }
+  }
+  box.hidden = false;
+};
+
+/* Resume control: POST /api/resume/<rid> re-enters the failed run
+   from its durable stages (replayed search + judged pages, artifacts
+   already on disk). On success the strip hands over to the live
+   progress ribbon; on refusal the honest reason replaces the note. */
+document.addEventListener("click", async (ev) => {
+  const rb = ev.target.closest("#reopens-resume");
+  if (!rb || rb.disabled) return;
+  const rid = String(rb.dataset.rid || "");
+  if (!rid) return;
+  rb.disabled = true;
+  try {
+    const r = await fetch("/api/resume/" + rid, { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) {
+      $("gsrefail").hidden = true;
+      runId = rid;
+      window.__poll_id = rid;
+      $("go").disabled = true;
+      $("prog").style.display = "block";
+      document.querySelector(".fill").classList.add("working");
+      attachRunStream(rid);
+    } else {
+      $("reopens-note").textContent =
+        String(j.error || "the resume did not start");
+      rb.disabled = false;
+    }
+  } catch (e) {
+    $("reopens-note").textContent = "the resume did not start";
+    rb.disabled = false;
+  }
+});
+
+/* ---- run reattach (single shared copy) --------------------------------
+   Three identical inline copies used to fire concurrently on load,
+   racing one another over the screens state machine. One shared
+   async function owns the reattach: an in-flight run -> live stream
+   + poll; a done run -> results (unless a fresh submit holds it).
+   The submit handler keeps its own POST + stream path. */
+window.__grAttachLatest = async function () {
+  try {
+    const r = await fetch(GR_QA ? "/api/latest?origin=all" : "/api/latest");
+    const j = await r.json();
+    if (!j.exists) return;
+    if (j.status === "running") {
+      runId = j.run_id;
+      window.__poll_id = j.run_id;
+      $("go").disabled = true;
+      $("prog").style.display = "block";
+      document.querySelector(".fill").classList.add("working");
+      attachRunStream(j.run_id);
+    } else if (j.status === "error" || j.status === "interrupted") {
+      /* a failed run attaches the same way a finished one does: the
+         question through the failed-run strip, note naming the state
+         (the resume control arms itself when the row allows) */
+      window.__grArmRefail(j.run_id, j.status === "interrupted"
+        ? "The portal restarted while this run was working, so the run "
+          + "is marked interrupted and nothing was lost - resume it from "
+          + "its finished stages when the row allows."
+        : "This run did not finish. Resume it from its finished stages "
+          + "when the row allows, or try again.");
+      return;
+    } else if (j.status === "done") {
+      /* a finished run never paints itself onto the page: a stale run
+         (often an automated acceptance run the user never typed) read as
+         mystery content. Arm the search screen's reopen control instead -
+         it names the run's own question, and clicking it lands results
+         through window.__grOpenResults. The question is painted
+         with textContent only. A user-submitted run still paints directly
+         through its own stream/poll finish path. */
+      const fd = $("gsrefail");
+      if (fd && fd.dataset.rid === j.run_id) fd.hidden = true;
+      window.__grReopenRun = j.run_id;
+      const rr = $("gsreopen");
+      if (rr) {
+        try {
+          const rd = await fetch("/api/run/" + j.run_id);
+          let q = "";
+          if (rd.ok) {
+            const rj = await rd.json();
+            q = String(((rj.result || {}).question || "")).trim();
+          }
+          /* runs recorded before the reopen row existed store no question
+             in their payload - the run ledger's row for the same run does,
+             and the main-page grid shows that same query, so the row's
+             own record answers the label before it gives up. */
+          if (!q) {
+            const rl = await fetch(GR_QA
+              ? "/api/runs?origin=all" : "/api/runs?origin=webui");
+            if (rl.ok) {
+              const lj = await rl.json();
+              const own = (lj.runs || []).filter(function (x) {
+                return x.run_id === j.run_id;
+              });
+              if (own.length) q = String(own[0].query || "").trim();
+            }
+          }
+          if (q) {
+            $("reopens-q").textContent = q;
+            rr.hidden = false;
+          }
+        } catch (e2) { /* arming is best-effort; the search screen stands */ }
+      }
+    }
+  } catch (e) { /* reattach must never break a load */ }
+};
+
+/* one stream-binding helper shared by reattach (submit binds its own) */
+window.attachRunStream = function attachRunStream(rid) {
+  const es = new EventSource("/api/progress/" + rid);
+  /* On stream error, close, then one honest recovery
+     per submit: the reload replays every stage event via the reattach;
+     a second drop goes poll-only; never reconnect-flood. */
+  es.onerror = () => {
+    es.close();
+    const stamp = Number(sessionStorage.getItem("gr-resume") || 0);
+    if (Date.now() - stamp > 120000) {
+      sessionStorage.setItem("gr-resume", String(Date.now()));
+      location.reload();
+    } else {
+      /* recovery already used for this submit: rebind the stream ONCE
+         via the reattach so the stage ladder catches up */
+      window.__grAttachLatest();
+    }
+  };
+  es.onmessage = (m) => {
+    const ev = JSON.parse(m.data);
+    if (window.__gsStage) window.__gsStage(ev);
+    if (ev.stage === "__end__") {
+      $("openlive").hidden = true;
+      document.querySelector(".fill").classList.remove("working");
+      es.close(); lastRunId = rid; runId = null;
+      $("go").disabled = false;
+      return;
+    }
+    $("fill").style.width = estFill(ev.stage, ev.data) + "%";
+    if (ev.stage === "start") {
+      show("Researching: " + (ev.data.query || "") +
+        " (proxy: " + ((ev.data && ev.data.search_proxy) || "off") + ")");
+      $("openlive").hidden = false;
+      __gsLive.reset(rid);
+      __gsLive.query = (ev.data && ev.data.query) || "";
+    }
+    if (ev.stage === "search_done") show("Found " + (ev.data.pool || 0) +
+        " promising sources. Reading them now.");
+    if (ev.stage === "scraped") {
+      show("Reading source " + (ev.data.n || "?") +
+        ": " + (ev.data.title || ev.data.url || ""));
+      if (ev.data && ev.data.page) {
+        __gsLive.note(ev.data.page);
+        if (window.__curLive) window.__curLive.poke();
+      }
+    }
+    if (ev.stage === "judged") {
+      show("Reviewing findings: " +
+        (ev.data.judged_so_far || 0) + " of " + (ev.data.of || "?") +
+        " sources kept " + (ev.data.accepted_so_far || 0));
+      if (ev.data && ev.data.decisions) {
+        __gsLive.judged(ev.data.start, ev.data.decisions);
+        if (window.__curLive) window.__curLive.poke();
+      }
+    }
+    if (ev.stage === "images") { show("Gathering images…");
+      /* reload only on the POST-work event (numeric count): the
+         pre-work "?" event would flash an empty results panel. The live
+         pane takes it now - the full record still lands with the guide. */
+        if (typeof ev.data.count === "number") loadLiveResult(); }
+    if (ev.stage === "audit") show("Reviewing the findings…");
+    if (ev.stage === "guide") { show("Guide finished."); (async () => loadResult())(); }
+    if (ev.stage === "error") {
+      $("openlive").hidden = true;
+      $("err").textContent = "Run failed: " + (ev.data.error || "?");
+    }
+  };
+  return es;
+};
+
+/* ONE initial reattach on load */
+window.__grAttachLatest();
+
+/* ---- run lifecycle: the submit journey ----------------------------- */
+$("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) { formHint("Type a topic to research, then press Research."); return; }
+  if (runId) { formHint("Already running - hold on."); return; }
+  clearHint();
+  addHist(q);
+  sessionStorage.removeItem("gr-resume");   /* re-arm stream-error recovery */
+  document.querySelector(".fill").classList.add("working");
+  $("go").disabled = true;
+  $("err").textContent = "";
+  /* Every exit path re-enables the button and clears run/poll
+     state; a refused connection, non-JSON body, or server error used to
+     strand the UI with the submit button permanently disabled. */
+  try {
+    const engSel = [];
+    document.querySelectorAll("#engines-pick input[data-eng]:checked")
+      .forEach((cb) => engSel.push(cb.getAttribute("data-eng")));
+    const body = {query: q, length: _length, search_proxy: _proxy};
+    if (engSel.length) body.engines = engSel;
+    if (GR_QA) body.origin = "qa";
+    const r = await fetch("/api/research", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)});
+    if (!r.ok) throw new Error("server responded " + r.status);
+    const j = await r.json();
+    if (!j || !j.run_id) throw new Error("the server sent no run id");
+    runId = j.run_id;
+    window.__poll_id = j.run_id;
+    const es = attachRunStream(runId);
+    /* the submit path differs from the reattach in two ways: the query is
+       known (the stage echoes it) and a stream drop recovers like the
+       reattach does below */
+    es.onmessage = ((base) => (m) => {
+      const ev = JSON.parse(m.data);
+      if (ev.stage === "start" && ev.data && !ev.data.query) {
+        show("Researching: " + q);
+      }
+      base(m);
+    })(es.onmessage);
+  } catch (err) {
+    runId = null;
+    window.__poll_id = null;
+    document.querySelector(".fill").classList.remove("working");
+    $("fill").style.width = "4%";
+    $("go").disabled = false;
+    formHint("Couldn't start the run: " + err.message);
+    show("");
+    /* screens.js flips body[data-screen] to "progress" on any non-empty
+       submit - flip back so the form is reachable to retry after a
+       refusal (the pill menu alone is otherwise the way back). */
+    document.body.dataset.screen = "search";
+  }
+});
+
+/* the results panes belong to exactly one run: a second run painted onto
+   the screen without clearing left the first run's facts in place (the
+   "mystery content" class of defect) */
+function clearResultPanes() {
+  ["brief", "path", "built", "refineout"].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    if (id === "refineout") { el.style.display = "none"; }
+    el.textContent = "";
+  });
+  ["srcs", "researchtext", "imgs"].forEach((id) => {
+    const el = $(id);
+    if (el) el.replaceChildren();
+  });
+  pickSet = new Set();
+  selectedMeta = [];
+  window.__cands = [];
+  window.__pick = pickSet;
+  window.__refineRunId = null;
+  const rq = $("refineq");
+  if (rq) rq.value = "";
+}
+
+async function loadResult() {
+  const rid = runId || lastRunId;
+  if (!rid) return;
+  /* The refine panel belongs to one run. When results for a
+     DIFFERENT run are painted, hide and clear any refine output and the
+     prompt so the previous run's refine text can't be misattributed. */
+  if (window.__resPaintedRun && window.__resPaintedRun !== rid) {
+    clearResultPanes();
+  }
+  window.__resPaintedRun = rid;
+  if (window.__refineRunId && window.__refineRunId !== rid) {
+    const ro = $("refineout");
+    ro.style.display = "none"; ro.textContent = "";
+    const rq = $("refineq"); if (rq) rq.value = "";
+    window.__refineRunId = null;
+  }
+  let j;
+  try {
+    const r = await fetch("/api/run/" + rid);
+    if (!r.ok) return;
+    j = await r.json();
+  } catch (e) { return; }
+  const res = j.result || {};
+  const guide = res.master_guide || {};
+  const mg = String(guide.preview || "");
+  const m = mg.match(/\*\*Executive Brief:\*\*([\s\S]*?)(?:\n\n|$)/);
+  const text = m ? m[1].trim() : (mg.slice(0, 700) || "no content");
+  const srcsRaw = (res.sources || res.pages_fetched || []).slice(0, 8);
+  const srcsList = Array.isArray(srcsRaw) ? srcsRaw : [];
+  const urls = srcsList.map(x => (typeof x === "string" ? x : x && x.url));
+  /* guide preview: textContent + .brief's pre-line styling replaces the
+     old innerHTML + <br> splice; the summary span is appended as a node */
+  const brief = $("brief");
+  brief.textContent = text;
+  brief.appendChild(document.createElement("br"));
+  const sum = document.createElement("span");
+  sum.className = "src";
+  sum.textContent = "Summary written from " + (urls.length || 0) + " sources.";
+  brief.appendChild(sum);
+  $("path").textContent =
+      guide.path ? ("guide: " + String(guide.path).replace(/^.*\/guides\//, "guides/")) : "";
+  const sl = $("srcs");
+  sl.replaceChildren();
+  urls.forEach(u => {
+    const li = document.createElement("li");
+    li.appendChild(linkEl(u));
+    sl.appendChild(li);
+  });
+  const cands = res.image_candidates || [];
+  pickSet = new Set();
+  window.__cands = cands;
+  window.__imgsBox = document.getElementById("imgs");
+  window.__pick = pickSet;
+  const imgbox = $("imgs");
+  imgbox.replaceChildren();
+  if (!cands.length) {
+    const none = document.createElement("small");
+    none.className = "src";
+    none.textContent = "No usable images found for this topic - "
+        + "the guide ships text-only.";
+    imgbox.appendChild(none);
+  }
+  cands.forEach((c, i) => imgbox.appendChild(imgCard(c, i)));
+  selectedMeta = cands;
+  // live research text: each kept source, its distilled paragraphs
+  const rt = $("researchtext");
+  const pages = (res.pages_fetched || []).filter(p => p && (p.text ||
+      (p.clean || {}).body_text));
+  rt.replaceChildren();
+  pages.slice(0, 6).forEach(p => {
+    const title = (p.clean || {}).title || p.title || p.url;
+    let body = ((p.clean || {}).body_text || p.text || "").trim();
+    // gate: drop code/JSON/junk blobs from the live view
+    body = body.split(/\n+/).filter(x =>
+        !/^\s*[{\[<]/.test(x) && !/"signature"/.test(x) &&
+        !/^\s*(import|function|const|let|var)\s/.test(x) &&
+        /\s/.test(x)).join(" ");
+    // gate: no blog-wall blobs; paragraph breaks when the source
+    // has none; fall back to sentence grouping
+    let paras = body.split(/[\n]{2,}/).filter(x => x.length > 80);
+    if (paras.length < 2) {
+        const sents = body.split(/(?<=[.!?])\s+/);
+        paras = [];
+        for (let i = 0; i < sents.length; i += 3)
+            paras.push(sents.slice(i, i + 3).join(" "));
+    }
+    paras = paras.filter(x => x.length > 80).slice(0, 3);
+    const box = document.createElement("div");
+    box.className = "rtsrc";
+    const h4 = document.createElement("h4");
+    h4.textContent = String(title || "");
+    box.appendChild(h4);
+    paras.forEach(x => {
+      const pe = document.createElement("p");
+      pe.textContent = x;            /* was a <lt>-splice; textContent wins */
+      box.appendChild(pe);
+    });
+    const srcLine = document.createElement("div");
+    srcLine.className = "src";
+    srcLine.style.fontSize = ".78rem";
+    srcLine.appendChild(linkEl(p.url || ""));
+    box.appendChild(srcLine);
+    rt.appendChild(box);
+  });
+  rt.style.display = pages.length ? "block" : "none";
+  $("res").style.display = "block";
+  $("fill").style.width = "100%";
+  $("built").textContent = "";
+  /* the results screen carries its own visible search bar - a search page
+     with no search bar on it reads as broken. The field pre-fills with THE
+     query that produced this run; select-all and typing replaces it. */
+  const bar = $("bars");
+  if (bar) {
+    bar.hidden = false;
+    const bq = $("barq");
+    if (res.question) bq.value = String(res.question);
+    barHint("");
+    renderBarHist();
+  }
+  /* force the curation load when the live pane is showing this run: the
+     final record replaces the preview - a pick made against a live page
+     replays onto the final one by page URL + "#p" index */
+  const liveNow = !!window.__curLive && window.__curLive.isLive(rid);
+  if (window.__curLoad) window.__curLoad(rid, liveNow);
+  else window.__curWant = rid;
+}
+
+/* ---- results-screen search bar + saved searches -------------------------
+   The bar reuses the search form's submit path (the
+   same guards and hints); the saved list reuses the history storage, and
+   rows are built with textContent, never innerHTML (saved-search rows once
+   executed a query through innerHTML). */
+function barHint(s) {
+  const bh = $("barhint");
+  if (!bh) return;
+  bh.hidden = !s;
+  bh.textContent = s;
+}
+function renderBarHist() {
+  const box = $("barhist");
+  const items = $("barhistitems");
+  if (!box || !items) return;
+  const h = getHist();
+  if (!h.length) { box.hidden = true; return; }
+  box.hidden = false;
+  items.textContent = "";
+  h.forEach(q => {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "hitem";
+    el.textContent = q;
+    el.addEventListener("click", () => {
+      $("barq").value = q;
+      $("bars").dispatchEvent(new Event("submit"));
+    });
+    items.appendChild(el);
+  });
+}
+$("bars").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("barq").value.trim();
+  if (!v) { barHint("Type a topic to research, then press Research."); return; }
+  const fill = document.querySelector(".fill");
+  if (runId || window.__poll_id ||
+      (fill && fill.classList.contains("working"))) {
+    barHint("Already running - hold on.");
+    return;
+  }
+  barHint("");
+  $("q").value = v;
+  $("f").dispatchEvent(new Event("submit"));
+});
+
+/* reopen: land the named finished run into the results screen. The same
+   paint sequence a fresh run's finish uses; guarded against a live run.
+   One function owns it: the search screen's reopen row clicks it with the
+   reattach-armed run, and the main-page grid's "Open in the station"
+   action clicks it with that run's id. */
+window.__grReopenRunById = function (rid) {
+  rid = String(rid || "");
+  if (!rid || runId || window.__poll_id) return;
+  runId = String(rid); lastRunId = String(rid);
+  $("prog").style.display = "block";
+  $("fill").style.width = "100%";
+  show("Guide finished.");
+  loadResult();
+  runId = null;
+  if (window.__grOpenResults) window.__grOpenResults();
+};
+$("reopens").addEventListener("click", () =>
+  window.__grReopenRunById(window.__grReopenRun));
+
+$("refinego")?.addEventListener?.("click", async () => {
+  const prompt = ($("refineq")?.value || "").trim();
+  if (!prompt || !lastRunId) return;
+  const go = $("refinego");
+  const out = $("refineout");
+  go.disabled = true;
+  out.style.display = "block";
+  out.textContent = "Working on it…";
+  window.__refineRunId = lastRunId;  /* bind panel to this run */
+  /* Response errors and connection failures restore the button via
+     finally and say what happened instead of stranding the panel. */
+  let j;
+  try {
+    const r = await fetch("/api/refine/" + lastRunId, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({prompt})});
+    if (!r.ok) throw new Error("server responded " + r.status);
+    j = await r.json();
+  } catch (err) {
+    window.__refineRunId = null;
+    out.textContent = "Refine failed: " + err.message;
+    go.disabled = false;
+    return;
+  }
+  go.disabled = false;
+  out.style.display = "block";
+  if (j.ok && (j.image_suggestions || []).length) {
+    // per-paragraph suggestions enter the confirm grid, preselected:
+    // visible by default; a human unchecks what they do not want
+    const sg = j.image_suggestions.filter(c => c.file);
+    const startAt = window.__cands ? window.__cands.length : 0;
+    const box = window.__imgsBox || document.getElementById('imgs');
+    window.__cands = (window.__cands || []).concat(sg);
+    sg.forEach((c, k) => {
+      const d = imgCard(c, startAt + k, true);
+      d.className = "imgc sel";
+      box.appendChild(d);
+    });
+    window.__pick = window.__pick || new Set();
+    sg.forEach((_, k) => window.__pick.add(startAt + k));
+    selectedMeta = window.__cands;
+  }
+  if (j.ok) {
+    /* liteMd (assets/lite-md.js) is the sanctioned markup renderer: it
+       escapes & and < up front, so no raw tag from the model output can
+       reach innerHTML. */
+    out.innerHTML = liteMd(j.text);
+    const note = document.createElement("div");
+    note.className = "src";
+    note.style.marginTop = "10px";
+    note.textContent = "Latest version - keep refining or change your wording.";
+    out.appendChild(note);
+  } else {
+    out.textContent = (j.text || "Refine failed.")
+        + (j.error ? "\n" + j.error : "");
+  }
+});
+
+$("build").addEventListener("click", async () => {
+  const btn = $("build");
+  const b = $("built");
+  btn.disabled = true;
+  b.textContent = "Building your site…";
+  /* The button comes back in finally on every path; response
+     errors report instead of dying to an unhandled await. */
+  try {
+    const chosen = (selectedMeta || []).filter((_, i) => (window.__pick || pickSet).has(i));
+    const r = await fetch("/api/build/" + lastRunId, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({theme: document.getElementById("theme").value,
+                            images: chosen})});
+    if (!r.ok) throw new Error("server responded " + r.status);
+    const j = await r.json();
+    const gchecks = j.guardrails ? Object.keys(j.guardrails.checks || {}) : [];
+    const gpass = gchecks.filter(k => j.guardrails.checks[k].pass).length;
+    b.textContent = "";
+    if (j.ok) {
+      const tail = safePath(j.site);
+      if (!tail) throw new Error("the build returned an unusable site path");
+      b.append("Site built. ");
+      b.appendChild(anchorEl("/site/" + encPath(tail) + "/index.html", "Open it"));
+      b.append(" · ");
+      b.appendChild(anchorEl("/site/" + encPath(tail) + ".zip", "Download zip", true));
+      const pdfTail = j.pdf ? safePath(j.pdf) : "";
+      if (pdfTail) {
+        b.append(" · ");
+        b.appendChild(anchorEl("/site/" + encPath(pdfTail), "Download PDF", true));
+      }
+      b.append(" · Guardrails " + gpass + "/" + gchecks.length);
+    } else {
+      b.textContent = "Build failed: " + (j.error || (j.tail || "").slice(-200));
+    }
+  } catch (err) {
+    b.textContent = "Build failed: " + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});</script><script src="/assets/lite-md.js?v=20261103d" defer></script><script src="/assets/screens.js?v=20261103d" defer></script><script src="/assets/portal.js" defer></script><script src="/assets/curate.js?v=20261103m" defer></script><script src="/assets/assist-model.js?v=20261109a" defer></script><script src="/assets/assist.js?v=20261109a" defer></script><script>(function () {
+  var box = document.getElementById("latest");
+  var note = document.getElementById("latest-note");
+  var grid = document.getElementById("latest-grid");
+  if (!box || !note || !grid) return;
+  function kb(bytes) {
+    return bytes >= 1024 ? Math.round(bytes / 1024) + " KB" : bytes + " B";
+  }
+  function clock(ts) {
+    return new Date(ts * 1000).toLocaleTimeString([], {
+      hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  /* Grouped by search: one row per research question (the run ledger
+     dedupes reruns of the same question server-side). A row expands to
+     that search's newest run - counts, sources, and the two actions:
+     land it in the station, or take its question back into the form. */
+  function buildPanel(panel, run) {
+    if (panel.dataset.loaded) return;
+    panel.dataset.loaded = "1";
+    var meta = document.createElement("div");
+    meta.className = "gs-qmeta";
+    function cell(txt) {
+      var s = document.createElement("span");
+      s.textContent = txt;
+      meta.appendChild(s);
+    }
+    cell("read " + (run.scraped || 0) + " of " + (run.candidates || 0) +
+      " · kept " + (run.accepted || 0) + " · quarantined " +
+      (run.quarantined || 0));
+    cell("written " + clock(run.modified) + " · " + kb(run.bytes || 0));
+    panel.appendChild(meta);
+    var act = document.createElement("div");
+    act.className = "gs-qactions";
+    if (run.run_id) {
+      var open = document.createElement("button");
+      open.type = "button"; open.className = "gs-qact";
+      open.textContent = "Open in the station";
+      open.addEventListener("click", function () {
+        if (window.__grReopenRunById) window.__grReopenRunById(run.run_id);
+        /* runs recorded before the results bar existed store no question -
+           pre-fill the bar from the row's own question when the run's
+           payload did not (loadResult may land after and overwrite with
+           the run's own question, which is the same text) */
+        var bq = document.getElementById("barq");
+        if (bq && !bq.value) bq.value = String(run.query);
+      });
+      act.appendChild(open);
+      var mod = document.createElement("button");
+      mod.type = "button"; mod.className = "gs-qact ghost";
+      mod.textContent = "Modify this search";
+      mod.addEventListener("click", function () {
+        if (window.__grSetScreen) window.__grSetScreen("search");
+        var q = document.getElementById("q");
+        if (q) { q.value = run.query; q.focus(); q.select(); }
+      });
+      act.appendChild(mod);
+    }
+    panel.appendChild(act);
+    var ul = document.createElement("ul");
+    ul.className = "gs-qsrcs";
+    (run.accepted_sources || []).forEach(function (u) {
+      if (!/^https?:\/\//i.test(String(u))) return;
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.href = String(u);
+      a.textContent = String(u).replace(/^https?:\/\//, "");
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    if (ul.children.length) panel.appendChild(ul);
+    /* fetch the run's own detail opportunistically - the counts above
+       come from the tile; /api/run adds the guide location when present */
+    if (run.run_id) {
+      fetch("/api/run/" + run.run_id).then(function (r) { return r.json(); })
+        .then(function (d) {
+          var res = d.result || {};
+          var guide = res.master_guide || {};
+          if (!guide.path) return;
+          var loc = document.createElement("span");
+          loc.className = "gs-qguide";
+          loc.textContent = "guide: " + String(guide.path).replace(/^.*\/guides\//, "guides/");
+          var meta0 = panel.querySelector(".gs-qmeta");
+          if (meta0) meta0.appendChild(loc);
+        }).catch(function () { /* the tile facts remain */ });
+    }
+  }
+  fetch("/api/runs?origin=webui").then(function (r) { return r.json(); })
+    .then(function (data) {
+      var runs = (data.runs || []).slice(0, 6);
+      if (!runs.length) {
+        note.textContent = "No searches from this station yet - start one " +
+          "above, or open the full run ledger for everything this machine " +
+          "has researched.";
+      } else {
+        runs.forEach(function (run, i) {
+          var row = document.createElement("div");
+          row.className = "gs-qrow";
+          var btn = document.createElement("button");
+          btn.type = "button"; btn.className = "gs-qrow-btn";
+          btn.setAttribute("aria-expanded", "false");
+          btn.setAttribute("aria-controls", "qpanel-" + i);
+          var q = document.createElement("span");
+          q.className = "q"; q.textContent = run.query;
+          var m = document.createElement("span");
+          m.className = "m";
+          var kept = document.createElement("b");
+          kept.textContent = (run.accepted || 0) + " kept";
+          var seen = document.createElement("span");
+          seen.textContent = (run.candidates || 0) + " seen · " + kb(run.bytes || 0);
+          m.appendChild(kept); m.appendChild(seen);
+          var chev = document.createElement("span");
+          chev.className = "chev"; chev.textContent = "›";
+          btn.appendChild(q); btn.appendChild(m); btn.appendChild(chev);
+          var panel = document.createElement("div");
+          panel.className = "gs-qpanel"; panel.hidden = true;
+          panel.id = "qpanel-" + i;
+          btn.addEventListener("click", function () {
+            var open = row.classList.toggle("open");
+            btn.setAttribute("aria-expanded", open ? "true" : "false");
+            panel.hidden = !open;
+            if (open) buildPanel(panel, run);
+          });
+          row.appendChild(btn); row.appendChild(panel);
+          grid.appendChild(row);
+        });
+      }
+      box.hidden = false;
+    }).catch(function () { /* the ledger link still works without the strip */ });
+})();</script><script>(function () {
+  var box = document.getElementById("engine");
+  var facts = document.getElementById("engine-facts");
+  if (!box || !facts) return;
+  function clock(ts) {
+    return new Date(ts * 1000).toLocaleTimeString([], {
+      hour: "2-digit", minute: "2-digit", hour12: false
+    });
+  }
+  function pair(label, value, ok) {
+    var cell = document.createElement("div");
+    var dt = document.createElement("dt");
+    dt.textContent = label;
+    var dd = document.createElement("dd");
+    if (ok) dd.className = "ok";
+    dd.textContent = value;
+    cell.appendChild(dt); cell.appendChild(dd);
+    facts.appendChild(cell);
+  }
+  fetch("/api/engine").then(function (r) { return r.json(); }).then(function (d) {
+    facts.textContent = "";
+    var br = d.browser || {};
+    pair("search method", d.search_note || "deterministic heuristics and the real browser", false);
+    pair("search engines enabled", String(d.engines_enabled || 0) +
+      " of this station's catalog", true);
+    pair("browser lane", br.task
+      ? br.task + " · port " + br.port + " · " + (br.up ? "up" : "down")
+      : "no dedicated lane", !!br.up);
+    if ((d.slots || []).length) {
+      pair("browser slots listening",
+        (d.listening || 0) + " of " + d.slots.length, true);
+    }
+    if (d.newest) {
+      pair("newest guide", clock(d.newest.written) + " · " + d.newest.query.slice(0, 42) +
+        " · " + (d.newest.accepted || 0) + " kept", false);
+    }
+    box.hidden = false;
+  }).catch(function () { /* the station works without the strip */ });
+})();</script><div class="el-inspector-scrim" hidden></div><aside class="el-inspector" id="gs-insp" role="dialog" aria-modal="false" aria-labelledby="gs-insp-title"><header class="el-inspector-header"><div class="el-inspector-title" id="gs-insp-title">Source preview</div><button class="el-inspector-close" type="button" data-el-inspector-close aria-label="Close preview">×</button></header><div class="el-inspector-body" id="gs-insp-body"></div></aside><script src="/assets/framework/elements-workflow.js" defer></script><script src="/assets/portal-v2.js" defer></script></body></html>

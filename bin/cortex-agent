@@ -1,0 +1,589 @@
+#!/bin/bash
+# cortex-agent launcher — HARDENED fork of cortexagent @614bd01f (the 11-09
+# lock snapshot; owner 2026-11-09: fork, rebrand, best-of-both build). Same
+# boot order and isolation discipline; own identity, ports :7100/:7101, and
+# its own home ~/.cortex-agent.
+# Boot order:
+#   1. mask: strip every foreign harness env var before anything starts
+#   2. gate: verify_compiled.py — frozen artifacts, hashes, TUI dist parse
+#   3. lane: slimtoken :7101 -> model :7100 (own process, only if down)
+#      + stt tray idempotent ensure (check-if-running, never a twin)
+#   4. VRAM interlock (plain refusal if another agent holds the GPU)
+#   5. model spawns ASYNC — TUI renders FIRST ("it used to render the tui
+#      then show loading" — never block the UI on :7100 readiness)
+#   6. exit reaps ONLY what THIS session spawned (model pid file + lane),
+#      never a pre-existing server, never a foreign lane.
+# Port policy lives in ~/.cortex-agent/agent/port_policy.json (:11600 untouched,
+# :11434 dead, cortexagent :7080+/:7090+, cortexagent :11598+ families off limits).
+
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+CLI="$ROOT/tui/packages/coding-agent/dist/cli.js"
+# 2026-11-09 owner: cortex-agent has its own family :7100+. No sibling
+# forking: a foreign listener on :7100 is a plain refusal (port law), our
+# own cortex-agent already listening is a reattach, never a fight.
+MODEL_PORT="${CORTEXENGINE_PORT:-7100}"
+# 2026-11-11 (owner: public release law): ollama integration fully removed —
+# cortexagent is LOCAL-ONLY (its own VRAM engine). It must never read or adapt
+# to the owner's ollama config, and must never run as `cortexagent ollama`.
+LANE_PORT="${CORTEXENGINE_LANE_PORT:-7101}"
+if [ -z "${CORTEXENGINE_PORT:-}" ] && ss -ltn 2>/dev/null | grep -q ':7100 ' \
+   && ! ss -ltnp 2>/dev/null | grep ':7100 ' | grep -q 'cortex-agent'; then
+  echo "cortex-agent: :7100 is owned by a foreign listener — plain refusal (port law)" >&2
+  exit 1
+fi
+export CORTEXENGINE_PORT="$MODEL_PORT"
+export CORTEXENGINE_LANE_PORT="$LANE_PORT"
+# 2026-11-09 owner: ngram speculative decoding is PINNED on for every VRAM
+# card (RAM table, 0 VRAM delta, measured +27% warm on structured output).
+# The server receives the type + tuning via the profile; this export makes
+# it explicit so a profile cannot silently drop it.
+export CORTEXENGINE_SPEC="${CORTEXENGINE_SPEC:-ngram-mod}"
+export CORTEXENGINE_SPEC_MATCH="${CORTEXENGINE_SPEC_MATCH:-24}"
+# TOOL-DIR-SEPARATION (owner order 2026-10-24): cortex-agent's own home = cwd.
+cd "$ROOT"
+
+export CORTEXENGINE_HOME="$ROOT"
+# The TUI derives its env var name from cortexConfig.name ("cortexagent"):
+# config.ts builds CORTEXAGENT_CODING_AGENT_DIR. Export it explicitly AND
+# keep the internal CORTEXENGINE_CODING_AGENT_DIR alias so engine-side tools
+# (watch/heal/scripts) keep one spelling. Masking above never unsets either.
+export CORTEXAGENT_CODING_AGENT_DIR="${CORTEXENGINE_CODING_AGENT_DIR:-$HOME/.cortex-agent/agent}"
+export CORTEXENGINE_CODING_AGENT_DIR="$CORTEXAGENT_CODING_AGENT_DIR"
+export CORTEXENGINE_TEMP="${CORTEXENGINE_TEMP:-0.4}"
+export CORTEXENGINE_TOP_P="${CORTEXENGINE_TOP_P:-0.95}"
+# 2026-11-06 owner directive: "i want it to chunk prompts smaller. i would
+# rather it stay at 64k if it would just use smaller messages." The TUI
+# window is the compaction dial: models.ts takes min(settled server ctx,
+# this) and shouldCompact() fires at 85% of it, so 38400 puts the working
+# ceiling at ~32.6k tokens per request (roughly half what the plain 64k
+# window allowed) while the model keeps its full 65536 of real headroom.
+# Raise or unset this env to trade request size against compaction churn.
+export CORTEXENGINE_CTX_WINDOW="${CORTEXENGINE_CTX_WINDOW:-56000}"
+mkdir -p "$CORTEXENGINE_CODING_AGENT_DIR/sessions" "$CORTEXENGINE_CODING_AGENT_DIR/extensions"
+mkdir -p "$ROOT/state/audit" "$ROOT/state/logs"
+
+# --- GA-33: boot-time state hygiene — archive and bound, never delete -------
+# Every oversized/stale state file is MOVED into state/archive/<file>.<ts>
+# (move-not-delete: nothing that explains a past incident is destroyed at
+# boot). Timestamps make each rotation a distinct artifact.
+_hygiene() {
+  local ts arch f
+  arch="$ROOT/state/archive"; mkdir -p "$arch"
+  ts="$(date +%Y%m%d-%H%M%S)"
+  # memory-daemon.log grew to 287 MB on this box before this block existed
+  f="$ROOT/state/memory-daemon.log"
+  if [ -f "$f" ] && [ "$(stat -c%s "$f" 2>/dev/null || echo 0)" -gt 104857600 ]; then
+    mv "$f" "$arch/memory-daemon.$ts.log"
+  fi
+  # model-server.log keeps its last 2 MB; the full file is archived first
+  f="$ROOT/state/model-server.log"
+  if [ -f "$f" ] && [ "$(stat -c%s "$f" 2>/dev/null || echo 0)" -gt 10485760 ]; then
+    cp -- "$f" "$arch/model-server-full.$ts.log"
+    tail -c 2097152 "$f" > "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
+  fi
+  # background-daemon events older than 14 days go to the archive
+  f="$ROOT/state/logs/bg-events.jsonl"
+  if [ -f "$f" ] && [ -z "$(find "$f" -mtime -14 2>/dev/null | head -1)" ]; then
+    mv "$f" "$arch/bg-events.$ts.jsonl"
+  fi
+  # scheduler lock with no recent heartbeat = leftover from a dead session
+  f="$ROOT/state/scheduler/lock"
+  if [ -f "$f" ] && [ -z "$(find "$f" -mmin -120 2>/dev/null | head -1)" ]; then
+    mv "$f" "$arch/scheduler-lock.$ts"
+  fi
+  # memory.sock with no listener behind it = dead daemon socket file
+  if [ -S "$ROOT/state/memory.sock" ] && ! ss -lx 2>/dev/null | grep -q "state/memory.sock"; then
+    mv "$ROOT/state/memory.sock" "$arch/memory-sock.$ts.stale"
+  fi
+}
+_hygiene
+
+# --- MASK: foreign harness env never reaches this fork or its children -----
+unset CLAUDE_CONFIG_DIR CLAUDE_MODEL_NAME CLAUDE_CODE_SUBAGENT_MODEL \
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW \
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS CLAUDE_CODE_DISABLE_UPDATE \
+      CLAUDE_CODE_DISABLE_TERMINAL_TITLE CLAUDE_CODE_USE_BEDROCK \
+      CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_ENTRYPOINT CLAUDECODE 2>/dev/null || true
+unset ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL 2>/dev/null || true
+unset PI_API_KEY PI_BASE_URL PI_DEV_API_KEY 2>/dev/null || true
+unset CORTEXAGENT_CONFIG_DIR CORTEXAGENT_STATE_DIR CORTEXAGENT_MEMORY_DIR \
+      CORTEXAGENT_MEMORY_SOCKET CORTEXAGENT_MCP_CONFIG CORTEXAGENT_REPO \
+      CORTEXAGENT_PLATFORM CORTEXAGENT_CLOUD_LANE \
+      CORTEXAGENT_LOCAL_BASE CORTEXAGENT_MODEL CORTEXAGENT_MODEL_NAME \
+      CORTEXAGENT_MCP_SERVERS CORTEXAGENT_DISABLED_TOOLS CORTEXAGENT_SKILLS_DIR \
+      CORTEXAGENT_CONTROL_SOCK 2>/dev/null || true
+unset OLLAMA_HOST LLAMA_BASE_URL 2>/dev/null || true
+
+# --- locked lane sources: sync in from the owner's live trees (READ-ONLY ----
+# 2026-11-10 owner: "include the updates to greysearch I'm doing right now"
+# + the no-overwrite law. Direction: owner tree -> this build, NEVER back.
+# A vendored file is replaced only when its source is newer; then
+# scripts/gen_lane_pins.py regenerates lane-pins.json so the hashes always
+# describe reality.
+_lane_sync() {
+  local rel="$1" src="$2"
+  [ -d "$src" ] || return 0
+  for _a in "$src"/*.py; do
+    [ -f "$_a" ] || continue
+    local _b="$ROOT/$rel/$(basename "$_a")"
+    if [ ! -f "$_b" ] || [ "$_a" -nt "$_b" ]; then cp -p "$_a" "$_b"; fi
+  done
+}
+_lane_sync "mcp/greysearch" "$HOME/greysearch"
+_lane_sync "mcp/kbserver" "$HOME/knowledge-ingestor"
+# library UI: html + assets churn with the owner's greysearch edits too
+for _ud in portal assets; do
+  [ -d "$HOME/greysearch/$_ud" ] || continue
+  for _a in "$HOME/greysearch/$_ud"/*; do
+    [ -f "$_a" ] || continue
+    _b="$ROOT/mcp/greysearch/$_ud/$(basename "$_a")"
+    [ ! -f "$_b" ] && { cp -p "$_a" "$_b"; continue; }
+    [ "$_a" -nt "$_b" ] && cp -p "$_a" "$_b"
+  done
+done
+python3 "$ROOT/scripts/gen_lane_pins.py" >/dev/null 2>&1
+
+# --- FROZEN-TREE GATE: no boot on a desynced artifact set (fail loudly) ------
+if ! python3 "$ROOT/bin/verify_compiled.py"; then
+  echo "cortex-agent: frozen-tree check FAILED — TUI not started (see lines above)" >&2
+  exit 1
+fi
+
+export CORTEXENGINE_OFFLINE=1
+export CORTEXENGINE_SKIP_VERSION_CHECK=1
+export CORTEX_OFFLINE=1
+export CORTEX_SKIP_VERSION_CHECK=1
+# 2026-11-10 permafix (owner order, after the Good Twin loop): the loop
+# guard blocked calls forever but defaulted to 10,000,000 repeats before
+# ever ending a run. Pin terminating caps (see ~/.local/bin/cortexagent).
+export CORTEXAGENT_LOOP_GUARD_ARGS_MAX_REPEATS="${CORTEXAGENT_LOOP_GUARD_ARGS_MAX_REPEATS:-6}"
+export CORTEXAGENT_LOOP_GUARD_MAX_CONTINUES="${CORTEXAGENT_LOOP_GUARD_MAX_CONTINUES:-5}"
+export CORTEXAGENT_LOOP_GUARD_CALLS_PER_MESSAGE="${CORTEXAGENT_LOOP_GUARD_CALLS_PER_MESSAGE:-6}"
+# 2026-11-10 permafix (owner order, after the Good Twin loop): the loop
+# guard blocked calls forever but defaulted to 10,000,000 repeats before
+# ever ending a run — the 3.6B model just re-issued blocked calls all
+# session. Pin terminating caps; env override still wins for emergencies.
+export CORTEXAGENT_LOOP_GUARD_ARGS_MAX_REPEATS="${CORTEXAGENT_LOOP_GUARD_ARGS_MAX_REPEATS:-6}"
+export CORTEXAGENT_LOOP_GUARD_MAX_CONTINUES="${CORTEXAGENT_LOOP_GUARD_MAX_CONTINUES:-5}"
+export CORTEXAGENT_LOOP_GUARD_CALLS_PER_MESSAGE="${CORTEXAGENT_LOOP_GUARD_CALLS_PER_MESSAGE:-6}"
+# telemetry cannot arm here (settings hard-lock + env pin — both must win)
+export CORTEX_TELEMETRY=0
+# The brain's base URL is set ONCE here (lane when up; the fallback function
+# rewrites it to the direct port). set -u: never reference it unset.
+export CORTEXENGINE_LOCAL_BASE="${CORTEXENGINE_LOCAL_BASE:-http://127.0.0.1:${LANE_PORT}/v1}"
+# the TUI's health chip probes the engine DIRECTLY (old family needed a relay; we don't)
+export CORTEXENGINE_MODEL_HEALTH_URL="${CORTEXENGINE_MODEL_HEALTH_URL:-http://127.0.0.1:${MODEL_PORT}/health}"
+
+# --- VRAM-card auto-pick (owner 11-10: user-listable model cards + step-down) -
+# Cards live in agent-home/model-cards.json: stock presets ship, and anyone
+# can list THEIR OWN model as the 4/8/16 pick. Missing model file = the exact
+# fetch command is printed (--fetch runs it with byte verification). If the
+# card's profile is refused at boot, the launcher steps DOWN to the next
+# smaller card and says so loudly — never a silent model change.
+_mcf="$ROOT/agent-home/model-cards.json"
+if [ -z "${CORTEXENGINE_PROFILE:-}" ]; then
+  _mb="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -dc '0-9')"
+  _p="$(python3 - "$_mcf" "$(($_mb + 0))" <<'PYPICK'
+import json, os, sys
+mb = int(sys.argv[2])
+cards = json.load(open(sys.argv[1]))["cards"]
+pick = cards[-1]
+for c in cards:  # cards big→small: match the physical card size band
+    if mb - 1000 >= int(c["card_gb"] * 1024):
+        pick = c
+        break
+open("/tmp/cortex-agent-card", "w").write(pick["card"])
+m = pick["model"]
+if not os.path.exists(m):
+    print("cortex-agent: model missing — fetch with:", file=sys.stderr)
+    print("  aria2c -x16 -o %s '%s'" % (os.path.basename(m), pick.get("url", "")), file=sys.stderr)
+    print("  (expected %s bytes; file will be byte-verified at boot)" % pick.get("bytes", "?"), file=sys.stderr)
+else:
+    print("cortex-agent: VRAM %d MiB → card %s (%s)" % (mb, pick["card"], os.path.basename(m)), file=sys.stderr)
+PYPICK
+)"
+  [ -s /tmp/cortex-agent-card ] && export CORTEXENGINE_PROFILE="$(cat /tmp/cortex-agent-card)"
+fi
+
+MODEL_PID=""
+LANE_PID=""
+_up() { curl -s --max-time 2 "http://127.0.0.1:${MODEL_PORT}/health" 2>/dev/null | grep -q '"status":"ok"'; }
+
+# --- lane: OUR slimtoken on :7101, in front of the model :7100 ---------------
+# Started as a background process OF THIS SESSION (no systemd footprint,
+# nothing stays always-on). Port conflict = plain refusal + direct fallback,
+# never a fight with another family's listener.
+_lane_up() { curl -s --fail --max-time 2 "http://127.0.0.1:${LANE_PORT}/metrics" >/dev/null 2>&1; }
+_lane_env() {
+  export SLIMTOKEN_MODE="code"
+  export SLIMTOKEN_ARTIFACT_DIR="$ROOT/state/slimtoken-artifacts"
+  # 2026-10-24 owner: the distill cap is effectively unlimited on this lane
+  # (the 4096 default could truncate long messages — the env must WIN).
+  # 2026-10-25 owner (box-wide truncation sweep): the unbounded cap turned
+  # into its own truncation class — a giant tool result relays whole and the
+  # request 400s against the context (the exact loop the sibling fork hit at 32k).
+  # 24000 chars ≈ 6k tokens per result: generous for real messages, finite
+  # for junk; the old "unlimited wins over 4096" intent is preserved because
+  # 24000 still outruns any real message — it only bounds single tool blasts.
+  export SLIMTOKEN_DISTILL_MAX_CHARS=24000
+  export SLIMTOKEN_MINIFY=1 SLIMTOKEN_MINIFY_MESSAGES=1
+  export SLIMTOKEN_MINIFY_DEDUP=1 SLIMTOKEN_MINIFY_DISTILL=1
+  # 2026-11-08 (owner: "same slimtoken settings as pi"): schema minify
+  # (tools) + system minify ON — the profile validated live in pi :11437
+  # with zero tool breakage (55% + 40% measured reductions on real bodies).
+  export SLIMTOKEN_MINIFY_TOOLS=1 SLIMTOKEN_MINIFY_SYSTEM=1
+  # 2026-11-09 owner: window 56k + bigger budget; 8 live messages instead of 4
+  # (lane stays lossless — dedup/distill rules unchanged).
+  export SLIMTOKEN_KEEP_LAST=8
+  # 2026-11-08 (owner): hard-savings ledger for this lane — `slimtoken savings`
+  export SLIMTOKEN_STATS_FILE="$HOME/.local/state/slimtoken/stats-cortex-agent.json"
+  mkdir -p "$HOME/.local/state/slimtoken"
+  # GA-29 (2026-11-03): SLIMTOKEN_MINIFY_BUDGET is a TOKEN budget and must
+  # cover the model's settled context window. The old 1000000 was the
+  # the sibling fork GA-21 bug in miniature — a budget far above ctx means prune
+  # never fires against the real window; a budget below ctx means silent
+  # truncation. Settled ctx + 16k-token headroom (81920+16384 until the
+  # first settle writes the file).
+  _settled="$(cat "$ROOT/state/model-ctx-settled.txt" 2>/dev/null)"
+  case "$_settled" in (''|*[!0-9]*) _settled=81920 ;; esac
+  [ "$_settled" -lt 8192 ] && _settled=8192
+  export SLIMTOKEN_MINIFY_BUDGET=$(( _settled + 16384 ))
+}
+_lane_direct() { export CORTEXENGINE_LOCAL_BASE="http://127.0.0.1:${MODEL_PORT}/v1"; }
+
+_lane_spawn() {
+  # GA-20 (2026-11-03): the lane gets PR_SET_PDEATHSIG through a python exec
+  # wrapper — execv keeps the same pid and replaces the wrapper in place, so
+  # LANE_PID stays meaningful. If this launcher is SIGKILLed (the one death
+  # the EXIT/INT/TERM traps cannot catch), the lane still dies instead of
+  # orphaning a gateway that 502s on every send (the same gap PDEATHSIG
+  # already closed for the model loader in build/src/server.py).
+  _lane_env
+  python3 -c 'import ctypes, os, signal, sys
+libc = ctypes.CDLL("libc.so.6", use_errno=True)
+libc.prctl(1, signal.SIGTERM, 0, 0, 0)
+os.execv(sys.argv[1], [sys.argv[1], "--upstream", sys.argv[2], "--port", sys.argv[3]])' \
+    "$HOME/.local/bin/slimtoken-serve" "http://127.0.0.1:${MODEL_PORT}" "$LANE_PORT" \
+    > "$ROOT/state/logs/lane.log" 2>&1 &
+  LANE_PID=$!
+  for _ in $(seq 1 10); do _lane_up && break; sleep 1; done
+  if _lane_up; then
+    echo "cortex-agent: lane :${LANE_PORT} up (slimtoken -> :${MODEL_PORT})"
+  else
+    echo "cortex-agent: lane failed to start on :${LANE_PORT} — brain falls back to direct :${MODEL_PORT}" >&2
+    _lane_direct
+  fi
+}
+
+# GA-19: a lane already answering may predate this boot. Its upstream can
+# belong to a previous model port — reusing it would wire the brain to
+# yesterday's model. Reuse only when the running listener's own cmdline
+# forwards to THIS boot's model port; otherwise kill it and respawn with
+# this boot's env (budget, artifact dir, upstream) under PDEATHSIG.
+_lane_env   # session env matches lane policy either way (spawn or reuse)
+
+if ! _lane_up; then
+  if ss -ltn 2>/dev/null | grep -q ":${LANE_PORT} "; then
+    echo "cortex-agent: :${LANE_PORT} occupied by a foreign listener — lane skipped, brain falls back to direct :${MODEL_PORT}" >&2
+    _lane_direct
+  else
+    _lane_spawn
+  fi
+else
+  _lp="$(ss -ltnp 2>/dev/null | grep ":${LANE_PORT} " | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)"
+  if [ -n "$_lp" ] && ! tr '\0' ' ' < "/proc/${_lp}/cmdline" 2>/dev/null | grep -q ":${MODEL_PORT}\b"; then
+    echo "cortex-agent: stale lane :${LANE_PORT} forwards to a different upstream — replacing" >&2
+    kill "$_lp" 2>/dev/null; sleep 1
+    if _lane_up; then
+      echo "cortex-agent: :${LANE_PORT} still answers (listener survived) — lane skipped, direct :${MODEL_PORT}" >&2
+      _lane_direct
+    else
+      _lane_spawn
+    fi
+  else
+    : # lane already answering with the right upstream — use it
+  fi
+fi
+export CORTEXENGINE_LOCAL_BASE="${CORTEXENGINE_LOCAL_BASE:-http://127.0.0.1:${MODEL_PORT}/v1}"
+
+# --- MCP orphan sweep (owner 2026-11-06: "you can kill the idle leftovers
+# but it should auto close them. make it so it does that.") -------------------
+# Belt-and-braces on top of the EOF contract both registry servers already
+# honor (greysearch_mcp.py and run_server.py exit cleanly when stdin closes).
+# A pair counts as an orphan only when its stdin PIPE has no writer left —
+# judged on the pipe INODE of fd/0 plus the write-flag bit in fdinfo (live
+# probe 2026-11-06: write end flags=0100001, read end 0100000). Only the
+# pipe transport is ever judged, which is the TUI's own spawn shape
+# (mcp_client.ts: stdio pipe + /bin/sh -c). Servers on a socketpair — every
+# other host program, claude sessions included — have socket:[...] stdin
+# whose two ends share no inode, so they are skipped on sight and can never
+# be reaped, live or not. A live pair keeps the node TUI as its writer and
+# passes through untouched even on a mid-session relaunch.
+_mcp_reap() {
+  local pat='greysearch_mcp\.py|cortex-agent/mcp/run_server\.py'
+  local pids pid inode link opid f fdn fflags writers killed=""
+  pids=$(pgrep -f "$pat" 2>/dev/null) || return 0
+  [ -n "$pids" ] || return 0
+  local -A fam=()
+  for pid in $pids; do
+    link=$(readlink "/proc/$pid/fd/0" 2>/dev/null) || continue
+    case "$link" in
+      pipe:\[*\]) inode=${link#pipe:[}; inode=${inode%]} ;;
+      *) continue ;;    # socket/chardev stdin: not ours to judge — never reaped
+    esac
+    fam[$inode]="${fam[$inode]:-} $pid"
+  done
+  for inode in "${!fam[@]}"; do
+    writers=0
+    while IFS= read -r f; do
+      opid=${f#/proc/}; opid=${opid%%/*}
+      case " ${fam[$inode]} " in *" $opid "*) continue ;; esac
+      fdn=${f##*/}
+      # exact-compare belt: -lname is fnmatch, so the inode's [ ] MUST be
+      # escaped — unescaped, "[95860579]" reads as a char class and matches
+      # NOTHING, which would judge every pipe writerless (live-probed
+      # 2026-11-06: escaped matched both ends, unescaped matched zero).
+      [ "$(readlink "$f" 2>/dev/null)" = "pipe:[$inode]" ] || continue
+      fflags=$(awk '/^flags/{print $2; exit}' "/proc/$opid/fdinfo/$fdn" 2>/dev/null)
+      [ -n "$fflags" ] || continue
+      [ $(( (8#$fflags) & 1 )) -eq 1 ] && writers=$((writers+1))
+    done < <(find /proc/[0-9]*/fd -lname "pipe:\\[$inode\\]" 2>/dev/null)
+    if [ "$writers" -eq 0 ]; then
+      for pid in ${fam[$inode]}; do
+        kill -TERM "$pid" 2>/dev/null && killed="$killed $pid"
+      done
+    fi
+  done
+  if [ -n "$killed" ]; then
+    sleep 1
+    for pid in $killed; do kill -KILL "$pid" 2>/dev/null; done
+    echo "cortex-agent: reaped orphaned MCP server pair(s):$killed" >&2
+  fi
+  return 0
+}
+
+cleanup() {
+  trap '' INT TERM
+  [ -n "$(jobs -p)" ] && jobs -p | xargs -r kill 2>/dev/null
+  _mcp_reap   # orphaned registry pairs (writerless stdin pipes) exit with the app
+  # Reap the model THIS session spawned (VRAM returns on exit). A pre-existing
+  # server (no spawn this session) is left alone. MODEL_PID here is the
+  # background loader; the actual server pid lives in the pid file.
+  if [ -n "${MODEL_PID:-}" ] || [ -n "${LANE_PID:-}" ]; then
+    SV_PID="$(cat "$ROOT/state/model-server-${MODEL_PORT}.pid" 2>/dev/null || true)"
+    if [ -n "$SV_PID" ] && kill -0 "$SV_PID" 2>/dev/null; then
+      kill "$SV_PID" 2>/dev/null
+      for _ in $(seq 1 15); do kill -0 "$SV_PID" 2>/dev/null || break; sleep 1; done
+      kill -9 "$SV_PID" 2>/dev/null || true
+    fi
+    [ -n "${LANE_PID:-}" ] && kill "$LANE_PID" 2>/dev/null
+    rm -f "$ROOT/state/model-server-${MODEL_PORT}.pid"
+  fi
+  printf '\033[?25h'
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
+
+# --- owner 2026-10-26: "check for a running VRAM task and kill it, then start"
+# Every launch starts clean: any leftover cortex-agent engine-server copy
+# (orphan of a crashed session, or the model a still-running bg daemon booted)
+# dies here before the fresh boot. The pattern matches ONLY this tree's
+# renamed binary (…/vendor/engine/cortex-server) — 2026-11-10 owner law:
+# a NORMAL engine-server must never be interrupted or matched by this sweep,
+# and the bare product name was too broad (it matches this launcher's own
+# path). Display servers and every other family stay untouched. A VRAM
+# context leaked by an already-dead pid cannot be killed from userspace; a
+# GPU reset or reboot frees it.
+_cs_bin='engine/cortex-server'
+if pgrep -f "$_cs_bin" >/dev/null 2>&1; then
+  echo "cortex-agent: killing leftover VRAM task(s) before boot"
+  pkill -TERM -f "$_cs_bin" 2>/dev/null
+  for _ in $(seq 1 15); do pgrep -f "$_cs_bin" >/dev/null 2>&1 || break; sleep 1; done
+  pkill -KILL -f "$_cs_bin" 2>/dev/null
+  sleep 1
+  rm -f "$ROOT/state/model-server-${MODEL_PORT}.pid"
+fi
+
+# owner 2026-11-06: leftover MCP pairs share the boot hygiene duty — pairs
+# of a dead window (writerless stdin) are reaped here, before the TUI respawns
+# and re-attaches its own; pairs of a STILL-RUNNING window keep their live
+# writer and are never touched.
+_mcp_reap
+
+# --- model: VRAM-gated, spawned async (TUI FIRST) ----------------------------
+MODEL_LINE="MODEL: stock MoE (VRAM card) - loading on :${MODEL_PORT}..."
+CORTEXENGINE_MODEL_UP=0
+if ! _up; then
+  if python3 "$ROOT/build/src/vram_check.py" 2>/dev/null; then
+    : # GPU free — the lane (started above) forwards fine once the model lands
+    python3 - "$ROOT" "${LANE_PID:-}" <<'PY' >> "$ROOT/state/logs/model-boot.log" 2>&1 &
+import sys
+sys.path.insert(0, sys.argv[1] + "/build/src")
+import server
+d = server.start_model(timeout=600)
+pid = int(d.get("pid") or 0)
+print(str(pid or ""))
+if not d.get("ok"):
+    sys.stderr.write("model boot failed: %s\n" % d.get("error", "unknown"))
+    sys.exit(0)
+# Session-long watcher: the loader STAYS ALIVE for the whole session so
+# PR_SET_PDEATHSIG keeps its real meaning ("server dies if the loader dies
+# for ANY reason") instead of firing on the designed loader-exit (that bug
+# killed the model 60 ms after "listening" — owner saw connection errors).
+import os, time, signal
+lane_pid = 0
+if len(sys.argv) > 2 and sys.argv[2].strip():
+    lane_pid = int(sys.argv[2])
+# 2026-10-31 QA (GA-10): a wedged-but-alive server used to be watched
+# forever while every send got a 502. Bounded liveness: once the model has
+# EVER answered, 12 straight minutes of not-answering (probe via
+# server.is_ready(), load time is irrelevant because ever_up only flips
+# after a successful answer) reaps the lane and lets the loader die.
+ever_up = False
+down_seconds = 0.0
+while True:
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        # A lane with no model behind it answers bare 502 on every send
+        # (owner, 2026-10-27). Reap the lane this session started the moment
+        # its upstream disappears, never leave an orphan gateway behind.
+        if lane_pid:
+            try:
+                os.kill(lane_pid, signal.SIGTERM)
+            except OSError:
+                pass
+        break  # server died on its own — exit quietly
+    try:
+        serving = bool(server.is_ready())
+    except Exception:
+        serving = False
+    if serving:
+        ever_up = True
+        down_seconds = 0.0
+    else:
+        if ever_up:
+            down_seconds += 5
+            if down_seconds >= 720:               # 12 min wedged
+                try:
+                    os.kill(pid, signal.SIGTERM)  # reap the wedged server
+                except OSError:
+                    pass
+                if lane_pid:
+                    try:
+                        os.kill(lane_pid, signal.SIGTERM)
+                    except OSError:
+                        pass
+                break
+    time.sleep(5)
+PY
+    MODEL_PID=$!
+    echo "cortex-agent: model loading in background (stock MoE VRAM card on :${MODEL_PORT})"
+  else
+    MODEL_LINE="MODEL: GPU under the 10 GiB coexistence budget - load refused"
+    # No model this session = no lane either (a lane forwarding to a dead
+    # model = 502 on every send — the owner saw exactly that). No lane: the
+    # send errors honestly instead of limping through a fake gateway.
+    [ -n "${LANE_PID:-}" ] && kill "$LANE_PID" 2>/dev/null
+    LANE_PID=""
+    _lane_direct
+  fi
+fi
+if _up; then
+  MODEL_LINE="MODEL: stock MoE (VRAM card)  (up :${MODEL_PORT})"
+  CORTEXENGINE_MODEL_UP=1
+fi
+export CORTEXENGINE_MODEL_UP
+# (2026-11-11: ollama passthrough branch removed with the ollama integration)
+
+# --- splash: 8-bit monochrome (editable source build/src/splash.py wins) -----
+# 2026-11-06: the banner's MODEL line now comes from the env so it can never
+# go stale after a model change again (was hardcoded "qwen3.8-27B").
+export CORTEXENGINE_SPLASH_MODEL="${CORTEXENGINE_SPLASH_MODEL:-stock MoE (VRAM card)}"
+printf '\033]0;Cortex\007'
+python3 - "$ROOT" "$MODEL_LINE" <<'PY' 2>/dev/null || true
+import sys, time
+sys.path.insert(0, "%s/build/src" % sys.argv[1])
+import splash
+for ln in splash.splash_lines():
+    sys.stdout.write(ln + "\033[0m\033[K\n")
+sys.stdout.write("\033[38;5;240m" + sys.argv[2] + "\033[0m\033[K\n")
+sys.stdout.write("\033[?25l")
+sys.stdout.flush()
+time.sleep(0.4)
+sys.stdout.write("\033[?25h")
+PY
+
+# --- front end: forked Node TUI, sessions in ~/.cortex-agent/agent/sessions ----
+# 2026-11-05 owner: the family's research lane lives vendored under mcp/
+# (synced above) and always-spawns via locked-mcp.ts — no registry, no
+# toggles.
+# GA-11 (2026-11-03): the bash tool gets the SAME rule gate in the TUI lane
+# that registry._check_cmd enforces on the core lane — one policy, two lanes.
+# Stale copies are replaced every boot (rm+cp: never trust a leftover file).
+if [ -f "$ROOT/build/src/exec-gate.ts" ]; then
+  mkdir -p "$HOME/.cortex-agent/agent/extensions"
+  rm -f "$HOME/.cortex-agent/agent/extensions/exec-gate.ts"
+  cp "$ROOT/build/src/exec-gate.ts" "$HOME/.cortex-agent/agent/extensions/exec-gate.ts"
+fi
+# 2026-11-09 (owner: locked MCP + stt tray): the lane installs are HARD —
+# rm+cp every boot so the locked MCP spawn (sha256-pinned vendored sources,
+# cannot be disabled) and the /stt toggle cannot be edited away behind a
+# running TUI. Same discipline the exec gate already follows.
+# 2026-11-10 portability wave: the FULL runtime extension set is vendored in
+# the repo (agent-home/extensions) and hard-installed like the gate — a fresh
+# clone boots complete, and the home copies can never be edited away.
+mkdir -p "$HOME/.cortex-agent/agent/extensions/lib"
+for _ext in locked-mcp stt-toggle library output-law loop-guard; do
+  if [ -f "$ROOT/build/src/${_ext}.ts" ]; then
+    rm -f "$HOME/.cortex-agent/agent/extensions/${_ext}.ts"
+    cp "$ROOT/build/src/${_ext}.ts" "$HOME/.cortex-agent/agent/extensions/${_ext}.ts"
+  fi
+done
+for _ext in models modes permissions sampling-guard thinking supervised-steer visual-chat; do
+  if [ -f "$ROOT/agent-home/extensions/${_ext}.ts" ]; then
+    rm -f "$HOME/.cortex-agent/agent/extensions/${_ext}.ts"
+    cp "$ROOT/agent-home/extensions/${_ext}.ts" "$HOME/.cortex-agent/agent/extensions/${_ext}.ts"
+  fi
+done
+# 2026-11-11 (release v1.0.4): fresh installs get the doctrine (61-skill
+# register + laws) — deploy-once, never clobbers owner edits in the live home.
+if [ -f "$ROOT/agent-home/APPEND_SYSTEM.md" ] && [ ! -f "$HOME/.cortex-agent/agent/APPEND_SYSTEM.md" ]; then
+  cp "$ROOT/agent-home/APPEND_SYSTEM.md" "$HOME/.cortex-agent/agent/APPEND_SYSTEM.md"
+fi
+if [ -f "$ROOT/agent-home/extensions/lib/shared.ts" ]; then
+  rm -f "$HOME/.cortex-agent/agent/extensions/lib/shared.ts"
+  cp "$ROOT/agent-home/extensions/lib/shared.ts" "$HOME/.cortex-agent/agent/extensions/lib/shared.ts"
+fi
+# stt tray: bring-back with idempotent ensure (owner 2026-11-09) — check
+# first, start only if not active; never a twin process.
+if systemctl --user is-active --quiet stt-tray.service 2>/dev/null; then
+  : # already running
+else
+  systemctl --user start stt-tray.service >/dev/null 2>&1 \
+    && echo "cortex-agent: stt tray started" \
+    || echo "cortex-agent: stt tray could not start (stt-tray.service missing?)" >&2
+fi
+
+# knowledge library: ALWAYS-ON ensure (owner 2026-11-10: "it MUST know that is
+# the library and that is where to get information from the ingestor").
+# The portal owns :8792 and is up BEFORE the brain boots — so :8792 is always
+# the library, and never a vacuum an agent fills with an impostor server.
+if ss -ltn 2>/dev/null | grep -q ':8792 '; then
+  : # already up
+else
+  GREYSEARCH_PORTAL_PORT=8792 GREYSEARCH_PORTAL_HOST=127.0.0.1 \
+    nohup python3 "$ROOT/mcp/greysearch/portal_server.py" \
+    >> "$ROOT/state/logs/library-portal.log" 2>&1 &
+  for _ in $(seq 1 15); do ss -ltn 2>/dev/null | grep -q ':8792 ' && break; sleep 1; done
+  ss -ltn 2>/dev/null | grep -q ':8792 ' \
+    && echo "cortex-agent: knowledge library up on :8792 (http://127.0.0.1:8792/library.html)" \
+    || echo "cortex-agent: knowledge library FAILED to start on :8792 (see state/logs/library-portal.log)" >&2
+fi
+
+node "$CLI" "$@"
+printf '%s\n' "cortex session ended"

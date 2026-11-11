@@ -1,0 +1,30 @@
+{
+ "task-1": {
+  "owner_session": "unknown-session",
+  "assigned_at": "2026-11-08T11:21Z",
+  "pid": 2169398,
+  "host": "parrot",
+  "pages_dir": ""
+ },
+ "task-2": {
+  "owner_session": "unknown-session",
+  "assigned_at": "2026-10-24T02:54Z",
+  "pid": 3923563,
+  "host": "parrot",
+  "pages_dir": ""
+ },
+ "task-3": {
+  "owner_session": "unknown-session",
+  "assigned_at": "2026-11-08T06:32Z",
+  "pid": 2008088,
+  "host": "parrot",
+  "pages_dir": ""
+ },
+ "task-4": {
+  "owner_session": "unknown-session",
+  "assigned_at": "2026-11-08T11:13Z",
+  "pid": 2169398,
+  "host": "parrot",
+  "pages_dir": ""
+ }
+}

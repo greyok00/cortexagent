@@ -1,0 +1,31 @@
+{
+  "query": "Sandworm APT28 CISA advisory",
+  "candidate_count": 4,
+  "scraped_count": 1,
+  "accepted_count": 1,
+  "quarantined_count": 0,
+  "rejected_count": 3,
+  "accepted_sources": [
+    "https://www.cisa.gov/news-events/cybersecurity-advisories"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-108",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.00; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.cisa.gov/topics/cyber-threats-and-advisories/nation-state-cyber-actors/russia/publications",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.00; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.reveal.security/threat-research/apt28-cyber-espionage-campaign-targets-logistics-and-tech-companies-cisa-warns",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.25; body coverage 0.00; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 1 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "query": "ASU emergency financial aid fund students application",
+  "candidate_count": 13,
+  "scraped_count": 3,
+  "accepted_count": 3,
+  "quarantined_count": 0,
+  "rejected_count": 7,
+  "accepted_sources": [
+    "https://tuition.asu.edu/financial-aid/loans/emergency-loans",
+    "https://students.engineering.asu.edu/scholarships-funding/fulton-emergency-fund-scholarship/",
+    "https://sese.asu.edu/student-emergency-fund"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.facebook.com/studentlifeasu/posts/do-you-know-about-asus-student-crisis-fundif-youre-experiencing-an-emergency-tha/1810493610291626/",
+      "decision": "reject",
+      "reason": "thin_content: 480 chars of main text (< 800)"
+    },
+    {
+      "url": "https://tuition.asu.edu/forms/short-term-loan",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.43; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://uncf.org/pages/cesa",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.43; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.ntcmn.edu/myntc/support-services/student-emergency-fund-application/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.43; body coverage 0.29; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.asufoundation.org/changing-futures/build-the-future-of-health/individual-emergency-support/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.29; body coverage 0.57; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.asufoundation.org/health-and-welfare/individual-emergency-support/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.29; body coverage 0.57; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://studentaid.gov/understand-aid/types",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.29; body coverage 0.43; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "http://www.csac.ca.gov/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://caresupport.studenthealth.virginia.edu/care-and-support-services/emergency-funding",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%)"
+    },
+    {
+      "url": "https://www.funding-u.com/users/new",
+      "decision": "reject",
+      "reason": "low topic-token coverage (14%)"
+    }
+  ],
+  "quality_warnings": []
+}

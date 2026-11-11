@@ -1,0 +1,83 @@
+@layer el-elements {
+
+
+
+
+
+
+/* ── inspector: contextual panel, disclosure in place (never a route jump) ── */
+
+.el-inspector {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: min(360px, 90vw);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in oklab, var(--el-panel) 92%, var(--el-ink) 8%);
+  border-left: var(--el-bw) solid var(--el-line);
+  box-shadow: var(--el-raise-3);
+  transform: translateX(calc(100% + 16px));
+  visibility: hidden;
+  transition: transform var(--el-dur-surface) var(--el-ease-out),
+              visibility 0s linear var(--el-dur-surface);
+}
+.el-inspector.is-open {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform var(--el-dur-surface) var(--el-ease-out);
+}
+.el-inspector.is-docked {
+  position: static;
+  width: auto;
+  transform: none;
+  visibility: visible;
+  border: var(--el-bw) solid var(--el-edge);
+  border-radius: var(--el-r-md);
+  box-shadow: var(--el-raise-1);
+}
+.el-inspector-header {
+  display: flex;
+  align-items: center;
+  gap: var(--el-space-3);
+  min-height: 44px;
+  padding: var(--el-space-2) var(--el-space-4);
+  border-bottom: var(--el-bw) solid var(--el-line-2);
+  color: var(--el-ink);
+}
+.el-inspector-header .el-inspector-close {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--el-ink-soft);
+  cursor: pointer;
+  font-size: var(--el-fs-lg);
+  padding: var(--el-space-1) var(--el-space-2);
+  border-radius: var(--el-r-sm);
+}
+.el-inspector-header .el-inspector-close:hover { color: var(--el-ink); background: var(--el-accent-soft); }
+.el-inspector-body {
+  overflow-y: auto;
+  padding: var(--el-space-4);
+  color: var(--el-ink);
+  font-size: var(--el-fs-md);
+}
+/* scrim: the single allowed glass surface - behind the panel, never on cards */
+.el-inspector-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: var(--el-overlay);
+  backdrop-filter: blur(6px) saturate(115%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--el-dur-base) var(--el-ease);
+}
+.el-inspector-scrim.is-open { opacity: 1; pointer-events: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .el-inspector { transition: none; }
+  .el-inspector-scrim { transition: opacity 120ms linear; }
+}
+
+}

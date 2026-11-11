@@ -1,0 +1,1 @@
+{"version":3,"file":"oauth.js","sourceRoot":"","sources":["../src/oauth.ts"],"names":[],"mappings":"","sourcesContent":["export type {\n\tOAuthAuthInfo,\n\tOAuthCredentials,\n\tOAuthDeviceCodeInfo,\n\tOAuthLoginCallbacks,\n\tOAuthPrompt,\n\tOAuthSelectOption,\n\tOAuthSelectPrompt,\n} from \"./compat/extension-oauth-types.ts\";\n"]}

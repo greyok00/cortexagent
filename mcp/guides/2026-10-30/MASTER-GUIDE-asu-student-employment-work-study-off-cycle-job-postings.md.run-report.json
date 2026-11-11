@@ -1,0 +1,89 @@
+{
+  "query": "ASU student employment work study off cycle job postings",
+  "candidate_count": 15,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 6,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://studentemployment.asu.edu/students/being-student-worker",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.11; body coverage 0.56; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.goldmansachs.com/careers/students/programs-and-internships/emea/off-cycle-internships",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.22; body coverage 0.33; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://workpluscollective.org/news/transforming-student-employment-asu-work-innovation",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.44; body coverage 0.44; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://workpluscollective.org/insights/transforming-student-employment-asu-work-innovation",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.44; body coverage 0.44; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://workpluscollective.org/insights/asu-state-student-employment-report-2024-2025",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.44; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://studentemployment.asu.edu/students/explore-opportunities",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.11; body coverage 0.22; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://studentemployment.asu.edu/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://cfo.asu.edu/applicant",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://workpluscollective.org/news/more-paycheck-asu-reimagines-student-worker-experience",
+      "decision": "reject",
+      "reason": "low topic-token coverage (22%)"
+    },
+    {
+      "url": "https://careeremployer.com/intern/what-is-an-off-cycle-internship/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://beyondacademy.com/blog/off-cycle-internships-a-comprehensive-guide/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (22%)"
+    },
+    {
+      "url": "https://mergersandinquisitions.com/off-cycle-investment-banking-internship/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://teampedal.com/tag/studying/",
+      "decision": "reject",
+      "reason": "search/tag/category/feed/pagination URL"
+    },
+    {
+      "url": "https://offcycle.net/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://www.lboro.ac.uk/services/sustainability/campaigns/cycle2work/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (0%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

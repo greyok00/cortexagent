@@ -1,0 +1,49 @@
+{
+  "name": "@cortexagent/client",
+  "version": "0.7.3.2",
+  "description": "cortexagent \u2014 hardened, fully offline agent wired to its own local models (compiled core, frozen tree)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./unix": {
+      "types": "./dist/unix.d.ts",
+      "import": "./dist/unix.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "shx rm -rf dist",
+    "build": "tsgo -p tsconfig.build.json",
+    "test": "vitest --run",
+    "typecheck": "tsgo -p tsconfig.test.json",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "cortex",
+    "client",
+    "protocol",
+    "cbor",
+    "binary"
+  ],
+  "author": "GreyOK00",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@cortexagent/protocol": "^0.7.3"
+  },
+  "devDependencies": {
+    "shx": "0.4.0",
+    "vitest": "4.1.9"
+  }
+}

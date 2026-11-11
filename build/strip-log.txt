@@ -1,0 +1,2 @@
+stripped=1
+flags=/home/grey/cortex-agent/tools/research_injection.py:54: you are 

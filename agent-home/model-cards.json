@@ -1,0 +1,36 @@
+{
+  "note": "Model cards per GPU size. The stock picks are preconfigured (best reasoning that fits each card fully in VRAM, ngram-mod pinned). Anyone can add their own: copy an entry, change 'model' to their local file, keep 'max_gb' to tell the picker which card it fits. 'url' + 'bytes' enable the one-command fetch on a fresh machine.",
+  "cards": [
+    {
+      "card": "vram16",
+      "max_gb": 15.5,
+      "model": "/home/grey/models/huihui-qwen36-35b-opus-abliterated/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ3_XXS.gguf",
+      "ctx": 131072,
+      "ctype": "q8_0",
+      "url": null,
+      "bytes": 13211155424,
+      "note": "owner 11-10: abliterated weights \u2014 the stock model refused too heavily",
+      "card_gb": 12.0
+    },
+    {
+      "card": "vram8",
+      "max_gb": 11.7,
+      "model": "~/models/cortex-agent/Ling-3.0-tiny-Q6_K.gguf",
+      "ctx": 65536,
+      "ctype": "q8_0",
+      "url": "https://huggingface.co/inclusionAI/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q6_K.gguf",
+      "bytes": 6499000000,
+      "card_gb": 5.5
+    },
+    {
+      "card": "vram4",
+      "max_gb": 6.4,
+      "model": "~/models/cortex-agent/LFM2.5-8B-A1B-UD-IQ2_M.gguf",
+      "ctx": 32768,
+      "ctype": "q8_0",
+      "url": "https://huggingface.co/unsloth/LFM2.5-8B-A1B-GGUF/resolve/main/LFM2.5-8B-A1B-UD-IQ2_M.gguf",
+      "bytes": 2754590000,
+      "card_gb": 3.5
+    }
+  ]
+}

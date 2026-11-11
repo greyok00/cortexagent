@@ -1,0 +1,42 @@
+{
+  "name": "@cortexagent/session-backend-sqlite-node",
+  "version": "0.7.3",
+  "description": "Node sqlite session backend for @cortexagent/agent-core sessions",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\"",
+    "build": "tsgo -p tsconfig.build.json && node ./scripts/prepare-dist.mjs copy-sqlite-migrations",
+    "test": "vitest --run",
+    "coverage": "vitest --run --coverage",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "author": "GreyOK00",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/greyok00/cortex.git",
+    "directory": "packages/session-backends/sqlite-node"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@cortexagent/ai": "^0.7.3",
+    "@cortexagent/agent-core": "^0.7.3"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "4.1.9",
+    "vitest": "4.1.9"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "query": "Salt Typhoon FCC investigation",
+  "candidate_count": 9,
+  "scraped_count": 1,
+  "accepted_count": 0,
+  "quarantined_count": 1,
+  "rejected_count": 8,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.skadden.com/-/media/files/publications/2025/04/fcc-council-on-national-security-launches-investigation/salt_typhoon.pdf",
+      "decision": "reject",
+      "reason": "empty result"
+    },
+    {
+      "url": "https://www.fcc.gov/document/implications-salt-typhoon-attack-and-fcc-response",
+      "decision": "reject",
+      "reason": "thin_content: 237 chars of main text (< 800)"
+    },
+    {
+      "url": "https://federalnewsnetwork.com/cybersecurity/2025/11/fcc-to-vote-on-reversing-cyber-rules-adopted-after-salt-typhoon-hack/",
+      "decision": "reject",
+      "reason": "body extract failed: TargetClosedError"
+    },
+    {
+      "url": "https://docs.fcc.gov/public/attachments/DOC-408015A1.pdf",
+      "decision": "reject",
+      "reason": "empty result"
+    },
+    {
+      "url": "https://oadoi.org/10.36227/techrxiv.175085869.97198541",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.25; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.fcc.gov",
+      "decision": "reject",
+      "reason": "thin_content: 179 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.congress.gov/crs_external_products/IF/PDF/IF12798/IF12798.14.pdf",
+      "decision": "reject",
+      "reason": "empty result"
+    },
+    {
+      "url": "https://therecord.media/chinese-hackers-telecoms-house",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.50; body coverage 0.00; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.blackberry.com/en/secure-communications/insights/glossary/salt-typhoon",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) investigation never appear while the broader head terms (salt, typhoon, fcc) do \u2014 the page answers the head of the question, not the subject itself ...",
+      "relevance_score": 54
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

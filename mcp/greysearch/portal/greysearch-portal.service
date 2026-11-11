@@ -1,0 +1,29 @@
+# Greysearch portal - systemd user unit template.
+#
+# install.sh writes a rendered copy of this unit to
+# ~/.config/systemd/user/greysearch-portal.service with YOUR install
+# directory substituted for /greysearch paths. If you installed manually,
+# edit the /greysearch paths below to match your checkout first:
+#   cp portal/greysearch-portal.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now greysearch-portal
+#
+# The unit runs the portal through the .venv interpreter install.sh
+# created - dependencies live there, and /usr/bin/python3 is NOT
+# guaranteed to be the required CPython 3.13. Nothing resident besides
+# Flask; research runs spawn the browser on demand and release it when
+# the run ends.
+[Unit]
+Description=Greysearch portal - web research station
+After=network.target
+
+[Service]
+WorkingDirectory=%h/greysearch
+ExecStart=%h/greysearch/.venv/bin/python %h/greysearch/bin/greysearch-portal.py
+Environment=GREYSEARCH_PORTAL_HOST=127.0.0.1
+Environment=GREYSEARCH_PORTAL_PORT=8791
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

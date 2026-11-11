@@ -1,0 +1,90 @@
+{
+  "query": "direct cash payout survey and user testing sites 2026 Prolific Respondent UserInterviews UserTesting minimum payout screeners reputation",
+  "engines": [],
+  "candidate_count": 15,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 0,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.swiftsalary.com/take-online-surveys-for/?payout_option=direct-deposit",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://kashkick.com/guide/earn/legit-survey-sites-that-pay-cash/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    },
+    {
+      "url": "https://millennialmoneyman.com/surveys-that-pay-cash-instantly/",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://surveysonthego.com/best-survey-apps-that-pay-real-cash/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    },
+    {
+      "url": "https://marksinsights.com/best-survey-sites-that-pay-cash/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (27%)"
+    },
+    {
+      "url": "https://financialpanther.com/12-legit-websites-that-pay-cash-in-2026-ranked-by-payout-speed-trustworthiness/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    },
+    {
+      "url": "https://klinkrewards.com/blog/best-survey-sites-that-pay-cash",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://www.forbes.com/sites/kristenbousquet/article/surveys-for-money/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (13%)"
+    },
+    {
+      "url": "https://www.usercrowd.com/blog/best-paid-user-testing-sites-2026/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (27%)"
+    },
+    {
+      "url": "https://webcentsblog.com/user-testing-sites/",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://www.surveyexaminer.com/research-studies/user-testing-sites/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (27%)"
+    },
+    {
+      "url": "https://www.finder.com/make-money-online/how-to-earn-money-user-testing",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    },
+    {
+      "url": "https://toolradar.com/guides/best-user-testing-platforms",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    },
+    {
+      "url": "https://dupple.com/learn/best-user-testing-platforms",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://hostadvice.com/blog/how-to-make-money-online/get-paid-to-test-websites/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

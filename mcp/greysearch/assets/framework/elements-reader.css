@@ -1,0 +1,59 @@
+@layer el-elements {
+
+
+
+
+
+
+/* ── reader: the long-form research surface - measure, serif, calm ────────── */
+
+.el-reader {
+  max-width: var(--el-measure);
+  color: var(--el-ink);
+  font-family: var(--el-font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+.el-reader h1 { font-size: 1.75rem; line-height: 1.25; }
+.el-reader h2 { font-size: 1.375rem; line-height: 1.3; margin-top: 2em; }
+.el-reader h3 { font-size: 1.125rem; margin-top: 1.5em; }
+.el-reader p, .el-reader ul, .el-reader ol { margin: 0 0 1.1em; }
+.el-reader .lead { font-size: 1.125rem; color: var(--el-ink-soft); }
+.el-reader blockquote {
+  margin: 1.2em 0;
+  padding: var(--el-space-2) var(--el-space-4);
+  border-left: 3px solid var(--el-stage-active);
+  color: var(--el-ink-soft);
+}
+.el-reader code, .el-reader pre {
+  font-family: var(--el-font-mono);
+  font-size: 0.92em;
+}
+.el-reader pre {
+  padding: var(--el-space-3);
+  background: color-mix(in oklab, var(--el-bg) 80%, var(--el-ink) 20%);
+  border: var(--el-bw) solid var(--el-edge);
+  border-radius: var(--el-r-sm);
+  overflow-x: auto;
+}
+.el-reader-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--el-space-2);
+  color: var(--el-ink-soft);
+  font-size: var(--el-fs-sm);
+  font-family: var(--el-font-body);
+  font-variant-numeric: tabular-nums;
+}
+.el-reader-version-chips { display: flex; flex-wrap: wrap; gap: var(--el-space-2); margin-top: var(--el-space-4); }
+.el-reader-version-chips .chip {
+  padding: 2px 10px;
+  border: var(--el-bw) solid var(--el-line);
+  border-radius: var(--el-r-pill);
+  color: var(--el-ink-soft);
+  font-size: var(--el-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.el-reader-version-chips .chip[aria-current] { border-color: var(--el-stage-active); color: var(--el-ink); }
+
+}

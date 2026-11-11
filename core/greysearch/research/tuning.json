@@ -1,0 +1,12 @@
+{
+ "politeness_s": 3.0,
+ "page_gap_min_s": 3.5,
+ "page_gap_max_s": 7.0,
+ "human_gap_s": 15.0,
+ "human_gap_jitter_s": 5.0,
+ "warmup_jitter_s": 15.0,
+ "probe_gap_min_s": 3.0,
+ "probe_gap_max_s": 6.0,
+ "pace_floor_s": 8.0,
+ "slow_factor": 1.0
+}

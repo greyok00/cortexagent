@@ -1,0 +1,21 @@
+/* Letterhead print styles — pandoc/weasyprint PDF renders */
+@page {
+  size: letter;
+  margin: 1in 0.9in 0.9in 0.9in;
+  @bottom-center {
+    content: "Sensitive and Proprietary";
+    font-size: 9pt; color: #666; font-style: italic;
+  }
+}
+body { font-family: Georgia, "Times New Roman", serif; font-size: 11pt; color: #1a1a1a; line-height: 1.45; }
+.masthead { border-bottom: 2.5px solid #1f4e6d; padding-bottom: 8px; margin-bottom: 18px; }
+.masthead img { height: 56px; }
+h1 { color: #1f4e6d; font-size: 16pt; margin-top: 0.6em; }
+h2 { color: #1f4e6d; font-size: 13pt; border-bottom: 1px solid #c9d4dc; padding-bottom: 2px; }
+h3 { font-size: 11.5pt; color: #3a5a74; }
+table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
+th, td { border: 1px solid #b8c4cc; padding: 5px 8px; text-align: left; font-size: 10pt; }
+th { background: #e8eef2; color: #1f4e6d; }
+code, pre { font-family: "DejaVu Sans Mono", monospace; font-size: 9.5pt; }
+.signature-line { border-top: 1px solid #1a1a1a; width: 260px; margin-top: 34px; padding-top: 2px; }
+.meta td:last-child { background: #f7fafb; }

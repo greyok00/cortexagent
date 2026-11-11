@@ -1,0 +1,8 @@
+[Unit]
+Description=Sync clock over HTTPS Date header (NTP UDP/123 is walled, no RTC battery)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/time-sync-https.sh

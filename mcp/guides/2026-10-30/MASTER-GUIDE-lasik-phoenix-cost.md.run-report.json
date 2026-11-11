@@ -1,0 +1,39 @@
+{
+  "query": "lasik phoenix cost",
+  "candidate_count": 7,
+  "scraped_count": 6,
+  "accepted_count": 3,
+  "quarantined_count": 1,
+  "rejected_count": 3,
+  "accepted_sources": [
+    "http://www.qvisionaz.com/blog/20130429-strange-facts-about-the-cost-of-lasik-in-phoenix.php",
+    "https://www.lasik.com/lasik-near-me/phoenix/",
+    "https://americanrefractivesurgerycouncil.org/cost-of-lasik/"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.desertvistaeye.com/eye-care-resources/lasik/how-much-does-lasik-surgery-cost/",
+      "decision": "reject",
+      "reason": "title coverage 0.00; body coverage 0.00; headings coverage 0.00; zero coverage of question tokens \u2014 clear topic mismatch [deterministic judge \u2014 research guide]",
+      "relevance_score": 30
+    },
+    {
+      "url": "https://medfindr.com/medical_service/the-lasik-vision-institute-phoenix/",
+      "decision": "reject",
+      "reason": "title coverage 0.00; body coverage 0.00; headings coverage 0.00; zero coverage of question tokens \u2014 clear topic mismatch [deterministic judge \u2014 research guide]",
+      "relevance_score": 30
+    },
+    {
+      "url": "https://medfindr.com/lasik/phoenix/",
+      "decision": "reject",
+      "reason": "duplicate/canonical-equivalent of https://www.completebodyptpilates.com/About-Us"
+    },
+    {
+      "url": "https://arizonalasik.com/new-to-lasik/ilasik-eye-surgery-cost/",
+      "decision": "quarantine",
+      "reason": "title coverage 0.00; body coverage 0.67; headings coverage 0.00 [deterministic judge \u2014 research guide]",
+      "relevance_score": 70
+    }
+  ],
+  "quality_warnings": []
+}

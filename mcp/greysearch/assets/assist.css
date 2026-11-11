@@ -1,0 +1,21 @@
+/* assist.css — the local thinking layer's chrome (rank chips, model chips,
+   the assist strip). Token-driven: follows whatever el-theme is active, so
+   it reads obsidian-dark on the station and stays honest in master. */
+
+.gs-assistbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 2px;padding:10px 12px;border:1px solid var(--el-line);border-radius:var(--el-r-sm);background:var(--el-panel)}
+.gs-assistbar .gs-tact{background:none;border:1px solid var(--el-accent);color:var(--el-accent);padding:6px 14px;border-radius:var(--el-r-sm);cursor:pointer;font-family:var(--rr-mono,var(--el-font-mono));font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.gs-assistbar .gs-tact:hover{background:var(--el-accent-soft)}
+.gs-assistbar .gs-tact[disabled]{opacity:.5;cursor:default}
+.gs-assistbar .src{font-family:var(--rr-mono,var(--el-font-mono));font-size:8.5px;letter-spacing:.06em;color:var(--el-mute)}
+.gs-assistbar #assist-target{color:var(--el-ink-soft)}
+
+.gs-rankchip{flex:none;align-self:center;min-width:34px;text-align:center;font-family:var(--rr-mono,var(--el-font-mono));font-size:9px;letter-spacing:.04em;padding:3px 7px;border-radius:var(--el-r-sm);border:1px solid var(--el-line);color:var(--el-mute);background:var(--el-panel-2)}
+.gs-rankchip.cool{color:var(--el-ink-soft);border-color:var(--el-line-strong)}
+.gs-rankchip.warm{color:var(--el-accent);border-color:var(--el-accent);background:var(--el-accent-soft)}
+.gs-rankchip.hot{color:var(--el-on-accent);border-color:var(--el-accent);background:var(--el-accent);font-weight:700}
+.gs-rankchip.vkeep{box-shadow:0 0 0 2px var(--el-ok) inset}
+.gs-rankchip.vburn{box-shadow:0 0 0 2px var(--el-fail) inset}
+.gs-rankchip.vmaybe{box-shadow:0 0 0 2px var(--el-warn) inset}
+
+.gs-currow.gs-suggest{box-shadow:inset 2px 0 0 var(--el-accent)}
+.gs-assist-adopt{margin:2px 0 10px}

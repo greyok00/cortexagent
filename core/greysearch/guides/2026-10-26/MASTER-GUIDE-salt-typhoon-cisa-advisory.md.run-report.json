@@ -1,0 +1,60 @@
+{
+  "query": "Salt Typhoon CISA advisory",
+  "candidate_count": 9,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 0,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa25-239a",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://www.cisa.gov/topics/cyber-threats-and-advisories/nation-state-cyber-actors/china",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa24-038a",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Salt_Typhoon",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://www.extrahop.com/blog/anatomy-of-an-attack-line-cisa-alert-on-salt-typhoon",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://eclypsium.com/blog/cisa-fbi-salt-typhoon-guidance/",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://www.fbi.gov/video-repository/salttyphoon082725.mp4/view",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://cert.gov.ng/advisories/salt-typhoon-apt-group-cyber-espionage-campaign",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://www.bsi.bund.de/SharedDocs/Downloads/EN/BSI/Cyber-Security/CSA_Salt-Typhoon.pdf?__blob=publicationFile&v=3",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    }
+  ],
+  "quality_warnings": [
+    "run hit its time budget \u2014 later pages unjudged/unscraped",
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

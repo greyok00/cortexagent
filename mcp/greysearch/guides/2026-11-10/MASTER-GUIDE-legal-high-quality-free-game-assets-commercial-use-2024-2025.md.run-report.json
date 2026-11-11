@@ -1,0 +1,172 @@
+{
+  "query": "legal high quality free game assets commercial use 2024 2025",
+  "engines": [],
+  "search_proxy": "off",
+  "search_proxy_note": "proxy mode off: direct",
+  "scrape_transport": "scrape direct (no proxy)",
+  "search_ladder": [
+    "local: 306 results (full engine set)",
+    "local: degraded (2 required engines down: duckduckgo,mojeek)",
+    "searx.space: tried 11 instance-probes, failed (JSONDecodeError: Expecting value: line 1 column 1 (char 0))",
+    "direct keyless: not engaged (enough results)",
+    "local: 147 results (full engine set)",
+    "local: 185 results (full engine set)",
+    "instance preflight: alive 11 of 12 tried",
+    "proxy mode off: direct",
+    "scrape direct (no proxy)"
+  ],
+  "instance_preflight": {
+    "alive": [
+      "https://anonsearch.win",
+      "https://baresearch.org",
+      "https://etsi.me",
+      "https://failsearx.culturanerd.it",
+      "https://kantan.cat",
+      "https://libresearch.space",
+      "https://opnxng.com",
+      "https://paulgo.io",
+      "https://priv.au",
+      "https://sear.lurx.net",
+      "https://search.banke.cloud"
+    ],
+    "dead": [
+      "https://search.chocolatemoo53.com"
+    ],
+    "candidates": [
+      "https://anonsearch.win",
+      "https://baresearch.org",
+      "https://etsi.me",
+      "https://failsearx.culturanerd.it",
+      "https://kantan.cat",
+      "https://libresearch.space",
+      "https://opnxng.com",
+      "https://paulgo.io",
+      "https://priv.au",
+      "https://sear.lurx.net",
+      "https://search.banke.cloud",
+      "https://search.chocolatemoo53.com"
+    ],
+    "tried": 12,
+    "elapsed_s": 42.28,
+    "line": "instance preflight: alive 11 of 12 tried"
+  },
+  "candidate_count": 23,
+  "scraped_count": 8,
+  "accepted_count": 4,
+  "quarantined_count": 4,
+  "rejected_count": 2,
+  "accepted_sources": [
+    "https://opengameasset.net/collections/free-assets-for-commercial-use",
+    "https://worldofprintables.com/2024-2025-calendar/",
+    "https://www.hackingtons.com/free-game-art",
+    "https://cssauthor.com/20-latest-high-quality-free-fonts-for-designers/"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.freepik.com/free-photos-vectors/highquality-legal-graphics",
+      "decision": "reject",
+      "reason": "thin_content: 297 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.magnific.com/free-photos-vectors/legal-rights",
+      "decision": "reject",
+      "reason": "thin_content: 297 chars of main text (< 800)"
+    },
+    {
+      "url": "https://itch.io/game-assets/tag-commercial-use",
+      "decision": "quarantine",
+      "reason": "title coverage 0.33; body coverage 0.56; headings coverage 0.33 [deterministic judge - research guide]",
+      "relevance_score": 74
+    },
+    {
+      "url": "https://itch.io/game-assets/free",
+      "decision": "quarantine",
+      "reason": "title coverage 0.33; body coverage 0.33; headings coverage 0.33 [deterministic judge - research guide]",
+      "relevance_score": 71
+    },
+    {
+      "url": "https://www.calendarpedia.com/two-year-2024-2025-calendar-pdf-templates.html",
+      "decision": "quarantine",
+      "reason": "title coverage 0.33; body coverage 0.33; headings coverage 0.22 [deterministic judge - research guide]",
+      "relevance_score": 70
+    },
+    {
+      "url": "https://calendaroptions.com/2024-2025-calendar/",
+      "decision": "quarantine",
+      "reason": "title coverage 0.22; body coverage 0.33; headings coverage 0.00 [deterministic judge - research guide]",
+      "relevance_score": 63
+    },
+    {
+      "url": "https://www.fontshmonts.com/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://www.fontsquirrel.com/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://www.magnific.com/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://zone.id/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://impressivemagazine.com/best-free-movie-streaming-sites-legal-2026/",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://gamedev.net/tutorials/visual-arts/top-10-best-2d-game-asset-sites-r4261/",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://community.adobe.com/t5/substance-3d-assets-and-community-assets/3d-substance-3d-assets-commercial-and-stock/m-p/14424782",
+      "decision": "reject",
+      "reason": "low topic-token coverage (22%; floor 28% for 9-token question)"
+    },
+    {
+      "url": "https://www.gamesindustry.biz/indie-dev-chequered-ink-puts-together-10-10000-game-assets-pack-so-developers-dont-feel-the-need-to-turn-to-ai",
+      "decision": "reject",
+      "reason": "low topic-token coverage (22%; floor 28% for 9-token question)"
+    },
+    {
+      "url": "https://kenney.nl/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://calendarquickly.com/2y/2024-2025-calendar",
+      "decision": "reject",
+      "reason": "low topic-token coverage (22%; floor 28% for 9-token question)"
+    },
+    {
+      "url": "https://www.calendar-365.com/2024-calendar/2025-calendar.html",
+      "decision": "reject",
+      "reason": "low topic-token coverage (22%; floor 28% for 9-token question)"
+    },
+    {
+      "url": "https://a-printable-calendar.com/2024-2025-calendar/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (22%; floor 28% for 9-token question)"
+    },
+    {
+      "url": "https://www.timeanddate.com/calendar/?year=2024-2025+Calendar",
+      "decision": "reject",
+      "reason": "low topic-token coverage (22%; floor 28% for 9-token question)"
+    }
+  ],
+  "quality_warnings": [],
+  "judge_assist": {
+    "used": false,
+    "moved": 0,
+    "tried": 0,
+    "policy": "rules (default)"
+  }
+}

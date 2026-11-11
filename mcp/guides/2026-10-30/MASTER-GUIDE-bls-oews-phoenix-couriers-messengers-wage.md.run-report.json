@@ -1,0 +1,81 @@
+{
+  "query": "BLS OEWS Phoenix couriers messengers wage",
+  "candidate_count": 14,
+  "scraped_count": 1,
+  "accepted_count": 1,
+  "quarantined_count": 0,
+  "rejected_count": 6,
+  "accepted_sources": [
+    "https://indeedflex.com/career-hub/cities/phoenix/delivery-driver"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://www.bls.gov/regions/west/news-release/occupationalemploymentandwages_phoenix.htm",
+      "decision": "reject",
+      "reason": "thin_content: 525 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.bls.gov/oes/2023/may/oes_38060.htm",
+      "decision": "reject",
+      "reason": "thin_content: 525 chars of main text (< 800)"
+    },
+    {
+      "url": "https://www.assessment.com/office-and-administrative-support-careers/couriers-and-messengers-career-guide",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.17; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://datausa.io/profile/soc/couriers-messengers",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.usawage.com/usa/couriers_and_messengers-salary.php",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.truest.me/careers/metros/careers-in-phoenix-mesa",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.17; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.bls.gov/oes/2023/may/oes_46060.htm",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.bls.gov/oes/2023/may/oes435011.htm",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.usawage.com/i56--57/o435021.php",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.usawage.com/i61--62/o435021.php",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.usawage.com/i48--50/o435021.php",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.bls.gov/oes/2023/may/oes435021.htm",
+      "decision": "deprioritized",
+      "reason": "same-domain cap (2) reached"
+    },
+    {
+      "url": "https://www.bls.gov/oes/tables.htm",
+      "decision": "deprioritized",
+      "reason": "same-domain cap (2) reached"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 1 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

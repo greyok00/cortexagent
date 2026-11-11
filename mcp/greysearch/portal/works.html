@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en" data-theme="obsidian">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Works: every finished site, PDF, and guide this station produced, shelved and searchable."><title>Greysearch - Works</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/assets/framework/tokens.css"><link rel="stylesheet" href="/assets/framework/tokens-v2.css"><link rel="stylesheet" href="/assets/reading-room.css"><link rel="stylesheet" href="/assets/screens.css"><link rel="stylesheet" href="/assets/portal.css?v=20261104c"><link rel="stylesheet" href="/assets/console.css?v=20261103g"></head>
+<body class="gs-console" data-screen="works">
+<a class="gs-skip" href="#works-main">Skip to the works shelf</a>
+<header class="gs-top"><div class="gs-top-in"><span class="gs-top-mark">Greysearch</span> <a class="gs-link" href="/">Station</a> <a class="gs-link" href="/runs.html">Run ledger</a> <a class="gs-link" href="/works.html" aria-current="page">Works</a> <a class="gs-link" href="/library.html">Library</a> <span class="gs-top-mid">Every build, shelved and searchable</span></div></header>
+<main class="wrap" id="works-main">
+<p class="gs-kicker">The shelf</p>
+<h1 class="brand" style="font-size:clamp(40px,6vw,72px)">Works</h1>
+<p class="tag">Every finished thing this station produced: built sites, their PDFs, and their zips - shelved the moment a build validates, readable here, downloadable, and searchable by what's inside them (heuristic census: hosts, keywords, themes; no model needed).</p>
+<div class="gs-ubar" style="margin-top:18px">
+  <input id="works-q" class="gs-in" autocomplete="off" placeholder="search the shelf: a word from the question, a host, a theme…" style="flex:1;min-width:260px;background:transparent;color:var(--el-ink);border:0;border-bottom:1px solid var(--el-line-strong);padding:12px 2px;font-family:var(--rr-serif);font-size:19px">
+  <button id="works-clear" class="gs-tact" type="button" hidden>Clear</button>
+</div>
+<p class="gs-formhint" id="works-hint" role="status" aria-live="polite" hidden></p>
+<div class="gs-curbar" style="margin:18px 0 4px"><span class="src" id="works-meta"></span><span class="src" id="works-count"></span></div>
+<div class="gs-kws" id="works-census" style="margin:8px 0 22px"></div>
+<div id="works-grid" class="imgs" style="grid-template-columns:repeat(2,minmax(0,1fr))"></div>
+<p class="gs-note" id="works-empty" hidden>Nothing on the shelf yet - build a site from any run's Publish drawer and it lands here automatically.</p>
+</main>
+<footer class="gs-foot"><span>Greysearch · works</span><span>Everything the station finished, kept</span></footer>
+<script>
+(function () {
+  "use strict";
+  function $(id) { return document.getElementById(id); }
+  function el(t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x !== undefined && x !== null) n.textContent = x; return n; }
+  var all = [];
+
+  function unit(n, s, p) { return n + " " + (n === 1 ? s : p); }
+
+  function fmtBytes(b) {
+    if (!b) return "—";
+    if (b > 1048576 * 1000) return (b / 1073741824).toFixed(1) + " GiB";
+    if (b > 1048576) return (b / 1048576).toFixed(1) + " MiB";
+    return Math.max(1, Math.round(b / 1024)) + " KiB";
+  }
+  function fmtDay(iso) { return String(iso || "").slice(0, 10); }
+
+  function card(w) {
+    var c = el("div", "imgc works-card");
+    var h = el("div", "works-head");
+    h.appendChild(el("span", "gs-eyebrow works-day", fmtDay(w.day)));
+    if (w.theme) h.appendChild(el("span", "gs-chip works-theme", w.theme));
+    if (w.refined) h.appendChild(el("span", "gs-chip ok", "model-rewrite"));
+    c.appendChild(h);
+    c.appendChild(el("h3", "works-title", w.title || w.id));
+    if (w.query) c.appendChild(el("p", "works-q", w.query));
+    var hosts = (w.hosts || []).slice(0, 4);
+    if (hosts.length) {
+      var hk = el("div", "gs-kws");
+      hosts.forEach(function (x) { hk.appendChild(el("span", "gs-kw", x)); });
+      c.appendChild(hk);
+    }
+    var kws = (w.keywords || []).slice(0, 8).map(function (k) { return k[0]; });
+    if (kws.length) {
+      var kk = el("div", "gs-kws");
+      kws.forEach(function (x) { kk.appendChild(el("span", "gs-kw", x)); });
+      c.appendChild(kk);
+    }
+    var actions = el("div", "works-actions");
+    actions.appendChild(el("a", "gs-tact works-link", "Read it")).href = "/works/" + w.id + "/site/index.html";
+    if (w.pdf) actions.appendChild(el("a", "gs-tact works-link", "PDF")).href = "/works/" + w.id + "/" + w.pdf;
+    if (w.zip) actions.appendChild(el("a", "gs-tact works-link", "Download .zip")).href = "/works/" + w.id + "/" + w.zip;
+    c.appendChild(actions);
+    var srcLine = unit(w.sources || (w.hosts || []).length, "host", "hosts") +
+      " · " + fmtBytes(w.bytes) + (w.guardrails ? " · guardrailed" : "");
+    c.appendChild(el("p", "src works-meta2", srcLine));
+    return c;
+  }
+
+  function paint(rows, meta, count) {
+    var g = $("works-grid");
+    g.replaceChildren();
+    (rows || all).forEach(function (w) { g.appendChild(card(w)); });
+    $("works-empty").hidden = !!(rows && rows.length) || !!all.length;
+    $("works-count").textContent = count ||
+      unit(all.length, "work", "works") + " on the shelf";
+    $("works-meta").textContent = meta || "";
+  }
+
+  function paintCensus(d) {
+    var box = $("works-census");
+    box.replaceChildren();
+    var add = function (label, items) {
+      if (!(items || []).length) return;
+      var h = el("span", "gs-enghead", label);
+      box.appendChild(h);
+      var wrap = el("div", "gs-kws");
+      items.forEach(function (x) {
+        var label = Array.isArray(x) ? x[0] : String(x);
+        // drop the " × N" tail the theme chips carry; search on the term
+        var term = label.split(" × ")[0].trim();
+        var chip = el("span", "gs-kw", label);
+        chip.title = term;
+        chip.style.cursor = "pointer";
+        chip.addEventListener("click", function () {
+          $("works-q").value = term;
+          doSearch();
+        });
+        wrap.appendChild(chip);
+      });
+      box.appendChild(wrap);
+    };
+    add("themes on the shelf", Object.entries(d.themes || {}).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 8).map(function (x) { return x[0] + " × " + x[1]; }));
+    add("hosts cited across works", (d.hosts || []).slice(0, 10));
+    add("keyword census", (d.keywords || []).slice(0, 14));
+  }
+
+  function doSearch() {
+    var q = $("works-q").value.trim();
+    $("works-clear").hidden = !q;
+    if (!q) { paint(); $("works-hint").hidden = true; return; }
+    fetch("/api/works/search?q=" + encodeURIComponent(q))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var hits = (j && j.hits) || [];
+        var qline = unit(hits.length, "hit", "hits") + ' for "' + q + '"' +
+          (hits.length === all.length ? " (all works match)" : "");
+        paint(hits, qline, qline);
+        $("works-hint").textContent = hits.length
+          ? "" : "nothing on the shelf matches \u201c" + q + "\u201d - the search looks at titles, questions, set names, hosts, and the heuristic keyword census";
+        $("works-hint").hidden = !!hits.length;
+      })
+      .catch(function () { paint([], "search failed"); });
+  }
+
+  fetch("/api/works").then(function (r) { return r.json(); }).then(function (d) {
+    all = d.works || [];
+    paint();
+    paintCensus(d);
+    $("works-hint").hidden = true;
+    var pdfs = d.works.filter(function (w) { return w.pdf; }).length;
+    $("works-meta").textContent = unit(all.length, "site", "sites") + " · " +
+      unit(pdfs, "pdf", "pdfs") + " · " + fmtBytes(d.bytes) + " total";
+  }).catch(function () {
+    $("works-empty").hidden = false;
+    $("works-count").textContent = "the shelf is unreachable right now";
+  });
+
+  var t = null;
+  $("works-q").addEventListener("input", function () {
+    if (t) clearTimeout(t);
+    t = setTimeout(doSearch, 220);
+  });
+  $("works-clear").addEventListener("click", function () {
+    $("works-q").value = ""; doSearch();
+  });
+})();
+</script>
+</body></html>

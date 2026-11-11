@@ -1,0 +1,91 @@
+{
+  "query": "godot 4 gltf mesh material uv mapping textures",
+  "engines": [],
+  "candidate_count": 15,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 0,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://grab3d.com/blog/import-gltf-into-godot/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://godotengine.org/asset-library/asset/2845",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://memoryweaver.itch.io/meshopt-for-godot-4",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.strayspark.studio/blog/meshy-tripo-to-godot-4-gltf-lod-normal-maps",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://github.com/Zincles/godot_gltf2meshlib",
+      "decision": "reject",
+      "reason": "low topic-token coverage (17%)"
+    },
+    {
+      "url": "https://docs.godotengine.org/en/stable/classes/class_gltfmesh.html",
+      "decision": "reject",
+      "reason": "low topic-token coverage (17%)"
+    },
+    {
+      "url": "https://docs.zepeto.me/studio-guide/uv-mapping-texturing-and-materials",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.softwarerendering.com/texture-mapping-guide.php",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/UV_mapping",
+      "decision": "reject",
+      "reason": "low topic-token coverage (17%)"
+    },
+    {
+      "url": "https://www.meshy.ai/blog/uv-mapping",
+      "decision": "reject",
+      "reason": "low topic-token coverage (17%)"
+    },
+    {
+      "url": "https://www.tripo3d.ai/blog/uv-mapping",
+      "decision": "reject",
+      "reason": "low topic-token coverage (17%)"
+    },
+    {
+      "url": "https://www.selfcad.com/blog/uv-mapping",
+      "decision": "reject",
+      "reason": "low topic-token coverage (17%)"
+    },
+    {
+      "url": "https://uvchecker.atlux.one/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://forum.godotengine.org/t/loading-gltf-glb-mesh-from-file-system/65039",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://kindatechnical.com/game-development/materials-textures-and-uv-mapping.html",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    }
+  ],
+  "quality_warnings": [
+    "run hit its time budget \u2014 later pages unjudged/unscraped",
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

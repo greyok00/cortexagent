@@ -1,0 +1,131 @@
+/* screens.css — the portal becomes three stacked screens (search/progress/
+   results) + the floating pill, WITHOUT touching the legacy JS handlers.
+
+   Contract with the legacy code (portal/index.html):
+   - The old handlers write inline display:block/none on #prog and #res and
+     toggle .fill "working". Those writes keep working untouched: this sheet
+     PINS both panels to display:block !important — an important author rule
+     beats inline styles per the CSS cascade — and screen visibility is
+     governed exclusively by body[data-screen] below. Legacy writes become
+     inert; no behavior the campaign drives (#q/#go/.dep/#stage) changes.
+   - screens.js wraps the three panels into .screen containers at load
+     (reparenting preserves all event listeners, so submit/SSE/history
+     keep working) and sets body[data-screen] = search|progress|results.
+
+   Transitions: 320ms slide+fade on the leaving/entering screens. Every
+   animation/transition is disabled under prefers-reduced-motion. */
+
+body{
+  /* the stacked-screen grid: every .screen occupies the same cell */
+}
+
+.screens{
+  display:grid;
+  grid-template-areas:"stack";
+}
+.screen{
+  grid-area:stack;
+  min-width:0;
+  transition:opacity .32s ease, transform .32s ease, visibility 0s linear .32s;
+  opacity:1;
+  transform:none;
+  visibility:visible;
+  pointer-events:auto;
+}
+body[data-screen="search"]   .screen[data-screen="search"],
+body[data-screen="progress"] .screen[data-screen="progress"],
+body[data-screen="results"]  .screen[data-screen="results"]{
+  /* active screen */
+  transition:opacity .32s ease, transform .32s ease, visibility 0s;
+}
+body[data-screen="search"]   :is(.screen[data-screen="progress"],
+                                  .screen[data-screen="results"]),
+body[data-screen="progress"] :is(.screen[data-screen="search"],
+                                  .screen[data-screen="results"]),
+body[data-screen="results"]  :is(.screen[data-screen="search"],
+                                  .screen[data-screen="progress"]){
+  opacity:0;
+  transform:translateY(-24px);
+  visibility:hidden;
+  pointer-events:none;
+}
+
+/* the legacy panels are pinned visible; the screens own their visibility */
+#prog, #res { display:block !important; }
+
+@media (prefers-reduced-motion: reduce){
+  .screen{transition:none !important}
+  #gr-pill, #gr-pill *, #gr-pillmenu {transition:none !important;
+    animation:none !important}
+}
+
+/* ---- floating pill ------------------------------------------------------ */
+#gr-pill{
+  position:fixed; right:16px; bottom:16px; z-index:60;
+  width:48px; height:48px; border-radius:50%;
+  border:1px solid var(--el-line, #2a323d);
+  background:var(--el-panel, #161a21);
+  color:var(--el-ink, #f3efe6);
+  cursor:pointer; padding:0;
+  display:grid; place-items:center;
+  box-shadow:0 8px 24px rgba(0,0,0,.35);
+  transition:transform .2s ease, border-color .2s ease;
+}
+#gr-pill:hover{transform:scale(1.08); border-color:var(--el-accent,#c9a84c)}
+#gr-pill svg{display:block; width:22px; height:22px}
+#gr-pill .ring{
+  position:absolute; inset:-4px; border-radius:50%;
+  border:2px solid var(--el-accent,#c9a84c);
+  opacity:0; pointer-events:none;
+}
+/* gentle living pulse while the pill is on screen */
+#gr-pill[data-live="1"] .ring{
+  animation:gr-pill-pulse 2.6s ease-out infinite;
+}
+/* faster, stronger pulse while a run is in flight (progress state) */
+#gr-pill[data-live="run"] .ring{
+  animation:gr-pill-pulse 1.1s ease-out infinite;
+}
+@keyframes gr-pill-pulse{
+  0%{opacity:.65; transform:scale(1)}
+  70%{opacity:0; transform:scale(1.35)}
+  100%{opacity:0; transform:scale(1.35)}
+}
+@media (prefers-reduced-motion: reduce){ #gr-pill .ring{display:none} }
+
+/* menu popup card */
+#gr-pillmenu{
+  position:fixed; right:16px; bottom:72px; z-index:61;
+  min-width:200px;
+  background:var(--el-panel, #161a21);
+  border:1px solid var(--el-line, #2a323d);
+  border-radius:12px;
+  padding:6px;
+  box-shadow:0 12px 32px rgba(0,0,0,.45);
+  transform-origin:100% 100%;
+  transform:scale(.92); opacity:0; visibility:hidden;
+  transition:transform .24s ease, opacity .24s ease, visibility 0s linear .24s;
+  pointer-events:none;
+}
+#gr-pillmenu.open{
+  transform:scale(1); opacity:1; visibility:visible;
+  transition:transform .24s ease, opacity .24s ease, visibility 0s;
+  pointer-events:auto;
+}
+#gr-pillmenu button{
+  display:flex; align-items:center; gap:10px; width:100%;
+  background:none; border:0; color:var(--el-ink-soft, #a09a8e);
+  font:600 .9rem/1.2 system-ui, sans-serif;
+  padding:10px 12px; border-radius:8px; cursor:pointer; text-align:left;
+}
+#gr-pillmenu button:hover{background:var(--el-panel-2, #1c2128);
+  color:var(--el-ink, #f3efe6)}
+#gr-pillmenu button.active{
+  color:var(--el-accent, #c9a84c);
+  background:var(--el-panel-2, #1c2128);
+}
+#gr-pillmenu button .dot{
+  width:8px; height:8px; border-radius:50%;
+  background:var(--el-line, #2a323d); flex:none;
+}
+#gr-pillmenu button.active .dot{background:var(--el-accent, #c9a84c)}

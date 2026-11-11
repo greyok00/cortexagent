@@ -1,0 +1,75 @@
+{
+  "query": "best abliterated GGUF models 2B 3B 4B 2026 huggingface huihui qwen3.5 abliterated small local agent tool calling",
+  "candidate_count": 2,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 0,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://lmsa.app/blog/best-uncensored-gguf-models-for-8gb-vram-in-2026/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (31%)"
+    },
+    {
+      "url": "https://pocketanimus.com/guides/best-abliterated-model/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (31%)"
+    },
+    {
+      "url": "https://www.abliteratedmodels.org/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://www.orcarouter.ai/blog/qwen-3-8-27b-uncensored-gguf",
+      "decision": "reject",
+      "reason": "low topic-token coverage (31%)"
+    },
+    {
+      "url": "https://huggingface.co/models?search=abliterated",
+      "decision": "reject",
+      "reason": "search/tag/category/feed/pagination URL"
+    },
+    {
+      "url": "https://huggingface.co/models?search=abliterate",
+      "decision": "reject",
+      "reason": "search/tag/category/feed/pagination URL"
+    },
+    {
+      "url": "https://codersera.com/blog/gemma-4-complete-guide-2026/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (8%)"
+    },
+    {
+      "url": "https://www.aimadetools.com/blog/gemma-4-family-guide/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (15%)"
+    },
+    {
+      "url": "https://www.premai.io/blog/best-lightweight-language-models-worth-running/",
+      "decision": "reject",
+      "reason": "affiliate/listicle title with weak topic coverage"
+    },
+    {
+      "url": "https://schoolapart.com/pencil-grades-explained/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (0%)"
+    },
+    {
+      "url": "https://essamamdani.com/blog/best-abliterated-models-2026-local-picks",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://www.promptquorum.com/local-llms/small-local-llm-models",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    }
+  ],
+  "quality_warnings": [
+    "run hit its time budget \u2014 later pages unjudged/unscraped",
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

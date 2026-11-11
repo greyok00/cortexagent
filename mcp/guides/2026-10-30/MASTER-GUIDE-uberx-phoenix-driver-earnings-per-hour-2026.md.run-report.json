@@ -1,0 +1,88 @@
+{
+  "query": "UberX Phoenix driver earnings per hour 2026",
+  "candidate_count": 16,
+  "scraped_count": 2,
+  "accepted_count": 2,
+  "quarantined_count": 1,
+  "rejected_count": 1,
+  "accepted_sources": [
+    "https://www.uber.com/us/en/e/drive/phoenix-az-us/",
+    "https://www.solotravellerapp.com/whats-the-difference-between-uberx-and-comfort/"
+  ],
+  "skipped_pages": [
+    {
+      "url": "http://www.callmedriver.com/uber-drivers-income-per-hour/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.33; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.facebook.com/groups/1799158936981063/posts/4299901346906797/",
+      "decision": "quarantine",
+      "reason": "off-topic drift: the question's focal tail term(s) uberx, 2026 never appear while the broader head terms (phoenix, driver, earnings, hour) do \u2014 the page answers the head of the question, not the ...",
+      "relevance_score": 54
+    },
+    {
+      "url": "https://news.alphastreet.com/uber-technologies-inc-uber-q3-2025-earnings-call-transcript/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.indeed.com/cmp/Uber/salaries/Driver/Phoenix-AZ",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://getridewise.com/us/arizona/phoenix",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.businesswire.com/news/home/20210804005979/en/Uber-Announces-Results-for-Second-Quarter-2021",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Minimum_wage_in_the_United_States",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.paylocity.com/resources/learn/articles/minimum-wage-guide/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.dol.gov/agencies/whd/minimum-wage/state",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.laborlawcenter.com/state-minimum-wage-rates?srsltid=AYCX9vKsTfH-ZKnXgI_yPa3CQFsa4uvGju3wXLBVVOgFQunr8Yatu5sa",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://fred.stlouisfed.org/release/tables?eid=243906&rid=387",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.inflectionhr.com/blog/arizona-minimum-wage-everything-you-need-to-know",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.lni.wa.gov/workers-rights/wages/minimum-wage/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.dir.ca.gov/dlse/minimum_wage.htm",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 2 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

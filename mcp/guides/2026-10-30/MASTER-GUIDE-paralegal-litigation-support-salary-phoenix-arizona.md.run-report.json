@@ -1,0 +1,79 @@
+{
+  "query": "paralegal litigation support salary Phoenix Arizona",
+  "candidate_count": 13,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 4,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.bls.gov/ooh/legal/paralegals-and-legal-assistants.htm",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.17; body coverage 0.17; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://www.phoenix.gov/explore/visitors.html",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.17; body coverage 0.17; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://tripointsearch.com/jobs/litigation-paralegal-9/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://careers.paramount.com/job/New-York-Paralegal,-Litigation-NY-10036/1346322700/",
+      "decision": "reject",
+      "reason": "snippet-level judge: reject \u2014 title coverage 0.33; body coverage 0.50; headings coverage 0.00; thin page penalty [deterministic judge \u2014 research guide"
+    },
+    {
+      "url": "https://valintry.com/paralegal-salary-guide/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.future-you.com.au/job/paralegal-litigation",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://clarityrecruiting.com/job/litigation-paralegal-37060/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.allcriminaljusticeschools.com/legal-and-paralegal/paralegal-salary-by-state/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Phoenix,_Arizona",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Arizona_Coyotes",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Scottsdale,_Arizona",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Arizona_Cardinals",
+      "decision": "reject",
+      "reason": "low topic-token coverage (33%)"
+    },
+    {
+      "url": "https://www.phoenix.gov/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}

@@ -1,0 +1,232 @@
+@layer el-elements {
+
+
+
+
+
+
+/* ── stage rail: run lifecycle navigation. Content leads; rail recedes. ───── */
+
+.el-stage-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--el-space-1);
+  padding: var(--el-space-2);
+  background: color-mix(in oklab, var(--el-panel) 72%, var(--el-bg));
+  border: var(--el-bw) solid color-mix(in oklab, var(--el-line) 60%, transparent);
+  border-radius: var(--el-r-lg);
+}
+.el-stage {
+  display: flex;
+  align-items: center;
+  gap: var(--el-space-3);
+  min-height: 34px;
+  padding: var(--el-space-2) var(--el-space-3);
+  border: var(--el-bw) solid transparent;
+  border-radius: var(--el-r-md);
+  color: var(--el-ink-soft);
+  transition: background-color var(--el-dur-fast) var(--el-ease-quiet),
+              color var(--el-dur-fast) var(--el-ease-quiet);
+}
+.el-stage:hover { color: var(--el-ink); }
+.el-stage .el-stage-dot {
+  width: 8px; height: 8px;
+  border-radius: var(--el-r-pill);
+  background: var(--el-line-strong);
+  flex: 0 0 auto;
+}
+.el-stage .el-stage-name { color: inherit; font-size: var(--el-fs-md); }
+.el-stage .el-stage-count {
+  margin-left: auto;
+  font-size: var(--el-fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--el-mute);
+}
+.el-stage.is-queued { opacity: 0.45; }
+.el-stage.is-active {
+  background: color-mix(in oklab, var(--el-stage-active) 10%, transparent);
+  color: var(--el-ink);
+}
+.el-stage.is-active .el-stage-dot { background: var(--el-stage-active); }
+.el-stage.is-running .el-stage-dot { animation: el-stage-pulse var(--el-dur-progress) linear infinite; }
+.el-stage.is-done { color: var(--el-ink); }
+.el-stage.is-done .el-stage-dot { background: var(--el-stage-done); }
+.el-stage.is-stale { color: var(--el-stage-stale); }
+.el-stage.is-stale .el-stage-dot { background: var(--el-stage-stale); }
+.el-stage .el-dur {
+  margin-left: auto;
+  color: var(--el-mute);
+  font-size: var(--el-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+/* collapsed strip variant (small viewports / dense bars) */
+.el-stage-rail--strip { flex-direction: row; overflow-x: auto; }
+.el-stage-rail--strip .el-stage { min-height: 0; padding: var(--el-space-1) var(--el-space-2); }
+
+@keyframes el-stage-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+/* ── run ladder: ordered live-status steps (numbered, unlike the rail) ────── */
+
+.el-ladder {
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-edge);
+  border-radius: var(--el-r-md);
+  box-shadow: var(--el-raise-1), var(--el-hairline);
+}
+.el-ladder-step {
+  display: flex;
+  align-items: center;
+  gap: var(--el-space-3);
+  min-height: 38px;
+  padding: var(--el-space-2) var(--el-space-4);
+  border-bottom: var(--el-bw) solid var(--el-line-2);
+}
+.el-ladder-step:last-child { border-bottom: 0; }
+.el-ladder-step .el-ladder-idx {
+  color: var(--el-mute);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.el-ladder-step .el-ladder-label { color: var(--el-ink); font-size: var(--el-fs-md); }
+.el-ladder-step .el-ladder-meta {
+  margin-left: auto;
+  color: var(--el-ink-soft);
+  font-size: var(--el-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.el-ladder-step.is-running .el-ladder-label::after {
+  content: '';
+  display: inline-block;
+  width: 1.15em; height: 1px;
+  margin-left: 0.45em;
+  vertical-align: middle;
+  background: var(--el-stage-running);
+  animation: el-stage-pulse var(--el-dur-progress) linear infinite;
+}
+.el-ladder-step.is-done .el-ladder-label { color: var(--el-ink-soft); }
+.el-ladder-step.is-done .el-ladder-idx { color: var(--el-stage-done); }
+.el-ladder-step.is-stale .el-ladder-label { color: var(--el-stage-stale); }
+/* collapsed prior steps stay visible - wizard continuity rule */
+.el-ladder-step.is-done .el-ladder-meta { color: var(--el-mute); }
+.el-ladder-step.is-queued { opacity: 0.4; }
+
+/* ── progress truth: stages and counts only. No percent widget. ───────────── */
+
+.el-progress-truth {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--el-space-2) var(--el-space-3);
+  padding: var(--el-space-2) var(--el-space-3);
+  background: color-mix(in oklab, var(--el-panel) 70%, transparent);
+  border: var(--el-bw) solid var(--el-edge);
+  border-radius: var(--el-r-sm);
+  font-size: var(--el-fs-sm);
+  color: var(--el-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.el-progress-truth .el-pt-chunk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--el-r-pill);
+  border: var(--el-bw) solid var(--el-line-2);
+}
+.el-progress-truth .el-pt-chunk.is-done  { border-color: var(--el-stage-done); color: var(--el-stage-done); }
+.el-progress-truth .el-pt-chunk.is-running { border-color: var(--el-stage-running); color: var(--el-stage-running); }
+.el-progress-truth .el-pt-chunk.is-stale { border-color: var(--el-stage-stale); color: var(--el-stage-stale); }
+.el-progress-truth .el-pt-count { color: var(--el-ink); font-weight: 650; }
+
+/* ── source card: one cited source, quiet until cited or hovered ──────────── */
+
+.el-source-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--el-space-1);
+  min-width: 0;
+  padding: var(--el-space-3);
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-edge);
+  border-radius: var(--el-r-sm);
+  box-shadow: var(--el-raise-1), var(--el-hairline);
+  transition: transform var(--el-dur-fast) var(--el-ease-quiet),
+              box-shadow var(--el-dur-fast) var(--el-ease-quiet);
+}
+.el-source-card:hover { transform: var(--el-lift); box-shadow: var(--el-raise-2); }
+.el-source-card .src  { color: var(--el-ink-soft); font-size: var(--el-fs-xs); }
+.el-source-card .ttl  { color: var(--el-ink); font-size: var(--el-fs-md); }
+.el-source-card .snip {
+  color: var(--el-mute);
+  font-size: var(--el-fs-sm);
+  max-width: var(--el-measure);
+}
+.el-source-card.is-cited { border-left: 3px solid var(--el-stage-active); }
+
+/* ── citation rail: anchor list tying compiled sections to sources ────────── */
+
+.el-citation-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--el-space-1);
+  padding: var(--el-space-3);
+  border-left: 2px solid var(--el-line);
+  font-size: var(--el-fs-sm);
+}
+.el-citation-rail .el-cite {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--el-space-2);
+  color: var(--el-ink-soft);
+}
+.el-citation-rail .el-cite .n {
+  color: var(--el-stage-active);
+  font-family: var(--el-font-mono);
+  font-size: var(--el-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.el-citation-rail .el-cite a { color: inherit; text-decoration-color: var(--el-line-strong); }
+.el-citation-rail .el-cite a:hover { color: var(--el-ink); }
+
+/* ── fact grid: the one allowed bento moment - key/value summary ──────────── */
+
+.el-fact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--el-space-2);
+}
+.el-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--el-space-3);
+  background: var(--el-panel);
+  border: var(--el-bw) solid var(--el-edge);
+  border-radius: var(--el-r-sm);
+  box-shadow: var(--el-raise-1);
+}
+.el-fact .k { color: var(--el-mute); font-size: var(--el-fs-xs); text-transform: uppercase; letter-spacing: var(--el-label-tracking, .08em); }
+.el-fact .v {
+  color: var(--el-ink);
+  font-size: var(--el-fs-lg);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.el-fact.is-hot .v { color: var(--el-stage-active); }
+
+/* ── motion discipline for the whole sheet ────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .el-stage.is-running .el-stage-dot,
+  .el-ladder-step.is-running .el-ladder-label::after { animation: none; }
+  .el-source-card:hover { transform: none; }
+}
+
+}

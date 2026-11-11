@@ -1,0 +1,80 @@
+{
+  "query": "DoD PSA I-260407-PSA April 2026 Russian state-sponsored cyber operations",
+  "candidate_count": 5,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 0,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://www.youtube.com/watch?v=wORU0zNSyf4",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    },
+    {
+      "url": "https://www.ic3.gov/CSA/2026/260407.pdf",
+      "decision": "reject",
+      "reason": "low topic-token coverage (30%)"
+    },
+    {
+      "url": "https://www.globalsecurity.org/intell/library/news/2026/intell-260407-doj01.htm",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    },
+    {
+      "url": "https://www.globalsecurity.org/security/library/news/2026/04/sec-260407-nsa-css01.htm",
+      "decision": "reject",
+      "reason": "low topic-token coverage (30%)"
+    },
+    {
+      "url": "https://www.cisa.gov/topics/cyber-threats-and-advisories/nation-state-cyber-actors/russia/publications",
+      "decision": "reject",
+      "reason": "low topic-token coverage (30%)"
+    },
+    {
+      "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa26-194a",
+      "decision": "reject",
+      "reason": "low topic-token coverage (30%)"
+    },
+    {
+      "url": "https://cyberpress.org/nsa-warns-poorly-configured-routers-are-fueling-russian-state-sponsored-cyberattacks/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (30%)"
+    },
+    {
+      "url": "https://cyberpress.org/nsa-russian-exploit-secured-routers/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (20%)"
+    },
+    {
+      "url": "https://media.defense.gov/2026/Apr/07/2003907743/-1/-1/0/I-260407-PSA.PDF",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://www.defconlevel.com/cyber-warfare-tracker",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://www.fbi.gov/investigate/cyber/alerts/2026/improve-router-hygiene-to-protect-against--russian-state-sponsored-targeting",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://thehackernews.com/2026/09/russian-state-sponsored-hackers-use.html",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    },
+    {
+      "url": "https://media.defense.gov/2026/Jul/09/2003959498/-1/-1/0/CSA_IMPROVE_ROUTER_HYGIENE.PDF",
+      "decision": "deprioritized",
+      "reason": "time budget reached"
+    }
+  ],
+  "quality_warnings": [
+    "run hit its time budget \u2014 later pages unjudged/unscraped",
+    "thin run: only 0 accepted page(s) \u2014 the guide reports DATA NOT CAPTURED rather than padding"
+  ]
+}
