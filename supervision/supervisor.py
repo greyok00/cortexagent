@@ -119,9 +119,11 @@ class Supervisor:
                or refusal_repeat(self.window, self.rb["refusal_repeat_limit"])
                or length_storm(self.window, self.rb["length_storm_limit"]))
 
-        # --- tier-2 CFG (pre-execution) ---
-        if kind == "tool_call" and ev.get("tool") in STRUCTURED_TOOLS:
-            ok, why = args_conform(ev["tool"], ev.get("args") or {})
+        # --- tier-2 CFG (pre-execution): every tool whose args we carry;
+        # bash included (multiline/one-command grammar lives in args_conform,
+        # the exec-gate still owns the live allowlist path) ---
+        if kind == "tool_call" and ev.get("args") is not None:
+            ok, why = args_conform(ev.get("tool") or "", ev.get("args") or {})
             if not ok:
                 det = ("F1", why, "medium")  # malformed call pre-run
 
@@ -203,7 +205,11 @@ class Supervisor:
                      f"(last: {detail}). Owner attention required.")
             lres = LadderResult(5, prose, fclass)
             self._log(f"LADDER-5 surface: {detail}")
-        self.fsm.fire("ladder_act") if lres.node in (1, 2) else None
+        # node 1 is an advisory lesson: state stays DEGRADED (nothing is
+        # "in flight"). Nodes 2-4 act → RECOVERING (node 3/5 already fired
+        # their own edges in-branch; node 2 fires here).
+        if lres.node == 2:
+            self.fsm.fire("ladder_act")
         self._emit(lres.prose)
         self._log(f"LADDER-{lres.node} [{fclass}/{self.fsm.state}] "
                   f"{lres.prose[:90]}")

@@ -1,0 +1,45 @@
+{"scenarios": [
+  {"name": "steady-work", "distribution": "in", "rulebook": {}, "events": [
+    {"kind": "task_started", "task": "s1"},
+    {"kind": "tool_call", "tool": "bash", "digest": "a1"},
+    {"kind": "tool_result", "tool": "bash", "error": false, "digest": "a1"},
+    {"kind": "model_turn", "tokens": 120},
+    {"kind": "task_ended"}], "expect": {"endState": "IDLE", "steers": 0, "classes": []}},
+  {"name": "repetition-loop-steers-then-ladder", "distribution": "in", "rulebook": {}, "events": [
+    {"kind": "task_started", "task": "s2"},
+    {"kind": "tool_call", "tool": "bash", "digest": "L1", "result_hash": "r"},
+    {"kind": "tool_result", "tool": "bash", "error": false, "digest": "L1"},
+    {"kind": "tool_call", "tool": "bash", "digest": "L1", "result_hash": "r"},
+    {"kind": "tool_result", "tool": "bash", "error": false, "digest": "L1"},
+    {"kind": "tool_call", "tool": "bash", "digest": "L1", "result_hash": "r"},
+    {"kind": "tool_result", "tool": "bash", "error": false, "digest": "L1"}],
+   "expect": {"steers": 1, "classes": ["F4"]}},
+  {"name": "interleaved-loop-holdout", "distribution": "holdout", "rulebook": {}, "events": [
+    {"kind": "task_started", "task": "s3"},
+    {"kind": "tool_call", "tool": "grep", "digest": "G1"},
+    {"kind": "tool_call", "tool": "bash", "digest": "H1", "result_hash": "q"},
+    {"kind": "tool_result", "tool": "bash", "error": false, "digest": "H1"},
+    {"kind": "tool_call", "tool": "bash", "digest": "H1", "result_hash": "q"},
+    {"kind": "tool_result", "tool": "bash", "error": false, "digest": "H1"},
+    {"kind": "tool_call", "tool": "bash", "digest": "H1", "result_hash": "q"},
+    {"kind": "tool_result", "tool": "bash", "error": false, "digest": "H1"}],
+   "expect": {"steers": 1, "steersAtMost": 1, "classes": ["F4"]}},
+  {"name": "error-burst-f2", "distribution": "in", "rulebook": {}, "events": [
+    {"kind": "task_started", "task": "s4"},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true}], "expect": {"steers": 1, "classes": ["F2"]}},
+  {"name": "malformed-bash-f1", "distribution": "in", "rulebook": {}, "events": [
+    {"kind": "task_started", "task": "s5"},
+    {"kind": "tool_call", "tool": "bash", "args": {"command": "run\nls"}}], "expect": {"steers": 1, "classes": ["F1"], "endState": "DEGRADED"}},
+  {"name": "holding-burst-loose-rulebook-holdout", "distribution": "holdout", "rulebook": {"error_burst_window": 6, "error_burst_min": 6}, "events": [
+    {"kind": "task_started", "task": "s6"},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true},
+    {"kind": "tool_result", "tool": "bash", "error": true}], "expect": {"steers": 0}}
+]}
