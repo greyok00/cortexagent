@@ -1,5 +1,7 @@
 # Cortex Supervisory Harness Implementation Plan
 
+> **SUPERSEDED 2026-11-11:** the owner routed the build across sessions. The supervision core (Tasks 1-5, and the runtime wiring) is implemented in Python by another session at `supervision/` (`fsm.py`, `detectors.py`, `supervisor.py`), matching this same spec. Tasks 6-8 of this plan are superseded by `docs/superpowers/plans/2026-11-11-supervision-remaining-lanes-plan.md` (sidecar, eval replay, proposal loop, playbook distiller), rebuilt around the Python core's contracts. This file stays for the record; do not execute it.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the FSM supervisors (in-runtime extension), the no-authority sidecar, the eval-replay gate, the regularized proposal loop, and the cross-session playbook per the approved spec at `docs/superpowers/specs/2026-11-11-cortex-supervisory-harness-design.md`.
