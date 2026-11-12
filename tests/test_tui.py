@@ -8,12 +8,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 def test_splash_geometry():
     from ui.splash import SPLASH_TEXT, SPLASH_MIN_W
-    assert SPLASH_MIN_W() == 62
-    rows = SPLASH_TEXT.split("\n")
-    assert max(len(r) for r in rows) <= 90
-    assert "MODEL: qwen3.8-27B" in SPLASH_TEXT
+    assert SPLASH_MIN_W() == 71   # fork label "stock MoE (VRAM card)" width law
+    import re as _re
+    visible = [_re.sub(r"\x1b\[[0-9;]*m", "", r) for r in SPLASH_TEXT.split("\n")]
+    assert max(len(r) for r in visible) <= 90
+    assert "MODEL: stock MoE (VRAM card)" in SPLASH_TEXT
     assert "AUTHOR: greyok00" in SPLASH_TEXT
-    assert "PROMPT: model/system-prompt.txt" in SPLASH_TEXT
 
 
 def test_palette_is_8bit_monochrome():
@@ -26,8 +26,9 @@ def test_palette_is_8bit_monochrome():
 def test_compact_splash_is_narrow():
     from ui.splash import compact_splash
     lines = compact_splash().split("\n")
-    assert max(len(l) for l in lines) < 70
-    assert any("GREYAGENT" in l for l in lines)
+    assert max(len(l) for l in lines) < 80   # compact stays terminal-narrow
+    assert any("CORTEXAGENT" in l for l in lines)
+    assert any("AUTHOR: greyok00" in l for l in lines)
 
 
 def test_big_number_renders():

@@ -100,6 +100,10 @@
    "sha256": "c2fd5a7afc437ae39b4d8fb9ddb8cb3259c8db24453e7cfc098a7c02137a700f",
    "size": 48195
   },
+  "core/llm.py": {
+   "sha256": "989c5986d353b20bbb525796bb3fafa91de8f69fcfa6cbc420aaac9beea45418",
+   "size": 2946
+  },
   "core/loop.py": {
    "sha256": "e2656c21d439b335b1b53ec4dc37d573bfa52bd8efc4faf9380a62a5d392286c",
    "size": 8604
@@ -107,6 +111,10 @@
   "core/registry.py": {
    "sha256": "1bdf61e18d1596ebbe2d71b4fa885fb8fc06f0c1f2eb9e674a277fb9e53a9fd6",
    "size": 10455
+  },
+  "core/state.py": {
+   "sha256": "bf4c9db557b9e35fb35c70b0e270e29bb7f7f5481a740f0a896aa1c3fce81f16",
+   "size": 2076
   },
   "core/wiring.py": {
    "sha256": "85f0c9510024159a906903dacea3dc900b62ce8b2dbfbea5f79d56ac089083d0",

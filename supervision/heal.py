@@ -6,7 +6,7 @@ going so it doesn't stop').
 Heuristic backend — symptom -> diagnosis -> action -> lesson recorded so
 repeat sightings escalate to the right action immediately:
   - model :7090 dead            -> systemd reboot (auto via watcher, verify)
-  - lane :7091 dead             -> systemctl restart cortexagent-lane
+  - lane :7091 dead             -> systemctl restart cortex-agent-lane
   - lane 502 / empty responses  -> restart lane; if model busy, wait
   - lane 1-token storm pattern  -> note; clamp fix already live (no action)
   - GPU OOM in boot log         -> boot ladder handles; log lesson

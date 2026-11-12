@@ -284,7 +284,10 @@ class Supervisor:
 
     # ---------- outputs ----------
     def _emit(self, prose: str):
-        """Real steering into the LIVE session via the existing channel."""
+        """Real steering into the LIVE session (steer.jsonl channel) and
+        recorded for drain()-pullers (decisions contract)."""
+        self._pending = getattr(self, "_pending", [])
+        self._pending.append(prose)
         try:
             with open(STEER_FILE, "a") as f:
                 f.write(json.dumps({"ts": time.time(), "msg": prose}) + "\n")
@@ -300,5 +303,9 @@ class Supervisor:
             pass
 
     def drain(self) -> list[str]:
-        out, self._pending = getattr(self, "_pending", []), []
+        """Steering issued since last drain (wiring contract: a pump may
+        either rely on _emit's steer.jsonl channel or pull decisions here;
+        both stay true because _emit appends AND records)."""
+        out = getattr(self, "_pending", [])
+        self._pending = []
         return out

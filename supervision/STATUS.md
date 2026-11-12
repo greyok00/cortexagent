@@ -1,8 +1,8 @@
 # SUPERVISOR STATUS (updated by heal.py every 20s; watch.py incidents below)
 
 ## Machine plane: LIVE ✅
-- model :7090 13107ctx/15364MiB all-VRAM (systemd cortexagent-model)
-- lane :7091 lossless (systemd cortexagent-lane)
+- model :7090 13107ctx/15364MiB all-VRAM (systemd cortex-agent-model)
+- lane :7091 lossless (systemd cortex-agent-lane)
 - heal.py: machine healer + lessons (lessons.jsonl)
 - watch.py: session incident detector (incidents.jsonl)
 

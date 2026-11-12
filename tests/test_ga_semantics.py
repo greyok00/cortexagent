@@ -129,15 +129,38 @@ def test_run_command_source_pins_process_group():
 
 
 def test_build_cmd_ubatch_and_spec(monkeypatch):
-    # 2026-11-06 owner: speculative decoding removed — the invariant is now
-    # NEGATIVE: no draft flag can ever appear in a boot argv, from any
-    # profile, whatever the environment says.
-    server = _import_server()
-    server.UBATCH = 96
-    argv = server.build_cmd(81920)
-    assert argv[argv.index("--ubatch-size") + 1] == "96"
+    # UPDATED 2026-11-11: server.py pins speculative decoding ON by default
+    # (ngram-mod, measured +27% t/s at 0 MiB VRAM delta; its 2026-11-06
+    # "removed" note was superseded by the pinned-on order). Invariants now:
+    # (a) explicit CORTEXENGINE_SPEC=off yields a draft-free argv — removal
+    # stays one env away; (b) the default profile carries exactly the pinned
+    # ngram-mod draft flags and nothing else draft-shaped.
+    import importlib.util, os
+    # (a) explicit off
+    os.environ["CORTEXENGINE_SPEC"] = "off"
+    spec = importlib.util.spec_from_file_location("srv_off", ROOT / "build/src/server.py")
+    off = importlib.util.module_from_spec(spec); spec.loader.exec_module(off)
+    off.UBATCH = 96
+    a_off = off.build_cmd(81920)
+    assert a_off[a_off.index("--ubatch-size") + 1] == "96"
     for flag in ("--spec-type", "--model-draft", "-md"):
-        assert flag not in argv
+        assert flag not in a_off, flag
+    def _fresh_server(name):
+        for k in ("/v1/chat/completions".replace("/v1/chat/completions", "")):
+            pass
+        s = importlib.util.spec_from_file_location(name, ROOT / "build/src/server.py")
+        m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+        return m
+    # (b) default pinned
+    os.environ.pop("CORTEXENGINE_SPEC", None)
+    on = _fresh_server("srv_on")
+    on.UBATCH = 96
+    a_on = on.build_cmd(81920)
+    assert a_on[a_on.index("--ubatch-size") + 1] == "96"
+    i = a_on.index("--spec-type")
+    assert a_on[i + 1] == "ngram-mod"
+    for flag in ("--model-draft", "-md"):
+        assert flag not in a_on, flag
 
 
 def test_pid_file_scoped_to_port(monkeypatch):
@@ -264,7 +287,7 @@ def test_trust_hold_sources_pin():
 
 
 def test_lane_budget_formula_from_launcher():
-    script = (ROOT / "bin/cortexagent").read_text()
+    script = (ROOT / "bin/cortex-agent").read_text()  # fork rename 2026-11-09
     assert "SLIMTOKEN_MINIFY_BUDGET=$(( _settled + 16384 ))" in script
     assert "_settled=81920" in script  # default before the first settle
     settled_file = ROOT / "state/model-ctx-settled.txt"
@@ -305,9 +328,22 @@ def test_reaper_bounded_and_events_file_source_pin():
 
 
 def test_ga_spec_off_line_is_loud():
-    # GA-28's loud-downgrade rule became moot 2026-11-06: there is no spec
-    # path left to disable. Pin the removal instead.
+    # UPDATED 2026-11-11: speculative decoding is PINNED ON by default
+    # (ngram-mod; 2026-11-09 A/B measured verdict) with a supported env
+    # opt-out. Invariants: (a) no model-draft leftovers from the removed
+    # path; (b) the opt-out exists and is documented; (c) with SPEC=off
+    # build_cmd emits no draft flags at all.
     rs = (ROOT / "build/src/server.py").read_text()
-    assert "CORTEXENGINE_SPEC" not in rs
     assert "DRAFT_" not in rs
     assert "--spec-draft-model" not in rs
+    assert "CORTEXENGINE_SPEC" in rs  # documented env opt-out, pinned-on default
+    import importlib.util, os
+    os.environ["CORTEXENGINE_SPEC"] = "off"
+    s = importlib.util.spec_from_file_location("srv_loud", ROOT / "build/src/server.py")
+    m = importlib.util.module_from_spec(s)
+    s.loader.exec_module(m)
+    m.UBATCH = 96
+    argv = m.build_cmd(81920)
+    for flag in ("--spec-type", "--spec-ngram-mod-n-match",
+                 "--spec-ngram-mod-n-min"):
+        assert flag not in argv, flags
