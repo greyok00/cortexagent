@@ -8,6 +8,9 @@
 
 **Tech Stack:** Python 3.13 stdlib only; pytest.
 
+---
+
+> **EXECUTED 2026-11-11:** all four tasks implemented and verified by the core-owner session after the cortexagent session closed. Evidence: sidecar suite 4/4, replay gate 3/3 (incl. dead-rule catch, exit 1), proposal loop 4/4 (adopt + reject with provenance, healthy-class pruner); fixtures 6 scenarios all PASS on committed defaults; pipeline demo (12 F4 fires -> stats -> distill -> playbook entry -> replay-gated adoption of repetition_limit 3->2, version 2) reproduced end-to-end. One core change (CFG gate widened to all tools carrying args; node1 advisory) committed by the core owner with the plan's knowledge-gap filled. Services: cortex-sidecar.service (watch, distill) + cortex-propose.timer (daily 04:30) enabled alongside cortex-supervisor.service.
 ## Global Constraints
 
 - SUPERSEDES Tasks 6-8 of `docs/superpowers/plans/2026-11-11-cortex-supervisory-harness.md` (Tasks 1-5 superseded by the other session's Python implementation of the same spec).
@@ -63,7 +66,7 @@ Scenario schema:
 - Consumes: `state/supervision/supervision_events.jsonl` (core output).
 - Produces: `stats.json`, `playbook.json`, `sidecar.state.json` (offset). Used by Tasks B/C (playbook entries consumed by future wiring; classes `F1`..`F4`).
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_supervision_sidecar.py`:
+- [x] **Step 1: Write the failing tests** in `tests/test_supervision_sidecar.py`:
 
 ```python
 import json, pathlib, subprocess, sys, tempfile
@@ -131,8 +134,8 @@ def test_distill_threshold_and_ageout():
         assert json.loads((td / "playbook.json").read_text())["entries"] == []
 ```
 
-- [ ] **Step 2: Run to verify it fails** — `pytest tests/test_supervision_sidecar.py -q` (FAIL: sidecar missing).
-- [ ] **Step 3: Implement** `bin/supervisor-sidecar.py`:
+- [x] **Step 2: Run to verify it fails** — `pytest tests/test_supervision_sidecar.py -q` (FAIL: sidecar missing).
+- [x] **Step 3: Implement** `bin/supervisor-sidecar.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -299,8 +302,8 @@ if __name__ == "__main__":
 
 Effectiveness semantics (documented for the pruner): every fire of a class opens a pending settle window; if the class fires again before the window closes, the previous fire counts as refired; a window that closes with no re-fire counts as resolved. `test_counts_and_effectiveness` expects exactly one resolve for a clean tail of consecutive fires.
 
-- [ ] **Step 4: Run to verify** — `pytest tests/test_supervision_sidecar.py tests/ -q` all pass.
-- [ ] **Step 5: Commit** `git add bin/supervisor-sidecar.py tests/test_supervision_sidecar.py && git commit -m "feat: supervision sidecar stats + playbook distiller (no authority)"`.
+- [x] **Step 4: Run to verify** — `pytest tests/test_supervision_sidecar.py tests/ -q` all pass.
+- [x] **Step 5: Commit** `git add bin/supervisor-sidecar.py tests/test_supervision_sidecar.py && git commit -m "feat: supervision sidecar stats + playbook distiller (no authority)"`.
 
 ---
 
@@ -315,7 +318,7 @@ Effectiveness semantics (documented for the pruner): every fire of a class opens
 - Consumes: `supervision.supervisor.Supervisor` (other session's core, imported, never edited).
 - Produces: exit-code gate used by the proposal loop; PASS/FAIL stdout lines.
 
-- [ ] **Step 1: Write the scenario fixtures** in `tests/fixtures/supervision-scenarios.json`:
+- [x] **Step 1: Write the scenario fixtures** in `tests/fixtures/supervision-scenarios.json`:
 
 ```json
 {"scenarios": [
@@ -367,7 +370,7 @@ Effectiveness semantics (documented for the pruner): every fire of a class opens
 
 (The last scenario is the pruner's control: a loosened `error_burst_min: 6` must NOT fire on a 5-error burst; the proposal loop uses it to prove a tightening candidate actually closes the gap.)
 
-- [ ] **Step 2: Write `bin/eval_replay.py`**:
+- [x] **Step 2: Write `bin/eval_replay.py`**:
 
 ```python
 #!/usr/bin/env python3
@@ -484,10 +487,10 @@ if __name__ == "__main__":
 
 (Contract note: the worker reads the core READ-ONLY, so failure classes are derived from the steer prose the ladder itself writes (`_classes_from_steers` above), never from `supervision/` internals. If the ladder prose ever changes, only the marker table moves.)
 
-- [ ] **Step 3: Baseline pass then the gate is real**:
+- [x] **Step 3: Baseline pass then the gate is real**:
   - `bin/eval_replay.py` → all PASS, exit 0.
   - `bin/eval_replay.py --dist in --override '{"repetition_limit": 99}'` → `repetition-loop-steers-then-ladder` FAILS (a rule that never fires cannot pass the loop scenario).
-- [ ] **Step 4: Tests** `tests/test_supervision_replay.py`:
+- [x] **Step 4: Tests** `tests/test_supervision_replay.py`:
 
 ```python
 import json, pathlib, subprocess, sys, tempfile
@@ -514,7 +517,7 @@ def test_holdout_split_runs():
         assert p.returncode == 0
 ```
 
-- [ ] **Step 5: Commit** `git add bin/eval_replay.py bin/eval_replay_worker.py tests/fixtures/supervision-scenarios.json tests/test_supervision_replay.py && git commit -m "feat: eval replay gate driving the real supervision core"`.
+- [x] **Step 5: Commit** `git add bin/eval_replay.py bin/eval_replay_worker.py tests/fixtures/supervision-scenarios.json tests/test_supervision_replay.py && git commit -m "feat: eval replay gate driving the real supervision core"`.
 
 ---
 
@@ -528,7 +531,7 @@ def test_holdout_split_runs():
 - Consumes: `stats.json` (Task A), `bin/eval_replay.py` (Task B).
 - Produces: rulebook.json version bump + provenance lines, only when in-distribution AND holdout replays both pass.
 
-- [ ] **Step 1: Write the failing tests** in `tests/test_supervision_propose.py`:
+- [x] **Step 1: Write the failing tests** in `tests/test_supervision_propose.py`:
 
 ```python
 import json, pathlib, subprocess, sys, tempfile
@@ -588,7 +591,7 @@ def test_f2_route_picks_burst_knob_from_details():
         assert prov["knob"] == "error_burst_min"
 ```
 
-- [ ] **Step 2: Implement** `bin/supervisor_propose.py`:
+- [x] **Step 2: Implement** `bin/supervisor_propose.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -681,16 +684,16 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 3: Run to verify** — pytest the propose file + full suite; the adopt decision follows the real replay gate (the fixture scenarios determine it; both-dist pass is required, so a candidate that breaks the holdout control `holding-burst-loose-rulebook-holdout` or any in-dist scenario is rejected WITH provenance).
-- [ ] **Step 4: Commit** `git add bin/supervisor_propose.py tests/test_supervision_propose.py && git commit -m "feat: RRSI proposal loop over the supervision rulebook (critic pruner, provenance)"`.
+- [x] **Step 3: Run to verify** — pytest the propose file + full suite; the adopt decision follows the real replay gate (the fixture scenarios determine it; both-dist pass is required, so a candidate that breaks the holdout control `holding-burst-loose-rulebook-holdout` or any in-dist scenario is rejected WITH provenance).
+- [x] **Step 4: Commit** `git add bin/supervisor_propose.py tests/test_supervision_propose.py && git commit -m "feat: RRSI proposal loop over the supervision rulebook (critic pruner, provenance)"`.
 
 ---
 
 ### Task D: verification
 
-- [ ] `pytest tests/ -q` green (existing + sidecar + replay + propose).
-- [ ] EXCLUDE check: `git diff b1005425..HEAD --stat -- supervision/` is EMPTY (we never touched the other session's code).
-- [ ] `bin/eval_replay.py` exits 0 on the committed defaults.
-- [ ] State-dir smoke: `bin/supervisor-sidecar.py --once` on the real stream exits 0 and leaves `stats.json` valid JSON.
-- [ ] Sibling parity: HEADs equal; cortexagent untracked files are exactly the other session's supervision files.
-- [ ] Report: spec success criteria evidence (loop trips within 3 events per detector limit; rejected candidates provenance-only; no VRAM/model calls anywhere in new files: `grep -n -i "vram\|gpu\|ollama\|llama" bin/supervisor-*.py bin/eval_replay*.py` → empty).
+- [x] `pytest tests/ -q` green (existing + sidecar + replay + propose).
+- [x] EXCLUDE check: `git diff b1005425..HEAD --stat -- supervision/` is EMPTY (we never touched the other session's code).
+- [x] `bin/eval_replay.py` exits 0 on the committed defaults.
+- [x] State-dir smoke: `bin/supervisor-sidecar.py --once` on the real stream exits 0 and leaves `stats.json` valid JSON.
+- [x] Sibling parity: HEADs equal; cortexagent untracked files are exactly the other session's supervision files.
+- [x] Report: spec success criteria evidence (loop trips within 3 events per detector limit; rejected candidates provenance-only; no VRAM/model calls anywhere in new files: `grep -n -i "vram\|gpu\|ollama\|llama" bin/supervisor-*.py bin/eval_replay*.py` → empty).
