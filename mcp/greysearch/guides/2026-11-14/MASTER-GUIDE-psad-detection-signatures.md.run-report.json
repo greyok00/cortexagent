@@ -1,0 +1,95 @@
+{
+  "query": "psad detection signatures",
+  "engines": [],
+  "search_proxy": "off",
+  "search_proxy_note": "proxy mode off: direct",
+  "scrape_transport": "scrape direct (no proxy)",
+  "search_ladder": [
+    "local: 118 results (full engine set)",
+    "local: degraded (2 required engines down: duckduckgo,mojeek)",
+    "searx.space: tried 11 instance-probes, failed (JSONDecodeError: Expecting value: line 1 column 1 (char 0))",
+    "direct keyless: not engaged (enough results)",
+    "instance preflight: alive 11 of 12 tried",
+    "proxy mode off: direct",
+    "scrape direct (no proxy)"
+  ],
+  "instance_preflight": {
+    "alive": [
+      "https://anonsearch.win",
+      "https://baresearch.org",
+      "https://etsi.me",
+      "https://kantan.cat",
+      "https://opnxng.com",
+      "https://priv.au",
+      "https://search.banke.cloud",
+      "https://search.femboy.ad",
+      "https://search.hbubli.cc",
+      "https://search.inetol.net",
+      "https://search.jeremyh.xyz"
+    ],
+    "dead": [
+      "https://search.chocolatemoo53.com"
+    ],
+    "candidates": [
+      "https://anonsearch.win",
+      "https://baresearch.org",
+      "https://etsi.me",
+      "https://kantan.cat",
+      "https://opnxng.com",
+      "https://priv.au",
+      "https://search.banke.cloud",
+      "https://search.chocolatemoo53.com",
+      "https://search.femboy.ad",
+      "https://search.hbubli.cc",
+      "https://search.inetol.net",
+      "https://search.jeremyh.xyz"
+    ],
+    "tried": 12,
+    "elapsed_s": 45.45,
+    "line": "instance preflight: alive 11 of 12 tried"
+  },
+  "candidate_count": 8,
+  "scraped_count": 3,
+  "accepted_count": 3,
+  "quarantined_count": 0,
+  "rejected_count": 0,
+  "accepted_sources": [
+    "https://github.com/mrash/psad",
+    "https://www.cipherdyne.org/psad/",
+    "https://www.digitalocean.com/community/tutorials/how-to-use-psad-to-detect-network-intrusion-attempts-on-an-ubuntu-vps"
+  ],
+  "skipped_pages": [
+    {
+      "url": "https://github.com/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://linuxsecurity.com/features/meet-the-anti-nmap-psad",
+      "decision": "deprioritized",
+      "reason": "page cap 3 reached"
+    },
+    {
+      "url": "https://www.cipherdyne.com/psad/",
+      "decision": "deprioritized",
+      "reason": "page cap 3 reached"
+    },
+    {
+      "url": "http://cipherdyne.org/psad/",
+      "decision": "deprioritized",
+      "reason": "page cap 3 reached"
+    },
+    {
+      "url": "https://www.cipherdyne.org/LinuxFirewalls/ch07/",
+      "decision": "deprioritized",
+      "reason": "page cap 3 reached"
+    }
+  ],
+  "quality_warnings": [],
+  "judge_assist": {
+    "used": false,
+    "moved": 0,
+    "tried": 0,
+    "policy": "rules (default)"
+  }
+}

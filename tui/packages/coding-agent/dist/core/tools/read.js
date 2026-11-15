@@ -157,7 +157,16 @@ export function createReadToolDefinition(cwd, options) {
                         let content;
                         let details;
                         const nonVisionImageNote = getNonVisionImageNote(ctx?.model);
-                        if (mimeType) {
+                        const __imgSuffixes = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+                        const __imgPath = String(absolutePath).toLowerCase();
+                        if (__imgSuffixes.some((s) => __imgPath.endsWith(s))) {
+                            const { spawnSync } = await import("node:child_process");
+                            const r = spawnSync("/usr/bin/python3", ["/home/grey/.local/bin/cortex-img", String(absolutePath)], { encoding: "utf-8", timeout: 180000 });
+                            const __out = ((r.stdout || "") + ((r.stderr || "").trim() ? "\n[" + r.stderr.trim().slice(0, 200) + "]" : "")).trim();
+                            const textNote = "Read image file [rendered as text by cortex-img]\n" + __out;
+                            content = [{ type: "text", text: textNote }];
+                        }
+                        else if (mimeType) {
                             const buffer = await ops.readFile(absolutePath);
                             const processed = await processImage(buffer, mimeType, { autoResizeImages });
                             if (!processed.ok) {

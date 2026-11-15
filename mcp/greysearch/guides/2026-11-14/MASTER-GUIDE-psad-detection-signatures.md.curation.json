@@ -1,0 +1,2119 @@
+{
+ "query": "psad detection signatures",
+ "query_keywords": [
+  "psad detection signatures"
+ ],
+ "counts": {
+  "pages": 3,
+  "accepted": 3,
+  "quarantined": 0,
+  "rejected": 0,
+  "unscraped_candidates": 5
+ },
+ "pages": [
+  {
+   "id": "pg0",
+   "url": "https://github.com/mrash/psad",
+   "final_url": "https://github.com/mrash/psad",
+   "title": "GitHub - mrash/psad: psad: Intrusion Detection and Log Analysis with iptables \u00b7 GitHub",
+   "domain": "github.com",
+   "tier": "primary",
+   "decision": "accept",
+   "reason": "title coverage 0.67; body coverage 1.00; headings coverage 0.00 [deterministic judge - research guide]",
+   "relevance_score": 100,
+   "source_type": "official_docs",
+   "risk_flags": [],
+   "chars": 10617,
+   "paragraphs": [
+    {
+     "id": "pg0#p0",
+     "text": "/"
+    },
+    {
+     "id": "pg0#p1",
+     "text": "(27)\nPull requests\n2\n\u00a0(2)\nProjects\nWiki\nSecurity and quality\n\u00a0(78)\nStar440\n\u00a0(440)\nadd IP_INFO data to email alerts, defaults to Talos\n8720f6a"
+    },
+    {
+     "id": "pg0#p2",
+     "text": "History\n2,385 Commits\nFolders and files\nName Last commit message Last commit date"
+    },
+    {
+     "id": "pg0#p3",
+     "text": "deps"
+    },
+    {
+     "id": "pg0#p4",
+     "text": "add reputation feed https://rules.emergingthreats.net/blockrules/comp\u2026"
+    },
+    {
+     "id": "pg0#p5",
+     "text": "doc"
+    },
+    {
+     "id": "pg0#p6",
+     "text": "moved to doc directory"
+    },
+    {
+     "id": "pg0#p7",
+     "text": "images"
+    },
+    {
+     "id": "pg0#p8",
+     "text": "start on markdown format for README"
+    },
+    {
+     "id": "pg0#p9",
+     "text": "init-scripts"
+    },
+    {
+     "id": "pg0#p10",
+     "text": "update systemd init script from github user @rathann"
+    },
+    {
+     "id": "pg0#p11",
+     "text": "misc"
+    },
+    {
+     "id": "pg0#p12",
+     "text": "use new->"
+    },
+    {
+     "id": "pg0#p13",
+     "text": "packaging"
+    },
+    {
+     "id": "pg0#p14",
+     "text": "bump version to 2.4.6"
+    },
+    {
+     "id": "pg0#p15",
+     "text": "patches"
+    },
+    {
+     "id": "pg0#p16",
+     "text": "updated iptables trailing space link"
+    },
+    {
+     "id": "pg0#p17",
+     "text": "selinux"
+    },
+    {
+     "id": "pg0#p18",
+     "text": "(Miroslav Grepl) Contributed policy file to make psad compatible with\u2026"
+    },
+    {
+     "id": "pg0#p19",
+     "text": "test"
+    },
+    {
+     "id": "pg0#p20",
+     "text": "add reputation_scan"
+    },
+    {
+     "id": "pg0#p21",
+     "text": "CREDITS"
+    },
+    {
+     "id": "pg0#p22",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p23",
+     "text": "ChangeLog"
+    },
+    {
+     "id": "pg0#p24",
+     "text": "more reputation feed work to enable it within scan data structures"
+    },
+    {
+     "id": "pg0#p25",
+     "text": "LICENSE"
+    },
+    {
+     "id": "pg0#p26",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p27",
+     "text": "Makefile"
+    },
+    {
+     "id": "pg0#p28",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p29",
+     "text": "README"
+    },
+    {
+     "id": "pg0#p30",
+     "text": "add README link"
+    },
+    {
+     "id": "pg0#p31",
+     "text": "README.md"
+    },
+    {
+     "id": "pg0#p32",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p33",
+     "text": "VERSION"
+    },
+    {
+     "id": "pg0#p34",
+     "text": "start on test suite support for reputation feed tests"
+    },
+    {
+     "id": "pg0#p35",
+     "text": "auto_dl"
+    },
+    {
+     "id": "pg0#p36",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p37",
+     "text": "fwcheck_psad.pl"
+    },
+    {
+     "id": "pg0#p38",
+     "text": "implement IP network reputation feed detection (in addition to just s\u2026"
+    },
+    {
+     "id": "pg0#p39",
+     "text": "icmp6_types"
+    },
+    {
+     "id": "pg0#p40",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p41",
+     "text": "icmp_types"
+    },
+    {
+     "id": "pg0#p42",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p43",
+     "text": "install.answers.example"
+    },
+    {
+     "id": "pg0#p44",
+     "text": "Added install.answers.example file to illustrate install.pl answers t\u2026"
+    },
+    {
+     "id": "pg0#p45",
+     "text": "install.pl"
+    },
+    {
+     "id": "pg0#p46",
+     "text": "add IP_INFO data to email alerts, defaults to Talos"
+    },
+    {
+     "id": "pg0#p47",
+     "text": "ip_options"
+    },
+    {
+     "id": "pg0#p48",
+     "text": "kmsgsd.c"
+    },
+    {
+     "id": "pg0#p49",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p50",
+     "text": "nf2csv"
+    },
+    {
+     "id": "pg0#p51",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p52",
+     "text": "pf.os"
+    },
+    {
+     "id": "pg0#p53",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p54",
+     "text": "posf"
+    },
+    {
+     "id": "pg0#p55",
+     "text": "Removed \"$Id$\" tags (meaningless for git)"
+    },
+    {
+     "id": "pg0#p56",
+     "text": "protocols"
+    },
+    {
+     "id": "pg0#p57",
+     "text": "added 'protocols' file in support of IP protocol scan detection (nmap\u2026"
+    },
+    {
+     "id": "pg0#p58",
+     "text": "psad"
+    },
+    {
+     "id": "pg0#p59",
+     "text": "psad.conf"
+    },
+    {
+     "id": "pg0#p60",
+     "text": "fix for missing semicolon for IP_INFO variable, fixes #59"
+    },
+    {
+     "id": "pg0#p61",
+     "text": "psad.h"
+    },
+    {
+     "id": "pg0#p62",
+     "text": "psad_funcs.c"
+    },
+    {
+     "id": "pg0#p63",
+     "text": "psadwatchd.c"
+    },
+    {
+     "id": "pg0#p64",
+     "text": "Bugfix: String pointer not dereferenced."
+    },
+    {
+     "id": "pg0#p65",
+     "text": "signatures"
+    },
+    {
+     "id": "pg0#p66",
+     "text": "interim work to replace all 'arachnids' references with valid updated\u2026"
+    },
+    {
+     "id": "pg0#p67",
+     "text": "snort_rule_dl"
+    },
+    {
+     "id": "pg0#p68",
+     "text": "strlcat.c"
+    },
+    {
+     "id": "pg0#p69",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p70",
+     "text": "strlcpy.c"
+    },
+    {
+     "id": "pg0#p71",
+     "text": "minor spacing fixes"
+    },
+    {
+     "id": "pg0#p72",
+     "text": "psad - Intrusion Detection with iptables Logs\nIntroduction"
+    },
+    {
+     "id": "pg0#p73",
+     "text": "The Port Scan Attack Detector psad is a lightweight system daemon written in is designed to work with Linux iptables/ip6tables/firewalld firewalling code to detect suspicious traffic such as port scans and sweeps, backdoors, botnet command and control communications, and more. It features a set of highly configurable danger thresholds (with sensible defaults provided), verbose alert messages that include the source, destination, scanned port range, begin and end times, TCP flags and corresponding nmap options, reverse DNS info, email and syslog alerting, automatic blocking of offending IP addresses via dynamic configuration of iptables rulesets, passive operating system fingerprinting, and DShield reporting. In addition, psad incorporates many of the TCP, UDP, and ICMP signatures included in the Snort intrusion detection system. to detect highly suspect scans for various backdoor programs (e.g. EvilFTP, GirlFriend, SubSeven), DDoS tools (Mstream, Shaft), and advanced port scans (SYN, FIN, XMAS) which are easily leveraged against a machine via nmap. psad can also alert on Snort signatures that are logged via fwsnort, which makes use of the iptables string match extension to detect traffic that matches application layer signatures. As of the 2.4.4 release, psad can also detect the IoT default credentials scanning phase of the Mirai botnet."
+    },
+    {
+     "id": "pg0#p74",
+     "text": "The complete feature list is below."
+    },
+    {
+     "id": "pg0#p75",
+     "text": "Features\nDetection for TCP SYN, FIN, NULL, and XMAS scans as well as UDP scans.\nSupport for both IPv4 and IPv6 logs generated by iptables and ip6tables respectively.\nDetection of many signature rules from the Snort intrusion detection system.\nForensics mode iptables/ip6tables logfile analysis (useful as a forensics tool for extracting scan information from old iptables/ip6tables logfiles).\nPassive operating system fingerprinting via TCP syn packets. Two different fingerprinting strategies are supported; a re-implementation of p0f that strictly uses iptables/ip6tables log messages (requires the --log-tcp-options command line switch), and a TOS-based strategy.\nEmail alerts that contain TCP/UDP/ICMP scan characteristics, reverse dns and whois information, snort rule matches, remote OS guess information, and more.\nWhen combined with fwsnort and the iptables string match extension, psad can generate alerts for application layer buffer overflow attacks, suspicious application commands, and other suspect layer 7 traffic.\nIcmp type and code header field validation.\nConfigurable scan thresholds and danger level assignments.\nIptables ruleset parsing to verify \"default drop\" policy stance.\nIP/network danger level auto-assignment (can be used to ignore or automatically escalate danger levels for certain networks).\nDShield alerts.\nAuto-blocking of scanning IP addresses via iptables/ip6tables and/or tcpwrappers based on scan danger level. (This feature is NOT enabled by default.)\nParsing of iptables/ip6tables log messages and generation of CSV output that can be used as input to AfterGlow. This allows iptables/ip6tables logs to be visualized. Gnuplot is also supported.\nStatus mode that displays a summary of current scan information with associated packet counts, iptables/ip6tables chains, and danger levels.\nVisualizing Malicious Traffic"
+    },
+    {
+     "id": "pg0#p76",
+     "text": "psad offers integration with gnuplot and afterglow to produce graphs of malicious traffic. The following two graphs are of the Nachi worm from the Honeynet Scan30 challenge. First, a link graph produced by afterglow after analysis of the iptables log data by psad:"
+    },
+    {
+     "id": "pg0#p77",
+     "text": "\"Nachi Worm Link Graph\""
+    },
+    {
+     "id": "pg0#p78",
+     "text": "The second shows Nachi worm traffic on an hourly basis from the Scan30 iptables data:"
+    },
+    {
+     "id": "pg0#p79",
+     "text": "\"Nachi Worm Hourly Graph\""
+    },
+    {
+     "id": "pg0#p80",
+     "text": "Configuration Information"
+    },
+    {
+     "id": "pg0#p81",
+     "text": "Information on config keywords referenced by psad may be found both in the psad(8) man page, and also here:"
+    },
+    {
+     "id": "pg0#p82",
+     "text": "http://www.cipherdyne.org/psad/docs/config.html"
+    },
+    {
+     "id": "pg0#p83",
+     "text": "Methodology"
+    },
+    {
+     "id": "pg0#p84",
+     "text": "All information psad analyzes is gathered from iptables log messages. psad by default reads the /var/log/messages file for new iptables messages and optionally writes them out to a dedicated file (/var/log/psad/fwdata). psad is then responsible for applying the danger threshold and signature logic in order to determine whether or not a port scan has taken place, send appropriate alert emails, and (optionally) block offending ip addresses. psad includes a signal handler such that if a USR1 signal is received, psad will dump the contents of the current scan hash data structure to /var/log/psad/scan_hash.$$ where \"$$\" represents the pid of the running psad daemon."
+    },
+    {
+     "id": "pg0#p85",
+     "text": "NOTE: Since psad relies on iptables to generate appropriate log messages for unauthorized packets, psad is only as good as the logging rules included in the iptables ruleset. Hence if your firewall is not configured to log packets, then psad will NOT detect port scans or anything else. Usually the best way setup the firewall is with default \"drop and log\" rules at the end of the ruleset, and include rules above this last rule that only allow traffic that should be allowed through. Upon execution, the psad daemon will attempt to ascertain whether or not such a default deny rule exists, and will warn the user if not. See the FW_EXAMPLE_RULES file for example firewall rulesets that are compatible with psad."
+    },
+    {
+     "id": "pg0#p86",
+     "text": "Additionally, extensive coverage of psad is included in the book \"Linux Firewalls: Attack Detection and Response\" published by No Starch Press, and a supporting script in this book is compatible with psad. This script can be found here:"
+    },
+    {
+     "id": "pg0#p87",
+     "text": "http://www.cipherdyne.org/LinuxFirewalls/ch01/"
+    },
+    {
+     "id": "pg0#p88",
+     "text": "Installation"
+    },
+    {
+     "id": "pg0#p89",
+     "text": "Depending on the Linux distribution, psad may already be available in the default package repository. For example, on Debian or Ubuntu systems, installation is done with a simple:"
+    },
+    {
+     "id": "pg0#p90",
+     "text": "apt-get install psad"
+    },
+    {
+     "id": "pg0#p91",
+     "text": "If psad is not available in the package repository, it can be installed with the install.pl script bundled in the psad sources. The install.pl script also handles upgrades if psad is already installed. psad requires several perl modules that may or may not already be installed on your Linux system. These modules are included in the deps/ directory in the psad sources, and are automatically installed by the install.pl script. The list of modules is:"
+    },
+    {
+     "id": "pg0#p92",
+     "text": "Bit::Vector\nDate::Calc\nIPTables::ChainMgr\nIPTables::Parse\nNetAddr::IP\nStorable\nUnix::Syslog"
+    },
+    {
+     "id": "pg0#p93",
+     "text": "psad also includes a whois client written by Marco d'Itri (see the deps/whois directory). This client does better than others at collecting the correct whois information for a given IP address."
+    },
+    {
+     "id": "pg0#p94",
+     "text": "Firewall Setup"
+    },
+    {
+     "id": "pg0#p95",
+     "text": "The main requirement for an iptables configuration to be compatible with psad is simply that iptables logs packets. This is commonly accomplished by adding rules to the INPUT and FORWARD chains like so:"
+    },
+    {
+     "id": "pg0#p96",
+     "text": "iptables -A INPUT -j LOG\niptables -A FORWARD -j LOG"
+    },
+    {
+     "id": "pg0#p97",
+     "text": "The rules above should be added at the end of the INPUT and FORWARD chains after all ACCEPT rules for legitimate traffic and just before a corresponding DROP rule for traffic that is not to be allowed through the policy. Note that iptables policies can be quite complex with protocol, network, port, and interface restrictions, user defined chains, connection tracking rules, and much more. There are many pieces of software such as Shorewall and Firewall Builder, that build iptables policies and take advantage of the advanced filtering and logging capabilities offered by iptables. Generally the policies built by such pieces of software are compatible with psad since they specifically add rules that instruct iptables to log packets that are not part of legitimate traffic. Psad can be configured to only analyze those iptables messages that contain specific log prefixes (which are added via the --log-prefix option), but the default is for psad to analyze all iptables log messages for evidence of port scans, probes for backdoor programs, and other suspect traffic."
+    },
+    {
+     "id": "pg0#p98",
+     "text": "Platforms"
+    },
+    {
+     "id": "pg0#p99",
+     "text": "psad generally runs on Linux systems, and is available in the package repositories of many major Linux distributions. If there are any operational issues with psad, please open an issue on github"
+    },
+    {
+     "id": "pg0#p100",
+     "text": "License"
+    },
+    {
+     "id": "pg0#p101",
+     "text": "psad is released as open source software under the terms of the GNU General Public License (GPL v2+). The latest release can be found at https://github.com/mrash/psad/releases"
+    },
+    {
+     "id": "pg0#p102",
+     "text": "psad makes use of many of the TCP, UDP, and ICMP signatures available in Snort (written by Marty Roesch, see http://www.snort.org). Snort is a registered trademark of Sourcefire, Inc."
+    },
+    {
+     "id": "pg0#p103",
+     "text": "Contact"
+    },
+    {
+     "id": "pg0#p104",
+     "text": "All feature requests and bug fixes are managed through github issues tracking. However, you can email me (michael.rash_AT_gmail.com), or reach me through Twitter (@michaelrash)."
+    },
+    {
+     "id": "pg0#p105",
+     "text": "About"
+    },
+    {
+     "id": "pg0#p106",
+     "text": "psad: Intrusion Detection and Log Analysis with iptables"
+    },
+    {
+     "id": "pg0#p107",
+     "text": "5\n\u00a0(5)\nC"
+    },
+    {
+     "id": "pg0#p108",
+     "text": "Do not share my personal information"
+    }
+   ],
+   "paragraphs_truncated": false,
+   "keywords": [
+    "psad",
+    "iptables",
+    "fixes",
+    "minor",
+    "spacing",
+    "scan",
+    "traffic",
+    "detection",
+    "rules",
+    "information",
+    "default",
+    "messages"
+   ],
+   "headings": [
+    "Navigation Menu",
+    "Repository navigation",
+    "About",
+    "Latest commit",
+    "History",
+    "Folders and files",
+    "Repository files navigation",
+    "Introduction",
+    "Features",
+    "Visualizing Malicious Traffic",
+    "Configuration Information",
+    "Methodology",
+    "Installation",
+    "Firewall Setup",
+    "Platforms",
+    "License",
+    "Contact",
+    "About",
+    "Releases",
+    "Contributors\n5\n\u00a0(5)"
+   ],
+   "images": [
+    {
+     "src": "https://github.githubassets.com/assets/platform-4ce65ae0bf273ce2.png",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://github.githubassets.com/assets/platform-dark-ac89fbf373737ed3.png",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://github.githubassets.com/assets/copilot-e2b89335a66dba00.png",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://github.githubassets.com/assets/copilot-dark-2b28403b6080e898.png",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://github.githubassets.com/assets/changelog-fd687bff072883b0.png",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://github.githubassets.com/assets/changelog-dark-b1c25ae971bd641b.png",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://github.githubassets.com/assets/universe-a98cd54821b27569.png",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://github.githubassets.com/assets/universe-a98cd54821b27569.png",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://avatars.githubusercontent.com/u/380228?s=60&v=4",
+     "title": "mrash",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://avatars.githubusercontent.com/u/380228?v=4&size=40",
+     "title": "mrash",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://github.com/mrash/psad/raw/master/images/nachi_worm.gif",
+     "title": "nachi-worm-link-graph",
+     "gated": false,
+     "gate_reason": "diagram/screenshot supports an action"
+    },
+    {
+     "src": "https://github.com/mrash/psad/raw/master/images/nachi_worm.gif",
+     "title": "nachi-worm-link-graph",
+     "gated": false,
+     "gate_reason": "diagram/screenshot supports an action"
+    },
+    {
+     "src": "https://github.com/mrash/psad/raw/master/images/nachi_worm_hourly.png",
+     "title": "nachi-worm-hourly-graph",
+     "gated": false,
+     "gate_reason": "diagram/screenshot supports an action"
+    },
+    {
+     "src": "https://avatars.githubusercontent.com/u/380228?s=64&v=4",
+     "title": "@mrash",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://avatars.githubusercontent.com/u/173180?s=64&v=4",
+     "title": "@pillarsdotnet",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://avatars.githubusercontent.com/u/1058704?s=64&v=4",
+     "title": "@pyllyukko",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://avatars.githubusercontent.com/u/3112309?s=64&v=4",
+     "title": "@radarhere",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://avatars.githubusercontent.com/u/3234923?s=64&v=4",
+     "title": "@fjoncourt",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    }
+   ]
+  },
+  {
+   "id": "pg1",
+   "url": "https://www.digitalocean.com/community/tutorials/how-to-use-psad-to-detect-network-intrusion-attempts-on-an-ubuntu-vps",
+   "final_url": "https://www.digitalocean.com/community/tutorials/how-to-use-psad-to-detect-network-intrusion-attempts-on-an-ubuntu-vps",
+   "title": "How To Use psad to Detect Network Intrusion Attempts on an Ubuntu VPS | DigitalOcean",
+   "domain": "digitalocean.com",
+   "tier": "unlisted",
+   "decision": "accept",
+   "reason": "title coverage 0.33; body coverage 1.00; headings coverage 0.67 [deterministic judge - research guide]",
+   "relevance_score": 93,
+   "source_type": "unknown",
+   "risk_flags": [],
+   "chars": 23685,
+   "paragraphs": [
+    {
+     "id": "pg1#p0",
+     "text": "Prompt Caching is now GA on DigitalOcean Serverless Inference"
+    },
+    {
+     "id": "pg1#p1",
+     "text": "Introducing Agent Droplets"
+    },
+    {
+     "id": "pg1#p2",
+     "text": "Black Friday on Cloudways: Get 80% off for 2 months, plus unlimited free migrations"
+    },
+    {
+     "id": "pg1#p3",
+     "text": "Featured AI Products"
+    },
+    {
+     "id": "pg1#p4",
+     "text": "Compute"
+    },
+    {
+     "id": "pg1#p5",
+     "text": "Containers and Images"
+    },
+    {
+     "id": "pg1#p6",
+     "text": "Managed Databases"
+    },
+    {
+     "id": "pg1#p7",
+     "text": "Management and Dev Tools"
+    },
+    {
+     "id": "pg1#p8",
+     "text": "Networking"
+    },
+    {
+     "id": "pg1#p9",
+     "text": "Security"
+    },
+    {
+     "id": "pg1#p10",
+     "text": "Storage"
+    },
+    {
+     "id": "pg1#p11",
+     "text": "Browse all products\nFeatured AI Products"
+    },
+    {
+     "id": "pg1#p12",
+     "text": "Managed Agents"
+    },
+    {
+     "id": "pg1#p13",
+     "text": "Run AI agents in the cloud with governed tool access"
+    },
+    {
+     "id": "pg1#p14",
+     "text": "New"
+    },
+    {
+     "id": "pg1#p15",
+     "text": "Learning Services"
+    },
+    {
+     "id": "pg1#p16",
+     "text": "Improve agents and models with evidence"
+    },
+    {
+     "id": "pg1#p17",
+     "text": "New"
+    },
+    {
+     "id": "pg1#p18",
+     "text": "Data Services"
+    },
+    {
+     "id": "pg1#p19",
+     "text": "Store, retrieve, and surface the context you need"
+    },
+    {
+     "id": "pg1#p20",
+     "text": "Inference Engine"
+    },
+    {
+     "id": "pg1#p21",
+     "text": "Run inference at scale with policy-driven routing"
+    },
+    {
+     "id": "pg1#p22",
+     "text": "Model Library"
+    },
+    {
+     "id": "pg1#p23",
+     "text": "Discover, compare, and evaluate AI models"
+    },
+    {
+     "id": "pg1#p24",
+     "text": "GPU Droplets"
+    },
+    {
+     "id": "pg1#p25",
+     "text": "GPU-powered virtual machines to build and run AI apps"
+    },
+    {
+     "id": "pg1#p26",
+     "text": "Browse all products\nSolutions"
+    },
+    {
+     "id": "pg1#p27",
+     "text": "AI/ML"
+    },
+    {
+     "id": "pg1#p28",
+     "text": "CMS"
+    },
+    {
+     "id": "pg1#p29",
+     "text": "Data and IoT"
+    },
+    {
+     "id": "pg1#p30",
+     "text": "Developer Tools"
+    },
+    {
+     "id": "pg1#p31",
+     "text": "Gaming and Media"
+    },
+    {
+     "id": "pg1#p32",
+     "text": "Hosting"
+    },
+    {
+     "id": "pg1#p33",
+     "text": "Security and Networking"
+    },
+    {
+     "id": "pg1#p34",
+     "text": "Startups and SMBs"
+    },
+    {
+     "id": "pg1#p35",
+     "text": "Web and App Platforms"
+    },
+    {
+     "id": "pg1#p36",
+     "text": "See all solutions\nAI/ML"
+    },
+    {
+     "id": "pg1#p37",
+     "text": "AI HR Knowledge Assistant"
+    },
+    {
+     "id": "pg1#p38",
+     "text": "Deploy AI tools developed for Human Resources"
+    },
+    {
+     "id": "pg1#p39",
+     "text": "AI Training GPU"
+    },
+    {
+     "id": "pg1#p40",
+     "text": "Accelerate model training with dedicated GPU infrastructure"
+    },
+    {
+     "id": "pg1#p41",
+     "text": "AI Recommendation Engine"
+    },
+    {
+     "id": "pg1#p42",
+     "text": "Build tools to personalize user experiences"
+    },
+    {
+     "id": "pg1#p43",
+     "text": "Multimodal AI"
+    },
+    {
+     "id": "pg1#p44",
+     "text": "Run models that process multiple data types"
+    },
+    {
+     "id": "pg1#p45",
+     "text": "GPU Clusters"
+    },
+    {
+     "id": "pg1#p46",
+     "text": "GPUs clustered together for large-scale tasks"
+    },
+    {
+     "id": "pg1#p47",
+     "text": "GPU Inference"
+    },
+    {
+     "id": "pg1#p48",
+     "text": "Serve models efficiently with optimized GPU compute"
+    },
+    {
+     "id": "pg1#p49",
+     "text": "Developers"
+    },
+    {
+     "id": "pg1#p50",
+     "text": "Community"
+    },
+    {
+     "id": "pg1#p51",
+     "text": "Documentation"
+    },
+    {
+     "id": "pg1#p52",
+     "text": "Developer Tools"
+    },
+    {
+     "id": "pg1#p53",
+     "text": "Get Involved"
+    },
+    {
+     "id": "pg1#p54",
+     "text": "Utilities and Help"
+    },
+    {
+     "id": "pg1#p55",
+     "text": "Community"
+    },
+    {
+     "id": "pg1#p56",
+     "text": "Blog"
+    },
+    {
+     "id": "pg1#p57",
+     "text": "The latest product releases and insights from our experts"
+    },
+    {
+     "id": "pg1#p58",
+     "text": "The Wave"
+    },
+    {
+     "id": "pg1#p59",
+     "text": "Content to level up your business"
+    },
+    {
+     "id": "pg1#p60",
+     "text": "Tutorials"
+    },
+    {
+     "id": "pg1#p61",
+     "text": "Our extensive library of technical articles"
+    },
+    {
+     "id": "pg1#p62",
+     "text": "Q&A"
+    },
+    {
+     "id": "pg1#p63",
+     "text": "Answers to your cloud and coding questions"
+    },
+    {
+     "id": "pg1#p64",
+     "text": "YouTube"
+    },
+    {
+     "id": "pg1#p65",
+     "text": "Educational content and tutorials"
+    },
+    {
+     "id": "pg1#p66",
+     "text": "Visit DigitalOcean's Community Site\nPartners"
+    },
+    {
+     "id": "pg1#p67",
+     "text": "Become a Partner"
+    },
+    {
+     "id": "pg1#p68",
+     "text": "Marketplace"
+    },
+    {
+     "id": "pg1#p69",
+     "text": "Become a Partner"
+    },
+    {
+     "id": "pg1#p70",
+     "text": "About Partner Pod"
+    },
+    {
+     "id": "pg1#p71",
+     "text": "Discounts, revenue share, and more for businesses"
+    },
+    {
+     "id": "pg1#p72",
+     "text": "AI Partner Program"
+    },
+    {
+     "id": "pg1#p73",
+     "text": "Boost your AI business"
+    },
+    {
+     "id": "pg1#p74",
+     "text": "DigitalOcean Startups"
+    },
+    {
+     "id": "pg1#p75",
+     "text": "Resources and support to propel your startup"
+    },
+    {
+     "id": "pg1#p76",
+     "text": "Partners Directory"
+    },
+    {
+     "id": "pg1#p77",
+     "text": "Current list of DigitalOcean Partners"
+    },
+    {
+     "id": "pg1#p78",
+     "text": "Customer Stories"
+    },
+    {
+     "id": "pg1#p79",
+     "text": "Customers growing on DigitalOcean"
+    },
+    {
+     "id": "pg1#p80",
+     "text": "Need help? Talk to an expert\nBecome a Partner\nPricing"
+    },
+    {
+     "id": "pg1#p81",
+     "text": "How To Use psad to Detect Network Intrusion Attempts on an Ubuntu VPS\nTutorialsSecurityHow To Use psad to Detect Network Intrusion Attempts on an Ubuntu VPS\nTutorial\nPublished on January 10, 2014"
+    },
+    {
+     "id": "pg1#p82",
+     "text": "By Justin Ellingwood"
+    },
+    {
+     "id": "pg1#p83",
+     "text": "Install psad\nConfigure IPTables Rules\nConfigure psad to Detect Scans"
+    },
+    {
+     "id": "pg1#p84",
+     "text": "Being able to detect network activity that may indicate an intrusion attempt can help you take appropriate actions before an event occurs. Intrusion detection systems are available for this specific reason."
+    },
+    {
+     "id": "pg1#p85",
+     "text": "Intrusion detection systems are used to log suspicious connections and report when it looks like unusual activity is taking place. Some programs are used purely as a notification system, while others can actively attempt to block traffic that appear to be intent on causing harm."
+    },
+    {
+     "id": "pg1#p86",
+     "text": "The psad tool, which stands for port scan attack detection, is a piece of software that actively monitors your firewall logs to determine if a scan or attack event is in progress. It can then alert administrators, or take active steps to deter the threat."
+    },
+    {
+     "id": "pg1#p87",
+     "text": "In this guide, we will be exploring how to install and configure psad on an Ubuntu 12.04 VPS. The procedures should be fairly similar on other distributions."
+    },
+    {
+     "id": "pg1#p88",
+     "text": "Install psad"
+    },
+    {
+     "id": "pg1#p89",
+     "text": "The psad intrusion detection system is available in Ubuntu\u2019s default repositories, so it can be easily acquired through apt:"
+    },
+    {
+     "id": "pg1#p90",
+     "text": "sudo apt-get update\nsudo apt-get install psad"
+    },
+    {
+     "id": "pg1#p91",
+     "text": "In order to configure mail delivery to alert the administrator, you will be asked to configure the postfix mail server."
+    },
+    {
+     "id": "pg1#p92",
+     "text": "In most cases, you can select \u201cInternet Site\u201d, and then enter the domain name associated with your server. This will be the domain portion of the name used in the \u201cFrom\u201d field in emails generated by psad."
+    },
+    {
+     "id": "pg1#p93",
+     "text": "Configure IPTables Rules"
+    },
+    {
+     "id": "pg1#p94",
+     "text": "The way that psad detects activity on your server\u2019s ports is by monitoring the logs produced by a firewall application. Ubuntu ships with the iptables firewall by default, but it is completely unconfigured and is not monitoring or blocking anything by default."
+    },
+    {
+     "id": "pg1#p95",
+     "text": "Although you could get away with typing the following commands to simply enable logging, we will do a more robust configuration:"
+    },
+    {
+     "id": "pg1#p96",
+     "text": "sudo iptables -A INPUT -j LOG\nsudo iptables -A FORWARD -j LOG"
+    },
+    {
+     "id": "pg1#p97",
+     "text": "If you entered the rules above, flush the rules before configuring so that we can start from scratch."
+    },
+    {
+     "id": "pg1#p98",
+     "text": "sudo iptables -F"
+    },
+    {
+     "id": "pg1#p99",
+     "text": "You can see the current rules (which should only include the default policies at this point), by typing:"
+    },
+    {
+     "id": "pg1#p100",
+     "text": "sudo iptables -S"
+    },
+    {
+     "id": "pg1#p101",
+     "text": "-P INPUT ACCEPT\n-P FORWARD ACCEPT\n-P OUTPUT ACCEPT"
+    },
+    {
+     "id": "pg1#p102",
+     "text": "We can now start appending our rules, mainly to the INPUT chain. We want to tell iptables to drop connections that we do not need or want. We need to add the rules to explicitly allow our authorized connections prior to adding restrictions."
+    },
+    {
+     "id": "pg1#p103",
+     "text": "The first rule will allow all traffic generated by our server, directed at our server. This type of connection is generally used for services to communicate with each other and pass information easily:"
+    },
+    {
+     "id": "pg1#p104",
+     "text": "sudo iptables -A INPUT -i lo -j ACCEPT"
+    },
+    {
+     "id": "pg1#p105",
+     "text": "Next, we want to add a rule to explicitly allow all traffic related to an existing connection. This will allow our current sessions to continue uninterrupted:"
+    },
+    {
+     "id": "pg1#p106",
+     "text": "sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT"
+    },
+    {
+     "id": "pg1#p107",
+     "text": "Next, we can add the services that we wish to keep open to the public. For SSH, we can add a line like this:"
+    },
+    {
+     "id": "pg1#p108",
+     "text": "sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT"
+    },
+    {
+     "id": "pg1#p109",
+     "text": "If we have a web server running on the default port 80, we can add a rule like this:"
+    },
+    {
+     "id": "pg1#p110",
+     "text": "sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT"
+    },
+    {
+     "id": "pg1#p111",
+     "text": "Add any other ports for legitimate, publicly accessible services you wish to leave open with the same syntax:"
+    },
+    {
+     "id": "pg1#p112",
+     "text": "sudo iptables -A INPUT -p protocol --dport port_num -j ACCEPT"
+    },
+    {
+     "id": "pg1#p113",
+     "text": "After you are done adding the legitimate services, we will drop all remaining connections. Anything that hits this rule did not match our rules that were for legitimate traffic."
+    },
+    {
+     "id": "pg1#p114",
+     "text": "Before we do that though, this we need to add the rule that tell iptables to begin logging traffic. This will cause iptables to log traffic that has not been handled yet."
+    },
+    {
+     "id": "pg1#p115",
+     "text": "sudo iptables -A INPUT -j LOG"
+    },
+    {
+     "id": "pg1#p116",
+     "text": "We also should add this rule to the forward chain in case we end up forwarding traffic elsewhere."
+    },
+    {
+     "id": "pg1#p117",
+     "text": "sudo iptables -A FORWARD -j LOG"
+    },
+    {
+     "id": "pg1#p118",
+     "text": "Finally, let\u2019s drop all extraneous traffic that hasn\u2019t matched yet. We can do this by either adding a rule that matches everything in the chain to the end like this:"
+    },
+    {
+     "id": "pg1#p119",
+     "text": "sudo iptables -A INPUT -j DROP"
+    },
+    {
+     "id": "pg1#p120",
+     "text": "Or, we can use the built-in policy functionality to configure what happens when a packet passes down the chain without matching any rules:"
+    },
+    {
+     "id": "pg1#p121",
+     "text": "sudo iptables -P INPUT DROP"
+    },
+    {
+     "id": "pg1#p122",
+     "text": "The results are functionally exactly the same."
+    },
+    {
+     "id": "pg1#p123",
+     "text": "One thing to note is that if you ever need to flush your iptables and you set up a DROP policy (instead of adding it as a rule at the bottom of the chain), you should reverse the policy before flushing:"
+    },
+    {
+     "id": "pg1#p124",
+     "text": "sudo iptables -P INPUT ACCEPT\nsudo iptables -F"
+    },
+    {
+     "id": "pg1#p125",
+     "text": "If you fail to do this, your iptables rules will be flushed and only the default policy of dropping all incoming packets will remain. This will cut off all network traffic coming into your server, including traffic from your SSH connection."
+    },
+    {
+     "id": "pg1#p126",
+     "text": "By default, iptables does not maintain its rules between reboots, so after you have tested your configuration and are sure that it does what you would like, you can download and enable a tool that makes these rules persistent:"
+    },
+    {
+     "id": "pg1#p127",
+     "text": "sudo apt-get install iptables-persistent\nsudo service iptables-persistent start"
+    },
+    {
+     "id": "pg1#p128",
+     "text": "Configure psad to Detect Scans"
+    },
+    {
+     "id": "pg1#p129",
+     "text": "Now that we have an iptables rule set configured with what is called a \u201cdefault drop\u201d policy, we can begin configuring psad to start parsing the logs."
+    },
+    {
+     "id": "pg1#p130",
+     "text": "Open the main psad configuration file with root privileges:"
+    },
+    {
+     "id": "pg1#p131",
+     "text": "sudo nano /etc/psad/psad.conf"
+    },
+    {
+     "id": "pg1#p132",
+     "text": "The first things you should modify are at the top of the file. You should change the EMAIL_ADDRESSES parameter to match the email addresses you would like to notify when a report is generated. You should also modify the HOSTNAME to match your domain so that it references the correct machine:"
+    },
+    {
+     "id": "pg1#p133",
+     "text": "EMAIL_ADDRESSES address1@domain.com, address2@other.com;"
+    },
+    {
+     "id": "pg1#p134",
+     "text": "HOSTNAME your_domain.com;"
+    },
+    {
+     "id": "pg1#p135",
+     "text": "Be sure to end each of your lines with a semi-colon (;) for psad to read the file correctly."
+    },
+    {
+     "id": "pg1#p136",
+     "text": "One section that you probably want to take a look at is the \u201cdanger levels\u201d declarations. These levels are a way for psad to categorize threat levels."
+    },
+    {
+     "id": "pg1#p137",
+     "text": "They are automatically determined by the number of packets involved in an event, but you can assign certain types of traffic to be a certain danger level also. The default thresholds for each level to be reached are:"
+    },
+    {
+     "id": "pg1#p138",
+     "text": "DANGER_LEVEL1 5;\nDANGER_LEVEL2 15;\nDANGER_LEVEL3 150;\nDANGER_LEVEL4 1500;\nDANGER_LEVEL5 10000;"
+    },
+    {
+     "id": "pg1#p139",
+     "text": "You can change these levels depending on the level of sensitivity you would like psad to use for alerts."
+    },
+    {
+     "id": "pg1#p140",
+     "text": "You can also configure how sensitive psad will be through the PORT_RANGE_SCAN_THRESHOLD parameter. This determines the number of ports in a range that must be scanned before an alert is raised. The default is that an alert is raised after two ports are scanned."
+    },
+    {
+     "id": "pg1#p141",
+     "text": "PORT_RANGE_SCAN_THRESHOLD 1;"
+    },
+    {
+     "id": "pg1#p142",
+     "text": "One of the most important things to configure is the IPT_SYSLOG_FILE parameter, because it currently is not pointed at a file that syslog uses by default."
+    },
+    {
+     "id": "pg1#p143",
+     "text": "Modify this to point at the syslog file, where psad will actually have an opportunity to look through active logs:"
+    },
+    {
+     "id": "pg1#p144",
+     "text": "IPT_SYSLOG_FILE /var/log/syslog;"
+    },
+    {
+     "id": "pg1#p145",
+     "text": "If you use certain ports for things like port knocking, you should tell psad to ignore attempts on these ports so that you do not trigger alerts through routine activities:"
+    },
+    {
+     "id": "pg1#p146",
+     "text": "IGNORE_PORTS ports_or_range_to_ignore;"
+    },
+    {
+     "id": "pg1#p147",
+     "text": "You can similarly ignore messages based on other things through the appropriately named IGNORE_PROTOCOLS, IGNORE_INTERFACES, and IGNORE_LOG_PREFIXES parameters."
+    },
+    {
+     "id": "pg1#p148",
+     "text": "If you find that you are getting alerts too often, you can set the threshold on emails by adjusting what level must be reached before an email is sent:"
+    },
+    {
+     "id": "pg1#p149",
+     "text": "MIN_DANGER_LEVEL 1; # Controls psad logging and email alerts\nEMAIL_ALERT_DANGER_LEVEL 1; # Applies only for email alerts"
+    },
+    {
+     "id": "pg1#p150",
+     "text": "You can also limit the number of emails directly by setting this:"
+    },
+    {
+     "id": "pg1#p151",
+     "text": "EMAIL_LIMIT 0;"
+    },
+    {
+     "id": "pg1#p152",
+     "text": "Zero means there is no limit. This limit is the number of emails that can be generated by threats from a single IP address."
+    },
+    {
+     "id": "pg1#p153",
+     "text": "For the time being, let\u2019s save and close the file."
+    },
+    {
+     "id": "pg1#p154",
+     "text": "Implement psad Intrusion Detection"
+    },
+    {
+     "id": "pg1#p155",
+     "text": "Now that we have a basic psad configuration in place, complete with alert capabilities, we can implement our policies and activate our system."
+    },
+    {
+     "id": "pg1#p156",
+     "text": "Before we begin, we should update psad\u2019s signature definitions so that it can correctly recognize known attack types. Do this by calling:"
+    },
+    {
+     "id": "pg1#p157",
+     "text": "sudo psad --sig-update"
+    },
+    {
+     "id": "pg1#p158",
+     "text": "This will fetch the latest files and update the database."
+    },
+    {
+     "id": "pg1#p159",
+     "text": "Now, we need to restart the service to use these updates and to implement our configuration changes. Type:"
+    },
+    {
+     "id": "pg1#p160",
+     "text": "sudo service psad restart"
+    },
+    {
+     "id": "pg1#p161",
+     "text": "This will implement our log monitoring. To see the current status of psad detected events, type:"
+    },
+    {
+     "id": "pg1#p162",
+     "text": "sudo service psad status"
+    },
+    {
+     "id": "pg1#p163",
+     "text": "[+] psadwatchd (pid: 3737) %CPU: 0.0 %MEM: 0.0\nRunning since: Fri Jan 10 15:36:04 2014"
+    },
+    {
+     "id": "pg1#p164",
+     "text": "[+] psad (pid: 3735) %CPU: 0.0 %MEM: 0.3\nRunning since: Fri Jan 10 15:36:04 2014\nCommand line arguments: [none specified]\nAlert email address(es): example@domain.com"
+    },
+    {
+     "id": "pg1#p165",
+     "text": "[+] Version: psad v2.1.7"
+    },
+    {
+     "id": "pg1#p166",
+     "text": "[+] Top 50 signature matches:\n[NONE]"
+    },
+    {
+     "id": "pg1#p167",
+     "text": "[+] Top 25 attackers:\n[NONE]"
+    },
+    {
+     "id": "pg1#p168",
+     "text": "[+] Top 20 scanned ports:\n[NONE]"
+    },
+    {
+     "id": "pg1#p169",
+     "text": "[+] iptables log prefix counters:\n[NONE]"
+    },
+    {
+     "id": "pg1#p170",
+     "text": "Total packet counters: tcp: 0, udp: 0, icmp: 0"
+    },
+    {
+     "id": "pg1#p171",
+     "text": "[+] IP Status Detail:\n[NONE]"
+    },
+    {
+     "id": "pg1#p172",
+     "text": "Total scan sources: 0\nTotal scan destinations: 0"
+    },
+    {
+     "id": "pg1#p173",
+     "text": "[+] These results are available in: /var/log/psad/status.out"
+    },
+    {
+     "id": "pg1#p174",
+     "text": "As you can see, nothing has been found yet. We can also see that detected events are logged to files located at /var/log/psad/."
+    },
+    {
+     "id": "pg1#p175",
+     "text": "Perform a Test Port Scan"
+    },
+    {
+     "id": "pg1#p176",
+     "text": "From another computer, we should try to scan our server\u2019s ports to generate some hits on the firewall. We can do this with the nmap utility."
+    },
+    {
+     "id": "pg1#p177",
+     "text": "We will do a SYN tcp port scan from another machine. We will tell it to assume that our host is up by passing it the -PN option:"
+    },
+    {
+     "id": "pg1#p178",
+     "text": "sudo nmap -PN -sS server_domain_or_ip"
+    },
+    {
+     "id": "pg1#p179",
+     "text": "Starting Nmap 5.51 ( http://nmap.org ) at 2014-01-10 15:54 EST\nNmap scan report for server_domain_or_ip\nHost is up (0.013s latency).\nNot shown: 999 filtered ports\nPORT STATE SERVICE\n22/tcp open ssh"
+    },
+    {
+     "id": "pg1#p180",
+     "text": "Nmap done: 1 IP address (1 host up) scanned in 6.84 seconds"
+    },
+    {
+     "id": "pg1#p181",
+     "text": "As you can see, this scan indicates what I configured for my firewall. Every port is labeled as \u201cfiltered\u201d indicating that it is protected by a firewall, except for the SSH port, which is exposed."
+    },
+    {
+     "id": "pg1#p182",
+     "text": "On your server, you should re-run the status command:"
+    },
+    {
+     "id": "pg1#p183",
+     "text": "sudo service psad status"
+    },
+    {
+     "id": "pg1#p184",
+     "text": "You should see a lot larger list of alerts. Because the event was just a 1000 port scan, it triggered a signature match for a lot of different threats. For a more pointed attack, which is focused on a specific port or entry point, the signature would be much more helpful."
+    },
+    {
+     "id": "pg1#p185",
+     "text": "If you set up email alerts, you should have also have received an email or two. If you have a domain associated with the computer you scanned from, you should see a \u201cwho is\u201d report on the owner associated with the scanning."
+    },
+    {
+     "id": "pg1#p186",
+     "text": "You can use this to attempt to contact the owner of the IP or perhaps the ISP or hosting provider."
+    },
+    {
+     "id": "pg1#p187",
+     "text": "Implement Intrusion Prevention"
+    },
+    {
+     "id": "pg1#p188",
+     "text": "Now that we have verified that we can detect activity trying to access our server, we can optionally implement a prevention mechanism where psad can automatically modify iptables rules to ban scanners."
+    },
+    {
+     "id": "pg1#p189",
+     "text": "Before we do this, we should take a look at the auto_dl file:"
+    },
+    {
+     "id": "pg1#p190",
+     "text": "sudo nano /etc/psad/auto_dl"
+    },
+    {
+     "id": "pg1#p191",
+     "text": "This file specifies what danger level we should automatically set certain IP addresses. For instance, if we have an attacker who continuously tries to probe our system, we can set them to danger level 5 automatically:"
+    },
+    {
+     "id": "pg1#p192",
+     "text": "attacker_ip 5;"
+    },
+    {
+     "id": "pg1#p193",
+     "text": "On the other hand, you can basically exempt certain IP addresses from eliciting a reaction from psad. We could add the localhost here and set it to \u201c0\u201d if we hadn\u2019t added a rule in our iptables explicitly."
+    },
+    {
+     "id": "pg1#p194",
+     "text": "For our purposes, since we are going to be setting psad to automatically block traffic from a detected threat IP, we should add our home computer to this list so that we do not lock ourselves out:"
+    },
+    {
+     "id": "pg1#p195",
+     "text": "local_computer_ip 0;"
+    },
+    {
+     "id": "pg1#p196",
+     "text": "Save and close the file when you are finished."
+    },
+    {
+     "id": "pg1#p197",
+     "text": "Open up the psad configuration file again:"
+    },
+    {
+     "id": "pg1#p198",
+     "text": "sudo nano /etc/psad/psad.conf"
+    },
+    {
+     "id": "pg1#p199",
+     "text": "Search for the parameter called ENABLE_AUTO_IDS. This is the rule that allows psad to modify our firewall to block certain addresses. If you want to automatically do this, you can change it like this:"
+    },
+    {
+     "id": "pg1#p200",
+     "text": "ENABLE_AUTO_IDS Y;"
+    },
+    {
+     "id": "pg1#p201",
+     "text": "Next, we want to decide what constitutes a threat level large enough to block the offending IP. We can do that by adjusting this parameter:"
+    },
+    {
+     "id": "pg1#p202",
+     "text": "AUTO_IDS_DANGER_LEVEL 5;"
+    },
+    {
+     "id": "pg1#p203",
+     "text": "Another important option is the total block time in seconds:"
+    },
+    {
+     "id": "pg1#p204",
+     "text": "AUTO_BLOCK_TIMEOUT 3600;"
+    },
+    {
+     "id": "pg1#p205",
+     "text": "This will block them for an hour by default."
+    },
+    {
+     "id": "pg1#p206",
+     "text": "Test Intrusion Prevention"
+    },
+    {
+     "id": "pg1#p207",
+     "text": "We can test out how this works by temporarily banning ourselves. In the same configuration file, we are going to set these parameters:"
+    },
+    {
+     "id": "pg1#p208",
+     "text": "ENABLE_AUTOIDS Y;\nAUTO_IDS_DANGER_LEVEL 4;\nAUTO_BLOCK_TIMEOUT 60;"
+    },
+    {
+     "id": "pg1#p209",
+     "text": "This will turn on automatic firewall configuration, will set the threshold to danger level 4, which we hit with a normal SYN scan, and set the block time for 60 seconds."
+    },
+    {
+     "id": "pg1#p210",
+     "text": "Save and close the file."
+    },
+    {
+     "id": "pg1#p211",
+     "text": "Open the auto_dl file if you added your home IP address, and temporarily comment that out."
+    },
+    {
+     "id": "pg1#p212",
+     "text": "# local_computer_ip 0;"
+    },
+    {
+     "id": "pg1#p213",
+     "text": "Now, restart psad to make it re-read these files:"
+    },
+    {
+     "id": "pg1#p214",
+     "text": "sudo service psad restart"
+    },
+    {
+     "id": "pg1#p215",
+     "text": "From your home computer, you can re-run the scan you did last time:"
+    },
+    {
+     "id": "pg1#p216",
+     "text": "sudo nmap -PN -sS server_domain_or_ip"
+    },
+    {
+     "id": "pg1#p217",
+     "text": "At this point, after a few seconds, if you are connected to your psad machine through SSH, your connection should be dropped. You will not be able to connect again for 60 seconds."
+    },
+    {
+     "id": "pg1#p218",
+     "text": "This is because psad took action when your scan had hit enough ports to hit danger level 4. It modified the iptables rules to divert traffic to other chains that temporarily blocked your IP."
+    },
+    {
+     "id": "pg1#p219",
+     "text": "Once you are able to log in again, you can see the remnants of this diversion by checking out your iptable rules:"
+    },
+    {
+     "id": "pg1#p220",
+     "text": "sudo iptables -S"
+    },
+    {
+     "id": "pg1#p221",
+     "text": "-P INPUT DROP\n-P FORWARD ACCEPT\n-P OUTPUT ACCEPT\n-N PSAD_BLOCK_FORWARD\n-N PSAD_BLOCK_INPUT\n-N PSAD_BLOCK_OUTPUT\n-A INPUT -j PSAD_BLOCK_INPUT\n-A INPUT -i lo -j ACCEPT\n-A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT\n-A INPUT -p tcp -m tcp --dport 22 -j ACCEPT\n-A INPUT -j LOG\n-A FORWARD -j PSAD_BLOCK_FORWARD\n-A FORWARD -j LOG\n-A OUTPUT -j PSAD_BLOCK_OUTPUT"
+    },
+    {
+     "id": "pg1#p222",
+     "text": "As you can see, more chains were created and all input was directed into one of these chains. During the ban, this chain would have dropped connection attempts for your home connection\u2019s IP."
+    },
+    {
+     "id": "pg1#p223",
+     "text": "Now that you have tested this functionality, revert it back to what you\u2019d like to use. You should probably increase the ban length if you are planning on actually using this functionality. Additionally, you should re-add the IP addresses that you know you will be connecting to:"
+    },
+    {
+     "id": "pg1#p224",
+     "text": "local_computer_ip 0;"
+    },
+    {
+     "id": "pg1#p225",
+     "text": "ENABLE_AUTOIDS Y;\nAUTO_IDS_DANGER_LEVEL 5;\nAUTO_BLOCK_TIMEOUT 3600;"
+    },
+    {
+     "id": "pg1#p226",
+     "text": "Don\u2019t forget to restart psad when you are done configuring your service for real-world application:"
+    },
+    {
+     "id": "pg1#p227",
+     "text": "sudo service psad restart"
+    },
+    {
+     "id": "pg1#p228",
+     "text": "Keep in mind, there are certain types of attacks that can spoof the source IP address. This means that an attacker who suspects that you have auto-blocking functionality enabled could cause you to accidentally ban legitimate sites or services. Be very careful and weigh the costs and benefits of this type of a configuration."
+    },
+    {
+     "id": "pg1#p229",
+     "text": "Conclusion"
+    },
+    {
+     "id": "pg1#p230",
+     "text": "By correctly configuring a network intrusion detection tool like psad, you increase your chances of getting the needed warnings about threats before a problem actually happens. Tools like psad can give you advanced warning and can deal with some situations automatically."
+    },
+    {
+     "id": "pg1#p231",
+     "text": "The key to using psad effectively is to configure danger levels and email alerts appropriately, and then follow up on any problems. This tool, coupled with other intrusion detection resources like tripwire can provide fairly good coverage to be able to detect intrusion attempts."
+    },
+    {
+     "id": "pg1#p232",
+     "text": "Thanks for learning with the DigitalOcean Community. Check out our offerings for compute, storage, networking, and managed databases."
+    },
+    {
+     "id": "pg1#p233",
+     "text": "Learn more about our products"
+    },
+    {
+     "id": "pg1#p234",
+     "text": "About the author"
+    },
+    {
+     "id": "pg1#p235",
+     "text": "Former Senior Technical Writer at DigitalOcean, specializing in DevOps topics across multiple Linux distributions, including Ubuntu 18.04, 20.04, 22.04, as well as Debian 10 and 11."
+    },
+    {
+     "id": "pg1#p236",
+     "text": "Category:\nTutorial\nTags:\nStill looking for an answer?\nAsk a question\nSearch for more help\nWas this helpful?"
+    },
+    {
+     "id": "pg1#p237",
+     "text": "Leave a comment..."
+    },
+    {
+     "id": "pg1#p238",
+     "text": "This textbox defaults to using Markdown to format your answer."
+    },
+    {
+     "id": "pg1#p239",
+     "text": "You can type !ref in this text area to quickly search our full set of tutorials, documentation & marketplace offerings and insert the link!"
+    },
+    {
+     "id": "pg1#p240",
+     "text": "I did \u2018sudo iptables -F\u2019 and I was disconnected from SSH and can\u2019t access it now\u2026"
+    },
+    {
+     "id": "pg1#p241",
+     "text": "@Shaun: You can use the Remote Console (<a href=\u201chttps://cloud.digitalocean.com/droplets\u201d>https://cloud.digitalocean.com/droplets</a>, select your droplet, and click the Remote Console button at the top-right corner of the page) to regain access to your droplet."
+    },
+    {
+     "id": "pg1#p242",
+     "text": "Hi!"
+    },
+    {
+     "id": "pg1#p243",
+     "text": "Cool stuff! I am trying to set up it, but psad does not show any alert when I run \u201csudo service psad status\u201d even after the scan \u201csudo nmap -PN -sS server_domain_or_ip\u201d from an other machine\u2026 What that could be?"
+    },
+    {
+     "id": "pg1#p244",
+     "text": "Thanks!"
+    },
+    {
+     "id": "pg1#p245",
+     "text": "Alex"
+    },
+    {
+     "id": "pg1#p246",
+     "text": "(1) replies"
+    },
+    {
+     "id": "pg1#p247",
+     "text": "Been trying to follow this for a centos 7 Machine. I found the psad RPM so downloaded and installed it. But haven\u2019t found the iptables-persistent RPM. Any ideas, please?"
+    },
+    {
+     "id": "pg1#p248",
+     "text": "(2) replies"
+    },
+    {
+     "id": "pg1#p249",
+     "text": "Could the logging of iptables produce a performance issue on high load servers?"
+    },
+    {
+     "id": "pg1#p250",
+     "text": "(1) replies"
+    },
+    {
+     "id": "pg1#p251",
+     "text": "You really don\u2019t need to use iptable settings\u2026 You can use UFW, https://www.digitalocean.com/community/tutorials/how-to-setup-a-firewall-with-ufw-on-an-ubuntu-and-debian-cloud-server along with the settings from the above article for psad."
+    },
+    {
+     "id": "pg1#p252",
+     "text": "I have message from support with content \u201cWe have blocked someone from your IP space for abuse. Reason: Port Scanning\u201d How can\u2019t I do to fix my server with problem? I try use uwf to block all port, open only port 80 to fix this problem. But I want to find exactly what programs are running port scans from my server to fix the problem thoroughly."
+    },
+    {
+     "id": "pg1#p253",
+     "text": "Hi,"
+    },
+    {
+     "id": "pg1#p254",
+     "text": "I install psad 2.2.3 on server running RedHat 6.4.\nThe firewall log the DROP lines and psad send mail about them."
+    },
+    {
+     "id": "pg1#p255",
+     "text": "The problems are:"
+    },
+    {
+     "id": "pg1#p256",
+     "text": "Each time I run service psad restart I get: Shutting down the psad psadwatchd daemon: ** [FAILED]* Shutting down the psad daemon: [ OK ] Starting psad: [ OK ] *"
+    },
+    {
+     "id": "pg1#p257",
+     "text": "When I run service psad status, to see the current status of psad detected events, I get: psad (pid 11335) is running\u2026 psadwatchd is stopped"
+    },
+    {
+     "id": "pg1#p258",
+     "text": "Why? Thanks."
+    },
+    {
+     "id": "pg1#p259",
+     "text": "Hello,"
+    },
+    {
+     "id": "pg1#p260",
+     "text": "I installed psad on Ubuntu 14.04 and I get this error by email: You may just need to add a default logging rule to the /sbin/iptables 'filter' 'INPUT' chain (\u2026). I think I configured it correctly\u2026"
+    },
+    {
+     "id": "pg1#p261",
+     "text": "This is the end portion of my iptables:"
+    },
+    {
+     "id": "pg1#p262",
+     "text": "-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT\n-A INPUT -j LOG\n-A INPUT -j DROP\n-A FORWARD -j LOG"
+    },
+    {
+     "id": "pg1#p263",
+     "text": "And my complete ip6tables (even if I didn\u2019t enable IPv6 when I created the droplet):"
+    },
+    {
+     "id": "pg1#p264",
+     "text": "-P INPUT ACCEPT\n-P FORWARD ACCEPT\n-P OUTPUT ACCEPT\n-A INPUT -j LOG\n-A INPUT -j DROP\n-A FORWARD -j LOG"
+    },
+    {
+     "id": "pg1#p265",
+     "text": "I see in the psad status that it is logging events. Is there something missing?"
+    },
+    {
+     "id": "pg1#p266",
+     "text": "Thanks!"
+    },
+    {
+     "id": "pg1#p267",
+     "text": "I\u2019m not sure but I think the problem comes from Fail2ban, which is adding rules before the other iptables ones."
+    },
+    {
+     "id": "pg1#p268",
+     "text": "-P INPUT ACCEPT\n-P FORWARD ACCEPT\n-P OUTPUT ACCEPT\n-N fail2ban-ssh\n-N fail2ban-ssh-ddos\n-A INPUT -p tcp -m multiport --dports 222 -j fail2ban-ssh-ddos\n-A INPUT -p tcp -m multiport --dports 222 -j fail2ban-ssh\n-A INPUT -j LOG\n-A INPUT -i lo -j ACCEPT\n-A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT\n-A INPUT -p tcp -m tcp --dport 222 -j ACCEPT\n(\u2026)"
+    },
+    {
+     "id": "pg1#p269",
+     "text": "Any idea how I can make the LOG rule stay before Fail2ban rules?"
+    },
+    {
+     "id": "pg1#p270",
+     "text": "(1) replies\nLoad more comments\nThis work is licensed under a Creative Commons Attribution-NonCommercial- ShareAlike 4.0 International License.\nDeploy on DigitalOcean\nClick below to sign up for DigitalOcean's virtual machines, Databases, and AIML products.\nTalk to an expert\nConnect on Discord\nJoin the conversation in our Discord to connect with fellow developers\nVisit Discord\nFeatured tutorials\nSOLID Design Principles Explained: Building Better Software Architecture\nHow To Remove Docker Images, Containers, and Volumes\nHow to Create a MySQL User and Grant Privileges (Step-by-Step)\nAll tutorials\nAll topic tags\nBecome a contributor for community"
+    },
+    {
+     "id": "pg1#p271",
+     "text": "Get paid to write technical tutorials and select a tech-focused charity to receive a matching donation."
+    },
+    {
+     "id": "pg1#p272",
+     "text": "DigitalOcean Documentation"
+    },
+    {
+     "id": "pg1#p273",
+     "text": "Full documentation for every DigitalOcean product."
+    },
+    {
+     "id": "pg1#p274",
+     "text": "Learn more"
+    },
+    {
+     "id": "pg1#p275",
+     "text": "Resources for startups and AI-native businesses"
+    },
+    {
+     "id": "pg1#p276",
+     "text": "The Wave has everything you need to know about building a business, from raising funding to marketing your product."
+    },
+    {
+     "id": "pg1#p277",
+     "text": "Learn more"
+    },
+    {
+     "id": "pg1#p278",
+     "text": "Stay up to date, sign up for our newsletter\nEmail*\nSubmit\nThe developer cloud"
+    },
+    {
+     "id": "pg1#p279",
+     "text": "Scale up as you grow \u2014 whether you're running one virtual machine or ten thousand."
+    },
+    {
+     "id": "pg1#p280",
+     "text": "View all products\nStart building today"
+    },
+    {
+     "id": "pg1#p281",
+     "text": "From GPU-powered inference and Kubernetes to managed databases and storage, get everything you need to build, scale, and deploy intelligent applications."
+    },
+    {
+     "id": "pg1#p282",
+     "text": "Identity and Access Management (IAM)\nWrite for DOnations\nCode of Conduct"
+    },
+    {
+     "id": "pg1#p283",
+     "text": "Sitemap\nThis site uses cookies and related technologies, as described in our\u00a0privacy policy, for purposes that may include site operation, analytics, enhanced user experience, or advertising. You may choose to consent to our use of these technologies, or manage your own preferences.\u00a0Please visit our\u00a0cookie policy\u00a0for more information."
+    }
+   ],
+   "paragraphs_truncated": false,
+   "keywords": [
+    "psad",
+    "iptables",
+    "input",
+    "sudo",
+    "accept",
+    "server",
+    "block",
+    "danger",
+    "port",
+    "rules",
+    "scan",
+    "file"
+   ],
+   "headings": [
+    "Report this",
+    "Table of contents",
+    "Install psad",
+    "Configure IPTables Rules",
+    "Configure psad to Detect Scans",
+    "Implement psad Intrusion Detection",
+    "Perform a Test Port Scan",
+    "Implement Intrusion Prevention",
+    "Conclusion",
+    "Deploy on DigitalOcean",
+    "Popular Topics",
+    "Featured tutorials",
+    "Deploy on DigitalOcean",
+    "Popular Topics",
+    "Featured tutorials",
+    "Become a contributor for community",
+    "DigitalOcean Documentation",
+    "Resources for startups and AI-native businesses",
+    "The developer cloud",
+    "Start building today"
+   ],
+   "images": [
+    {
+     "src": "https://www.gravatar.com/avatar/487fd483349ba3c65a6a65d7e9eee9c75d723537d1fb770a01ef6903778ae10c?default=retro&size=256",
+     "title": "Justin Ellingwood",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/487fd483349ba3c65a6a65d7e9eee9c75d723537d1fb770a01ef6903778ae10c?default=retro&size=256",
+     "title": "Justin Ellingwood",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/d7709d4f1be5c83c46b8c82946efd9241bb012bb8adc3650562359ec755bad22?default=retro",
+     "title": "shaun",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/0cef4a2da3749b1c92646754f837c53beb2862acf25ed50404914573860f4f30?default=retro",
+     "title": "Kamal Nasser",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.digitalocean.com/api/static-content/v1/images?src=%2F_do-www-marketing%2F9221ebb1%2F_next%2Fstatic%2Fmedia%2Fdo-logo.15453cf1.svg&width=32",
+     "title": "DigitalOcean Employee badge",
+     "gated": true,
+     "gate_reason": "junk alt/caption (logo/stock/ad)"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/ade3c57a766a3d73aea71a52e0e5fa8744656743e7607c83c52f0cf8891acaaf?default=retro",
+     "title": "worldbluecommunication",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/6b9336b305ad5366bfb2134294c4084e1120654dca9eb8e3df17d8123bb4d4e3?default=retro",
+     "title": "Sanjeev Sapkota",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/21ddd42e9935e0afbe9cf19aeac67c1f731f6506ec10a8da019a9272b31b052d?default=retro",
+     "title": "thde",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/2236ef3287db83971728909c9f3f076c352d488481ccae8646fef3304f6c189b?default=retro",
+     "title": "cbunting99",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/efb3344679193851a0d8983869a4bafe47a8eeb8d453eaf906c6fe50fd0d8fa3?default=retro",
+     "title": "phucdh86",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/81f9ac38ab56596a6384484b92b5f065574c2dd3e33a3e7408276bbbfde60f14?default=retro",
+     "title": "shlo",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/814a5381b22a9e247002cbdb21bf522234e6532c42f847b4adda8ea3380a8365?default=retro",
+     "title": "Sinklar",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.gravatar.com/avatar/814a5381b22a9e247002cbdb21bf522234e6532c42f847b4adda8ea3380a8365?default=retro",
+     "title": "Sinklar",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.digitalocean.com/api/static-content/v1/images?src=%2F_do-www-marketing%2F9221ebb1%2F_next%2Fstatic%2Fmedia%2Fcreativecommons.c0a877f1.png&width=384",
+     "title": "Creative Commons",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.digitalocean.com/api/static-content/v1/images?src=%2F_do-www-marketing%2F9221ebb1%2F_next%2Fstatic%2Fmedia%2Fcommunity.b05eb062.svg&width=750",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.digitalocean.com/api/static-content/v1/images?src=%2F_do-www-marketing%2F9221ebb1%2F_next%2Fstatic%2Fmedia%2Fdetailed-documentation.1b349942.svg&width=750",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.digitalocean.com/api/static-content/v1/images?src=%2F_do-www-marketing%2F9221ebb1%2F_next%2Fstatic%2Fmedia%2Fnexus.0c1cff19.svg&width=750",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.digitalocean.com/api/static-content/v1/images?src=%2F_do-www-marketing%2F9221ebb1%2F_next%2Fstatic%2Fmedia%2Fcta-wireframe.8a8c56db.webp&width=1200",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.digitalocean.com/api/static-content/v1/images?src=%2F_do-www-marketing%2F9221ebb1%2F_next%2Fstatic%2Fmedia%2Fcta-purple-gradient.d87c1eee.webp&width=1200",
+     "title": "",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    }
+   ]
+  },
+  {
+   "id": "pg2",
+   "url": "https://www.cipherdyne.org/psad/",
+   "final_url": "https://www.cipherdyne.org/psad/",
+   "title": "psad - Intrusion Detection with iptables, iptables Log Analysis, iptables Policy Analysis",
+   "domain": "cipherdyne.org",
+   "tier": "unlisted",
+   "decision": "accept",
+   "reason": "title coverage 0.67; body coverage 1.00; headings coverage 0.67 [deterministic judge - research guide]",
+   "relevance_score": 100,
+   "source_type": "unknown",
+   "risk_flags": [],
+   "chars": 3802,
+   "paragraphs": [
+    {
+     "id": "pg2#p0",
+     "text": "psad: Intrusion Detection and Log Analysis with iptables\npsad is a collection of three lightweight system daemons (two main daemons and one helper daemon) that run on Linux machines and analyze iptables log messages to detect port scans and other suspicious traffic. A typical deployment is to run psad on the iptables firewall where it has the fastest access to log data."
+    },
+    {
+     "id": "pg2#p1",
+     "text": "psad incorporates many signatures from the Snort intrusion detection system to detect probes for various backdoor programs (e.g. EvilFTP, GirlFriend, SubSeven), DDoS tools (mstream, shaft), and advanced port scans (FIN, NULL, XMAS) which are easily leveraged against a machine via nmap. When combined with fwsnort and the Netfilter string match extension, psad is capable of detecting many attacks described in the Snort rule set that involve application layer data. In addition, psad makes use of various packet header fields associated with TCP SYN packets to passively fingerprint remote operating systems (in a manner similar to p0f) from which scans originate. Further, psad can be integrated with Logstash, and also offers support for UFW firewalls [1]. For more information, see the complete list of features offered by psad."
+    },
+    {
+     "id": "pg2#p2",
+     "text": "Significant coverage of psad, including a full discussion of its iptables log analysis capabilities and the ability to interface with graphing software such as AfterGlow and Gnuplot, can be found in the book Linux Firewalls: Attack Detection and Response with iptables, psad, and fwsnort. Several iptables log visualizations from Chapter 14 of the book are available online, and two such examples appear below. The first example is a link graph produced by AfterGlow of iptables log messages that are indicative of the Nachi Worm:\nFor the second example, psad interfaces with Gnuplot to produce a graph of the number of TCP SYN packets to destination ports per hour. Clearly discernible is a spike on March 27th, and further analysis of the iptables log data indicates a heavy port scan is the cause:\nThe data source for the two visualizations above is the iptables log data from the Scan30 Honeynet Challenge. The complete psad Honeynet challenge analysis pages can be found here: psad Honeynet challenge graphs"
+    },
+    {
+     "id": "pg2#p3",
+     "text": "psad is developed around three main principles:"
+    },
+    {
+     "id": "pg2#p4",
+     "text": "Good network security starts with a properly configured firewall.\nA significant amount of intrusion detection data can be gleaned from firewalls logs, especially if the logs provide information on nearly every field of the network and transport headers (and even application layer signature matches as in Netfilter's case when also running fwsnort).\nSuspicious traffic should not be detected at the expense of trying to also block such traffic."
+    },
+    {
+     "id": "pg2#p5",
+     "text": "History\npsad began as part of the Bastille Linux project in the fall of 1999 after it was decided Bastille needed to have a lightweight network intrusion detection component, and the result was the \"Bastille-NIDS\". In March, 2001 Bastille-NIDS was made into its own project and called the \"Port Scan Attack Detector\" (psad). The development cycle for psad it quite active and a major release is made on average once every few months.[1] Logstash and UFW integration are possible thanks to Rinck Sonnenberg.\n\u00bb download\n\u00bb documentation\nfwsnort\ngpgdir\nIPTables::Parse\nIPTables::ChainMgr"
+    },
+    {
+     "id": "pg2#p6",
+     "text": "Linux Firewalls Book\nTweets by michaelrash"
+    },
+    {
+     "id": "pg2#p7",
+     "text": "Recent Blog Posts\nSoftware Release: fwknop-2.6.11\nWireguard, macOS, and Linux Virtual Machines\nSoftware Release: fwknop-2.6.10\nSoftware Release: psad-2.4.6 and fwsnort-1.6.8\nSoftware Release: fwknop-2.6.9\nSingle Packet Authorization and Third Party Devices\nSoftware Release: fwknop-2.6.7\nAndroid Fwknop2 Client and OpenWRT\nArchives...\nCategories\nPort Knocking and SPA (49)\nIDS and iptables (25)\nIn The News (27)\nTrac (4)\nMore..."
+    },
+    {
+     "id": "pg2#p8",
+     "text": "Design by Andreas Viklund."
+    }
+   ],
+   "paragraphs_truncated": false,
+   "keywords": [
+    "psad",
+    "iptables",
+    "analysis",
+    "data",
+    "detection",
+    "release",
+    "software",
+    "fwsnort",
+    "intrusion",
+    "linux",
+    "port",
+    "bastille"
+   ],
+   "headings": [
+    "psad: Intrusion Detection and Log Analysis with iptables",
+    "History",
+    "Software",
+    "Linux Firewalls Book",
+    "Recent Blog Posts",
+    "Categories"
+   ],
+   "images": [
+    {
+     "src": "https://www.cipherdyne.org/images/psad.png",
+     "title": "Network diagram to illustrate the deployment of psad along with an iptables firewall",
+     "gated": false,
+     "gate_reason": "diagram/screenshot supports an action"
+    },
+    {
+     "src": "https://www.cipherdyne.org/images/honeynet/scan34/nachi_worm.gif",
+     "title": "AfterGlow graph of the Nachi Worm derived from psad parsing of iptables LOG messages",
+     "gated": false,
+     "gate_reason": "diagram/screenshot supports an action"
+    },
+    {
+     "src": "https://www.cipherdyne.org/LinuxFirewalls/ch14/fig14-2.png",
+     "title": "psad Gnuplot of TCP SYN packets per hour",
+     "gated": false,
+     "gate_reason": "diagram/screenshot supports an action"
+    },
+    {
+     "src": "https://www.cipherdyne.org/images/twitter_button.png",
+     "title": "@michaelrash",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.cipherdyne.org/images/googleplus_button.png",
+     "title": "Google+",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.cipherdyne.org/images/rss_feed.png",
+     "title": "Atom feed",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.cipherdyne.org/images/linkedin_button.png",
+     "title": "LinkedIn",
+     "gated": true,
+     "gate_reason": "alt too short to verify topicality"
+    },
+    {
+     "src": "https://www.cipherdyne.org/images/LF_cover.jpg",
+     "title": "Linux Firewalls: Attack Detection and Response with iptables, psad, and fwsnort",
+     "gated": false,
+     "gate_reason": "diagram/screenshot supports an action"
+    }
+   ]
+  }
+ ],
+ "unscraped_candidates": [
+  {
+   "url": "https://github.com/",
+   "decision": "reject",
+   "reason": "homepage (no article signal)"
+  },
+  {
+   "url": "https://linuxsecurity.com/features/meet-the-anti-nmap-psad",
+   "decision": "deprioritized",
+   "reason": "page cap 3 reached"
+  },
+  {
+   "url": "https://www.cipherdyne.com/psad/",
+   "decision": "deprioritized",
+   "reason": "page cap 3 reached"
+  },
+  {
+   "url": "http://cipherdyne.org/psad/",
+   "decision": "deprioritized",
+   "reason": "page cap 3 reached"
+  },
+  {
+   "url": "https://www.cipherdyne.org/LinuxFirewalls/ch07/",
+   "decision": "deprioritized",
+   "reason": "page cap 3 reached"
+  }
+ ],
+ "image_candidates": [],
+ "searches": [
+  {
+   "category": "decomposition",
+   "query": "psad detection signatures",
+   "ok": true,
+   "n": 1,
+   "engines": []
+  },
+  {
+   "category": "instance-preflight",
+   "query": "(instance pool /healthz ping)",
+   "ok": true,
+   "n": 11,
+   "engines": []
+  },
+  {
+   "category": "general",
+   "query": "psad detection signatures",
+   "ok": true,
+   "n": 8,
+   "engines": [
+    "default+fullset",
+    "local"
+   ]
+  },
+  {
+   "category": "relevance-gate",
+   "query": "(pool topical filter)",
+   "ok": true,
+   "n": 8,
+   "engines": []
+  },
+  {
+   "category": "prefilter",
+   "query": "(deterministic URL/title/coverage gate)",
+   "ok": true,
+   "n": 7,
+   "engines": []
+  },
+  {
+   "category": "scrape-transport",
+   "query": "(page scrapes: the slot browser is launched with no proxy env, so page scrapes never ride the search proxy)",
+   "ok": true,
+   "n": 3,
+   "engines": []
+  }
+ ]
+}

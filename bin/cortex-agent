@@ -29,7 +29,8 @@ MODEL_PORT="${CORTEXENGINE_PORT:-7100}"
 # to the owner's ollama config, and must never run as `cortexagent ollama`.
 LANE_PORT="${CORTEXENGINE_LANE_PORT:-7101}"
 if [ -z "${CORTEXENGINE_PORT:-}" ] && ss -ltn 2>/dev/null | grep -q ':7100 ' \
-   && ! ss -ltnp 2>/dev/null | grep ':7100 ' | grep -q 'cortex-agent'; then
+   && ! ss -ltnp 2>/dev/null | grep ':7100 ' \
+        | grep -qE 'cortex-agent|cortex-server'; then
   echo "cortex-agent: :7100 is owned by a foreign listener — plain refusal (port law)" >&2
   exit 1
 fi

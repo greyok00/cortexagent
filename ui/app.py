@@ -55,8 +55,8 @@ def ticker_text() -> str:
         mem_box = "mem n/a"
     model_box = "model %s" % _state["status"]
     if is_ready():
-        tps = llm_mod.LAST_TPS
-        if tps <= 0.1:
+        tps = getattr(llm_mod, "LAST_TPS", None)
+        if tps is None or tps <= 0.1:
             tps = tokens_per_second()
         model_box += " %.1f t/s" % tps
     spin = SPIN[_state["spin"] % len(SPIN)]

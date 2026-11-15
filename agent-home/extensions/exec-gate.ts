@@ -194,6 +194,15 @@ const SAFE_BINS = new Set([
 	// builtin test. sleep/test were always safe; python3/python stay
 	// interpreter-tier trust (owner-approved) and run single-line only.
 	"python", "make", "node", "npx", "tree", "wc", "test",
+	// 2026-11-14 owner (dystopia capture lane): the screenshot verify loop
+	// reads its own captures (identify gives dimensions; cortex-img the
+	// description text at :11600). Both are read-only companions here.
+	"identify", "magick", "convert", "cortex-img", "cortexagent-img",
+	// 2026-11-14 owner (dystopia capture lane): the gate's own escape says
+	// "execute the script directly by its full path if it has the exec bit" —
+	// chmod is the companion that sets that bit, confined to mode-forms that
+	// only set (±)x on a single folder-law target.
+	"chmod",
 	// 2026-11-10 owner (kb-library port incident): ad-hoc servers are BANNED.
 	// `python3 -m http.server <port>` hijacked the knowledge library's :8792
 	// and was presented as "the visual companion". Serving directories is
@@ -315,6 +324,18 @@ function scriptTailOk(scriptPath: string, rest: string, requireExecBit: boolean)
 	const allowedFlags =
 		/^(?:--project-dir\s+\S+|--open|--host\s+\S+|--url-host\s+\S+|--foreground|--background|--idle-timeout-minutes\s+\d+)(?:\s+(?:--project-dir\s+\S+|--open|--host\s+\S+|--url-host\s+\S+|--foreground|--background|--idle-timeout-minutes\s+\d+))*$/;
 	if (allowedFlags.test(r)) return lawCheckCmd(`${scriptPath} ${r}`) === null;
+	// 2026-11-14 owner (dystopia capture lane): the engine's own capture
+	// line is flag-form: --scene=res://… --out=docs/shots/… --warmup=14
+	// --view=street, sometimes under a bare `2>&1`. Every token goes
+	// through lawCheckCmd (folder law), the redirect stays the bare form,
+	// and shell composition stays refused. Bare form also allowed.
+	if (r && !/[;&|`$(]/.test(r)) {
+		const noRedirect = r.replace(/\s*2>&1\s*$/, "").trim();
+		if (noRedirect === r.trim() &&
+			lawCheckCmd(`${scriptPath} ${r.trim()}`) === null) return null;
+		if (noRedirect && noRedirect !== r.trim() &&
+			lawCheckCmd(`${scriptPath} ${noRedirect}`) === null) return null;
+	}
 	return false;
 }
 
@@ -327,6 +348,36 @@ export function checkSingle(c: string): string | null {
 	}
 	const portErr = checkReservedPorts(t);
 	if (portErr) return portErr;
+	// 2026-11-14 owner (dystopia lane): two project-tool escapes, both
+	// narrow and both fully inside the folder law.
+	//   (a) Godot engine binary inside the anchor — flags/value tokens only.
+	//   (b) python3 + project .py file for the asset fetchers — file-path
+	//       tokens only, no shell composition.
+	const engineRun = t.match(
+		/^(\/\S*engine\/Godot[^\s/]*\.x86_64)\s+(.+)$/);
+	if (engineRun) {
+		const bin = engineRun[1];
+		if (!lawCheck(bin).ok) return "refused: engine binary outside the anchor";
+		const argRe = /^(?:--\S+|res:\S+|\S+\.tscn|\S+\.png|forward_plus|vulkan|\d+x\d+|\d+|overview|street|corner|site|\.|assets|generated|docs|scenes|tools|src|data)(?:\s+(?:--\S+|res:\S+|\S+\.tscn|\S+\.png|forward_plus|vulkan|\d+x\d+|\d+|overview|street|corner|site|\.))*$/;
+		const rest = engineRun[2];
+		if (!argRe.test(rest.replace(/\./g, ".")))
+			return "refused: godot args outside the flag whitelist; use --path, --scene=, --out=, --warmup=, --view= tokens inside the anchor";
+		return null;
+	}
+	const pyRun = t.match(/^(?:(?:.*\/)?python3)\s+(\S+\.py)\s*(.*)$/);
+	if (pyRun) {
+		const script = pyRun[1];
+		if (!lawCheck(script).ok) return "refused: script outside the anchor";
+		const rest = pyRun[2];
+		if (/[;&|`><]/.test(rest))
+			return "refused: confined to plain file-path arguments";
+		for (const tok of rest.split(/\s+/)) {
+			if (!tok) continue;
+			const lc = lawCheck(path.resolve(tok));
+			if (!lc.ok) return "refused: " + lc.reason;
+		}
+		return null;
+	}
 	// 2026-11-10 owner (visual-companion loop analysis): the model's natural
 	// output for script runs is the BARE full-path form —
 	// `…/start-server.sh --project-dir …` — which previously landed in the
@@ -407,6 +458,22 @@ export function checkSingle(c: string): string | null {
 				}
 			}
 			continue;
+		}
+		if (base === "chmod") {
+			// only the ±x-on-one-target form; the exec-bit companion of the
+			// direct-exec escape, so a capture script can be made runnable
+			const m2 = seg.match(/^chmod\s+\+-?[xX]\s+(\S+)\s*$/);
+			if (!m2) {
+				return "refused: chmod in this lane only takes one of: chmod +x PATH / chmod -x PATH"
+					+ " (the exec-bit companion of the direct-exec escape)";
+			}
+			const target = m2[1];
+			const abs = target.startsWith("~")
+				? path.join(os.homedir(), target.slice(1))
+				: path.resolve(target);
+			const check = lawCheck(abs);
+			if (!check.ok) return check.reason;
+			return null;
 		}
 		if (base === "git") {
 			const sub = seg.split(/\s+/)[1];

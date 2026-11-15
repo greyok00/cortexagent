@@ -4,12 +4,12 @@
     {
       "card": "vram16",
       "max_gb": 15.5,
-      "model": "/home/grey/models/huihui-qwen36-35b-opus-abliterated/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ3_XXS.gguf",
+      "model": "/home/grey/models/cortex-agent/Qwen3.6-35B-A3B-UD-IQ3_XXS.gguf",
       "ctx": 131072,
       "ctype": "q8_0",
       "url": null,
-      "bytes": 13211155424,
-      "note": "owner 11-10: abliterated weights \u2014 the stock model refused too heavily",
+      "bytes": null,
+      "note": "owner 2026-11-13: stock (non-abliterated) weights",
       "card_gb": 12.0
     },
     {

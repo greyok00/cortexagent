@@ -1,0 +1,96 @@
+{
+  "query": "GTA3 openrw mission system freestyle generated missions design",
+  "engines": [],
+  "search_proxy": "off",
+  "search_proxy_note": "proxy mode off: direct",
+  "scrape_transport": "scrape direct (no proxy)",
+  "search_ladder": [
+    "local: 125 results (full engine set)",
+    "local: degraded (2 required engines down: duckduckgo,mojeek)",
+    "searx.space: tried 12 instance-probes, failed (JSONDecodeError: Expecting value: line 1 column 1 (char 0))",
+    "searx.space browser: failed/bound-out (TimeoutError: )",
+    "direct keyless: not engaged (time budget reached)",
+    "instance preflight: alive 12 of 12 tried",
+    "proxy mode off: direct",
+    "relevant floor: 15/20 relevant so far; upper rungs engaged (floor hunt: budget not extended (cap 0))",
+    "relevant floor unmet (15/20 relevant): re-run with search_proxy=on to widen the upstream lanes; WebSearch stays off",
+    "scrape direct (no proxy)",
+    "thin-fill: local:8888, accepted 0, scraped 0"
+  ],
+  "instance_preflight": {
+    "alive": [
+      "https://anonsearch.win",
+      "https://baresearch.org",
+      "https://kantan.cat",
+      "https://opnxng.com",
+      "https://paulgo.io",
+      "https://priv.au",
+      "https://search.banke.cloud",
+      "https://search.chocolatemoo53.com",
+      "https://search.ctq.ro",
+      "https://search.femboy.ad",
+      "https://search.hbubli.cc",
+      "https://search.inetol.net"
+    ],
+    "dead": [],
+    "candidates": [
+      "https://anonsearch.win",
+      "https://baresearch.org",
+      "https://kantan.cat",
+      "https://opnxng.com",
+      "https://paulgo.io",
+      "https://priv.au",
+      "https://search.banke.cloud",
+      "https://search.chocolatemoo53.com",
+      "https://search.ctq.ro",
+      "https://search.femboy.ad",
+      "https://search.hbubli.cc",
+      "https://search.inetol.net"
+    ],
+    "tried": 12,
+    "elapsed_s": 46.24,
+    "line": "instance preflight: alive 12 of 12 tried"
+  },
+  "candidate_count": 5,
+  "scraped_count": 0,
+  "accepted_count": 0,
+  "quarantined_count": 0,
+  "rejected_count": 0,
+  "accepted_sources": [],
+  "skipped_pages": [
+    {
+      "url": "https://github.com/rwengine/openrw/wiki/Mission-tracker",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%; floor 34% for 7-token question)"
+    },
+    {
+      "url": "https://openrw.org/",
+      "decision": "reject",
+      "reason": "homepage (no article signal)"
+    },
+    {
+      "url": "https://calinou.github.io/openrw-website/",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%; floor 34% for 7-token question)"
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=EIVl8Ebx-Hk",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%; floor 34% for 7-token question)"
+    },
+    {
+      "url": "https://news.ycombinator.com/item?id=38090521",
+      "decision": "reject",
+      "reason": "low topic-token coverage (29%; floor 34% for 7-token question)"
+    }
+  ],
+  "quality_warnings": [
+    "thin run: only 0 accepted page(s); the guide reports DATA NOT CAPTURED rather than padding"
+  ],
+  "judge_assist": {
+    "used": false,
+    "moved": 0,
+    "tried": 0,
+    "policy": "rules (default)"
+  }
+}
