@@ -96,6 +96,11 @@ _THIN_FILL_LIMIT = 5
 _THIN_FILL_BUDGET_S = 90.0
 _RUNS_KEEP = 25
 _RUNS_DIR = Path(__file__).resolve().parent / "runs"
+# Health poll-loop guards (2026-11-15): how long a no-arg health call waits
+# on an active run, and how soon an identical immediate re-poll is declined.
+_HEALTH_NOPARM_WAIT_S = float(os.environ.get("GREYSEARCH_HEALTH_WAIT_S", "90"))
+_HEALTH_REPOLL_S = float(os.environ.get("GREYSEARCH_HEALTH_REPOLL_S", "45"))
+_LAST_HEALTH_TS = {"immediate": 0.0}
 
 _LANE_NOTE_KEYS = ("proxy mode off", "search proxy")
 _LANE_KEY_CAP = 40
@@ -284,11 +289,20 @@ TOOLS = [
             "searx.space instances, browser-slot map (which client holds "
             "which port), AND the digest list for every background greysearch "
             "run (running / done / failed, pages, findings, guide path). "
-            "Call this after a background greysearch to learn its outcome; "
-            "do not poll in a tight loop, and do not re-call greysearch "
-            "while a run is active."
+            "Call this after a background greysearch to learn its outcome. "
+            "When a run is active and wait_seconds>0 (or the caller passes no "
+            "args at all), the call BLOCKS until the run finishes or the "
+            "wait expires, then answers with the digest — so you never "
+            "re-poll in a tight loop: make ONE call with a generous wait and "
+            "read the result. Never re-call greysearch while a run is active."
         ),
-        "inputSchema": {"type": "object", "properties": {}},
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "wait_seconds": {"type": "number",
+                                 "description": "0 (default): answer immediately. >0: while any run is active, block (up to this many seconds, cap 600) until the run finishes, then answer with the final digest. Recommended: pass 120 so one call covers a whole typical run."},
+            },
+        },
     },
 ]
 
@@ -1572,15 +1586,50 @@ def dispatch(name: str, args: dict) -> dict:
                 "guide_path": str(write_path),
                 "search_proxy": proxy_name or "off",
                 "how_to_check": (
-                    "call greysearch_health: runs[] carries the digest; when "
-                    "status=done, read guide_path. NEVER re-call greysearch with "
-                    "tweaked args while a run is active.")}
+                    "call greysearch_health — it BLOCKS until the run "
+                    "finishes (or its wait expires) and runs[] carries the "
+                    "digest; when status=done, read guide_path. Make ONE "
+                    "such call and act on the digest. NEVER re-call "
+                    "greysearch with tweaked args while a run is active, "
+                    "and never poll health in a tight loop.")}
         if slot_note:
             resp["slot"] = slot_note
         return _redacted(resp)
 
     if name in ("greysearch_health",):
+        # 2026-11-15: the agent-model poll loop (six identical no-arg health
+        # calls ~4s apart while a run showed "running") is fixed at the tool
+        # layer. While a run is active this call now WAITS for it instead of
+        # handing back "running" and inviting a re-poll: no args blocks up to
+        # _HEALTH_NOPARM_WAIT_S, an explicit wait_seconds up to its value
+        # (cap 600); a tight immediate re-poll inside _HEALTH_REPOLL_S after
+        # an already-served immediate answer is declined in one short line.
+        try:
+            wait_s = min(max(float(args.get("wait_seconds") or 0.0), 0.0), 600.0)
+        except (TypeError, ValueError):
+            wait_s = 0.0
+        explicit = "wait_seconds" in args
+        active = {rid: d for rid, d in _RUNS.items() if d.get("status") == "running"}
+        if active and (not explicit) and \
+                (time.time() - _LAST_HEALTH_TS.get("immediate", 0.0)) < _HEALTH_REPOLL_S:
+            ages = ", ".join(
+                f"{rid} running {time.time() - d.get('started_ts', time.time()):.0f}s"
+                for rid, d in active.items())
+            return _redacted({
+                "ok": True, "declined_repoll": True,
+                "note": f"Active run(s) [{ages}], unchanged since your last "
+                        "query seconds ago. Do NOT re-poll: one "
+                        "greysearch_health call blocks until the run "
+                        "finishes — continue other work instead."})
+        if active and not explicit:
+            wait_s = _HEALTH_NOPARM_WAIT_S
+        if active and wait_s > 0:
+            deadline = time.time() + wait_s
+            while time.time() < deadline and \
+                    any(d.get("status") == "running" for d in _RUNS.values()):
+                time.sleep(3.0)
         bridge = get_bridge()
+        _LAST_HEALTH_TS["immediate"] = time.time()
         base = bridge.health_check()
         try:
             base["browser_slots"] = _slot_map()

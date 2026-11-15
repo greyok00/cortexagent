@@ -12,7 +12,7 @@
   "mcp/greysearch/doctor.py": "ac2c7c17451ed166a74818e7f4f518475f189027e26eb3cb1cd9ae7dd10da84e",
   "mcp/greysearch/dossier.py": "cc8f9796c472207fa51ac07b8c4b426e4538d5e286aae33fcdc8ff2c3b5f6f87",
   "mcp/greysearch/greysearch_cli.py": "f60351eb38f9c2680cb91f07239809a5aa362c9c8a61565196d2fb96c746dd95",
-  "mcp/greysearch/greysearch_mcp.py": "be93a4b664ea20d6f5f54684169b296b2e82b1c4ae46473db1a7a3cb6c1449bf",
+  "mcp/greysearch/greysearch_mcp.py": "6ca44c8f4ea0cbd5e04026608827f8630bda44d1b8360021562297cd4d3a4889",
   "mcp/greysearch/greysearch_publisher.py": "24321ad90e63c0039f0c42f0f535b3605ddaa1b40f7fee6be5118ffce2a88625",
   "mcp/greysearch/greysearch_site_builder.py": "ba07e08f27c03fd6b88ee5d1cd2ab21110fa0ba8846c7571d824c84fe6ce6c03",
   "mcp/greysearch/guide_scrub.py": "51df2c2ed40add7bbe163e0097e18c408e6c01ecff32794cb2bf12215a94ad0a",
