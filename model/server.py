@@ -258,10 +258,18 @@ _PROFILES = {
     # warming (median 65.8) — same speed class as the abliterated IQ3_XXS
     # (79.1 plain / 100.7 warm-table). spec flags verified live in argv.
     "vram16": {
+        # owner 2026-11-13: stock (non-abliterated) weights, matching the
+        # vram16 entry in agent-home/model-cards.json.
+        # owner 2026-11-14: vision ON — the stock GGUF's chat template natively
+        # handles images/videos (<|vision_start|><|image_pad|><|vision_end|>),
+        # so the "text-only" ceiling was just the missing projector. mmproj
+        # ships from the same unsloth repo; per the 2026-10-27 owner order the
+        # projector stays RAM-only (--no-mmproj-offload --mmproj-device none
+        # in build_cmd), so this costs 0 VRAM and the card math is untouched.
         "model": os.path.expanduser(
-            "~/models/huihui-qwen36-35b-opus-abliterated/"
-            "Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ3_XXS.gguf"),
-        "mmproj": "none",
+            "~/models/cortex-agent/Qwen3.6-35B-A3B-UD-IQ3_XXS.gguf"),
+        "mmproj": os.path.expanduser(
+            "~/models/cortex-agent/mmproj-Qwen3.6-35B-A3B-BF16.gguf"),
         "ctx": 131072,
         "threads": 0,
         "ubatch": 2048,
@@ -372,10 +380,12 @@ MMPROJ_PATH = os.environ.get("CORTEXENGINE_MMPROJ", _P["mmproj"])  # "none" = te
 # plain. No flag site below can emit a draft flag again — profile keys and
 # env overrides alike are inert.
 CTX = int(os.environ.get("CORTEXENGINE_CTX", str(_P["ctx"])))
-CTX_FLOOR = int(os.environ.get("CORTEXENGINE_CTX_FLOOR", "8192"))
-# 2026-11-09: 8192 steps — finer fallback ladder for the all-VRAM fit
-# (100352 → 92160 → 83968 → ... each 8192 ≈ 0.22 GiB of q8 KV).
-CTX_STEP = int(os.environ.get("CORTEXENGINE_CTX_STEP", "8192"))
+# 2026-11-14 owner: the stepdown ladder is GONE — CORTEXENGINE_CTX_FLOOR /
+# CORTEXENGINE_CTX_STEP are removed. Every boot is one attempt at CTX and a
+# loud failure below it. The old 8192-step fallback (100352 → 92160 → ...)
+# silently settled lower windows, so a "few days ago" VRAM reading could be
+# from a run that never actually held the full ceiling — exactly the
+# confusion this removal exists to kill.
 # 0 = the engine auto (omitted from argv); max(1,..) would have forced 1.
 THREADS = int(os.environ.get("CORTEXENGINE_THREADS", str(_P["threads"])))
 # 2026-11-09 owner ("try the ngram"): n-gram speculative decoding, the same
@@ -598,45 +608,24 @@ def start_model(timeout: float = 300.0) -> dict:
     if is_ready():
         return {"ok": True, "already": True}
     kill_vram_holders()
-    # Fill-the-card ladder (owner 2026-10-24: "increase to 16gb ... cortexagent
-    # takes vram precedence"): boot the largest window the card can hold.
-    # Each OOM costs one boot cycle only; the first size that stays up
-    # settles and is reused on the next boot. With the card to itself this
-    # lands near ~100k tokens; smaller steps exist for when VRAM is shared.
+    # 2026-11-14 owner: single-candidate boot, hard fail. One attempt at the
+    # profile ctx; if the card refuses, the error surfaces to the caller and
+    # the server stays down — no stepdown, no silently settled lower window.
     ctx_note = STATE / "model-ctx-settled.txt"
-    # 2026-10-25: the old expression was degenerate — it produced exactly
-    # [131072] for CTX=131072 and still [131072] for any CTX below it, so a
-    # 64k ceiling could never boot. Build the ladder downward instead.
-    floor = max(1024, min(CTX, CTX_FLOOR))
-    step = max(1024, CTX_STEP)
-    candidates = sorted(set(list(range(CTX, floor, -step)) + [floor]),
-                        reverse=True)
-    try:
-        settled = int(ctx_note.read_text().strip())
-        if floor <= settled <= CTX and settled not in candidates:
-            # A previously settled size is a LAST-RESORT fallback below the
-            # ceiling, never above it.
-            candidates.append(settled)
-    except Exception:
-        pass
-    # 2026-11-06 owner: the draft-then-fallback ladder is gone with the
-    # --spec-* flags; every boot is a plain pass over the ctx ladder.
-    last_err = None
-    for ctx in candidates:
-        result = _boot_server(ctx, timeout)
-        if result.get("ok"):
-            try:
-                ctx_note.write_text(str(result.get("ctx") or ctx))
-            except Exception:
-                pass
-            if MOE_OFFLOAD > 0:
-                breach = _enforce_vram_cap(result.get("pid") or 0)
-                if breach:
-                    stop_model()
-                    return {"ok": False, "error": breach}
-            return result
-        last_err = result.get("error")
-    return {"ok": False, "error": last_err or "no ctx size held"}
+    result = _boot_server(CTX, timeout)
+    if result.get("ok"):
+        try:
+            ctx_note.write_text(str(result.get("ctx") or CTX))
+        except Exception:
+            pass
+        if MOE_OFFLOAD > 0:
+            breach = _enforce_vram_cap(result.get("pid") or 0)
+            if breach:
+                stop_model()
+                return {"ok": False, "error": breach}
+        return result
+    return {"ok": False, "error": result.get("error") or
+            "ctx %d refused, no ladder (stepdown removed 2026-11-14)" % CTX}
 
 
 def build_cmd(ctx_size: int) -> list:
