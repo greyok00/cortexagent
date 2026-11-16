@@ -156,13 +156,13 @@ export CORTEXENGINE_OFFLINE=1
 export CORTEXENGINE_SKIP_VERSION_CHECK=1
 export CORTEX_OFFLINE=1
 export CORTEX_SKIP_VERSION_CHECK=1
-# 2026-11-10 permafix (owner order, after the Good Twin loop): the loop
+# 2026-11-10 permafix (owner order): the loop
 # guard blocked calls forever but defaulted to 10,000,000 repeats before
 # ever ending a run. Pin terminating caps (see ~/.local/bin/cortexagent).
 export CORTEXAGENT_LOOP_GUARD_ARGS_MAX_REPEATS="${CORTEXAGENT_LOOP_GUARD_ARGS_MAX_REPEATS:-6}"
 export CORTEXAGENT_LOOP_GUARD_MAX_CONTINUES="${CORTEXAGENT_LOOP_GUARD_MAX_CONTINUES:-5}"
 export CORTEXAGENT_LOOP_GUARD_CALLS_PER_MESSAGE="${CORTEXAGENT_LOOP_GUARD_CALLS_PER_MESSAGE:-6}"
-# 2026-11-10 permafix (owner order, after the Good Twin loop): the loop
+# 2026-11-10 permafix (owner order): the loop
 # guard blocked calls forever but defaulted to 10,000,000 repeats before
 # ever ending a run — the 3.6B model just re-issued blocked calls all
 # session. Pin terminating caps; env override still wins for emergencies.
@@ -229,12 +229,19 @@ _lane_env() {
   # for junk; the old "unlimited wins over 4096" intent is preserved because
   # 24000 still outruns any real message — it only bounds single tool blasts.
   export SLIMTOKEN_DISTILL_MAX_CHARS=24000
-  export SLIMTOKEN_MINIFY=1 SLIMTOKEN_MINIFY_MESSAGES=1
-  export SLIMTOKEN_MINIFY_DEDUP=1 SLIMTOKEN_MINIFY_DISTILL=1
+  export SLIMTOKEN_MINIFY=1 SLIMTOKEN_MINIFY_MESSAGES=0
+  export SLIMTOKEN_MINIFY_DEDUP=1 SLIMTOKEN_MINIFY_DISTILL=0
   # 2026-11-08 (owner: "same slimtoken settings as pi"): schema minify
   # (tools) + system minify ON — the profile validated live in pi :11437
   # with zero tool breakage (55% + 40% measured reductions on real bodies).
-  export SLIMTOKEN_MINIFY_TOOLS=1 SLIMTOKEN_MINIFY_SYSTEM=1
+  export SLIMTOKEN_MINIFY_TOOLS=1 SLIMTOKEN_MINIFY_SYSTEM=0
+  # 2026-11-16 (owner): provider-side prompt caching is ON. Only cache-safe
+  # passes ride the lane: tools schema + append-only dedup + loop-guard.
+  # Lossy passes (messages/distill/system) rewrite earlier content and
+  # invalidate the provider prefix cache, so they stay off unless asked
+  # explicitly on the command line for one non-cached run.
+  export SLIMTOKEN_DEDUP_APPEND_ONLY="${SLIMTOKEN_DEDUP_APPEND_ONLY:-1}"
+  export SLIMTOKEN_LOOPGUARD="${SLIMTOKEN_LOOPGUARD:-1}"
   # 2026-11-09 owner: window 56k + bigger budget; 8 live messages instead of 4
   # (lane stays lossless — dedup/distill rules unchanged).
   export SLIMTOKEN_KEEP_LAST=8
