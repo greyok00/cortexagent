@@ -1,0 +1,141 @@
+
+import json
+import time
+from pathlib import Path
+from typing import Dict, List
+
+SESSION_STATE_FILE = Path.home() / ".cortexagent" / "state" / "session_state.json"
+
+class SessionCoordinator:
+
+    def __init__(self, session_name: str = "cortexagent"):
+        self.session_name = session_name
+        self.state_file = SESSION_STATE_FILE
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def _read_state(self) -> dict:
+
+        try:
+            if self.state_file.exists():
+                return json.loads(self.state_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+        return {"sessions": {}}
+
+    def _write_state(self, state: dict) -> None:
+
+        try:
+            tmp = self.state_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(state, indent=2))
+            tmp.rename(self.state_file)
+        except OSError:
+            pass
+
+    def broadcast(self, status: str = "idle", task: str = None,
+                  metadata: dict = None) -> dict:
+
+        state = self._read_state()
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
+        state["sessions"][self.session_name] = {
+            "status": status,
+            "task": task or "idle",
+            "last_seen": now,
+            "metadata": metadata or {},
+        }
+        state["_last_updated"] = now
+        self._write_state(state)
+        return {"status": "broadcast", "session": self.session_name}
+
+    def poll(self) -> List[Dict]:
+
+        state = self._read_state()
+        sessions = []
+        for name, info in state.get("sessions", {}).items():
+            sessions.append({
+                "session": name,
+                **info,
+                "is_local": name == self.session_name,
+            })
+
+        sessions.sort(key=lambda x: x.get("last_seen", ""), reverse=True)
+        return sessions
+
+    def is_active(self, session: str = "cortexagent", within_seconds: int = 300) -> bool:
+
+        sessions = self.poll()
+        for s in sessions:
+            if s["session"] == session and not s["is_local"]:
+                last_seen = s.get("last_seen", "")
+                try:
+                    last_ts = time.mktime(time.strptime(last_seen, "%Y-%m-%d %H:%M:%S"))
+                    if (time.time() - last_ts) < within_seconds:
+                        return True
+                except ValueError:
+                    pass
+        return False
+
+    def log_awareness(self, message: str, level: str = "info") -> dict:
+
+        from lib.memory_thin import append
+
+        awareness_msg = (
+            f"[SESSION-AWARENESS] {level}: {message}\n"
+            f"  (cortexagent at {time.strftime('%H:%M:%S')})"
+        )
+        path = append(awareness_msg, role="system")
+
+        self.broadcast(status="aware", task=message[:40])
+
+        return {"status": "logged", "path": str(path)}
+
+    def get_other_sessions(self) -> List[Dict]:
+
+        return [s for s in self.poll() if not s["is_local"]]
+
+    def summarize_activity(self) -> str:
+
+        sessions = self.get_other_sessions()
+        if not sessions:
+            return "No other active sessions detected."
+
+        lines = [f"Other sessions ({len(sessions)}):"]
+        for s in sessions[:5]:
+            lines.append(
+                f"  - {s['session']}: {s['status']} "
+                f"({s['task'][:40]}...)"
+            )
+        return "\n".join(lines)
+
+_coordinator = None
+
+def get_coordinator(session_name: str = "cortexagent") -> SessionCoordinator:
+
+    global _coordinator
+    if _coordinator is None or _coordinator.session_name != session_name:
+        _coordinator = SessionCoordinator(session_name)
+    return _coordinator
+
+if __name__ == "__main__":
+
+    c = SessionCoordinator("cortexagent")
+
+    c.broadcast(status="working", task="memory refactor")
+    time.sleep(0.1)
+
+    state = c._read_state()
+    state["sessions"]["cortexagent"] = {
+        "status": "idle",
+        "task": "reading",
+        "last_seen": "1970-01-01 00:00:00",
+    }
+    c._write_state(state)
+
+    others = c.get_other_sessions()
+    print("Other sessions:", others)
+
+    c.log_awareness("second agent idle, cortexagent working on memory refactor")
+    print("Awareness logged")
+
+    print("\n" + c.summarize_activity())
+
+    print("\nSession coordinator OK")

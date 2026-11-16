@@ -1,0 +1,73 @@
+{
+  "version": "r2",
+  "slot_order": "HARD: task 1 -> 9331, task 2 -> 9332, task 3 -> 9333, task 4 -> 9334. Slots are NUMBERS ONLY \u2014 a slot is not bound to any topic and may hold any research. One browser per task: own port, own profile, own Xvfb display range, tabs inside own window. NEVER share a window or port across tasks; never pattern-kill another task's port/profile/display.",
+  "slot_rule": "When a slot's research topic changes, REPLACE that slot's aliases in this file (do not append, do not reuse another slot's names).",
+  "tasks": {
+    "task-1": {
+      "port": 9331,
+      "aliases": [
+        "task-1",
+        "1",
+        "yieldmax-yieldboost-weekly",
+        "yieldmax"
+      ],
+      "profile": "~/.cache/greysearch/task-1-profile",
+      "displays": [
+        71,
+        72,
+        73
+      ]
+    },
+    "task-2": {
+      "port": 9332,
+      "aliases": [
+        "task-2",
+        "2",
+        "commodities-long-short",
+        "commodities"
+      ],
+      "profile": "~/.cache/greysearch/task-2-profile",
+      "displays": [
+        81,
+        82,
+        83
+      ]
+    },
+    "task-3": {
+      "port": 9333,
+      "aliases": [
+        "task-3",
+        "3",
+        "greysearch",
+        "research-guide",
+        "unified-research-guide",
+        "output-guide"
+      ],
+      "profile": "~/.cache/greysearch/task-3-profile",
+      "displays": [
+        85,
+        86,
+        87
+      ]
+    },
+    "task-4": {
+      "port": 9334,
+      "aliases": [
+        "task-4",
+        "4",
+        "task-D",
+        "default-research"
+      ],
+      "profile": "~/.cache/greysearch/task-4-profile",
+      "displays": [
+        89,
+        90,
+        91
+      ]
+    }
+  },
+  "reserved_not_research": {
+    "9224": "personal comms browser (playwright-mcp) \u2014 research must never attach",
+    "9223": "retired research-port; new fetch code must not open or reuse it"
+  }
+}

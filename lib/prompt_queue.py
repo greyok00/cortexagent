@@ -1,0 +1,484 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+import re
+import sys
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Optional
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from lib.config import CFG
+
+QUEUE_FILE = CFG.state_dir / "prompt_queue.json"
+_QUEUE_LOCK = QUEUE_FILE.parent / "prompt_queue.lock"
+
+
+@contextmanager
+def _locked():
+    """Advisory lock around every read-modify-write cycle so two concurrent
+    CLI and daemon sessions cannot lose each other's items."""
+    QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with _QUEUE_LOCK.open("a+") as lock_fp:
+        fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
+
+class ItemStatus:
+    QUEUED = "queued"
+    ACTIVE = "active"
+    DONE = "done"
+    SUPERSEDED = "superseded"
+    DROPPED = "dropped"
+
+@dataclass
+class Item:
+    id: str
+    text: str
+    status: str = ItemStatus.QUEUED
+    created_at: float = field(default_factory=time.time)
+    superseded_by: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Item":
+        return cls(id=d["id"], text=d["text"], status=d.get("status", ItemStatus.QUEUED),
+                   created_at=float(d.get("created_at", 0.0) or 0.0),
+                   superseded_by=d.get("superseded_by"))
+
+def _archive_corrupt() -> None:
+    # A corrupt queue file used to be wiped silently by the
+    # next save. Keep it for forensics instead.
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    try:
+        QUEUE_FILE.replace(QUEUE_FILE.with_name(f"prompt_queue.corrupt-{stamp}.json"))
+        print(f"prompt_queue: corrupt file archived as "
+              f"prompt_queue.corrupt-{stamp}.json", file=sys.stderr)
+    except OSError:
+        pass
+
+def _load() -> list[Item]:
+    if not QUEUE_FILE.exists():
+        return []
+    try:
+        data = json.loads(QUEUE_FILE.read_text())
+        return [Item.from_dict(x) for x in data.get("items", [])]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        print(f"prompt_queue: load failed ({e}) — starting empty", file=sys.stderr)
+        _archive_corrupt()
+        return []
+
+def _save(items: list[Item]) -> None:
+    # Atomic tmp+replace. A crash mid-write can no longer take
+    # the whole queue history with it.
+    QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = QUEUE_FILE.with_name(QUEUE_FILE.name + ".tmp")
+    payload = json.dumps(
+        {"items": [i.to_dict() for i in items], "updated_at": time.time()},
+        indent=2)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        os.write(fd, payload.encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, QUEUE_FILE)
+
+def _next_id(items: list[Item]) -> str:
+    n = 0
+    for it in items:
+        m = re.match(r"Q-(\d+)", it.id)
+        if m:
+            n = max(n, int(m.group(1)))
+    return f"Q-{n + 1:03d}"
+
+_NUM = re.compile(r"^\s*(\d+)[.)]\s+(.+)$")
+_BUL = re.compile(r"^\s*[-*•·▪◦]\s+(.+)$")
+_SEQ_WORDS = re.compile(
+    r"\b(?:first|second|third|then|next|after that|afterwards|finally|lastly|"
+    r"also|additionally|once that(?:'s)? done|when done)\b[:,]?\s*",
+    re.IGNORECASE)
+
+def decompose(prompt: str) -> list[str]:
+
+    text = prompt.strip()
+    if not text:
+        return []
+
+    num_items = []
+    for line in text.splitlines():
+        m = _NUM.match(line)
+        if m:
+            num_items.append(m.group(2).strip())
+    if len(num_items) >= 2:
+        return num_items
+
+    bul_items = []
+    for line in text.splitlines():
+        m = _BUL.match(line)
+        if m:
+            bul_items.append(m.group(1).strip())
+    if len(bul_items) >= 2:
+        return bul_items
+
+    if _SEQ_WORDS.search(text):
+
+        parts = _SEQ_WORDS.split(text)
+        parts = [p.strip().rstrip(",;.") for p in parts if p and p.strip()]
+
+        if len(parts) >= 2:
+            return parts
+
+    raw = re.split(r"\s*[\n;]+\s*", text)
+    imperative = re.compile(
+        r"^(?:add|build|create|make|write|fix|update|change|remove|delete|rename|"
+        r"move|copy|install|run|test|deploy|refactor|implement|set|configure|"
+ r"enable|disable|start|stop|use|don't|do not|please|can you|could you|"
+        r"check|verify|find|search|look|show|list|edit|replace|generate|setup)\b",
+        re.IGNORECASE)
+    imp_items = [p.strip() for p in raw if imperative.match(p.strip())]
+    if len(imp_items) >= 2:
+        return imp_items
+
+    return [text]
+
+_VERB_POLARITY = {
+
+    "add": +1, "create": +1, "build": +1, "make": +1, "include": +1, "keep": +1,
+    "enable": +1, "start": +1, "install": +1, "use": +1, "write": +1, "implement": +1,
+
+    "remove": -1, "delete": -1, "drop": +0, "disable": -1, "stop": -1, "exclude": -1,
+    "hide": -1,
+}
+
+_NEGATION = re.compile(r"\b(?:don'?t|do not|never|no longer|stop|without)\b", re.IGNORECASE)
+_REVISION = re.compile(
+    r"^\s*(?:actually|instead|no\s+wait|never\s+mind|scratch\s+that|on\s+second\s+thought|"
+    r"rather|change\s+(?:it|that|the)|update\s+(?:it|that|the)|forget\s+(?:it|that))\b",
+    re.IGNORECASE)
+
+_STOP_TARGET = {
+    "the", "a", "an", "it", "them", "this", "that", "these", "those", "to", "for",
+    "and", "or", "of", "in", "on", "at", "with", "from", "by", "my", "your", "our",
+    "their", "its", "his", "her", "i", "you", "we", "they", "he", "she", "me", "us",
+    "not", "dont", "don't", "do", "does", "did", "want", "wants", "need", "needs",
+    "have", "has", "had", "is", "are", "was", "were", "be", "been", "being", "can",
+    "could", "will", "would", "should", "shall", "may", "might", "must", "just",
+    "only", "also", "then", "now", "here", "there", "all", "any", "some", "each",
+    "every", "both", "either", "neither", "no", "yes", "ok", "okay", "please",
+    "really", "actually", "still", "already", "yet", "so", "but", "if", "because",
+    "when", "while", "after", "before", "up", "down", "out", "off", "over", "under",
+    "again", "further", "once", "too", "very", "im", "youre", "that",
+}
+
+_ROLE_CHOICE = re.compile(
+    r"\b(?:use|install|switch\s+to|go\s+with|adopt)\s+([A-Za-z0-9_.\-]+)", re.IGNORECASE)
+
+_ROLE = re.compile(r"\b(?:for|as|to|in)\s+(?:the\s+|a\s+|an\s+)?([A-Za-z0-9_.\-]+)", re.IGNORECASE)
+
+_RENAME = re.compile(
+    r"\brename\s+(.+?)\s+to\s+(.+)$|call\s+(?:it|them|the\s+\S+)\s+(.+)$", re.IGNORECASE)
+
+def _role_of(text: str) -> Optional[str]:
+    m = _ROLE.search(text.lower())
+    return m.group(1).lower() if m else None
+
+def _directive(text: str) -> dict:
+
+    low = text.lower()
+    words = re.findall(r"[A-Za-z']+", low)
+    verb = None
+    polarity = 0
+    neg = False
+    vi = -1
+    for i, w in enumerate(words):
+        if w in _VERB_POLARITY:
+            verb = w
+            vi = i
+
+            window = words[max(0, i - 3):i + 4]
+            neg = any(_NEGATION.search(w2) for w2 in window)
+            polarity = _VERB_POLARITY[w] * (-1 if neg else 1)
+            break
+
+    target = None
+    if verb and vi >= 0:
+        for w in words[vi + 1:]:
+            if w not in _STOP_TARGET:
+                target = w
+                break
+    role_choice = _ROLE_CHOICE.search(low)
+    rename = _RENAME.search(low)
+    return {
+        "verb": verb,
+        "target": target,
+        "polarity": polarity,
+        "negated": neg,
+        "choice": role_choice.group(1).lower() if role_choice else None,
+        "role": _role_of(text),
+        "rename_subj": (rename.group(1) or "").strip().lower() if rename else None,
+        "rename_val": (rename.group(2) or rename.group(3) or "").strip().lower() if rename else None,
+    }
+
+def _conflict_between(new_d: dict, new_text: str, old_d: dict, old_text: str) -> Optional[str]:
+
+    if (new_d["target"] and new_d["target"] == old_d["target"]
+            and new_d["polarity"] and old_d["polarity"]
+            and new_d["polarity"] != old_d["polarity"]):
+        return (f"earlier you said '{old_text}' but you just said '{new_text}', "
+                f"and that conflicts (opposite direction on '{new_d['target']}'). "
+                f"what do you want?")
+
+    exclusive = {("add", "remove"), ("create", "delete"), ("start", "stop"),
+                 ("enable", "disable"), ("include", "exclude")}
+    if new_d["target"] and new_d["target"] == old_d["target"]:
+        pair = tuple(sorted([new_d["verb"], old_d["verb"]]))
+        if pair in exclusive:
+            return (f"earlier you said '{old_text}' but you just said '{new_text}', "
+                    f"and that conflicts ({pair[0]} vs {pair[1]} on '{new_d['target']}'). "
+                    f"what do you want?")
+
+    if (new_d["choice"] and old_d["choice"]
+            and new_d["choice"] != old_d["choice"]
+            and new_d["verb"] == old_d["verb"]
+            and new_d["verb"] in ("use", "install", "switch", "go", "adopt")
+            and new_d["role"] and old_d["role"]
+            and (new_d["role"] == old_d["role"]
+                 or new_d["role"] in old_d["role"] or old_d["role"] in new_d["role"])):
+        return (f"earlier you said '{old_text}' but you just said '{new_text}', "
+                f"and that conflicts (for '{new_d['role']}' you wanted "
+                f"'{old_d['choice']}', now '{new_d['choice']}'). what do you want?")
+
+    if (new_d["rename_subj"] and old_d["rename_subj"]
+            and new_d["rename_subj"] == old_d["rename_subj"]
+            and new_d["rename_val"] and old_d["rename_val"]
+            and new_d["rename_val"] != old_d["rename_val"]):
+        return (f"earlier you said '{old_text}' but you just said '{new_text}', "
+                f"and that conflicts (rename '{new_d['rename_subj']}' to two "
+                f"different values). what do you want?")
+
+    return None
+
+def _supersede_target(new_text: str, new_d: dict, live: list[Item]) -> Optional[Item]:
+
+    role = new_d.get("role")
+
+    if role:
+        for it in reversed(live):
+            if _role_of(it.text) == role:
+                return it
+
+    stop = {"the", "and", "but", "for", "that", "this", "with", "into", "from",
+            "actually", "instead", "wait", "never", "mind", "scratch", "rather",
+            "change", "update", "forget", "please", "use", "using", "now", "want"}
+    new_tokens = {w.lower() for w in re.findall(r"[A-Za-z0-9_./\-]+", new_text)
+                  if len(w) >= 2 and w.lower() not in stop}
+    best, best_score = None, 0
+    for it in reversed(live):
+        toks = {w.lower() for w in re.findall(r"[A-Za-z0-9_./\-]+", it.text)
+                if len(w) >= 2 and w.lower() not in stop}
+        score = len(new_tokens & toks)
+        if score > best_score:
+            best, best_score = it, score
+    return best if best_score >= 2 else None
+
+@dataclass
+class SubmitResult:
+    enqueued: list[Item]
+    conflicts: list[str]
+    superseded: list[str]
+    queue_size: int
+
+    def to_dict(self) -> dict:
+        return {
+            "enqueued": [i.to_dict() for i in self.enqueued],
+            "conflicts": self.conflicts,
+            "superseded": self.superseded,
+            "queue_size": self.queue_size,
+        }
+
+def submit(prompt: str) -> SubmitResult:
+
+    with _locked():
+        items = _load()
+        parts = decompose(prompt)
+        if not parts:
+            return SubmitResult([], [], [], len(items))
+
+        is_revision = bool(_REVISION.match(prompt.strip()))
+
+        live = [it for it in items
+                if it.status not in (ItemStatus.DONE, ItemStatus.SUPERSEDED, ItemStatus.DROPPED)]
+
+        superseded_ids: list[str] = []
+        compare_set = live
+        if is_revision and parts:
+            first_d = _directive(parts[0])
+            target = _supersede_target(parts[0], first_d, live)
+            if target:
+                target.status = ItemStatus.SUPERSEDED
+                target.superseded_by = None
+                superseded_ids.append(target.id)
+                compare_set = [it for it in live if it.id != target.id]
+
+        new_items: list[Item] = []
+        conflicts: list[str] = []
+        for part in parts:
+            new_d = _directive(part)
+            conflict = None
+            for old in compare_set:
+                old_d = _directive(old.text)
+                conflict = _conflict_between(new_d, part, old_d, old.text)
+                if conflict:
+                    break
+            if conflict:
+                conflicts.append(conflict)
+                continue
+            new_items.append(Item(id=_next_id(items + new_items), text=part))
+
+        if superseded_ids and new_items:
+            for it in items:
+                if it.id == superseded_ids[0]:
+                    it.superseded_by = new_items[0].id
+                    break
+
+        items.extend(new_items)
+        _save(items)
+
+        return SubmitResult(new_items, conflicts, superseded_ids, len(items))
+
+def list_items() -> list[Item]:
+    return _load()
+
+def clear() -> int:
+    # Clearing keeps an archive copy — the audit trail used to
+    # vanish with the queue.
+    n = len(_load())
+    if n and QUEUE_FILE.exists():
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        try:
+            QUEUE_FILE.replace(
+                QUEUE_FILE.with_name(f"prompt_queue.archived-{stamp}.json"))
+        except OSError:
+            pass
+    _save([])
+    return n
+
+def mark_done(item_id: str) -> bool:
+    with _locked():
+        items = _load()
+        for it in items:
+            if it.id == item_id:
+                it.status = ItemStatus.DONE
+                _save(items)
+                return True
+        return False
+
+def drop(item_id: str) -> bool:
+    with _locked():
+        items = _load()
+        for it in items:
+            if it.id == item_id:
+                it.status = ItemStatus.DROPPED
+                _save(items)
+                return True
+        return False
+
+def agenda_context(max_items: int = 12) -> str:
+
+    items = _load()
+    live = [it for it in items
+            if it.status not in (ItemStatus.DONE, ItemStatus.SUPERSEDED, ItemStatus.DROPPED)]
+    if not live:
+        return ""
+    done = sum(1 for it in items if it.status == ItemStatus.DONE)
+    lines = [f"📋 Prompt queue — {len(live)} open / {done} done:"]
+    for it in live[-max_items:]:
+        tag = {"active": "▶", "queued": "·"}.get(it.status, "·")
+        lines.append(f"  {tag} {it.id}: {it.text[:90]}")
+    lines.append("Work the queue in order; mark items done with `cortexagent queue done <id>`.")
+    return "\n".join(lines)
+
+def _print_json(obj) -> None:
+    print(json.dumps(obj, indent=2, default=str))
+
+def main() -> int:
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__)
+        return 1
+    cmd = args[0]
+
+    if cmd == "submit":
+        prompt = ""
+        for i, a in enumerate(args):
+            if a == "--prompt" and i + 1 < len(args):
+                prompt = args[i + 1]
+                break
+            if a.startswith("--prompt="):
+                prompt = a[len("--prompt="):]
+                break
+        if not prompt:
+            print("usage: prompt_queue submit --prompt '...'", file=sys.stderr)
+            return 2
+        res = submit(prompt)
+        _print_json(res.to_dict())
+        return 0
+
+    if cmd == "list":
+        items = list_items()
+        if not items:
+            print("(queue empty)")
+            return 0
+        for it in items:
+            icon = {"queued": "⏳", "active": "▶️", "done": "✅",
+                    "superseded": "↩️", "dropped": "🗑️"}.get(it.status, "·")
+            print(f"  {icon} {it.id} [{it.status}] {it.text[:80]}")
+        return 0
+
+    if cmd == "clear":
+        n = clear()
+        print(f"cleared {n} items")
+        return 0
+
+    if cmd == "done":
+        if len(args) < 2:
+            print("usage: prompt_queue done <id>", file=sys.stderr)
+            return 2
+        ok = mark_done(args[1])
+        print("done" if ok else f"no such item: {args[1]}")
+        return 0 if ok else 1
+
+    if cmd == "drop":
+        if len(args) < 2:
+            print("usage: prompt_queue drop <id>", file=sys.stderr)
+            return 2
+        ok = drop(args[1])
+        print("dropped" if ok else f"no such item: {args[1]}")
+        return 0 if ok else 1
+
+    if cmd == "context":
+        ctx = agenda_context()
+        if ctx:
+            print(ctx)
+        return 0
+
+    print(f"unknown command: {cmd}\n", file=sys.stderr)
+    print(__doc__)
+    return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
