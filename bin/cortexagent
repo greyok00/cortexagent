@@ -388,6 +388,16 @@ export no_proxy="127.0.0.1,localhost,.local${no_proxy:+,$no_proxy}"
 
 
 export SLIMTOKEN_MODE="${SLIMTOKEN_MODE:-${CORTEXAGENT_SLIMTOKEN_MODE:-code}}"
+# 2026-11-16 (owner): provider-side prompt caching stays ON. Only cache-safe
+# passes touch the served body (tools schema + append-only dedup + loop-guard);
+# the lossy passes rewrite earlier content and invalidate the cached prefix.
+export SLIMTOKEN_MINIFY_TOOLS="${SLIMTOKEN_MINIFY_TOOLS:-1}"
+export SLIMTOKEN_MINIFY_DEDUP="${SLIMTOKEN_MINIFY_DEDUP:-1}"
+export SLIMTOKEN_DEDUP_APPEND_ONLY="${SLIMTOKEN_DEDUP_APPEND_ONLY:-1}"
+export SLIMTOKEN_LOOPGUARD="${SLIMTOKEN_LOOPGUARD:-1}"
+export SLIMTOKEN_MINIFY_MESSAGES="${SLIMTOKEN_MINIFY_MESSAGES:-0}"
+export SLIMTOKEN_MINIFY_DISTILL="${SLIMTOKEN_MINIFY_DISTILL:-0}"
+export SLIMTOKEN_MINIFY_SYSTEM="${SLIMTOKEN_MINIFY_SYSTEM:-0}"
 
 
 
@@ -423,9 +433,9 @@ for _v in $(compgen -e 2>/dev/null | grep -E '(_API_KEY|_BASE_URL|_AUTH_TOKEN|_A
 done
 unset _v
 
-export CORTEXAGENT_MODEL_NAME="cortexagent"
-export CORTEXAGENT_ACTIVE_MODEL="cortexagent"
-export CORTEXAGENT_SUBAGENT_MODEL="cortexagent"
+export CORTEXAGENT_MODEL_NAME="${CORTEXAGENT_MODEL_NAME:-cortexagent}"
+export CORTEXAGENT_ACTIVE_MODEL="${CORTEXAGENT_ACTIVE_MODEL:-cortexagent}"
+export CORTEXAGENT_SUBAGENT_MODEL="${CORTEXAGENT_SUBAGENT_MODEL:-cortexagent}"
 export CORTEXAGENT_MAX_CONTEXT_TOKENS="262144"
 export CORTEXAGENT_AUTO_COMPACT_WINDOW="217088"
 export CORTEXAGENT_MAX_OUTPUT_TOKENS="64000"
