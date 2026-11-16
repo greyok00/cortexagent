@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master, portfolio-clean]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - run: ruff check . --select E9,F
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest pyyaml
+      - run: python -m pytest tests/ -q
+      - run: python tests/run_smoke.py --no-live
+
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install build
+      - run: python -m build --wheel
+      - name: wheel contains no native artifacts
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheels = glob.glob("dist/*.whl")
+          assert wheels, "no wheel built"
+          for w in wheels:
+              z = zipfile.ZipFile(w)
+              bad = [n for n in z.namelist()
+                     if n.endswith((".so", ".c", ".h", ".cpp", ".o"))]
+              assert not bad, f"native artifacts in wheel: {bad}"
+              print(f"{w}: pure python, {len(z.namelist())} entries")
+          PY
+      - name: clean venv install + console entry point
+        run: |
+          python -m venv clean-venv
+          clean-venv/bin/pip install dist/*.whl pip
+          clean-venv/bin/pip list
+          clean-venv/bin/cortexagent --help
+          clean-venv/bin/pip uninstall -y cortexagent
+          rm -rf clean-venv

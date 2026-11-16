@@ -1,0 +1,20 @@
+[Unit]
+Description=CortexAgent Overseer — always-on scheduler daemon
+Documentation=https://github.com/greyok00/cortexagent
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=%h/.cortexagent/overseer.pid
+ExecStart={{PYTHON}} {{REPO_ROOT}}/lib/overseer.py start --interval 30
+ExecStop={{PYTHON}} {{REPO_ROOT}}/lib/overseer.py stop
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+Environment=CORTEXAGENT_REPO={{REPO_ROOT}}
+Environment=CORTEXAGENT_STATE_DIR=%h/.cortexagent
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+
+[Install]
+WantedBy=default.target

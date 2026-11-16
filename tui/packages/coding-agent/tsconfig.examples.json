@@ -1,0 +1,16 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"paths": {
+			"@cortexagent/coding-agent": ["./src/index.ts"],
+			"@cortexagent/coding-agent/hooks": ["./src/core/hooks/index.ts"],
+			"@cortexagent/tui": ["../tui/src/index.ts"],
+			"@cortexagent/ai": ["../ai/src/index.ts"],
+			"typebox": ["../../node_modules/typebox"]
+		},
+		"skipLibCheck": true
+	},
+	"include": ["examples/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}
