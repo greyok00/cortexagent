@@ -126,6 +126,20 @@ Environment variables or `~/.cortexagent/cortexagent.conf`. The common ones:
 
 Sampling and VRAM knobs (`CORTEXAGENT_NGL`, `CORTEXAGENT_NP`, `CORTEXAGENT_FA`, `CORTEXAGENT_CTK`, `CORTEXAGENT_CTV`, temperature and top-p variables) have working defaults and only matter for specific hardware.
 
+**Local model or cloud (Ollama):** the model slot is one URL. The slimtoken lane stays the default either way; only the base URL and the served model name change, and an explicit `CORTEXAGENT_LOCAL_BASE` set before launch wins over the auto-probe.
+
+```bash
+# Default: slimtoken lane in front of the local model
+export CORTEXAGENT_LOCAL_BASE="http://127.0.0.1:11598/v1"
+
+# Ollama instead (local ollama :11434 or an ollama cloud host) - same slot,
+# plus the model name the server should answer as:
+export CORTEXAGENT_LOCAL_BASE="http://127.0.0.1:11600/v1"
+export CORTEXAGENT_MODEL_NAME="glm-5.3-flash:cloud"
+```
+
+Provider prompt caching engages automatically on the cache-safe lane: only tools-schema minify, append-only dedup and the loop-guard touch the served body, so the prefix the provider caches never changes.
+
 ## Test
 
 ```bash
