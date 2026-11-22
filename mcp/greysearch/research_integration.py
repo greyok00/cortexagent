@@ -373,6 +373,11 @@ def _dedupe_skipped(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 class ResearchScraperBridge:
     """Bridge between the patchright scraper and the research pipeline."""
 
+    # Class-level defaults keep tests that construct the bridge with
+    # object.__new__ (no __init__) from tripping over the wedge guard.
+    _scrape_wedges = 0
+    _SCRAPE_WEDGE_MAX = 8
+
     def __init__(self):
         self._scrape_slot = None
         self._active_scrapes = set()
@@ -844,13 +849,20 @@ class ResearchScraperBridge:
                 cat_i = cats[0] if (cats and i == 0) else "general"
                 _sw = __import__("concurrent.futures", fromlist=["x"])
                 _search_pool = _sw.ThreadPoolExecutor(max_workers=1)
+                # per-lane wall = the flat 240s cap, but never more than the
+                # run's remaining SEARCH budget (+15s grace): a lane that
+                # burns its full 240s must not also eat the time the next
+                # lanes and the scrape stage still need (owner incident
+                # 04:30: sequential 150-240s lanes outran the whole budget
+                # and the wall-kill lost the run).
+                _lane_wall = max(30.0, min(240.0, search_deadline - time.time() + 15.0))
                 try:
                     _sfut = _search_pool.submit(
                         self.research_search, eq, category=cat_i,
                         max_results=8, engines=_sel["text"],
                         search_proxy=search_proxy,
                         floor_hunt_left=_floor_hunt_left())
-                    search_result = _sfut.result(timeout=240.0)
+                    search_result = _sfut.result(timeout=_lane_wall)
                 except Exception as _sw_err:
                     search_result = {"ok": False, "results": [],
                                      "ladder": [f"search lane abandoned after "
@@ -875,6 +887,14 @@ class ResearchScraperBridge:
                     break
 
         q_tokens_pinned = {t for t in re.split(r"[^a-z0-9]+", question.lower()) if len(t) > 3}
+        # PINNED-WALL (owner incident 04:55): each pinned scrape can wedge on
+        # captcha waits/JS; four pins with zero results then left no time
+        # for the ranked pool ("difi.az.gov/file-a-complaint | time budget
+        # reached" while it sat AT position 10 of the pool). Pins get a
+        # bounded share (25% of budget) with per-scrape 60s joins; after the
+        # share expires pins keep their POOL entry (still first in the read
+        # loop) but no browser time is spent harvesting their links.
+        _pin_share_end = time.time() + max(45.0, _budget * 0.25)
         for pu in list(dict.fromkeys(pinned_sources or []))[:12]:
             pu = str(pu).strip()
             if not pu:
@@ -885,8 +905,31 @@ class ResearchScraperBridge:
                                  "domain": dom or pu,
                                  "tier": self._get_tier(dom) if dom else "primary",
                                  "engine": "pinned"})
+            if time.time() > _pin_share_end:
+                search_plan.append({"category": "pinned", "query": pu[:100],
+                                    "ok": False, "n": 0,
+                                    "ladder": ["pinned share exhausted ("
+                                               "pool keeps the pin; no "
+                                               "extra scrapes)"]})
+                continue
             try:
-                pr = self.research_scrape(pu, max_chars=0)
+                _pw2 = __import__("concurrent.futures", fromlist=["x"])
+                _pin_pool = _pw2.ThreadPoolExecutor(max_workers=1)
+                try:
+                    _pin_fut = _pin_pool.submit(self.research_scrape, pu,
+                                                max_chars=0)
+                    pr = _pin_fut.result(timeout=60.0)
+                except Exception as _pin_err:
+                    search_plan.append({"category": "pinned", "query": pu[:100],
+                                        "ok": False, "n": 0,
+                                        "ladder": [f"pinned scrape wall "
+                                                   f"(60s): "
+                                                   f"{type(_pin_err).__name__} \
+"
+                                                   "— pool keeps the pin"]})
+                    continue
+                finally:
+                    _pin_pool.shutdown(wait=False, cancel_futures=True)
                 if not pr.get("ok"):
                     continue
                 n_follow = 0

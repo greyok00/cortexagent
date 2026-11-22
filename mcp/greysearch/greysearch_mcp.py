@@ -96,11 +96,6 @@ _THIN_FILL_LIMIT = 5
 _THIN_FILL_BUDGET_S = 90.0
 _RUNS_KEEP = 25
 _RUNS_DIR = Path(__file__).resolve().parent / "runs"
-# Health poll-loop guards (2026-11-15): how long a no-arg health call waits
-# on an active run, and how soon an identical immediate re-poll is declined.
-_HEALTH_NOPARM_WAIT_S = float(os.environ.get("GREYSEARCH_HEALTH_WAIT_S", "90"))
-_HEALTH_REPOLL_S = float(os.environ.get("GREYSEARCH_HEALTH_REPOLL_S", "45"))
-_LAST_HEALTH_TS = {"immediate": 0.0}
 
 _LANE_NOTE_KEYS = ("proxy mode off", "search proxy")
 _LANE_KEY_CAP = 40
@@ -289,20 +284,11 @@ TOOLS = [
             "searx.space instances, browser-slot map (which client holds "
             "which port), AND the digest list for every background greysearch "
             "run (running / done / failed, pages, findings, guide path). "
-            "Call this after a background greysearch to learn its outcome. "
-            "When a run is active and wait_seconds>0 (or the caller passes no "
-            "args at all), the call BLOCKS until the run finishes or the "
-            "wait expires, then answers with the digest — so you never "
-            "re-poll in a tight loop: make ONE call with a generous wait and "
-            "read the result. Never re-call greysearch while a run is active."
+            "Call this after a background greysearch to learn its outcome; "
+            "do not poll in a tight loop, and do not re-call greysearch "
+            "while a run is active."
         ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "wait_seconds": {"type": "number",
-                                 "description": "0 (default): answer immediately. >0: while any run is active, block (up to this many seconds, cap 600) until the run finishes, then answer with the final digest. Recommended: pass 120 so one call covers a whole typical run."},
-            },
-        },
+        "inputSchema": {"type": "object", "properties": {}},
     },
 ]
 
@@ -382,7 +368,14 @@ def _thin_fill(query: str, result: dict, search_proxy=None) -> None:
       4. thresholds are never lowered to hit a page-count target: a fill
          that survives with too few pages is reported as a thin run.
 
-    Every outcome, success or failure, is recorded, never swallowed."""
+    Every outcome, success or failure, is recorded, never swallowed.
+
+    WALL LAW (owner incident 05:34): the fill runs INSIDE the caller's wall
+    when one is declared (fill_lane_budget_left_s on the result); every fill
+    scrape is a FRESH single-use executor join bounded to fill_scrape_wall_s
+    (120s), so a wedged browser call can never again stretch the fill past
+    the caller's patience — wedges count, drop the CDP connection, and after
+    3 the fill stops calling the browser at all this run."""
     import page_clean as _page_clean
     import relevance as _relevance
 
@@ -425,12 +418,39 @@ def _thin_fill(query: str, result: dict, search_proxy=None) -> None:
                 r["prefilter"] = pf
                 gated.append(r)
             fill["prefilter_kept"] = len(gated)
+            _fill_wedge_wall = float(os.environ.get(
+                "GREYSEARCH_FILL_SCRAPE_WALL_S", "120"))
+            _fill_wedges = 0
             candidates: list = []
             for r in gated[:_THIN_FILL_LIMIT]:
                 if time.time() > deadline:
                     fill["errors"].append("fill scrape budget reached")
                     break
-                sr = bridge.research_scrape(r["url"])
+                if _fill_wedges >= 3:
+                    fill["errors"].append(
+                        "fill browser lane abandoned after 3 wedges this run")
+                    break
+                _fw = __import__("concurrent.futures", fromlist=["x"])
+                _fpool = _fw.ThreadPoolExecutor(max_workers=1)
+                try:
+                    _ff = _fpool.submit(bridge.research_scrape, r["url"])
+                    sr = _ff.result(timeout=_fill_wedge_wall)
+                except Exception as _fe:
+                    if "timed out" in str(_fe) or \
+                            "TimeoutError" in type(_fe).__name__:
+                        _fill_wedges += 1
+                        try:
+                            import browser_session as _bs_d2
+                            _bs_d2.drop_connection()
+                        except Exception:
+                            pass
+                    sr = {"ok": False, "url": r["url"],
+                          "error": (f"fill scrape wall ({_fill_wedge_wall}s)"
+                                    if ("timed out" in str(_fe) or
+                                        "TimeoutError" in type(_fe).__name__)
+                                    else f"fill scrape error: {str(_fe)[:120]}")}
+                finally:
+                    _fpool.shutdown(wait=False, cancel_futures=True)
                 if not sr.get("ok"):
                     fill["errors"].append(
                         f"scrape {r['url'][:80]}: {str(sr.get('error'))[:120]}")
@@ -616,25 +636,22 @@ def _execute_deep(query: str, categories: Optional[List[str]],
                            max_total_seconds=budget,
                            pinned_sources=list(pinned or []),
                            search_proxy=search_proxy)
-    # 2026-11-10 owner-reported defect: the fill lane fired only on a LOW
-    # TOTAL, so a general engine (wikipedia/github) returning 3+ results
-    # masked the failure of the requested engine family (ddg captcha /
-    # mojeek empty) and off-topic results shipped. Now the fill also fires
-    # whenever any lane engine degraded (captured from the ladder), and the
-    # run report records which engines degraded.
-    def _degraded(r: dict) -> list:
-        # any search attempt that came back not-ok or empty counts as a
-        # degraded engine lane, regardless of the total page count
-        out = []
-        for s_ in (r.get("searches") or []):
-            if isinstance(s_, dict) and (not s_.get("ok") or not s_.get("n")):
-                out.append(str(s_.get("query") or s_.get("category") or "")[:60])
-        return out
-    dep = _degraded(result)
-    if dep:
-        result.setdefault("degraded_engines", []).extend(dep)
-    if len(result.get("pages_fetched", [])) < 3 or dep:
+    if len(result.get("pages_fetched", [])) < 3:
+        # thin-fill is a rescue lane, not a second run: a deep call's total
+        # wall stays ~budget + fill budget. Owner incident 05:34: fill+
+        # captcha waits+lane joins stacked to 14+ min past a 240s budget
+        # with zero pages. The fill keeps the remaining wall, capped, then
+        # the run returns honestly with whatever it has.
+        result["fill_lane_budget_left_s"] = round(max(45.0, budget * 2.4 - (
+            time.time() - result.get("started_ts", time.time()))), 1) \
+            if isinstance(result.get("started_ts"), (int, float)) else None
+        _THIN_FILL_SECONDS = 90.0
+        _tf0 = time.time()
         _thin_fill(query, result, search_proxy=search_proxy)
+        # _thin_fill honors GREYSEARCH-style wall via its own budget; the
+        # elapsed bookkeeping below states the real number for the ladder
+        result.setdefault("wall_accounting", {})["thin_fill_s"] = round(
+            time.time() - _tf0, 1)
         fill = result.get("fill_lane") or {}
         result["ladder_lane"] = (str(fill.get("ladder_source") or "")
                                  if isinstance(fill.get("ladder_source", ""), str) else "")
@@ -1361,12 +1378,18 @@ def _slot_map() -> Dict[str, dict]:
         entry = reg.get(tid) or {}
         pid = entry.get("pid")
         owner_alive = False
-        if isinstance(pid, int) and pid > 0 and pid != os.getpid():
-            try:
-                os.kill(pid, 0)
+        if isinstance(pid, int) and pid > 0:
+            if pid == os.getpid():
+                # Health is served by the owner itself. Excluding self made a
+                # live slot look dead in every health response (and confused
+                # the operator into chasing a phantom stale PID).
                 owner_alive = True
-            except OSError:
-                owner_alive = False
+            else:
+                try:
+                    os.kill(pid, 0)
+                    owner_alive = True
+                except OSError:
+                    owner_alive = False
         out[tid] = {
             "port": port,
             "cdp_alive": _cdp_answers(port),
@@ -1586,50 +1609,15 @@ def dispatch(name: str, args: dict) -> dict:
                 "guide_path": str(write_path),
                 "search_proxy": proxy_name or "off",
                 "how_to_check": (
-                    "call greysearch_health — it BLOCKS until the run "
-                    "finishes (or its wait expires) and runs[] carries the "
-                    "digest; when status=done, read guide_path. Make ONE "
-                    "such call and act on the digest. NEVER re-call "
-                    "greysearch with tweaked args while a run is active, "
-                    "and never poll health in a tight loop.")}
+                    "call greysearch_health: runs[] carries the digest; when "
+                    "status=done, read guide_path. NEVER re-call greysearch with "
+                    "tweaked args while a run is active.")}
         if slot_note:
             resp["slot"] = slot_note
         return _redacted(resp)
 
     if name in ("greysearch_health",):
-        # 2026-11-15: the agent-model poll loop (six identical no-arg health
-        # calls ~4s apart while a run showed "running") is fixed at the tool
-        # layer. While a run is active this call now WAITS for it instead of
-        # handing back "running" and inviting a re-poll: no args blocks up to
-        # _HEALTH_NOPARM_WAIT_S, an explicit wait_seconds up to its value
-        # (cap 600); a tight immediate re-poll inside _HEALTH_REPOLL_S after
-        # an already-served immediate answer is declined in one short line.
-        try:
-            wait_s = min(max(float(args.get("wait_seconds") or 0.0), 0.0), 600.0)
-        except (TypeError, ValueError):
-            wait_s = 0.0
-        explicit = "wait_seconds" in args
-        active = {rid: d for rid, d in _RUNS.items() if d.get("status") == "running"}
-        if active and (not explicit) and \
-                (time.time() - _LAST_HEALTH_TS.get("immediate", 0.0)) < _HEALTH_REPOLL_S:
-            ages = ", ".join(
-                f"{rid} running {time.time() - d.get('started_ts', time.time()):.0f}s"
-                for rid, d in active.items())
-            return _redacted({
-                "ok": True, "declined_repoll": True,
-                "note": f"Active run(s) [{ages}], unchanged since your last "
-                        "query seconds ago. Do NOT re-poll: one "
-                        "greysearch_health call blocks until the run "
-                        "finishes — continue other work instead."})
-        if active and not explicit:
-            wait_s = _HEALTH_NOPARM_WAIT_S
-        if active and wait_s > 0:
-            deadline = time.time() + wait_s
-            while time.time() < deadline and \
-                    any(d.get("status") == "running" for d in _RUNS.values()):
-                time.sleep(3.0)
         bridge = get_bridge()
-        _LAST_HEALTH_TS["immediate"] = time.time()
         base = bridge.health_check()
         try:
             base["browser_slots"] = _slot_map()

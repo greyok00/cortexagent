@@ -167,7 +167,7 @@ first response   1.2
 - The engine and lanes listen only on documented loopback ports (7100/7101/8792); nothing else binds, and ports owned by other stacks are refused, never fought.
 - Lane sources ship inside the repo and are hash-verified at spawn — what a lane does is readable in the tree you cloned, and a tampered file refuses to run rather than executing surprise code.
 - Local research/knowledge/memory means it works with the network cable pulled (minus web research) and never sends project context anywhere except the model you point it at.
-- Ollama/cloud use rides the passthrough lane: your ollama config, ports, and processes stay exactly as they are.
+- No ollama or cloud passthrough: the harness speaks only to its own engine on :7100, and your other stacks' model endpoints stay exactly as they are.
 
 ## Install (from source)
 

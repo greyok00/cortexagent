@@ -103,7 +103,7 @@ const LINE  = "\x1b[38;5;60m";    // table borders, axis lines
 const OFF   = "\x1b[0m";
 
 
-// 2026-11-10 (owner: "beautified by default", emoji outlines fixed): markdown
+// 2026-11-10 (owner order, beautify default, emoji outlines fixed): markdown
 // pipe tables now auto-render as aligned box tables BEFORE the TUI sees them,
 // with emoji-aware cell widths (dispWidth), violet header/ borders (framework
 // tokens) — beautify is the default, not opt-in.

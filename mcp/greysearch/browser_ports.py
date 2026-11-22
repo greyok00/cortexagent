@@ -14,6 +14,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -413,16 +414,92 @@ def launch_cmd(cfg: Dict[str, Any]) -> List[str]:
         "--profile", str(cfg["profile"]),
     ]
 
+def _profile_lock_pid(profile: str) -> Optional[int]:
+    """PID encoded in Chromium's SingletonLock symlink, if any.
+
+    Chromium names the lock ``<hostname>-<pid>``. The hostname is not
+    assumed: the numeric tail is the owner, so this works on every machine
+    and does not mistake a live profile for a stale one.
+    """
+    lock = os.path.join(os.path.expanduser(profile), "SingletonLock")
+    try:
+        target = os.readlink(lock)
+    except OSError:
+        return None
+    tail = str(target).rsplit("-", 1)[-1]
+    try:
+        return int(tail) if tail.isdigit() else None
+    except ValueError:
+        return None
+
+def _clean_stale_profile_locks(profile: str) -> List[str]:
+    """Remove Chromium singleton files only when their recorded owner is dead.
+
+    A browser that dies without closing Chromium leaves ``SingletonLock``,
+    ``SingletonCookie`` and ``SingletonSocket`` in the persistent profile.
+    The next launch sees the lock, assumes another browser owns the profile,
+    exits, and ``ensure()`` reports "could not be launched" forever. This is
+    the failure mode behind a slot that works one day and appears broken the
+    next with no code change.
+    """
+    profile = os.path.expanduser(profile)
+    lock_pid = _profile_lock_pid(profile)
+    if lock_pid is None or _pid_alive(lock_pid):
+        return []
+    removed: List[str] = []
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket",
+                 "DevToolsActivePort"):
+        path = os.path.join(profile, name)
+        if not os.path.lexists(path):
+            continue
+        try:
+            os.unlink(path)
+            removed.append(name)
+        except OSError:
+            continue
+    return removed
+
+def _reap_launcher(proc: subprocess.Popen, log_fh: Any) -> None:
+    """Wait for the detached launcher and close its log.
+
+    ``setsid`` forks when it is already a process-group leader, so the
+    Popen child can exit immediately while the real browser launcher keeps
+    running. Without a wait that short-lived child stays a zombie under the
+    MCP server for its entire lifetime. A daemon waiter reaps it and never
+    blocks the caller.
+    """
+    def _wait() -> None:
+        try:
+            proc.wait()
+        except Exception:
+            pass
+        finally:
+            try:
+                log_fh.close()
+            except Exception:
+                pass
+    threading.Thread(target=_wait, daemon=True,
+                     name="greysearch-launch-reaper").start()
+
 def ensure(cfg: Dict[str, Any], wait_s: int = 40, note: str = "") -> bool:
     """If this task's browser is down, launch it detached: ONE patchright
     HEADLESS Chromium per slot on its own CDP port/profile. No X display is
     involved: headless needs none. Never touches a browser on another task's
     port/profile. Returns True when up. The detached launch forwards the
     session's own GREYSEARCH_* env vars (the captcha solver knob resolves in
-    the launching process too, not only in fetches)."""
+    the launching process too, not only in fetches).
+
+    Before launching, dead-owner Chromium singleton files are removed from
+    the persistent profile. Those files are why a slot can fail to launch
+    after an unclean browser exit even though the code and port are fine.
+    """
     port = int(cfg["port"])
     if _healthy(port):
         return True
+    removed = _clean_stale_profile_locks(str(cfg.get("profile") or ""))
+    if removed:
+        _note(note, f"removed stale Chromium locks from {cfg.get('profile')}: "
+                    f"{', '.join(removed)}")
     env = {
         "HOME": os.environ.get("HOME") or str(Path.home()),
         "PATH": "/usr/local/bin:/usr/bin:/bin",
@@ -430,11 +507,23 @@ def ensure(cfg: Dict[str, Any], wait_s: int = 40, note: str = "") -> bool:
         **{k: str(v) for k, v in os.environ.items()
            if k.startswith("GREYSEARCH_")},
     }
+    log_dir = os.path.join(os.path.expanduser("~/.cache/greysearch"), "logs")
     try:
-        subprocess.Popen(launch_cmd(cfg), env=env,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+        os.makedirs(log_dir, exist_ok=True)
+        log_fh = open(os.path.join(log_dir, f"{cfg['key']}-launch.log"), "ab")
+    except OSError:
+        log_fh = subprocess.DEVNULL
+    try:
+        proc = subprocess.Popen(launch_cmd(cfg), env=env,
+                                stdout=log_fh, stderr=log_fh,
+                                start_new_session=True)
+        _reap_launcher(proc, log_fh)
     except Exception:
+        try:
+            if log_fh is not subprocess.DEVNULL:
+                log_fh.close()
+        except Exception:
+            pass
         return False
     deadline = time.time() + wait_s
     while time.time() < deadline:
