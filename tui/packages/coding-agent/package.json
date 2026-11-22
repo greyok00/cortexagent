@@ -1,6 +1,6 @@
 {
   "name": "@cortexagent/coding-agent",
-  "version": "0.7.5.1",
+  "version": "0.11.1",
   "description": "cortex-agent \u2014 hardened, fully offline agent wired to its own local models (compiled core, frozen tree)",
   "type": "module",
   "cortexConfig": {

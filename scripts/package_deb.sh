@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 OUT="$ROOT/dist/deb"
 PKGROOT="$OUT/cortexagent"
 VERSION="$(node "$ROOT/tui/packages/coding-agent/dist/cli.js" --version 2>/dev/null | tail -1 | tr -dc '0-9.')"
-[ -n "$VERSION" ] || VERSION="0.7.5.1"
+[ -n "$VERSION" ] || VERSION="0.11.1"
 
 echo "== packaging cortexagent $VERSION =="
 rm -rf "$OUT"
