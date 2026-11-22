@@ -13,14 +13,14 @@ let lastOwnerTs = 0;
 // extension hooks the tool_call event and refuses bash/shell calls that
 // violate a read-only allowlist, mirroring build/src/registry.py's core
 // gate so both lanes enforce one policy (spawn_subagent lane = TUI lane).
-// 2026-11-10 (owner order, after the Good Twin loop): THREE owner directives
+// 2026-11-10 (owner order): THREE directives
 // land here permanently:
 //   1. `&&` chaining is ALLOWED — every && segment is validated one by one,
 //      no per-segment refuser for the chain form itself.
 //   2. `cd` is a first-class allowlisted command (it was implicit-only before;
 //      the visual-companion launch recipe required cd && and got refused forever).
-//   3. THE FOLDER LAW: when the OWNER names a project folder ("restrict
-//      yourselfe to just this folder", "stay in X", "only work in X"), the
+//   3. THE FOLDER LAW: when the OWNER names a project folder ("stay in
+//      X", "only work in X"), the
 //      gate anchors to it and every bash/read/edit/write path must live
 //      inside that root (or the machine-legit escapes below). "you're free"
 //      / "no folder restriction" clears the anchor. Refusals tell the model
@@ -34,8 +34,8 @@ const LAW_PATH = path.join(os.homedir(), ".cortex-agent", "agent", "state", "wor
 // Owner phrases that ANCHOR the session to a folder. Two shapes matched
 // (both verified against real owner messages):
 //   words-then-path : “stay in /home/x/y”, “restrict yourself to /x”
-//   path-then-words : “/home/grey/Desktop/good-twin ok restrict yourselfe
-//                     to just this folder” (Good Twin, 2026-11-10)
+//   path-then-words : an absolute path followed by restriction
+//                     words (2026-11-10)
 // A message needs BOTH restriction language and a path (or a quoted path).
 const RESTR_RE =
 	/\b(?:restrict|confine|stay|remain|work\s+only|only\s+(?:work|use|in)|keep(?:\s+yourself)?\s+to|this\s+folder|this\s+project)\b/i;
@@ -171,29 +171,37 @@ const SAFE_BINS = new Set([
 	// trust-level expansion, not a read-only extension.
 	"curl", "wget", "unzip", "tar", "python3",
 	"strings", "nm", "objdump", "readelf",
-	// 2026-11-06 owner: agent stalled on "cp not in allow list" during the
-	// APK red-team session. File operations stay narrow-path (the redirect
-	// policy above already confines > to /tmp and /dev/null); rm/deliberate
-	// mutation of user files still go through the file tools, which is
-	// unchanged policy.
+	// 2026-11-06 owner: agent stalled on a missing cp allowlist entry. File
+	// operations stay narrow-path (the redirect policy above already
+	// confines > to /tmp and /dev/null); rm/deliberate mutation of user
+	// files still go through the file tools, unchanged policy.
 	"cp", "mv", "touch", "dirname", "basename", "realpath", "readlink",
 	"awk", "sed", "tee",
-	// 2026-11-09 owner: the APK lane needed a whole ring of the toolchain
-	// and its refusals were the 20x loop fuel. Read-only device probing,
-	// process census and the APK/jar/keystore toolchain.
+	// 2026-11-09 owner: a device-build lane needed a whole ring of the
+	// toolchain and its refusals were the 20x loop fuel. Read-only device
+	// probing, process census and the jar/keystore toolchain.
 	"adb", "pgrep", "pidof", "hexdump", "xxd", "less", "test", "seq", "bc",
 	"aapt2", "apkanalyzer", "./gradlew", "gradle", "java", "keytool", "d8",
 	"javac", "jarsigner", "zipinfo",
-	// 2026-11-09 (APK rebuild incident, second wave): the build script needs
-	// plain aapt (not aapt2), zip, zipalign and apksigner — all were refused
-	// because they were never listed.
+	// 2026-11-09 (rebuild incident, second wave): the build script needs
+	// plain aapt (not aapt2), zip, zipalign and apksigner — all were
+	// refused because they were never listed.
 	"aapt", "apksigner", "zip", "zipalign",
-	// 2026-11-10 owner: "i want it to have more commands" — the APK lane
+	// 2026-11-10 owner: the build lane wanted more commands — it needs
 	// needs python (single scripts only, never -c heredocs), the build chain
 	// (make), node, npx, env inspection, pids, dirs, tree, and the shell
 	// builtin test. sleep/test were always safe; python3/python stay
 	// interpreter-tier trust (owner-approved) and run single-line only.
 	"python", "make", "node", "npx", "tree", "wc", "test",
+	// 2026-11-14 owner (capture lane): the screenshot verify loop
+	// reads its own captures (identify gives dimensions; cortex-img the
+	// description text at :11600). Both are read-only companions here.
+	"identify", "magick", "convert", "cortex-img", "cortexagent-img",
+	// 2026-11-14 owner (capture lane): the gate's own escape says
+	// "execute the script directly by its full path if it has the exec bit" —
+	// chmod is the companion that sets that bit, confined to mode-forms that
+	// only set (±)x on a single folder-law target.
+	"chmod",
 	// 2026-11-10 owner (kb-library port incident): ad-hoc servers are BANNED.
 	// `python3 -m http.server <port>` hijacked the knowledge library's :8792
 	// and was presented as "the visual companion". Serving directories is
@@ -243,7 +251,7 @@ const NEVER_RE =
 	// (beginning of the string or after a shell separator), never as a
 	// mid-path fragment. Same for /bin/sh-style absolute interpreters.
 	/mkfs|\bdd\b(?=[\s]|$)|\bkillall\b|\bsystemctl\b|\bservice\b(?![\w.-])|\bpkexec\b|\beval\b|(?<!-)\bsource\b|\btmux\b|\bsetsid\b|\bapt-get\b|\baptitude\b|\bflatpak\b|\bsnap\b|(^|[;&|]\s*|\/bin\/)(sh|bash|zsh|fish|dash)\b(?=\s|$)/;
-// 2026-11-09 (APK rebuild incident): two regexes were over-broad. `\source`
+// 2026-11-09 (rebuild incident): two regexes were over-broad. `\source`
 // caught javac's `-source 21` flag (now lookbehind-guarded) and `>[\s]*&`
 // caught the standard `2>&1` log redirect (now only bare/wrongfd >& is
 // blocked, `2>&1` passes). Escaped \$Names pass too; real substitution
@@ -315,7 +323,103 @@ function scriptTailOk(scriptPath: string, rest: string, requireExecBit: boolean)
 	const allowedFlags =
 		/^(?:--project-dir\s+\S+|--open|--host\s+\S+|--url-host\s+\S+|--foreground|--background|--idle-timeout-minutes\s+\d+)(?:\s+(?:--project-dir\s+\S+|--open|--host\s+\S+|--url-host\s+\S+|--foreground|--background|--idle-timeout-minutes\s+\d+))*$/;
 	if (allowedFlags.test(r)) return lawCheckCmd(`${scriptPath} ${r}`) === null;
+	// 2026-11-14 owner (capture lane): the engine's own capture
+	// line is flag-form: --scene=res://… --out=docs/shots/… --warmup=14
+	// --view=street, sometimes under a bare `2>&1`. Every token goes
+	// through lawCheckCmd (folder law), the redirect stays the bare form,
+	// and shell composition stays refused. Bare form also allowed.
+	if (r && !/[;&|`$(]/.test(r)) {
+		const noRedirect = r.replace(/\s*2>&1\s*$/, "").trim();
+		if (noRedirect === r.trim() &&
+			lawCheckCmd(`${scriptPath} ${r.trim()}`) === null) return true;
+		if (noRedirect && noRedirect !== r.trim() &&
+			lawCheckCmd(`${scriptPath} ${noRedirect}`) === null) return true;
+	}
 	return false;
+}
+
+// 2026-11-21 audit: redirect operators glued into word tokens (`>file`,
+// `2>file`, `hi>file`, `note>>file`) never split into an operator token, so
+// the exact-token loop in checkSingle let `echo x >/etc/cron.d/backup` write
+// outside /tmp. Quote-aware scan for every unquoted operator — the glued
+// forms get the same /tmp + /dev/null confinement as their spaced forms;
+// an `>&n` fd dup writes no file. Mirrors core/registry.py one-for-one.
+function scanRedirectRefusal(c: string): string | null {
+	let quote = "";
+	let i = 0;
+	const n = c.length;
+	while (i < n) {
+		const ch = c[i];
+		if (quote) {
+			if (ch === "\\" && quote === '"') {
+				i += 2;
+				continue;
+			}
+			if (ch === quote) quote = "";
+			i += 1;
+			continue;
+		}
+		if (ch === "\\") {
+			i += 2;
+			continue;
+		}
+		if (ch === "'" || ch === '"') {
+			quote = ch;
+			i += 1;
+			continue;
+		}
+		if (ch !== "<" && ch !== ">") {
+			i += 1;
+			continue;
+		}
+		const dir = ch;
+		i += 1;
+		if (i < n && c[i] === dir) i += 1; // >> or <<
+		// fd dup (2>&1, >&2, 2>&-): a & before the target means fd, not file
+		let j = i;
+		while (j < n && c[j] === " ") j += 1;
+		if (j < n && c[j] === "&") {
+			j += 1;
+			while (j < n && (/[0-9]/.test(c[j]) || c[j] === "-")) j += 1;
+			i = j;
+			continue;
+		}
+		if (dir === "<") {
+			return "refused: input redirection is not allowed — pass the file path as an argument";
+		}
+		let target = "";
+		while (j < n) {
+			const w = c[j];
+			if (w === "\\" && j + 1 < n) {
+				target += c[j + 1];
+				j += 2;
+				continue;
+			}
+			if (w === "'" || w === '"') {
+				const q = w;
+				j += 1;
+				while (j < n && c[j] !== q) {
+					if (q === '"' && c[j] === "\\" && j + 1 < n) {
+						target += c[j + 1];
+						j += 2;
+						continue;
+					}
+					target += c[j];
+					j += 1;
+				}
+				j += 1;
+				continue;
+			}
+			if (/\s/.test(w) || "<>;|&".includes(w)) break;
+			target += w;
+			j += 1;
+		}
+		i = j;
+		if (target !== "/dev/null" && !target.startsWith("/tmp/")) {
+			return "refused: redirect target must be /dev/null or under /tmp/ (file writes go through file tools or /tmp/)";
+		}
+	}
+	return null;
 }
 
 export function checkSingle(c: string): string | null {
@@ -327,13 +431,44 @@ export function checkSingle(c: string): string | null {
 	}
 	const portErr = checkReservedPorts(t);
 	if (portErr) return portErr;
+
+	// 2026-11-14 owner (asset lane): two project-tool escapes, both
+	// narrow and both fully inside the folder law.
+	//   (a) Godot engine binary inside the anchor — flags/value tokens only.
+	//   (b) python3 + project .py file for the asset fetchers — file-path
+	//       tokens only, no shell composition.
+	const engineRun = t.match(
+		/^(\/\S*engine\/Godot[^\s/]*\.x86_64)\s+(.+)$/);
+	if (engineRun) {
+		const bin = engineRun[1];
+		if (!lawCheck(bin).ok) return "refused: engine binary outside the anchor";
+		const argRe = /^(?:--\S+|res:\S+|\S+\.tscn|\S+\.png|forward_plus|vulkan|\d+x\d+|\d+|overview|street|corner|site|\.|assets|generated|docs|scenes|tools|src|data)(?:\s+(?:--\S+|res:\S+|\S+\.tscn|\S+\.png|forward_plus|vulkan|\d+x\d+|\d+|overview|street|corner|site|\.))*$/;
+		const rest = engineRun[2];
+		if (!argRe.test(rest.replace(/\./g, ".")))
+			return "refused: godot args outside the flag whitelist; use --path, --scene=, --out=, --warmup=, --view= tokens inside the anchor";
+		return null;
+	}
+	const pyRun = t.match(/^(?:(?:.*\/)?python3)\s+(\S+\.py)\s*(.*)$/);
+	if (pyRun) {
+		const script = pyRun[1];
+		if (!lawCheck(script).ok) return "refused: script outside the anchor";
+		const rest = pyRun[2];
+		if (/[;&|`><]/.test(rest))
+			return "refused: confined to plain file-path arguments";
+		for (const tok of rest.split(/\s+/)) {
+			if (!tok) continue;
+			const lc = lawCheck(path.resolve(tok));
+			if (!lc.ok) return "refused: " + lc.reason;
+		}
+		return null;
+	}
 	// 2026-11-10 owner (visual-companion loop analysis): the model's natural
 	// output for script runs is the BARE full-path form —
 	// `…/start-server.sh --project-dir …` — which previously landed in the
 	// NEVER_RE net ("service" even matches inside "start-server.sh") and
 	// looped the session. Direct exec of a full-path .sh is the same trust
 	// tier as `bash <script.sh>`: one script, one command, confined args.
-	const directRun = t.match(/^(\/\S+\.sh)\s*(.*)$/);
+	const directRun = t.match(/^(\/\S+\.sh|\.{1,2}\/[^\s]+\.sh)\s*(.*)$/);
 	if (directRun && scriptTailOk(directRun[1], directRun[2], true)) return null;
 	if (NEVER_RE.test(t)) {
 		// 2026-11-09 (owner's build-loop incident): `bash build-good-twin.sh`
@@ -364,19 +499,8 @@ export function checkSingle(c: string): string | null {
 			return `refused: adb "${sub}" is not on the allowlist (read+install subs: devices, get-state, shell, logcat, bugreport, version, install, uninstall, push, pull)`;
 		}
 	}
-	const toks = t.split(/\s+/);
-	for (let i = 0; i < toks.length; i++) {
-		const tok = toks[i];
-		if (tok.startsWith("<")) {
-			return "refused: input redirection is not allowed — pass the file path as an argument";
-		}
-		if (tok === ">" || tok === ">>" || tok === "2>" || tok === "2>>" || tok === "&>") {
-			const target = toks[i + 1] ?? "";
-			if (target !== "/dev/null" && !target.startsWith("/tmp/")) {
-				return "refused: redirect target must be /dev/null or under /tmp/ (file writes go through file tools or /tmp/)";
-			}
-		}
-	}
+	const redirErr = scanRedirectRefusal(t);
+	if (redirErr) return redirErr;
 	if (t.includes(";")) {
 		return "refused: semicolons are not allowed — one command per bash call";
 	}
@@ -387,7 +511,7 @@ export function checkSingle(c: string): string | null {
 		}
 		const segToks = seg.split(/\s+/);
 		const first = segToks[0].replace(/^["']|["']$/g, "");
-		// 2026-11-09 (APK rebuild incident): the allowlist matched bare names
+		// 2026-11-09 (rebuild incident): the allowlist matched bare names
 		// only, so javac/d8 — allowlisted on paper — were refused the moment
 		// the model invoked them by full path, the only way they can be
 		// invoked since they are not on PATH. Match by basename too.
@@ -407,6 +531,22 @@ export function checkSingle(c: string): string | null {
 				}
 			}
 			continue;
+		}
+		if (base === "chmod") {
+			// only the ±x-on-one-target form; the exec-bit companion of the
+			// direct-exec escape, so a capture script can be made runnable
+			const m2 = seg.match(/^chmod\s+\+-?[xX]\s+(\S+)\s*$/);
+			if (!m2) {
+				return "refused: chmod in this lane only takes one of: chmod +x PATH / chmod -x PATH"
+					+ " (the exec-bit companion of the direct-exec escape)";
+			}
+			const target = m2[1];
+			const abs = target.startsWith("~")
+				? path.join(os.homedir(), target.slice(1))
+				: path.resolve(target);
+			const check = lawCheck(abs);
+			if (!check.ok) return check.reason;
+			return null;
 		}
 		if (base === "git") {
 			const sub = seg.split(/\s+/)[1];

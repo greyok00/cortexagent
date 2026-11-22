@@ -434,6 +434,13 @@ sys.path.insert(0, sys.argv[1] + "/build/src")
 import server
 d = server.start_model(timeout=600)
 pid = int(d.get("pid") or 0)
+# 2026-11-21 audit: pid 0 means "unknown server pid" (e.g. the engine was
+# already up when start_model looked). Every os.kill(0, ...) below would
+# signal this watcher's OWN process group (launcher + Node TUI) — liveness
+# always "succeeds", a dead server is never detected, and the 12-minute
+# wedged-server reaper would SIGTERM the whole group. Guard every kill site
+# on pid > 0; the server-side fix resolves a real pid from the port-scoped
+# pid file, so this is the belt under that suspenders.
 print(str(pid or ""))
 if not d.get("ok"):
     sys.stderr.write("model boot failed: %s\n" % d.get("error", "unknown"))
@@ -454,18 +461,43 @@ if len(sys.argv) > 2 and sys.argv[2].strip():
 ever_up = False
 down_seconds = 0.0
 while True:
-    try:
-        os.kill(pid, 0)
-    except (ProcessLookupError, PermissionError):
-        # A lane with no model behind it answers bare 502 on every send
-        # (owner, 2026-10-27). Reap the lane this session started the moment
-        # its upstream disappears, never leave an orphan gateway behind.
+    # 2026-11-21 owner: the server must kill itself when the session is dead.
+    # If the launcher bash dies hard (window closed without a clean trap),
+    # this watcher gets orphaned (ppid 1) and would babysit the model forever.
+    # Reparenting is the tell: session gone -> reap server + lane, exit.
+    if os.getppid() == 1:
+        if pid > 0:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                for _ in range(10):
+                    try:
+                        os.kill(pid, 0)
+                    except OSError:
+                        break
+                    time.sleep(0.5)
+                else:
+                    os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
         if lane_pid:
             try:
                 os.kill(lane_pid, signal.SIGTERM)
             except OSError:
                 pass
-        break  # server died on its own — exit quietly
+        break
+    if pid > 0:
+        try:
+            os.kill(pid, 0)
+        except (ProcessLookupError, PermissionError):
+            # A lane with no model behind it answers bare 502 on every send
+            # (owner, 2026-10-27). Reap the lane this session started the moment
+            # its upstream disappears, never leave an orphan gateway behind.
+            if lane_pid:
+                try:
+                    os.kill(lane_pid, signal.SIGTERM)
+                except OSError:
+                    pass
+            break  # server died on its own — exit quietly
     try:
         serving = bool(server.is_ready())
     except Exception:
@@ -477,10 +509,11 @@ while True:
         if ever_up:
             down_seconds += 5
             if down_seconds >= 720:               # 12 min wedged
-                try:
-                    os.kill(pid, signal.SIGTERM)  # reap the wedged server
-                except OSError:
-                    pass
+                if pid > 0:
+                    try:
+                        os.kill(pid, signal.SIGTERM)  # reap the wedged server
+                    except OSError:
+                        pass
                 if lane_pid:
                     try:
                         os.kill(lane_pid, signal.SIGTERM)
