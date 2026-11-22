@@ -10,8 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 OUT="$ROOT/dist/deb"
 PKGROOT="$OUT/cortexagent"
-VERSION="$(python3 "$ROOT/bin/version.sh" 2>/dev/null || true)"
-[ -n "$VERSION" ] || VERSION="$(node "$ROOT/tui/packages/coding-agent/dist/cli.js" --version 2>/dev/null | tail -1 | tr -dc '0-9.')"
+VERSION="$(node "$ROOT/tui/packages/coding-agent/dist/cli.js" --version 2>/dev/null | tail -1 | tr -dc '0-9.')"
 [ -n "$VERSION" ] || VERSION="0.7.5.1"
 
 echo "== packaging cortexagent $VERSION =="
@@ -27,11 +26,11 @@ Depends: python3 (>= 3.13), nodejs (>= 22), libc6, libstdc++6, libgcc-s1, libnvi
 Maintainer: grey <local>
 Description: cortexagent — hardened offline fork of the cortex agent family
  Fully Cython-compiled agent core/tools/services; renamed private
- engine-server (cortexagent-server) on :7080 with its slimtoken lane on
- :7081 (both movable via CORTEXENGINE_PORT / CORTEXENGINE_LANE_PORT); Node TUI
+ engine-server (cortexagent-server) on :7100 with its slimtoken lane on
+ :7101 (both movable via CORTEXENGINE_PORT / CORTEXENGINE_LANE_PORT); Node TUI
  under the @cortexagent scope; frozen, hash-pinned artifacts
  (state/MANIFEST.json) and an on-demand, masked lifecycle. Port policy in
- ~/.cortexagent/agent/port_policy.json (:11600 untouched, :11434 dead).
+ ~/.cortex-agent/agent/port_policy.json (:11600 untouched, :11434 dead).
 EOF
 # payload: everything, minus transient scratch
 tar -C "$ROOT" \
@@ -41,7 +40,7 @@ tar -C "$ROOT" \
     --exclude='state/model-server.log' \
     -cf - bin core tools services build mcp scripts tests tui vendor pytest.ini config model ui state/MANIFEST.json \
     | tar -xf - -C "$PKGROOT/opt/cortex-agent"
-ln -sf /opt/cortex-agent/bin/cortexagent "$PKGROOT/usr/local/bin/cortex-agent"
+ln -sf /opt/cortex-agent/bin/cortex-agent "$PKGROOT/usr/local/bin/cortex-agent"
 cat > "$PKGROOT/DEBIAN/postinst" <<'EOF'
 #!/bin/bash
 set -e
@@ -49,7 +48,7 @@ if ! python3 /opt/cortex-agent/bin/verify_compiled.py; then
   echo "cortexagent: frozen-tree verification FAILED after install" >&2
   exit 1
 fi
-echo "cortexagent: frozen tree verified. ~/.cortexagent/agent seeds on first launch."
+echo "cortexagent: frozen tree verified. ~/.cortex-agent/agent seeds on first launch."
 EOF
 chmod 755 "$PKGROOT/DEBIAN/postinst"
 du -sh "$PKGROOT/opt/cortex-agent" | sed 's/^/payload: /'

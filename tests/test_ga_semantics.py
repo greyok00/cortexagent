@@ -347,3 +347,28 @@ def test_ga_spec_off_line_is_loud():
     for flag in ("--spec-type", "--spec-ngram-mod-n-match",
                  "--spec-ngram-mod-n-min"):
         assert flag not in argv, flags
+
+def test_gate_catches_glued_redirect_forms():
+    # 2026-11-21 audit: redirect operators glued into word tokens never
+    # split into an operator token, so the exact-token check alone let the
+    # target through unwritten-confined — `echo hi >/etc/cron.d/backup`
+    # wrote outside /tmp through a token the loop never saw. The quote-
+    # aware scan gives glued forms the same /tmp + /dev/null confinement;
+    # a ">" inside quotes is text, not a redirect.
+    for cmd in (
+        "echo hi >/etc/cron.d/backup",
+        "echo note>>~/other-project/file",
+        "ls >/etc/x", "ls 2>/etc/x", "ls >>/etc/x",
+        "ls 2>>/etc/x", "ls &>/etc/x",
+        "cat a<b",
+        "echo hi > ~/notes.txt",
+    ):
+        assert _refusal(cmd) is not None, f"gate should refuse: {cmd!r}"
+    for cmd in (
+        "grep '=>' notes.txt",          # quoted text, not a redirect
+        "awk '{if($1>x) print}' f",     # quoted program, not a redirect
+        "ls 2>/tmp/e.log",              # glued but confined
+        "ls >>/dev/null",               # glued but confined
+        "ls > /tmp/out.log",            # spaced, confined
+    ):
+        assert _refusal(cmd) is None, f"allowlist should pass: {cmd!r}"

@@ -61,7 +61,10 @@ import proxy_mode as _proxy_mode
 # serving even when the knowledge-ingestor is absent (library shows
 # "unavailable" instead of crashing the research station).
 _kbcore = None
-_KB_ROOT = "~/knowledge-ingestor"
+# expanduser is load-bearing: sys.path never expands a literal "~", so the
+# unexpanded string made `import kbcore` fail forever and every /api/library*
+# route answer 503 with a misleading "not importable" (2026-11-21 audit).
+_KB_ROOT = os.path.expanduser("~/knowledge-ingestor")
 try:
     if _KB_ROOT not in sys.path:
         sys.path.insert(0, _KB_ROOT)
@@ -717,14 +720,21 @@ def _library_page():
     return send_from_directory(_PORTAL_DIR, "library.html")
 
 
-_LIBRARY_ROOT = "~/knowledge-ingestor/dbs"
+_LIBRARY_ROOT = os.path.expanduser("~/knowledge-ingestor/dbs")
+
+
+def _dbs_root() -> str:
+    """Library dbs root: KB_DBS_DIR override, else the ingestor's dbs dir
+    (expanded — os.listdir/os.path.join never resolve a literal "~")."""
+    return os.environ.get("KB_DBS_DIR") or _LIBRARY_ROOT
+
 
 def _library_data():
     """Library index: record + host census over the ingestor's dbs.
     pack_rows() caches by realpath, so repeat calls stay cheap."""
     if not _kbcore:
         return []
-    root = os.environ.get("KB_DBS_DIR") or "~/knowledge-ingestor/dbs"
+    root = _dbs_root()
     data = []
     for name in sorted(os.listdir(root)):
         path = os.path.join(root, name, "pack.jsonl")
@@ -770,7 +780,7 @@ def _api_library_records():
         lim = min(max(1, int(request.args.get("limit", 24))), 100)
     except ValueError:
         off, lim = 0, 24
-    root = os.environ.get("KB_DBS_DIR") or "~/knowledge-ingestor/dbs"
+    root = _dbs_root()
     p = os.path.join(root, db, "pack.jsonl")
     if not (db and os.path.isfile(p)):
         return jsonify({"error": "unknown db %s" % db}), 404
@@ -805,7 +815,7 @@ def _api_library_search():
     for d in data:
         if db and d["name"] != db:
             continue
-        p = os.path.join(os.environ.get("KB_DBS_DIR") or "~/knowledge-ingestor/dbs",
+        p = os.path.join(_dbs_root(),
                          d["name"], "pack.jsonl")
         try:
             for hit in _kbcore.search(os.path.dirname(os.path.realpath(p)), q, k=k, enc=enc):

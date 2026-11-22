@@ -7,7 +7,7 @@ _query_llm_with_tools(messages, tools, max_tokens, timeout) -> reply dict
 
 Server down, malformed reply, or empty content with no calls -> None (loop
 maps None to "model unavailable"). Both functions speak HTTP to the local
-OpenAI-compatible model server (:7090); no VRAM or model load lives here.
+OpenAI-compatible engine server; no VRAM or model load lives here.
 
 Created 2026-11-11 to close the forever-missing import. Signatures match
 core/loop.py's call sites (messages-first, max_tokens/timeout kwargs) so
@@ -16,9 +16,22 @@ tests can monkeypatch with lambdas of that shape.
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 
-BASE = "http://127.0.0.1:7090"
+
+def _resolve_base() -> str:
+    """Same knobs the launcher exports (bin/cortex-agent): the lane/direct
+    base when set, else the engine's own port (default :7100 — :7090 is the
+    sibling family's port, per the launcher header's port law)."""
+    env = os.environ.get("CORTEXENGINE_LOCAL_BASE") or ""
+    if env:
+        base = env.rstrip("/")
+        return base[:-3] if base.endswith("/v1") else base
+    return "http://127.0.0.1:%d" % int(os.environ.get("CORTEXENGINE_PORT", "7100"))
+
+
+BASE = _resolve_base()
 
 
 def _post(body: dict, timeout: float):

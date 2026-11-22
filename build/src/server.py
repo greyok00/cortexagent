@@ -593,7 +593,7 @@ def _enforce_vram_cap(pid: int) -> str:
                 return ""
             if mb > cap + 512:
                 breach = ("model VRAM %d MiB exceeds cap %d MiB "
-                          "(CORTEXENGINE_VRAM_CAP_MB): %d - stopped" % (mb, cap))
+                          "(CORTEXENGINE_VRAM_CAP_MB) - stopped" % (mb, cap))
                 try:
                     with open(STATE / "model-server.log", "ab") as f:
                         f.write(("vram cap breach: %s\n" % breach).encode())
@@ -606,7 +606,17 @@ def _enforce_vram_cap(pid: int) -> str:
 def start_model(timeout: float = 300.0) -> dict:
     global _proc
     if is_ready():
-        return {"ok": True, "already": True}
+        # 2026-11-21 audit: an "already up" boot used to return with NO pid,
+        # so the launcher's watcher saw 0 — os.kill(0, ...) probes the
+        # watcher's own process group (always "alive", so a wedged server is
+        # never detected and the 12-minute reaper would SIGTERM the launcher's
+        # whole group, TUI included). The pid file is scoped to this port, so
+        # it names exactly the server the port is answering with.
+        try:
+            pid = int(PID_PATH.read_text().strip() or 0)
+        except (OSError, ValueError):
+            pid = 0
+        return {"ok": True, "already": True, "pid": pid or None}
     kill_vram_holders()
     # 2026-11-14 owner: single-candidate boot, hard fail. One attempt at the
     # profile ctx; if the card refuses, the error surfaces to the caller and

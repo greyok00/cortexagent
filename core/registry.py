@@ -59,6 +59,86 @@ _NEVER_RE = re.compile(
 _SUBST_RE = re.compile(r"[`$]\(|[`]|[$][A-Za-z_{]|[<]\(|[>]\(|&&|[&][>]|>[\s]*&")
 
 
+def _glued_redirect_refusal(cmd: str) -> Optional[str]:
+    """Quote-aware scan for redirect operators glued into word tokens.
+
+    The exact-token loop in _check_cmd only validates operators that arrive
+    as whole tokens (`> file`); bash equally accepts the glued forms —
+    `>file`, `2>file`, `hi>file`, `note>>file` — which never split into an
+    operator token (2026-11-21 audit: `echo x >/etc/cron.d/backup` wrote
+    outside /tmp through a token the loop never saw). Walk the command
+    honoring quotes and backslash escapes; every unquoted operator gets the
+    same confinement as its spaced form, and an `>&n` fd dup writes no file.
+    """
+    quote = ""
+    i, n = 0, len(cmd)
+    while i < n:
+        c = cmd[i]
+        if quote:
+            if c == "\\" and quote == '"':
+                i += 2
+                continue
+            if c == quote:
+                quote = ""
+            i += 1
+            continue
+        if c == "\\":
+            i += 2
+            continue
+        if c in "'\"":
+            quote = c
+            i += 1
+            continue
+        if c not in "<>":
+            i += 1
+            continue
+        direction = c
+        i += 1
+        if i < n and cmd[i] == direction:  # >> or <<
+            i += 1
+        # fd dup (2>&1, >&2, 2>&-): a & before the target means fd, not file
+        j = i
+        while j < n and cmd[j] == " ":
+            j += 1
+        if j < n and cmd[j] == "&":
+            j += 1
+            while j < n and (cmd[j].isdigit() or cmd[j] == "-"):
+                j += 1
+            i = j
+            continue
+        if direction == "<":
+            return ("refused: input redirection is not allowed on the core "
+                    "shell lane — pass the file path as an argument")
+        target = ""
+        while j < n:
+            w = cmd[j]
+            if w == "\\" and j + 1 < n:
+                target += cmd[j + 1]
+                j += 2
+                continue
+            if w in "'\"":
+                q = w
+                j += 1
+                while j < n and cmd[j] != q:
+                    if q == '"' and cmd[j] == "\\" and j + 1 < n:
+                        target += cmd[j + 1]
+                        j += 2
+                        continue
+                    target += cmd[j]
+                    j += 1
+                j += 1
+                continue
+            if w.isspace() or w in "<>;|&":
+                break
+            target += w
+            j += 1
+        i = j
+        if target != "/dev/null" and not target.startswith("/tmp/"):
+            return ("refused: redirect target must be /dev/null or under "
+                    "/tmp/ (file writes go through file tools or /tmp/)")
+    return None
+
+
 def _check_cmd(command: str, timeout: int) -> tuple[str, int]:
     """Rule gate for the core shell lane. Returns (None|refusal, clamped_timeout)."""
     timeout = max(1, min(int(timeout), _CMD_TIMEOUT))
@@ -86,6 +166,9 @@ def _check_cmd(command: str, timeout: int) -> tuple[str, int]:
             if target != "/dev/null" and not target.startswith("/tmp/"):
                 return ("refused: redirect target must be /dev/null or under "
                         "/tmp/ (file writes go through file tools or /tmp/)", timeout)
+    glued = _glued_redirect_refusal(cmd)
+    if glued:
+        return glued, timeout
     if ";" in cmd:
         return "refused: semicolons are not allowed on the core shell lane — one command per call", timeout
     # every pipeline segment's first token must be on the allowlist
