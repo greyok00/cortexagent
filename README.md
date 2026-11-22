@@ -35,8 +35,8 @@ How the separation behaves:
 ## Inference spec
 
 - **Speculative decoding:** n-gram-mod (`n-match 24`, `n-min 48`, `n-max 64`) — a ~16 MB observed-n-gram table in RAM, no drafter model, no VRAM cost. Drafts only when a long n-gram match exists, so reasoning/short answers pay nothing while long copy/code output gains ~27% warm throughput (measured: 79.1 plain → 100.7 t/s warm-table on the 35B card; 0 MiB VRAM delta).
-- **Sampling:** temperature 0.4 (owner-tuned stability), top_p 0.95, top_k 20 — clamped in code on every request by the sampling guard, so a misbehaving model or provider can't drift the profile.
-- **KV cache:** q8_0 on the 16/8 GB cards, q4_0 on 4 GB where the window budget demands — quantized attention state bought the 64k–131k windows that float KV wouldn't fit.
+- **Sampling:** temperature 0.6 (owner-tuned stability), top_p 0.95, top_k 20 — clamped in code on every request by the sampling guard, so a misbehaving model or provider can't drift the profile.
+- **KV cache:** q8_0 on every card — quantized attention state bought the 64k–131k windows that float KV wouldn't fit.
 - **Boot ladder:** every profile descends context in 8192-token steps (131072 → 8192 floor) until the card accepts — a busy machine gets a smaller window with the same brain, then a smaller card if the card itself refuses (announced at boot).
 
 ## How it is hardened
@@ -44,7 +44,7 @@ How the separation behaves:
 | Layer | Mechanism |
 |---|---|
 | Engine identity | llama.cpp copy renamed `cortex-server`, `$ORIGIN`-patched libs inside `vendor/engine/` — a foreign kill sweep can never name-match a normal `llama-server` |
-| Boot gate | frozen-tree verification: 1,900+ files sha256-pinned; desynced dist or tampered artifact → boot refused loudly |
+| Boot gate | frozen-tree verification: 1,855 files sha256-pinned; desynced dist or tampered artifact → boot refused loudly |
 | Bash policy | exec gate with ~55-token allowlist, confined redirects, teaching refusals — one policy enforced in both the core lane and the TUI lane |
 | Session health | supervision plane: watcher → healer → steer channel, epoch-safe, lessons ledger; catches refusal storms, streaks, and 1-token storms live |
 | Lane integrity | greysearch + knowledge + memory spawn from vendored sources, per-file sha256 pins, spawn retries, respawn on demand — a pin mismatch yields a loud refusing probe, never silence |
@@ -86,25 +86,15 @@ Plus `pi-subagents` bundled (council, parallel-research/review/cleanup, review-l
 | Output styling left to the model's mood | beautify enforced per-turn in code: purple keywords, auto-boxed emoji-safe tables, chart/spark fences |
 | Sibling projects patched ad hoc | fork-not-patch law: fixes happen in forks, upstream untouched |
 
-## Cloud and ollama — use it with standard ollama safely
+## No cloud, no ollama passthrough — local engine only
 
-The harness → internal proxy → standard ollama, one command, nothing modified:
-
-    cortex-agent ollama
-
-Chain: **TUI → slimtoken lane on private port :7112 → your ollama** (default `http://127.0.0.1:11434`, override with `CORTEXENGINE_OLLAMA_URL`; model via `CORTEXENGINE_OLLAMA_MODEL`).
-
-- Your ollama is untouched: we spawn our own slimtoken on our own port, forwards only, and stop **our** lane on exit — we never stop or reconfigure yours.
-- The no-interceptor law is preserved: pointing the passthrough at the cloud-direct lane (:11600) is refused — that lane exists for direct calls only. Point it at your standard local ollama endpoint instead.
-- The brain still gets the same privacy posture: no external AI providers, slimtoken as a client-side filter only.
-- Cloud models, if you ever want them, ride the same pattern with `CORTEXENGINE_OLLAMA_URL` pointed at any OpenAI-compatible cloud endpoint — the agent still never speaks to a provider directly; it always goes through the lane.
+The ollama passthrough lane (`cortex-agent ollama`, a slimtoken proxy on a separate port in front of your own ollama) was removed: the harness runs LOCAL-ONLY on its own VRAM engine. There is no subcommand, no spawned lane, and no forwarding to an external model endpoint — the brain speaks only to the engine on :7100. Other stacks' ollama or cloud endpoints (:11600, :11434, ...) on the machine are left untouched, never read or adapted to.
 
 ## Ports
 
 | Port | Owner |
 |---|---|
 | 7100 / 7101 | cortex-agent engine + lane |
-| 7112 | ollama passthrough lane (transient, own process) |
 | 8888 | shared local SearXNG |
 | 8792 | cortex-agent library UI |
 | 8791 / 11600 / 11434 / 1143x / 1159x | other stacks — never touched |
@@ -168,13 +158,13 @@ first response   1.2
 
 | Step | Result |
 |---|---|
-| Frozen-tree gate | ✅ 1,924 files pinned |
+| Frozen-tree gate | ✅ 1,855 files pinned |
 | Engine health | 🔵 :7100 answering |
 | Lanes | 🔒 3 attached |
 
 ## How it runs on your machine
 
-- The engine and lanes listen only on documented loopback ports (7100/7101/7112/8792); nothing else binds, and ports owned by other stacks are refused, never fought.
+- The engine and lanes listen only on documented loopback ports (7100/7101/8792); nothing else binds, and ports owned by other stacks are refused, never fought.
 - Lane sources ship inside the repo and are hash-verified at spawn — what a lane does is readable in the tree you cloned, and a tampered file refuses to run rather than executing surprise code.
 - Local research/knowledge/memory means it works with the network cable pulled (minus web research) and never sends project context anywhere except the model you point it at.
 - Ollama/cloud use rides the passthrough lane: your ollama config, ports, and processes stay exactly as they are.
