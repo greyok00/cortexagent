@@ -7,7 +7,9 @@ _query_llm_with_tools(messages, tools, max_tokens, timeout) -> reply dict
 
 Server down, malformed reply, or empty content with no calls -> None (loop
 maps None to "model unavailable"). Both functions speak HTTP to the local
-OpenAI-compatible engine server; no VRAM or model load lives here.
+OpenAI-compatible engine server; no VRAM or model load lives here. Every
+successful reply also bumps the real usage counters (USAGE["calls"],
+LAST_TPS) that the system tool and the TUI footer report.
 
 Created 2026-11-11 to close the forever-missing import. Signatures match
 core/loop.py's call sites (messages-first, max_tokens/timeout kwargs) so
@@ -17,7 +19,26 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.request
+
+# Real usage counters, filled from the engine's own response in _post().
+# USAGE["calls"] counts completed model calls; LAST_TPS is the completion
+# tokens-per-second of the most recent one (0.0 until the server reports
+# usage). The system tool and the TUI footer read these — 2026-11-21 audit:
+# wiring/system_status used to read them before anything defined them.
+USAGE = {"calls": 0}
+LAST_TPS = 0.0
+
+
+def _track(data: dict, elapsed: float) -> None:
+    """Record one completed call from the engine's response body."""
+    global LAST_TPS
+    USAGE["calls"] += 1
+    usage = data.get("usage") or {}
+    toks = int(usage.get("completion_tokens") or 0)
+    if toks > 0 and elapsed > 0:
+        LAST_TPS = toks / elapsed
 
 
 def _resolve_base() -> str:
@@ -38,12 +59,15 @@ def _post(body: dict, timeout: float):
     req = urllib.request.Request(
         BASE + "/v1/chat/completions", data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"})
+    t0 = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read())
-            return data["choices"][0].get("message") or None
+            msg = data["choices"][0].get("message") or None
     except Exception:
         return None
+    _track(data, time.monotonic() - t0)
+    return msg
 
 
 def _query_llm(prompt: str, system: str = "", max_tokens: int = 1024,

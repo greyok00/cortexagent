@@ -7,7 +7,7 @@ BASE = {"version": 1, "repetition_limit": 3, "storm_min_turns": 3,
         "error_burst_min": 4, "error_burst_window": 6,
         "refusal_repeat_limit": 3, "length_storm_limit": 3}
 
-def setup(td, stats):
+def setup_state(td, stats):
     td = pathlib.Path(td)
     (td / "rulebook.json").write_text(json.dumps(BASE))
     (td / "stats.json").write_text(json.dumps(stats))
@@ -18,7 +18,7 @@ def run(td, extra=()):
 
 def test_no_failures_means_no_change():
     with tempfile.TemporaryDirectory() as td:
-        setup(td, {"failureCounts": {}, "steerEffectiveness": {}, "detailCounts": {}})
+        setup_state(td, {"failureCounts": {}, "steerEffectiveness": {}, "detailCounts": {}})
         p = run(td)
         assert p.returncode == 0
         assert json.loads((pathlib.Path(td) / "rulebook.json").read_text())["version"] == 1
@@ -26,7 +26,7 @@ def test_no_failures_means_no_change():
 
 def test_healthy_class_refuses_change():
     with tempfile.TemporaryDirectory() as td:
-        setup(td, {"failureCounts": {"F4": 10},
+        setup_state(td, {"failureCounts": {"F4": 10},
                    "steerEffectiveness": {"F4": {"fired": 10, "resolved": 9, "refired": 1}},
                    "detailCounts": {"F4": {"identical args and identical results": 10}}})
         p = run(td)
@@ -36,7 +36,7 @@ def test_healthy_class_refuses_change():
 
 def test_unhealthy_repetition_adopts_only_when_replay_agrees():
     with tempfile.TemporaryDirectory() as td:
-        setup(td, {"detailCounts": {"F4": {"identical args and identical results": 12}},
+        setup_state(td, {"detailCounts": {"F4": {"identical args and identical results": 12}},
                    "failureCounts": {"F4": 12},
                    "steerEffectiveness": {"F4": {"fired": 12, "resolved": 4, "refired": 8}}})
         p = run(td)
@@ -50,7 +50,7 @@ def test_unhealthy_repetition_adopts_only_when_replay_agrees():
 
 def test_f2_route_picks_burst_knob_from_details():
     with tempfile.TemporaryDirectory() as td:
-        setup(td, {"detailCounts": {"F2": {"3/6 recent tool results errored": 9}},
+        setup_state(td, {"detailCounts": {"F2": {"3/6 recent tool results errored": 9}},
                    "failureCounts": {"F2": 9},
                    "steerEffectiveness": {"F2": {"fired": 9, "resolved": 3, "refired": 6}}})
         p = run(td)
